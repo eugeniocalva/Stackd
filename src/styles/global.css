@@ -1,0 +1,54 @@
+body {
+  font-family: var(--font-family-body);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  /* Disable text selection and pull-to-refresh for an app-like feel */
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior-y: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  position: relative;
+  overflow: hidden;
+}
+
+.view-container {
+  flex: 1;
+  overflow-y: auto;
+  /* Leave space for bottom nav + safe area */
+  padding-bottom: calc(70px + var(--safe-bottom)); 
+}
+
+/* Scrollbar styling for desktop, invisible on mobile */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+p {
+  color: var(--text-secondary);
+}
+
+/* Accent colors utilities */
+.text-income { color: var(--color-income-text) !important; }
+.text-expense { color: var(--color-expense) !important; }
+.text-accent { color: var(--color-primary) !important; }
+.text-secondary { color: var(--text-secondary) !important; }

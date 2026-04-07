@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Stackd v0.10</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="src/styles/reset.css" />
+    <link rel="stylesheet" href="src/styles/variables.css" />
+    <link rel="stylesheet" href="src/styles/global.css" />
+    <link rel="stylesheet" href="src/styles/components.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main view container (router outlet) -->
+      <main id="router-view" class="view-container"></main>
+      
+      <!-- Bottom Navigation -->
+      <nav class="bottom-nav" id="bottom-nav">
+        <!-- Will be injected by BottomNav component -->
+      </nav>
+      
+      <!-- Global Modal Container -->
+      <div id="modal-container"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="src/db.js"></script>
+    <script type="module" src="src/store.js?v=4"></script>
+    <script type="module" src="src/components.js"></script>
+    <script type="module" src="src/views.js?v=4"></script>
+    <script type="module" src="src/router.js"></script>
+    <script type="module" src="src/export.js"></script>
+    <script type="module" src="src/import.js"></script>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
