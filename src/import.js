@@ -68,7 +68,7 @@ window.StackdImport = {
           const amount = Math.abs(parseFloat(amountStr));
           if (isNaN(amount)) return;
           
-          if (type !== 'expense' && type !== 'income' && type !== 'transfer' && type !== 'balance_adjustment') {
+          if (type !== 'expense' && type !== 'income' && type !== 'transfer') {
             type = 'expense';
           }
 

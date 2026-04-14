@@ -59,14 +59,12 @@ const newAddTransactionView = `  AddTransactionView: {
               initialToAccount = txToEdit.accountId;
             }
           }
-        } else if (txToEdit.isAdjustment || txToEdit.type === 'balance_adjustment' || txToEdit.categoryId === 'cat_balance') {
-          initialType = 'balance';
         } else {
-          initialType = txToEdit.type;
+          initialType = txToEdit.type === 'opening_balance' ? 'income' : txToEdit.type;
         }
       }
 
-      const disableToggles = isEdit && (initialType === 'transfer' || initialType === 'balance') ? 'pointer-events: none; opacity: 0.5;' : '';
+      const disableToggles = ''; // Allow switching even in edit mode now that save logic is improved
       
       return \`
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
@@ -77,10 +75,9 @@ const newAddTransactionView = `  AddTransactionView: {
           
           <!-- Type Toggle -->
           <div style="display: flex; background: var(--bg-surface); border-radius: var(--radius-sm); padding: 4px; margin-bottom: var(--space-8); \${disableToggles}">
-            <button id="toggle-expense" class="btn btn-danger" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px;">Expense</button>
-            <button id="toggle-income" class="btn" style="flex: 1; color: var(--text-secondary); background: transparent; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px;">Income</button>
-            <button id="toggle-transfer" class="btn" style="flex: 1; color: var(--text-secondary); background: transparent; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px;">Transfer</button>
-            <button id="toggle-balance" class="btn" style="flex: 1; color: var(--text-secondary); background: transparent; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px;">Balance</button>
+            <button id="toggle-expense" class="btn \${initialType === 'expense' ? 'btn-danger' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: \${initialType === 'expense' ? '' : 'var(--text-secondary)'}; background: \${initialType === 'expense' ? '' : 'transparent'};">Expense</button>
+            <button id="toggle-income" class="btn \${initialType === 'income' ? 'btn-income' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: \${initialType === 'income' ? '' : 'var(--text-secondary)'}; background: \${initialType === 'income' ? '' : 'transparent'};">Income</button>
+            <button id="toggle-transfer" class="btn \${initialType === 'transfer' ? 'btn-primary' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: \${initialType === 'transfer' ? '' : 'var(--text-secondary)'}; background: \${initialType === 'transfer' ? '' : 'transparent'};">Transfer</button>
           </div>
           
           <input type="hidden" id="tx-type" value="\${initialType}">
@@ -89,26 +86,26 @@ const newAddTransactionView = `  AddTransactionView: {
           
           <!-- Large Amount Input -->
           <div class="amount-input-group">
-            <span id="currency-symbol" style="position: absolute; color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display); margin-top: 24px; margin-left: -32px;">$</span>
-            <input type="number" id="tx-amount" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="\${initialAmount}">
+            <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);">\${window.Store.getCurrencySymbol()}</span>
+            <input type="number" id="tx-amount" class="amount-input \${initialType === 'expense' ? 'text-expense' : (initialType === 'income' ? 'text-income' : 'text-transfer')}" placeholder="0.00" step="0.01" inputmode="decimal" value="\${initialAmount}" style="width: auto; max-width: 200px;">
           </div>
           
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group" id="group-account">
-              <label class="form-label" id="label-account">Account</label>
+              <label class="form-label" id="label-account">\${initialType === 'transfer' ? 'From Account' : 'Account'}</label>
               <select id="tx-account" class="form-control" style="appearance: none;">
                 \${createAccountOptions(state.accounts, initialAccount)}
               </select>
             </div>
             
-            <div class="form-group" id="group-transfer-to" style="display: none;">
+            <div class="form-group" id="group-transfer-to" style="display: \${initialType === 'transfer' ? 'block' : 'none'};">
               <label class="form-label">To Account</label>
               <select id="tx-transfer-to" class="form-control" style="appearance: none;">
                 \${createAccountOptions(state.accounts, initialToAccount)}
               </select>
             </div>
             
-            <div class="form-group" id="group-category">
+            <div class="form-group" id="group-category" style="display: \${initialType === 'transfer' ? 'none' : 'block'};">
               <label class="form-label" style="display:flex; justify-content: space-between;">
                 <span>Category</span>
                 <span id="btn-add-category" style="color: var(--color-accent); cursor: pointer;">+ Add custom</span>
@@ -143,7 +140,6 @@ const newAddTransactionView = `  AddTransactionView: {
       const btnExpense = document.getElementById('toggle-expense');
       const btnIncome = document.getElementById('toggle-income');
       const btnTransfer = document.getElementById('toggle-transfer');
-      const btnBalance = document.getElementById('toggle-balance');
       const typeInput = document.getElementById('tx-type');
       const amountInput = document.getElementById('tx-amount');
       const categorySelect = document.getElementById('tx-category');
@@ -168,7 +164,7 @@ const newAddTransactionView = `  AddTransactionView: {
         const type = typeInput.value;
         
         // Reset styles for all buttons
-        [btnExpense, btnIncome, btnTransfer, btnBalance].forEach(btn => {
+        [btnExpense, btnIncome, btnTransfer].forEach(btn => {
           btn.className = 'btn';
           btn.style.color = 'var(--text-secondary)';
           btn.style.background = 'transparent';
@@ -195,18 +191,10 @@ const newAddTransactionView = `  AddTransactionView: {
           btnTransfer.className = 'btn btn-primary';
           btnTransfer.style.color = '';
           btnTransfer.style.background = '';
-          amountInput.className = 'amount-input';
+          amountInput.className = 'amount-input text-transfer';
           groupCategory.style.display = 'none';
           groupTransferTo.style.display = 'block';
           labelAccount.textContent = 'From Account';
-        } else if (type === 'balance') {
-          btnBalance.className = 'btn btn-primary';
-          btnBalance.style.color = '';
-          btnBalance.style.background = '';
-          amountInput.className = 'amount-input';
-          groupCategory.style.display = 'none';
-          groupTransferTo.style.display = 'none';
-          labelAccount.textContent = 'Target Account';
         }
         
         updateCategories();
@@ -224,7 +212,6 @@ const newAddTransactionView = `  AddTransactionView: {
       btnExpense.addEventListener('click', () => { typeInput.value = 'expense'; updateUIVisibility(); });
       btnIncome.addEventListener('click', () => { typeInput.value = 'income'; updateUIVisibility(); });
       btnTransfer.addEventListener('click', () => { typeInput.value = 'transfer'; updateUIVisibility(); });
-      btnBalance.addEventListener('click', () => { typeInput.value = 'balance'; updateUIVisibility(); });
       
       // Add custom category
       btnAddCategory.addEventListener('click', () => {
@@ -270,133 +257,85 @@ const newAddTransactionView = `  AddTransactionView: {
       btnSave.addEventListener('click', () => {
         const type = typeInput.value;
         const amount = parseFloat(amountInput.value);
-        if (isNaN(amount) || amount <= 0 && type !== 'balance') { // Balance can be 0 or negative
+        if (isNaN(amount) || amount <= 0) {
           amountInput.style.backgroundColor = 'var(--color-expense-bg)';
           setTimeout(() => amountInput.style.backgroundColor = 'transparent', 1000);
           return;
         }
-        
-        const date = document.getElementById('tx-date').value;
-        const comment = document.getElementById('tx-comment').value.trim();
+
         const accountId = document.getElementById('tx-account').value;
+        const toAccountId = document.getElementById('tx-transfer-to').value;
         const categoryId = categorySelect.value;
-        
+        const date = document.getElementById('tx-date').value;
+        const comment = document.getElementById('tx-comment').value;
         const editIdInput = document.getElementById('tx-edit-id');
         const isEdit = !!editIdInput;
         const targetId = isEdit ? editIdInput.value : null;
+        const recurrenceData = window.Components.Recurrence ? window.Components.Recurrence.getData() : null;
 
         if (type === 'transfer') {
-          const toAccountId = document.getElementById('tx-transfer-to').value;
           if (accountId === toAccountId) {
             alert("Cannot transfer to the same account.");
             return;
           }
-          
-          if (isEdit) {
-            const transferRef = document.getElementById('tx-transfer-ref').value;
-            // The sender leg (Expense)
-            const senderPayload = {
-              id: targetId, // if we tapped the sender leg originally
-              amount: amount,
-              accountId: accountId,
-              date: date,
-              comment: comment,
-            };
-            // Updating a transfer involves dispatching UPDATE_TRANSACTION on whichever leg, and state logic updates counterpart
-            // Wait, Store UPDATE_TRANSACTION logic uses the payload's ID, and checks transferRef, and patches counterpart's shared fields.
-            // But if the user altered the "From Account" and "To Account", we need to selectively patch BOTH legs' accountIds.
-            // Since store only blindly patches counterpart amount/date/note, let's dispatch explicit UPDATE for both if we know them.
-            // Actually, for simplicity overriding our store logic limitations, we can DELETE the old transfer and ADD a new one perfectly, 
-            // BUT that breaks chronological insertion ID sorting somewhat. 
-            // It's safer to just let STORE do what STORE does or patch it manually here using an explicit TRANSFER_UPDATE payload if we had one.
-            // For now, let's do a trick: dispatch UPDATE on the main item. Then also manually trigger UPDATE on counterpart.
-            window.Store.dispatch('UPDATE_TRANSACTION', {
-              id: targetId,
-              amount: amount,
-              accountId: accountId,
-              date: date,
-              comment: comment || 'Transfer Out'
-            });
-            // Also explicitly update the counterpart account just in case! (Because the store only syncs amount & date)
-            window.Store.dispatch('UPDATE_TRANSACTION', {
-               id: transferRef, 
-               accountId: toAccountId,
-               comment: comment || 'Transfer In'
-            });
 
-          } else {
-             const transferId = window.StackdDB.generateId();
-             // Outgoing (Expense)
-             window.Store.dispatch('ADD_TRANSACTION', {
-               type: 'expense',
-               amount: amount,
-               accountId: accountId,
-               categoryId: null, // Transfers don't strictly need a category
-               date: date,
-               comment: comment || 'Transfer Out',
-               transferRef: transferId
-             });
-             // Incoming (Income)
-             window.Store.dispatch('ADD_TRANSACTION', {
-               type: 'income',
-               amount: amount,
-               accountId: toAccountId,
-               categoryId: null,
-               date: date,
-               comment: comment || 'Transfer In',
-               transferRef: transferId
-             });
-          }
-          
-        } else if (type === 'balance') {
-          
           if (isEdit) {
-             window.Store.dispatch('UPDATE_TRANSACTION', {
-                id: targetId,
-                amount: amount,
-                accountId: accountId,
-                date: date,
-                comment: comment || 'Manual Balance Adjustment'
-             });
-          } else {
-            const currentBalance = window.Store.getAccountBalance(accountId);
-            const difference = amount - currentBalance;
-            
-            if (difference !== 0) {
-              window.Store.dispatch('ADD_TRANSACTION', {
-                type: difference > 0 ? 'balance_adjustment' : 'expense',
-                amount: Math.abs(difference),
-                accountId: accountId,
-                categoryId: 'cat_balance',
-                date: date,
-                comment: comment || 'Manual Balance Adjustment',
-                isAdjustment: true
+            const transferRef = document.getElementById('tx-transfer-ref')?.value;
+            if (transferRef) {
+              // Existing transfer - use dedicated update
+              window.Store.dispatch('UPDATE_TRANSFER', {
+                transferRef,
+                amount,
+                expenseAccountId: accountId,
+                incomeAccountId: toAccountId,
+                date,
+                note: comment,
+                recurrence: recurrenceData
+              });
+            } else {
+              // Converting regular tx to transfer - delete original and add new transfer
+              window.Store.dispatch('DELETE_TRANSACTION', { id: targetId });
+              window.Store.dispatch('ADD_TRANSFER', {
+                amount,
+                expenseAccountId: accountId,
+                incomeAccountId: toAccountId,
+                date,
+                note: comment,
+                recurrence: recurrenceData
               });
             }
-          }
-          
-        } else {
-          // Normal Expense or Income
-          if (isEdit) {
-            window.Store.dispatch('UPDATE_TRANSACTION', {
-              id: targetId,
-              type: type, // allowed to switch between expense / income
-              amount: amount,
-              accountId: accountId,
-              categoryId: categoryId,
-              date: date,
-              comment: comment
-            });
           } else {
-            window.Store.dispatch('ADD_TRANSACTION', {
-              type: type,
-              amount: amount,
-              accountId: accountId,
-              categoryId: categoryId,
-              date: date,
-              comment: comment
+            // New transfer
+            window.Store.dispatch('ADD_TRANSFER', {
+              amount,
+              expenseAccountId: accountId,
+              incomeAccountId: toAccountId,
+              date,
+              note: comment,
+              recurrence: recurrenceData
             });
           }
+        } else if (isEdit) {
+          window.Store.dispatch('UPDATE_TRANSACTION', {
+            id: targetId,
+            type: type,
+            amount: amount,
+            accountId: accountId,
+            categoryId: categoryId,
+            date: date,
+            comment: comment,
+            recurrence: recurrenceData
+          });
+        } else {
+          window.Store.dispatch('ADD_TRANSACTION', {
+            type: type,
+            amount: amount,
+            accountId: accountId,
+            categoryId: categoryId,
+            date: date,
+            comment: comment,
+            recurrence: recurrenceData
+          });
         }
         
         window.Router.navigate('#transactions');
@@ -419,10 +358,11 @@ const newAddTransactionView = `  AddTransactionView: {
         });
       }
     }
-  },`;
+  }
+};`;
 
-const startIdx = content.indexOf('  AddTransactionView: {');
-const endIdx = content.indexOf('};\n\n// Extend Views with v0.3 screens') + 1;
+const startIdx = content.indexOf('AddTransactionView: {');
+const endIdx = content.indexOf('// Extend Views with v0.3 screens');
 
 if (startIdx !== -1 && endIdx !== 0) {
   content = content.substring(0, startIdx) + newAddTransactionView + content.substring(endIdx);

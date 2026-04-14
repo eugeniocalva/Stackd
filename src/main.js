@@ -13,21 +13,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Initialize keyboard avoidance
+  if (window.KeyboardManager) {
+    window.KeyboardManager.init();
+  }
+
   // 1. Initialize data store
   window.Store.init();
   
   // 2. Initialize router
   window.Router.init();
 
-  // Handle Android Native Back Button
-  CapacitorApp.addListener('backButton', ({ canGoBack }) => {
-    const state = window.Store.getState();
-    if (state.activeView !== 'dashboard') {
-      window.history.back();
-    } else {
-      CapacitorApp.exitApp();
-    }
-  });
+  // Handle Android Native Back Button (Only on native platforms)
+  if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform()) {
+    CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      const state = window.Store.getState();
+      if (state.activeView !== 'dashboard') {
+        window.history.back();
+      } else {
+        CapacitorApp.exitApp();
+      }
+    });
+  }
   
   // 3. Mount static components (Bottom Nav)
   const navContainer = document.getElementById('bottom-nav');
@@ -69,8 +76,23 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'budget':
         viewModule = window.Views.BudgetView;
         break;
+      case 'edit-account':
+        viewModule = window.Views.EditAccountView;
+        break;
       case 'settings':
         viewModule = window.Views.OthersView;
+        break;
+      case 'tags':
+        viewModule = window.Views.TagsView;
+        break;
+      case 'tag-detail':
+        viewModule = window.Views.TagDetailView;
+        break;
+      case 'category-detail':
+        viewModule = window.Views.CategoryDetailView;
+        break;
+      case 'edit-category':
+        viewModule = window.Views.EditCategoryView;
         break;
       default:
         viewModule = window.Views.DashboardView;

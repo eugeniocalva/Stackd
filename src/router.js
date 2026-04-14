@@ -8,7 +8,12 @@ window.Router = {
     '#edit': 'edit',
     '#categories': 'categories',
     '#settings': 'settings',
-    '#budget': 'budget'
+    '#budget': 'budget',
+    '#edit-account': 'edit-account',
+    '#tags': 'tags',
+    '#tag-detail': 'tag-detail',
+    '#category-detail': 'category-detail',
+    '#edit-category': 'edit-category'
   },
 
   // Returns query params parsed from the current hash, e.g. { account: 'abc123' }
@@ -50,7 +55,25 @@ window.Router = {
       window.Store.dispatch('SET_MONTH_FILTER', currentPhysicalMonthStr);
     }
 
+    // v0.36: State-Aware Scroll Integration
+    const oldView = window.Store.getState() ? window.Store.getState().activeView : null;
     window.Store.dispatch('SET_VIEW', viewId);
+    
+    // Reset scroll position based on whether the view actually changed
+    if (window.ScrollUtils) {
+      if (oldView === viewId) {
+        if (viewId === 'transactions') {
+          // Special case for history: jump back to today/relevant date
+          window.dispatchEvent(new CustomEvent('scroll-history-to-today'));
+        } else {
+          // v0.36 - Increased delay to 400ms for mid-range mobile hardware (Redmi Note 7)
+          setTimeout(() => window.ScrollUtils.universalSmoothScrollToTop(), 400);
+        }
+      } else {
+        // We are switching to a new tab. Reset scroll position instantly
+        window.ScrollUtils.instantReset();
+      }
+    }
   },
 
   navigate(path) {

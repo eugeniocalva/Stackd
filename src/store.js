@@ -1,18 +1,18 @@
 // store.js - Pub/Sub State Manager
 const DEFAULT_CATEGORIES = [
-  { id: 'cat_salary', name: 'Salary', icon: '💰', isDefault: true, typeHint: 'income' },
-  { id: 'cat_freelance', name: 'Freelance', icon: '💻', isDefault: true, typeHint: 'income' },
-  { id: 'cat_investments', name: 'Investments', icon: '📈', isDefault: true, typeHint: 'income' },
-  { id: 'cat_groceries', name: 'Groceries', icon: '🛒', isDefault: true, typeHint: 'expense' },
-  { id: 'cat_transport', name: 'Transport', icon: '🚗', isDefault: true, typeHint: 'expense' },
-  { id: 'cat_entertainment', name: 'Entertainment', icon: '🎬', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_balance', name: 'Adjustment', icon: '⚖️', isDefault: true, typeHint: 'both' },
   { id: 'cat_dining', name: 'Dining Out', icon: '🍽️', isDefault: true, typeHint: 'expense' },
-  { id: 'cat_utilities', name: 'Utilities', icon: '💡', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_entertainment', name: 'Entertainment', icon: '🎬', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_freelance', name: 'Freelance', icon: '💻', isDefault: true, typeHint: 'income' },
+  { id: 'cat_groceries', name: 'Groceries', icon: '🛒', isDefault: true, typeHint: 'expense' },
   { id: 'cat_health', name: 'Health', icon: '🏥', isDefault: true, typeHint: 'expense' },
-  { id: 'cat_shopping', name: 'Shopping', icon: '🛍️', isDefault: true, typeHint: 'expense' },
-  { id: 'cat_rent', name: 'Rent', icon: '🏠', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_investments', name: 'Investments', icon: '📈', isDefault: true, typeHint: 'income' },
   { id: 'cat_other', name: 'Other', icon: '📦', isDefault: true, typeHint: 'both' },
-  { id: 'cat_balance', name: 'Balance', icon: '⚖️', isDefault: true, typeHint: 'both' }
+  { id: 'cat_rent', name: 'Rent', icon: '🏠', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_salary', name: 'Salary', icon: '💰', isDefault: true, typeHint: 'income' },
+  { id: 'cat_shopping', name: 'Shopping', icon: '🛍️', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_transport', name: 'Transport', icon: '🚗', isDefault: true, typeHint: 'expense' },
+  { id: 'cat_utilities', name: 'Utilities', icon: '💡', isDefault: true, typeHint: 'expense' }
 ];
 
 const ACCOUNT_COLORS = [
@@ -36,6 +36,9 @@ window.Store = {
     activeView: 'dashboard',
     activeAccountFilter: '',
     activeMonthFilter: '', // Will hold 'YYYY-MM'
+    activeTagFilter: '', // Will hold selected tag
+    language: 'en',
+    historySortOrder: 'desc', // 'asc' or 'desc'
     initialized: false
   },
 
@@ -47,6 +50,8 @@ window.Store = {
     this.state.transactions = window.StackdDB.load('transactions', []);
     this.state.budgets = window.StackdDB.load('budgets', []);
     this.state.currency = window.StackdDB.load('currency', 'USD');
+    this.state.language = window.StackdDB.load('language', 'en');
+    this.state.historySortOrder = window.StackdDB.load('historySortOrder', 'desc');
 
     if (this.state.categories.length === 0) {
       this.state.categories = [...DEFAULT_CATEGORIES];
@@ -69,11 +74,59 @@ window.Store = {
     // Initialize month filter to current month
     const today = new Date();
     this.state.activeMonthFilter = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    
+    // v0.29 Migration: Deprecate 'balance_adjustment' type
+    let migrationChanged = false;
+    this.state.transactions.forEach(t => {
+      // Convert Manual Balance Adjustments to regular Income/Expense
+      if (t.type === 'balance_adjustment') {
+        t.type = 'income';
+        migrationChanged = true;
+      }
+      if (t.isAdjustment) {
+        delete t.isAdjustment;
+        migrationChanged = true;
+      }
+    });
+    
+    // Rename 'Balance' category if it exists in state
+    const balCat = this.state.categories.find(c => c.id === 'cat_balance');
+    if (balCat && balCat.name === 'Balance') {
+      balCat.name = 'Adjustment';
+      migrationChanged = true;
+    }
+
+    if (migrationChanged) {
+      window.StackdDB.save('transactions', this.state.transactions);
+      window.StackdDB.save('categories', this.state.categories);
+    }
 
     this._processRecurringTransactions();
 
+    this._sortData();
     this.state.initialized = true;
     this.emit();
+  },
+
+  _sortData() {
+    this.state.accounts.sort((a, b) => this.compareAlpha(a, b));
+    this.state.categories.sort((a, b) => this.compareAlpha(a, b));
+  },
+
+  compareAlpha(a, b) {
+    return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true });
+  },
+
+  _sortTransactions() {
+    const isAsc = this.state.historySortOrder === 'asc';
+    this.state.transactions.sort((a, b) => {
+      if (a.date !== b.date) {
+        const diff = new Date(a.date) - new Date(b.date);
+        return isAsc ? diff : -diff;
+      }
+      const diff = new Date(a.createdAt) - new Date(b.createdAt);
+      return isAsc ? diff : -diff;
+    });
   },
 
   _calculateNextRecurrenceDate(baseDateStr, interval, freq) {
@@ -123,6 +176,7 @@ window.Store = {
              id: window.StackdDB.generateId(),
              date: nextD,
              createdAt: new Date().toISOString(),
+             tags: gen.recurrence.propagateTags === false ? [] : (gen.tags ? [...gen.tags] : []),
              recurrence: {
                 ...gen.recurrence,
                 nextDate: nextNextD
@@ -141,6 +195,7 @@ window.Store = {
                    date: nextD,
                    createdAt: new Date().toISOString(),
                    transferRef: generatedTx.transferRef,
+                   tags: (cp.recurrence && cp.recurrence.propagateTags === false) ? [] : (cp.tags ? [...cp.tags] : []),
                    recurrence: {
                       ...cp.recurrence, // cp should also carry the recurrence info since we attach it to both!
                       nextDate: nextNextD
@@ -161,10 +216,7 @@ window.Store = {
     }
     
     if (changed) {
-      this.state.transactions.sort((a, b) => {
-        if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
+      this._sortTransactions();
       window.StackdDB.save('transactions', this.state.transactions);
     }
   },
@@ -191,6 +243,7 @@ window.Store = {
           createdAt: new Date().toISOString()
         };
         this.state.accounts.push(newAccount);
+        this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
         // Auto-create opening balance transaction if provided
         const obAmount = parseFloat(payload.openingBalance) || 0;
@@ -202,7 +255,7 @@ window.Store = {
             accountId: newAccount.id,
             categoryId: 'cat_balance',
             date: payload.openingDate || newAccount.createdAt.split('T')[0],
-            comment: 'Opening balance',
+            comment: 'Opening Balance',
             createdAt: new Date().toISOString()
           });
           window.StackdDB.save('transactions', this.state.transactions);
@@ -215,6 +268,7 @@ window.Store = {
         const accountIndex = this.state.accounts.findIndex(a => a.id === payload.id);
         if (accountIndex !== -1) {
           this.state.accounts[accountIndex].name = payload.name;
+          this._sortData();
           window.StackdDB.save('accounts', this.state.accounts);
           if (payload.openingBalance !== undefined) {
             const newObAmt = parseFloat(payload.openingBalance) || 0;
@@ -237,7 +291,7 @@ window.Store = {
                 accountId: payload.id,
                 categoryId: 'cat_balance',
                 date: newDate,
-                comment: 'Opening balance',
+                comment: 'Opening Balance',
                 createdAt: new Date().toISOString()
               });
             }
@@ -260,6 +314,7 @@ window.Store = {
 
       case 'DELETE_ACCOUNT':
         this.state.accounts = this.state.accounts.filter(a => a.id !== payload.id);
+        this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
         this.state.transactions = this.state.transactions.filter(t => t.accountId !== payload.id);
         window.StackdDB.save('transactions', this.state.transactions);
@@ -267,16 +322,15 @@ window.Store = {
         break;
 
       case 'ADD_TRANSACTION': {
+        const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : [];
         const newTransaction = {
           id: window.StackdDB.generateId(),
           ...payload,
+          tags: tagsArray,
           createdAt: new Date().toISOString()
         };
         this.state.transactions.push(newTransaction);
-        this.state.transactions.sort((a, b) => {
-          if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
+        this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
         changed = true;
@@ -308,10 +362,11 @@ window.Store = {
 
         const updatePayload = { ...payload };
         if (absoluteAmount !== undefined) updatePayload.amount = absoluteAmount;
+        if (Array.isArray(payload.tags)) updatePayload.tags = payload.tags.map(t => t.toLowerCase());
         delete updatePayload.updateFuture; // Do not store flag
 
         // Update the target transaction
-        this.state.transactions[index] = { ...existingTx, ...updatePayload, updatedAt: new Date().toISOString() };
+        this.state.transactions[index] = { ...existingTx, ...updatePayload, tags: updatePayload.tags || existingTx.tags || [], updatedAt: new Date().toISOString() };
         
         // If updating future, find all transactions with the same seriesId and date >= this transaction's original date
         if (payload.updateFuture) {
@@ -335,16 +390,54 @@ window.Store = {
            }
         }
         
-        this.state.transactions.sort((a, b) => {
-          if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
+        this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
         changed = true;
         break;
       }
-      
+
+      case 'ADD_TRANSFER': {
+        const transferRef = window.StackdDB.generateId();
+        const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : [];
+
+        // Expense side (From)
+        this.state.transactions.push({
+          id: window.StackdDB.generateId(),
+          type: 'expense',
+          amount: Math.abs(payload.amount),
+          accountId: payload.expenseAccountId,
+          categoryId: '', // Transfers don't have a category
+          date: payload.date,
+          comment: payload.note,
+          transferRef: transferRef,
+          tags: tagsArray,
+          recurrence: payload.recurrence,
+          createdAt: new Date().toISOString()
+        });
+
+        // Income side (To)
+        this.state.transactions.push({
+          id: window.StackdDB.generateId(),
+          type: 'income',
+          amount: Math.abs(payload.amount),
+          accountId: payload.incomeAccountId,
+          categoryId: '',
+          date: payload.date,
+          comment: payload.note,
+          transferRef: transferRef,
+          tags: tagsArray,
+          recurrence: payload.recurrence,
+          createdAt: new Date().toISOString()
+        });
+
+        this._sortTransactions();
+        window.StackdDB.save('transactions', this.state.transactions);
+        this._processRecurringTransactions();
+        changed = true;
+        break;
+      }
+
       case 'UPDATE_TRANSFER': {
         // Specifically designed to reliably update both legs simultaneously from views
         // Requires payload: { transferRef, amount, expenseAccountId, incomeAccountId, date, note }
@@ -355,6 +448,7 @@ window.Store = {
         const items = this.state.transactions.filter(t => t.transferRef === payload.transferRef);
         let baseDate = null;
         let seriesId = null;
+        const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : undefined;
         
         items.forEach(item => {
            if (!baseDate) baseDate = item.date;
@@ -366,6 +460,7 @@ window.Store = {
               if (payload.date !== undefined) item.date = payload.date;
               if (payload.note !== undefined) item.comment = payload.note;
               if (payload.recurrence !== undefined) item.recurrence = payload.recurrence;
+              if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            } else if (item.type === 'income') {
               if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
@@ -373,6 +468,7 @@ window.Store = {
               if (payload.date !== undefined) item.date = payload.date;
               if (payload.note !== undefined) item.comment = payload.note; 
               if (payload.recurrence !== undefined) item.recurrence = payload.recurrence;
+              if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            }
            const idx = this.state.transactions.findIndex(t => t.id === item.id);
@@ -401,13 +497,39 @@ window.Store = {
            });
         }
         
-        this.state.transactions.sort((a, b) => {
-          if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
+        this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
         changed = true;
+        break;
+      }
+
+      case 'UPDATE_TRANSACTION_TAGS_ALL': {
+        // v0.32: Propagate tag changes to ALL members of a recurring series
+        // payload: { seriesId, tags }
+        const { seriesId: allSeriesId, tags: newTagsAll } = payload;
+        if (!allSeriesId) break;
+
+        const tagsNormalised = Array.isArray(newTagsAll)
+          ? newTagsAll.map(t => t.toLowerCase())
+          : [];
+
+        let tagsBulkChanged = false;
+        this.state.transactions.forEach((t, i) => {
+          if (t.recurrence?.seriesId === allSeriesId) {
+            this.state.transactions[i] = {
+              ...t,
+              tags: tagsNormalised,
+              updatedAt: new Date().toISOString()
+            };
+            tagsBulkChanged = true;
+          }
+        });
+
+        if (tagsBulkChanged) {
+          window.StackdDB.save('transactions', this.state.transactions);
+          changed = true;
+        }
         break;
       }
 
@@ -422,7 +544,18 @@ window.Store = {
           });
         }
 
-        if (payload.deleteFuture && txToDelete.recurrence?.seriesId) {
+        if (payload.deleteAll && txToDelete.recurrence?.seriesId) {
+           this.state.transactions.forEach(t => {
+              if (t.recurrence?.seriesId === txToDelete.recurrence.seriesId) {
+                 idsToDelete.add(t.id);
+                 if (t.transferRef) {
+                    this.state.transactions.forEach(tc => {
+                       if (tc.transferRef === t.transferRef) idsToDelete.add(tc.id);
+                    });
+                 }
+              }
+           });
+        } else if (payload.deleteFuture && txToDelete.recurrence?.seriesId) {
            this.state.transactions.forEach(t => {
               if (t.recurrence?.seriesId === txToDelete.recurrence.seriesId && t.date >= txToDelete.date) {
                  idsToDelete.add(t.id);
@@ -449,10 +582,7 @@ window.Store = {
           createdAt: new Date().toISOString()
         }));
         this.state.transactions.push(...newTxs);
-        this.state.transactions.sort((a, b) => {
-          if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
+        this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         changed = true;
         break;
@@ -460,13 +590,14 @@ window.Store = {
 
       case 'ADD_CATEGORY': {
         const newCategory = {
-          id: window.StackdDB.generateId(),
+          id: payload.id || window.StackdDB.generateId(),
           name: payload.name,
           icon: payload.icon || '📌',
           isDefault: false,
           typeHint: payload.typeHint || 'both'
         };
         this.state.categories.push(newCategory);
+        this._sortData();
         window.StackdDB.save('categories', this.state.categories);
         changed = true;
         break;
@@ -477,6 +608,7 @@ window.Store = {
         if (catIdx !== -1) {
           if (payload.name !== undefined) this.state.categories[catIdx].name = payload.name;
           if (payload.icon !== undefined) this.state.categories[catIdx].icon = payload.icon;
+          this._sortData();
           window.StackdDB.save('categories', this.state.categories);
           changed = true;
         }
@@ -487,6 +619,7 @@ window.Store = {
         const hasTx = this.state.transactions.some(t => t.categoryId === payload.id);
         if (!hasTx) {
           this.state.categories = this.state.categories.filter(c => c.id !== payload.id);
+          this._sortData();
           window.StackdDB.save('categories', this.state.categories);
           changed = true;
         }
@@ -534,9 +667,28 @@ window.Store = {
         break;
       }
 
+      case 'SET_LANGUAGE': {
+        this.state.language = payload;
+        window.StackdDB.save('language', payload);
+        changed = true;
+        break;
+      }
+
       case 'SET_MONTH_FILTER':
         // Expected payload format: 'YYYY-MM'
         this.state.activeMonthFilter = payload;
+        changed = true;
+        break;
+
+      case 'SET_TAG_FILTER':
+        this.state.activeTagFilter = payload || '';
+        changed = true;
+        break;
+
+      case 'SET_HISTORY_SORT_ORDER':
+        this.state.historySortOrder = payload;
+        window.StackdDB.save('historySortOrder', payload);
+        this._sortTransactions();
         changed = true;
         break;
     }
@@ -566,7 +718,7 @@ window.Store = {
   },
 
   _isPositiveTx(tx) {
-    return tx.type === 'income' || tx.type === 'opening_balance' || tx.type === 'transfer_in' || tx.type === 'balance_adjustment';
+    return tx.type === 'income' || tx.type === 'opening_balance' || tx.type === 'transfer_in';
   },
 
   getAccountBalance(accountId) {
@@ -699,6 +851,40 @@ window.Store = {
       carryover: carryOver,
       finalLimit: finalLimit
     };
+  },
+
+  getAllUniqueTags(querySubstring = '') {
+    const tagsSet = new Set();
+    this.state.transactions.forEach(tx => {
+      if (Array.isArray(tx.tags)) {
+        tx.tags.forEach(tag => tagsSet.add(tag));
+      }
+    });
+    
+    let allTags = Array.from(tagsSet);
+    if (querySubstring) {
+      const q = querySubstring.toLowerCase();
+      allTags = allTags.filter(tag => tag.includes(q));
+    }
+    return allTags.sort();
+  },
+
+  getAllUniqueNotes(querySubstring = '') {
+    const notesSet = new Set();
+    this.state.transactions.forEach(tx => {
+      // Historical notes could be in .comment or .note
+      const note = tx.comment || tx.note;
+      if (note && note.trim()) {
+        notesSet.add(note.trim());
+      }
+    });
+    
+    let allNotes = Array.from(notesSet);
+    if (querySubstring) {
+      const q = querySubstring.toLowerCase();
+      allNotes = allNotes.filter(note => note.toLowerCase().includes(q));
+    }
+    return allNotes.sort();
   }
 };
 

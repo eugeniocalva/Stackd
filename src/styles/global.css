@@ -1,3 +1,8 @@
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
 body {
   font-family: var(--font-family-body);
   background-color: var(--bg-base);
@@ -23,6 +28,11 @@ body {
   overflow-y: auto;
   /* Leave space for bottom nav + safe area */
   padding-bottom: calc(70px + var(--safe-bottom)); 
+  transition: padding-bottom 0.3s ease;
+}
+
+body.keyboard-active .view-container {
+  padding-bottom: var(--space-4);
 }
 
 /* Scrollbar styling for desktop, invisible on mobile */
@@ -52,3 +62,8 @@ p {
 .text-expense { color: var(--color-expense) !important; }
 .text-accent { color: var(--color-primary) !important; }
 .text-secondary { color: var(--text-secondary) !important; }
+
+/* v0.36 - Utility for toggleable smooth scrolling */
+.has-smooth-scroll {
+  scroll-behavior: smooth !important;
+}

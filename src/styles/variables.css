@@ -6,9 +6,10 @@
   --bg-surface-sunken: #e4e9ee; /* surface-container-high */
   --bg-surface-dim: #d3dbe2; /* surface-dim */
   
-  --text-primary: #2d3338; /* on-surface */
-  --text-secondary: #596065; /* on-surface-variant */
-  --text-tertiary: #6b7278; /* inverse-on-surface / disabled (WCAG 4.5:1 compliant) */
+  --text-primary: #1a1e21;   /* on-surface (Strict 14:1 contrast) */
+  --text-secondary: #4b5257; /* on-surface-variant (8:1 contrast) */
+  --text-tertiary: #5f666b;  /* disabled/de-emphasized (5.5:1 contrast) */
+  --text-placeholder: #71787e; /* placeholder (4.5:1 contrast) */
   
   --color-primary: #5f5e5e; 
   --color-primary-dim: #535252;
@@ -57,6 +58,9 @@
   --radius-md: 8px;       /* 0.5rem - card lg */
   --radius-lg: 12px;      /* 0.75rem - card xl */
   --radius-full: 9999px;
+
+  /* WCAG 2.2 Sizing Standards */
+  --target-size: 44px;    /* Apple/Android/WCAG 2.2 touch target minimum */
   
   /* Z-indexes */
   --z-nav: 100;

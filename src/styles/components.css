@@ -77,6 +77,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-3) var(--space-4);
+  min-height: var(--target-size);
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: var(--text-base);
@@ -134,14 +135,19 @@
 
 .form-control {
   width: 100%;
+  min-height: var(--target-size);
   background-color: var(--bg-surface);
   border: none;
   color: var(--text-primary);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-base);
-  transition: background-color 0.2s, box-shadow 0.2s;
+  transition: background-color 0.15s ease, box-shadow 0.2s;
   outline: none;
+}
+
+.form-control:active {
+  background-color: var(--bg-surface-sunken);
 }
 
 .form-control:focus {
@@ -171,19 +177,20 @@
 }
 
 .amount-input::placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-placeholder);
 }
 
 /* Amount colour classes for the large input by transaction type */
 .text-expense { color: var(--color-expense-val) !important; }
 .text-income  { color: var(--color-income-val) !important; }
 .text-balance { color: var(--color-balance-val) !important; }
-/* transfer uses default --text-primary (dark) — no class needed */
+.text-transfer { color: var(--text-secondary) !important; }
+/* transfer uses default --text-primary (dark) — no class needed in some views, but defining for consistency */
 
-/* Placeholder inherits the type color at 40% opacity */
-.text-expense::placeholder { color: var(--color-expense-val); opacity: 0.4; }
-.text-income::placeholder  { color: var(--color-income-val);  opacity: 0.4; }
-.text-balance::placeholder { color: var(--color-balance-val); opacity: 0.4; }
+/* Placeholder inherited type colors at high contrast */
+.text-expense::placeholder { color: var(--color-expense-val); opacity: 0.6; }
+.text-income::placeholder  { color: var(--color-income-val);  opacity: 0.6; }
+.text-balance::placeholder { color: var(--color-balance-val); opacity: 0.6; }
 
 /* Bottom Navigation (Glassmorphism) */
 .bottom-nav {
@@ -201,6 +208,12 @@
   justify-content: space-around;
   align-items: center;
   z-index: var(--z-nav);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.keyboard-active .bottom-nav {
+  transform: translateY(100%);
+  pointer-events: none;
 }
 
 .nav-item {
@@ -210,8 +223,12 @@
   justify-content: center;
   color: var(--text-secondary);
   width: 60px;
-  height: 50px;
-  transition: color 0.2s;
+  min-height: var(--target-size);
+  transition: color 0.2s, transform 0.1s ease-out;
+}
+
+.nav-item:active {
+  transform: scale(0.92);
 }
 
 .nav-item.active {
@@ -249,7 +266,42 @@
   box-shadow: 0 5px 15px rgba(45, 51, 56, 0.1);
 }
 
+
+/* Date Grouping */
+.history-header-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: var(--bg-base);
+  margin-left: calc(var(--space-4) * -1);
+  margin-right: calc(var(--space-4) * -1);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--bg-surface-sunken);
+}
+
+.date-group-header {
+  position: sticky;
+  top: 230px; /* Aligned below the History sticky header (approx 212px-220px) */
+  background-color: var(--bg-base);
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-3);
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  z-index: 5;
+  border-bottom: 1px solid var(--bg-surface-sunken);
+}
+
+.date-group-container {
+  scroll-margin-top: 250px; /* Aligned with the History sticky header + buffer */
+  margin-bottom: var(--space-12);
+}
+
 /* Lists */
+
 .list-group {
   /* Removed background processing for true Mono-editorial feel */
   background: transparent;
@@ -260,9 +312,18 @@
 .list-item {
   display: flex;
   align-items: center;
-  padding: var(--space-4) 0;
+  min-height: var(--target-size);
+  padding: var(--space-4); /* Add horizontal padding for the background effect */
+  margin: 0 calc(var(--space-4) * -1); /* Pull back to maintain alignment */
   border-bottom: none; /* No line rule! */
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-lg);
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.list-item:active {
+  background-color: var(--bg-surface-sunken);
 }
 
 .list-item-icon {
@@ -336,6 +397,24 @@
   max-width: 600px;
   margin: 0 auto;
   box-shadow: 0 -10px 40px rgba(45, 51, 56, 0.1);
+  /* Keyboard avoidance for modals */
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-body {
+  overflow-y: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* On small screens, make modal full screen when keyboard is open if needed */
+@media (max-height: 500px) {
+  .modal-content {
+    height: 100vh;
+    border-radius: 0;
+  }
 }
 
 .modal-backdrop.open .modal-content {
@@ -357,11 +436,16 @@
 .form-control:focus-visible,
 .amount-input:focus-visible,
 .color-picker-opt:focus-visible,
+.calendar-day:focus-visible,
+.account-edit-menu:focus-visible,
+.account-visibility-toggle:focus-visible,
 a:focus-visible,
 [tabindex="0"]:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 4px; /* Creates an 'aura' gap to preserve Monolith design style */
-  border-radius: inherit; /* Safe fallback */
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(95, 94, 94, 0.2);
+  border-radius: var(--radius-sm);
+  z-index: 10;
 }
 
 /* 2. Touch Target Minimums Minimum area: 24x24 (strictly), 44x44 (mobile friendly) */
