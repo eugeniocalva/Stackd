@@ -1,0 +1,13 @@
+- [x] Standardize Budget View Header (`views.js`)
+    - [x] Wrap Title and Month Navigator in sticky container
+    - [x] Refactor month selector into centered pill style
+    - [x] Update `attachEvents` for month navigation
+- [x] Standardize Analytics View Header (`views.js`)
+    - [x] Implement sticky header container with title
+    - [x] Add `PeriodSwitcher` component (pill style)
+    - [x] Hook up `attachEvents` for period switching
+- [x] Visual Refinement (`styles/components.css`)
+    - [x] Ensure sticky header styles apply consistently across views
+- [x] Final Verification
+    - [x] Verify sticky behavior in Budget and Analytics
+    - [x] Verify visual coherency with History view

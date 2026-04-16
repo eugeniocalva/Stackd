@@ -9,6 +9,7 @@ window.Router = {
     '#categories': 'categories',
     '#settings': 'settings',
     '#budget': 'budget',
+    '#analytics': 'analytics',
     '#edit-account': 'edit-account',
     '#tags': 'tags',
     '#tag-detail': 'tag-detail',
@@ -45,8 +46,14 @@ window.Router = {
     // Set filter FIRST — store emits synchronously, so by the time SET_VIEW
     // triggers the view render, activeAccountFilter is already correct in state.
     const params = this.getParams();
-    const accountFilter = params.account || '';
-    window.Store.dispatch('SET_ACCOUNT_FILTER', accountFilter);
+    if (params.account) {
+      // Sync both for consistency if requested via URL
+      const filters = { accounts: [params.account] };
+      window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters });
+      window.Store.dispatch('UPDATE_FILTERS', { page: 'analytics', filters });
+      // Also update legacy if still used
+      window.Store.dispatch('SET_ACCOUNT_FILTER', params.account);
+    }
     
     // Always open budget in the current physical month
     if (viewId === 'budget' && window.Store.getState().activeView !== 'budget') {
@@ -63,8 +70,11 @@ window.Router = {
     if (window.ScrollUtils) {
       if (oldView === viewId) {
         if (viewId === 'transactions') {
-          // Special case for history: jump back to today/relevant date
-          window.dispatchEvent(new CustomEvent('scroll-history-to-today'));
+          // Reset shadow state and scroll back to today/relevant date
+          // Added delay to ensure view.attachEvents has run (which is in a requestAnimationFrame)
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('scroll-history-to-today'));
+          }, 100);
         } else {
           // v0.36 - Increased delay to 400ms for mid-range mobile hardware (Redmi Note 7)
           setTimeout(() => window.ScrollUtils.universalSmoothScrollToTop(), 400);

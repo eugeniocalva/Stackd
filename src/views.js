@@ -5,7 +5,7 @@ function createCategoryOptions(categories, selectedId, includeCreateAction = fal
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
     .map(cat => 
-      `<option value="${cat.id}" ${cat.id === selectedId ? 'selected' : ''}>${cat.icon} ${cat.name}</option>`
+      `<option value="${cat.id}" ${cat.id === selectedId ? 'selected' : ''}>${cat.name}</option>`
     ).join('');
 
   if (includeCreateAction) {
@@ -24,60 +24,176 @@ function createAccountOptions(accounts, selectedId) {
 
 window.Views = {
   // -------------------------
+  // ANALYTICS VIEW
+  // -------------------------
+  AnalyticsView: {
+    render(state) {
+      const filters = state.analyticsFilters;
+      const activePeriod = filters.period;
+      const periodLabel = window.Store._getPeriodLabel(activePeriod);
+      const filterBarHtml = window.Components.AdvancedFilterBar.render('analytics', filters);
+
+      const bounds = window.Store._getPeriodBounds(activePeriod.type, activePeriod.value);
+      const rangeEnd = activePeriod.type === 'custom' ? activePeriod.end : bounds.end;
+      
+      const currentBalance = window.Store.getBalanceAtDate(rangeEnd, filters.accounts);
+      const summary = window.Store.computeAnalyticalSummary(filters);
+      
+      const prevPeriod = window.Store._getPreviousPeriod(activePeriod);
+      const prevSummary = window.Store.computeAnalyticalSummary({ ...filters, period: prevPeriod });
+      
+      const delta = summary.net;
+      const prevNet = prevSummary.net;
+      const prevBalance = window.Store.getBalanceAtDate(prevPeriod.type === 'custom' ? prevPeriod.end : window.Store._getPeriodBounds(prevPeriod.type, prevPeriod.value).end, filters.accounts);
+      
+      const pct = prevNet !== 0 ? ((delta - prevNet) / Math.abs(prevNet)) * 100 : (delta !== 0 ? 100 : 0);
+      
+      // We'll define isPositive based on the NET FLOW being positive for this period
+      const isPositive = delta >= 0;
+      const sign = isPositive ? '+' : '';
+      const color = isPositive ? 'var(--color-income-val)' : 'var(--color-expense)';
+      const bgColor = isPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
+      const textColor = isPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
+      
+      const deltaLabel = `vs last ${activePeriod.type === 'custom' ? 'period' : (activePeriod.type === 'today' ? 'day' : activePeriod.type)}`;
+      
+      const chartData = window.Store.computeNetFlowData(filters);
+      const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom');
+
+      const donutData = window.Store.computeCategoryDistribution(filters, 'expense');
+      const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
+
+      return `
+        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+          <!-- STICKY HEADER -->
+          <div class="history-header-sticky">
+            <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
+              <h1 class="page-header-title">Analytics</h1>
+              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
+            </div>
+
+            <!-- New Filter Bar -->
+            ${filterBarHtml}
+          </div>
+
+          <div class="card card-elevated" style="padding: var(--space-8); text-align: center; border-radius: var(--radius-2xl); margin-top: var(--space-6); position: relative; overflow: hidden;">
+            <!-- DECORATIVE BACKGROUND GRADIENT -->
+            <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
+            
+            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">Total Portfolio</p>
+            <h2 style="font-family: var(--font-family-display); font-size: 2.5rem; font-weight: 800; margin-bottom: var(--space-4); color: var(--text-primary); letter-spacing: -0.02em;">
+              ${window.Store.formatCurrency(currentBalance)}
+            </h2>
+
+            <!-- DYNAMIC DELTA BADGE -->
+            <div style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 6px 12px; border-radius: 20px; background: ${bgColor}; color: ${textColor}; font-weight: 700; font-size: 0.85rem; margin-bottom: var(--space-6);">
+              <i data-lucide="${isPositive ? 'trending-up' : 'trending-down'}" style="width: 14px; height: 14px;"></i>
+              <span>${sign}${pct.toFixed(1)}%</span>
+              <span style="opacity: 0.8; font-weight: 500; margin-left: 2px;">${deltaLabel}</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
+              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
+                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Net Change</span>
+                <span style="font-weight: 700; color: ${color}; font-size: 1.05rem;">${sign}${window.Store.formatCurrency(delta)}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
+                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Previous</span>
+                <span style="font-weight: 700; color: var(--text-primary); font-size: 1.05rem;">${window.Store.formatCurrency(prevBalance)}</span>
+              </div>
+            </div>
+          </div>
+
+          ${chartHtml}
+          ${donutHtml}
+        </div>
+      `;
+    },
+    attachEvents(container, state) {
+      window.Components.AdvancedFilterBar.attachEvents(container, 'analytics');
+      
+      const filters = state.analyticsFilters;
+      const chartData = window.Store.computeNetFlowData(filters);
+      if (filters.period.type !== 'custom') {
+        window.Components.NetFlowChart.attachEvents(container, chartData, filters);
+      }
+      
+      window.Components.CategoryDonutChart.attachEvents(container, filters);
+      
+      window.StackdHydrateIcons();
+    }
+  },
+
+  // -------------------------
   // DASHBOARD VIEW (Phase 6)
   // -------------------------
   DashboardView: {
     hiddenChartAccounts: [], // Track which account IDs are excluded from the chart
     
     render(state) {
-      const globalBalance = window.Store.getGlobalBalance();
+      const visibleAccountIds = state.accounts
+        .filter(acc => !this.hiddenChartAccounts.includes(acc.id))
+        .map(acc => acc.id);
+      
+      const globalBalance = window.Store.compute12MonthBalances(visibleAccountIds).slice(-1)[0].balance;
       const formattedBalance = window.Store.formatCurrency(globalBalance);
       
-      let accountsHtml = '<p class="text-secondary" style="text-align: center; padding: 20px;">No accounts yet. Create one!</p>';
-      
-      if (state.accounts.length > 0) {
-        accountsHtml = '<div style="display: flex; flex-direction: column; gap: 12px;">';
-        
-        // Sort accounts by balance descending
-        const sortedAccounts = [...state.accounts].sort((a, b) => {
-          return window.Store.getAccountBalance(b.id) - window.Store.getAccountBalance(a.id);
-        });
-        
-        sortedAccounts.forEach(acc => {
-          const balance = window.Store.getAccountBalance(acc.id);
-          const isHidden = this.hiddenChartAccounts.includes(acc.id);
-          const eyeIcon = isHidden 
-            ? `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-tertiary);"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
-            : `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: ${acc.color};"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+      let walletsHtml = `
+        <div class="wallets-scroll-wrapper">
+          ${(() => {
+            const sortedAccounts = [...state.accounts].sort((a, b) => {
+              // Priority: Default first, then balance desc
+              if (a.id === state.defaultAccountId) return -1;
+              if (b.id === state.defaultAccountId) return 1;
+              return window.Store.getAccountBalance(b.id) - window.Store.getAccountBalance(a.id);
+            });
 
-          accountsHtml += `
-            <div class="list-item account-row touch-target" data-id="${acc.id}" style="cursor: pointer; position: relative;" tabindex="0" role="button" aria-label="View account ${acc.name} transactions">
-          <div class="account-color-ball touch-target" data-id="${acc.id}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;" tabindex="0" role="button" aria-label="Change badge color for ${acc.name}"><div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${acc.color}; border: 2.5px solid var(--bg-surface); box-shadow: 0 0 0 1px var(--bg-surface-dim); pointer-events: none;"></div></div>
-              <div class="list-item-content">
-                <div class="list-item-title">${acc.name}</div>
-                <div class="list-item-subtitle">${window.Store.formatCurrency(balance)}</div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                <div class="account-visibility-toggle touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px;" title="Toggle chart visibility" tabindex="0" role="button" aria-label="Toggle ${acc.name} on chart">
-                  ${eyeIcon}
+            return sortedAccounts.map(acc => {
+              const balance = window.Store.getAccountBalance(acc.id);
+              const formattedBal = window.Store.formatCurrency(balance);
+              const isDefault = acc.id === state.defaultAccountId;
+              const isHidden = this.hiddenChartAccounts.includes(acc.id);
+
+              return `
+                <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${acc.color};">
+                  <div class="wallet-card-accent-bar"></div>
+                  ${isDefault ? '<div class="wallet-card-default-badge">DEFAULT</div>' : ''}
+                  
+                  <div class="wallet-card-icon-box" style="color: ${acc.color};">
+                    <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
+                  </div>
+
+                  <div style="position: absolute; top: 12px; right: 8px; display: flex; align-items: center; gap: 0;">
+                    <div class="account-visibility-toggle touch-target" data-id="${acc.id}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; opacity: 0.5;">
+                      <i data-lucide="${isHidden ? 'eye-off' : 'eye'}" style="width: 14px; height: 14px;"></i>
+                    </div>
+                    <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; opacity: 0.8;">
+                      <i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i>
+                    </div>
+                  </div>
+
+                  <div class="wallet-card-info">
+                    <div class="wallet-card-type">${acc.type || 'Account'}</div>
+                    <div class="wallet-card-name">${acc.name}</div>
+                    <div class="wallet-card-balance">${formattedBal}</div>
+                  </div>
                 </div>
-                <div class="account-edit-menu touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--text-secondary);" title="Edit Account" tabindex="0" role="button" aria-label="Edit settings for ${acc.name}">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-                </div>
-              </div>
-            </div>
-          `;
-        });
-        accountsHtml += '</div>';
-      }
+              `;
+            }).join('');
+          })()}
+          <div class="btn-add-wallet-card touch-target" id="btn-dashboard-add-wallet">
+            <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase;">Add Wallet</span>
+          </div>
+        </div>
+      `;
 
       // Calculate MoM %
       const now = new Date();
-      const firstThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const firstLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      
-      const thisMonthBalanceRow = window.Store.compute12MonthBalances().find(m => m.label === now.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
-      const lastMonthBalanceRow = window.Store.compute12MonthBalances().find(m => m.label === firstLastMonth.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+
+      const thisMonthBalanceRow = window.Store.compute12MonthBalances(visibleAccountIds).find(m => m.label === now.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+      const lastMonthBalanceRow = window.Store.compute12MonthBalances(visibleAccountIds).find(m => m.label === firstLastMonth.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
       
       const thisMonthBal = thisMonthBalanceRow ? thisMonthBalanceRow.balance : window.Store.getGlobalBalance();
       const lastMonthBal = lastMonthBalanceRow ? lastMonthBalanceRow.balance : 0;
@@ -124,13 +240,11 @@ window.Views = {
             <canvas id="balanceChart"></canvas>
           </div>
           
-          <div class="section-title" style="margin-top: var(--space-8); margin-bottom: var(--space-2);">Your Accounts</div>
-          <div class="card card-elevated" style="padding: var(--space-2) var(--space-4); margin-bottom: var(--space-6);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); margin-top: var(--space-2);">
-              <h2 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">Manage</h2>
-              <button class="btn btn-primary" id="btn-create-account" style="width: auto; padding: 4px 16px; font-size: 13px; height: 40px; border-radius: 100px;" aria-label="Create new account">Add New</button>
+          <div style="margin-top: var(--space-8);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
+              <p class="section-title" style="margin-bottom: 0;">Wallets</p>
             </div>
-            ${accountsHtml}
+            ${walletsHtml}
           </div>
 
           <div class="section-title" style="margin-top: var(--space-8); margin-bottom: var(--space-2);">Recent Activities</div>
@@ -140,7 +254,9 @@ window.Views = {
 
           <div class="section-title" style="margin-top: var(--space-8); margin-bottom: var(--space-2);">Financial Milestone</div>
           <div class="card card-elevated" style="padding: var(--space-5); text-align: center; margin-bottom: var(--space-8);">
-             <div style="font-size: 2rem; margin-bottom: var(--space-2);">🏆</div>
+             <div style="font-size: 2.5rem; margin-bottom: var(--space-2); color: var(--color-primary); display: flex; justify-content: center;">
+               <i data-lucide="trophy" style="width: 48px; height: 48px;"></i>
+             </div>
              <div style="color: var(--text-primary); font-weight: 600;">Coming Soon</div>
              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-2);">Track your debt payoff and savings goals!</p>
           </div>
@@ -148,16 +264,7 @@ window.Views = {
       `;
     },
     attachEvents(container, state) {
-      // Navigate to History on row click (excluding standard action buttons)
-      container.querySelectorAll('.account-row').forEach(row => {
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('.account-visibility-toggle') || e.target.closest('.account-edit-menu') || e.target.closest('.account-color-ball')) return;
-          const accountId = row.dataset.id;
-          window.Store.dispatch('SET_ACCOUNT_FILTER', accountId);
-          window.Router.navigate(`#transactions?account=${accountId}`);
-        });
-      });
-
+      window.StackdHydrateIcons();
       // Recent Activity Click -> Jump to History & Scroll
       container.querySelectorAll('.recent-tx-row').forEach(row => {
         row.addEventListener('click', () => {
@@ -167,106 +274,47 @@ window.Views = {
         });
       });
 
-      // Account Color Picker
-      container.querySelectorAll('.account-color-ball').forEach(ball => {
-        ball.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const accountId = ball.dataset.id;
-          const predefinedColors = [
-            '#0075EB', '#00C9A7', '#7B61FF', '#FF5C5C', '#FFB800',
-            '#14B8A6', '#F97316', '#8B5CF6', '#EC4899', '#10B981',
-            '#F59E0B', '#EF4444', '#6366F1', '#000000', '#9b9b9b'
-          ];
+      // Wallet Card Interactions
+      container.querySelectorAll('.wallet-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+          // If sub-controls (eye/dots) were clicked, don't navigate to history
+          if (e.target.closest('.account-visibility-toggle') || e.target.closest('.account-edit-trigger')) return;
           
-          let gridHtml = '<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; justify-items: center; margin-bottom: 20px;">';
-          predefinedColors.forEach(color => {
-            gridHtml += `<div class="color-picker-opt" data-color="${color}" style="width: 32px; height: 32px; border-radius: 50%; background-color: ${color}; cursor: pointer; border: 2px solid transparent;"></div>`;
-          });
-          gridHtml += '</div>';
-
-          window.Components.Modal.show({
-            title: 'Choose Color',
-            content: gridHtml,
-            saveText: 'Done',
-            onSave: (close) => close()
-          });
-
-          setTimeout(() => {
-            document.querySelectorAll('.color-picker-opt').forEach(opt => {
-              opt.addEventListener('click', () => {
-                window.Store.dispatch('UPDATE_ACCOUNT_COLOR', { id: accountId, color: opt.dataset.color });
-                window.Components.Modal.hide();
-              });
-            });
-          }, 50);
+          const id = card.dataset.id;
+          // Set period type to month as requested
+          window.Store.dispatch('SET_PERIOD_TYPE', 'month');
+          // Navigate with account param so router picks it up
+          window.Router.navigate(`#transactions?account=${id}`);
         });
       });
 
-      // Toggle Chart Visibility
+      container.querySelectorAll('.account-edit-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          window.Router.navigate(`#edit-account?id=${id}`);
+        });
+      });
+
       container.querySelectorAll('.account-visibility-toggle').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          const accountId = btn.dataset.id;
-          if (this.hiddenChartAccounts.includes(accountId)) {
-            this.hiddenChartAccounts = this.hiddenChartAccounts.filter(id => id !== accountId);
+          const id = btn.dataset.id;
+          if (this.hiddenChartAccounts.includes(id)) {
+            this.hiddenChartAccounts = this.hiddenChartAccounts.filter(x => x !== id);
           } else {
-            this.hiddenChartAccounts.push(accountId);
+            this.hiddenChartAccounts.push(id);
           }
-           // Trigger a full re-render of this view to ensure data and icons update
-          container.innerHTML = this.render(state);
-          // Re-attach elements since DOM was replaced
-          this.attachEvents(container, state);
+          window.Store.emit();
         });
       });
 
-      // Create Account Modal
-      const btnCreate = container.querySelector('#btn-create-account');
-      if (btnCreate) {
-        btnCreate.addEventListener('click', () => {
-          window.Components.Modal.show({
-            title: 'New Account',
-            content: `
-              <div class="form-group">
-                <label class="form-label">Account Name</label>
-                <input type="text" id="new-account-name" class="form-control" placeholder="e.g. Wallet, Checking..." autocomplete="off">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Opening Balance (optional)</label>
-                <input type="number" id="new-account-balance" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal">
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">Opening Balance Date</label>
-                <input type="date" id="new-account-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
-              </div>
-            `,
-            saveText: 'Create Account',
-            onSave: (closeModal) => {
-              const name = document.getElementById('new-account-name').value.trim();
-              if (name) {
-                const ob = parseFloat(document.getElementById('new-account-balance').value) || 0;
-                const dDate = document.getElementById('new-account-date').value;
-                window.Store.dispatch('ADD_ACCOUNT', { name, openingBalance: ob, openingDate: dDate });
-                closeModal();
-              }
-            }
-          });
-          setTimeout(() => {
-            const el = document.getElementById('new-account-name');
-            if (el) el.focus();
-          }, 100);
+      const btnDashboardAddWallet = container.querySelector('#btn-dashboard-add-wallet');
+      if (btnDashboardAddWallet) {
+        btnDashboardAddWallet.addEventListener('click', () => {
+          window.Router.navigate('#edit-account');
         });
       }
-
-      // Edit Account — navigate to the centralised EditAccountView
-      container.querySelectorAll('.account-edit-menu').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const accountId = btn.dataset.id;
-          if (accountId) {
-            window.Router.navigate(`#edit-account?id=${accountId}`);
-          }
-        });
-      });
 
       // 12-Month Aggregated Balance Chart
       const ctx = document.getElementById('balanceChart');
@@ -277,50 +325,43 @@ window.Views = {
         }
 
         try {
-          // Global Balance Dataset
-          const globalData = window.Store.compute12MonthBalances();
+          // Global (Filtered) Balance Dataset
+          const visibleAccountIds = state.accounts
+            .filter(acc => !this.hiddenChartAccounts.includes(acc.id))
+            .map(acc => acc.id);
+
+          const globalData = window.Store.compute12MonthBalances(visibleAccountIds);
           const datasets = [{
             label: 'Total Balance',
             data: globalData.map(m => m.balance),
             borderColor: '#5f5e5e', // Dark neutral line
+            backgroundColor: 'rgba(95, 94, 94, 0.05)',
             borderWidth: 3,
-            borderDash: [5, 5],
+            fill: true,
             tension: 0.4,
-            fill: false,
             pointRadius: 0,
             pointHoverRadius: 6,
-            pointBackgroundColor: '#ffffff',
-            pointBorderColor: '#5f5e5e',
-            pointBorderWidth: 2,
-            order: 1 // Drawn on top
+            pointBackgroundColor: '#fff',
+            pointBorderWidth: 4,
+            pointBorderColor: '#5f5e5e'
           }];
 
-          // Account Datasets
+          // Overlay per-account datasets for non-hidden accounts
           state.accounts.forEach(acc => {
-            if (!this.hiddenChartAccounts.includes(acc.id)) {
-              const accData = window.Store.computeAccount12MonthBalances(acc.id);
-              datasets.push({
-                label: acc.name,
-                data: accData.map(m => m.balance),
-                borderColor: acc.color,
-                backgroundColor: `${acc.color}15`,
-                borderWidth: 2,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: acc.color,
-                pointBorderWidth: 2,
-                order: 2
-              });
-            }
+            if (this.hiddenChartAccounts.includes(acc.id)) return;
+            const accData = window.Store.computeAccount12MonthBalances(acc.id);
+            datasets.push({
+              label: acc.name,
+              data: accData.map(m => m.balance),
+              borderColor: acc.color,
+              borderWidth: 1.5,
+              borderDash: [5, 5],
+              fill: false,
+              tension: 0.4,
+              pointRadius: 0
+            });
           });
 
-          if (window.Chart.defaults) {
-            if (window.Chart.defaults.color !== undefined) window.Chart.defaults.color = '#596065';
-          }
-          
           new window.Chart(ctx, {
             type: 'line',
             data: {
@@ -330,11 +371,8 @@ window.Views = {
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              animation: { duration: 0 }, // Disable animation for "immediate" look
-              interaction: {
-                mode: 'index',
-                intersect: false,
-              },
+              animation: { duration: 0 },
+              interaction: { mode: 'index', intersect: false },
               plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -355,7 +393,7 @@ window.Views = {
               },
               scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-                y: { display: false, beginAtZero: false } // Auto-scale to fit
+                y: { display: false, beginAtZero: false }
               }
             }
           });
@@ -382,356 +420,175 @@ window.Views = {
 
       if (targetGroup) {
         requestAnimationFrame(() => {
-          // scrollIntoView on the container ensures both header and transactions are visible.
           targetGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
       }
     },
 
     render(state) {
-      const selectedAccountId = state.activeAccountFilter || '';
-      const selectedMonth = state.activeMonthFilter || ''; // 'YYYY-MM'
-      const selectedTag = state.activeTagFilter || '';
+      const filters = state.historyFilters;
+      const periodLabel = window.Store._getPeriodLabel(filters.period);
+      const visibleTx = window.Store.getFilteredTransactions('history');
 
-      // Account filter options
-      const accountOptions = [
-        `<option value="">All Accounts</option>`,
-        ...[...state.accounts]
-          .sort((a, b) => window.Store.compareAlpha(a, b))
-          .map(a =>
-            `<option value="${a.id}" ${a.id === selectedAccountId ? 'selected' : ''}>${a.name}</option>`
-          )
-      ].join('');
+      const filterBarHtml = window.Components.AdvancedFilterBar.render('history', filters);
 
-      // Tag filter options
-      const allTags = window.Store.getAllUniqueTags();
-      const tagOptions = [
-        `<option value="">All Tags</option>`,
-        ...allTags.map(t => `<option value="${t}" ${t === selectedTag ? 'selected' : ''}>#${t}</option>`)
-      ].join('');
-
-      // Month filter options
-      const availableMonths = window.Store.getAvailableMonths();
-      const monthOptions = availableMonths.map(m =>
-        `<option value="${m.value}" ${m.value === selectedMonth ? 'selected' : ''}>${m.label}</option>`
-      ).join('');
-
-      // Determine if prev/next month buttons should be enabled
-      const currMonthIdx = availableMonths.findIndex(m => m.value === selectedMonth);
-      const hasNextMonth = currMonthIdx > 0; // newer months are at lower index (descending)
-      const hasPrevMonth = currMonthIdx < availableMonths.length - 1;
-
-      // Double filter
-      const visibleTx = state.transactions.filter(tx => {
-        const matchAccount = selectedAccountId ? tx.accountId === selectedAccountId : true;
-        const matchMonth = tx.date.startsWith(selectedMonth);
-        const matchTag = selectedTag ? tx.tags && tx.tags.includes(selectedTag) : true;
-        return matchAccount && matchMonth && matchTag;
-      });
-
-      // Build back-button if a specific account is pre-selected
-      const backBtn = selectedAccountId
-        ? `<a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2);" aria-label="Back to Overview">‹ Overview</a>`
-        : '';
-
-      let contentHtml = '<div style="position: relative;">';
-
-      // --- Calculate Old Balance and New Balance ---
-      const [yearStr, monthStr] = selectedMonth.split('-');
-      const year = parseInt(yearStr);
-      const monthIndex = parseInt(monthStr) - 1; // 0-indexed
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       
-      const startOfMonth = new Date(year, monthIndex, 1);
-      const endOfMonth = new Date(year, monthIndex + 1, 0, 23, 59, 59);
-      
-      // Old Balance: sum of all transactions before start of this month
-      const oldBalance = state.transactions
-        .filter(t => (selectedAccountId ? t.accountId === selectedAccountId : true) && new Date(t.date) < startOfMonth)
+      const bounds = window.Store._getPeriodBounds(filters.period.type, filters.period.value);
+      // For custom, bounds might be empty, so we use start/end from period
+      const rangeStart = filters.period.type === 'custom' ? filters.period.start : bounds.start;
+      const rangeEnd = filters.period.type === 'custom' ? filters.period.end : bounds.end;
+
+      const isFuture = rangeEnd > todayStr;
+
+      const startBalance = state.transactions
+        .filter(t => {
+            const matchAcc = filters.accounts.length === 0 || filters.accounts.includes(t.accountId);
+            return matchAcc && t.date < rangeStart;
+        })
         .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
         
-      // New Balance: sum of all transactions up to end of this month
-      const newBalance = state.transactions
-        .filter(t => (selectedAccountId ? t.accountId === selectedAccountId : true) && new Date(t.date) <= endOfMonth)
+      const endBalance = state.transactions
+        .filter(t => {
+            const matchAcc = filters.accounts.length === 0 || filters.accounts.includes(t.accountId);
+            return matchAcc && t.date <= rangeEnd;
+        })
         .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
 
-      const isAsc = state.historySortOrder === 'asc';
+      const isAsc = filters.sortOrder === 'asc';
       
-      const oldBalanceHtml = `
-        <div class="list-item" style="background: var(--bg-body); border-bottom: 2px dashed var(--border-color); border-radius: 0;">
+      const startBalanceHtml = `
+        <div class="list-item" style="background: var(--bg-body); border-bottom: 2px dashed var(--border-color); border-radius: 0; min-height: 56px;">
           <div class="list-item-content">
-            <div class="list-item-title" style="color: var(--text-secondary); font-weight: normal;">Old Balance</div>
-            <div class="list-item-subtitle">${startOfMonth.toLocaleDateString('en-US', { day: '2-digit', month: '2-digit' })}</div>
+            <div class="list-item-title" style="color: var(--text-secondary); font-weight: normal; font-size: 0.9rem;">Start Balance</div>
           </div>
-          <div style="font-weight: 600; font-family: var(--font-family-display); font-size: 1.1rem; color: var(--text-primary);">
-            ${window.Store.formatCurrency(oldBalance)}
-          </div>
-        </div>
-      `;
+          <div class="list-item-value" style="color: var(--text-secondary); font-weight: normal; font-size: 1rem;">${window.Store.formatCurrency(startBalance)}</div>
+        </div>`;
 
-      const newBalanceHtml = `
-        <div class="list-item" style="background: var(--bg-body); border-top: 2px dashed var(--border-color); border-radius: 0;">
+      const endBalanceHtml = `
+        <div class="list-item" style="background: var(--bg-body); border-top: 2px dashed var(--border-color); border-radius: 0; margin-top: var(--space-2); min-height: 56px;">
           <div class="list-item-content">
-            <div class="list-item-title" style="color: var(--text-secondary); font-weight: normal;">New Balance</div>
-            <div class="list-item-subtitle">${endOfMonth.toLocaleDateString('en-US', { day: '2-digit', month: '2-digit' })}</div>
+            <div class="list-item-title" style="color: var(--color-primary); font-size: 0.9rem;">End Balance</div>
           </div>
-          <div style="font-weight: 600; font-family: var(--font-family-display); font-size: 1.1rem; color: var(--text-primary);">
-            ${window.Store.formatCurrency(newBalance)}
-          </div>
-        </div>
-      `;
+          <div class="list-item-value" style="color: var(--color-primary); font-size: 1.1rem;">${window.Store.formatCurrency(endBalance)}</div>
+        </div>`;
 
-      // Render History Content with appropriate balance ordering
-      if (isAsc) {
-        contentHtml += oldBalanceHtml;
-      } else {
-        contentHtml += newBalanceHtml;
-      }
+      let txListHtml = '';
+      if (isAsc) txListHtml += startBalanceHtml;
+      else txListHtml += endBalanceHtml;
 
-      // Track days with transactions for the calendar
-      const activeDays = new Set();
-      
       if (visibleTx.length === 0) {
-        contentHtml += `
-          <div style="text-align: center; padding: 40px 20px;">
-            <p class="text-secondary" style="margin-bottom: 0;">No entries for this month.</p>
+        txListHtml += `
+          <div style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 3rem; margin-bottom: 16px; opacity: 0.5;">📅</div>
+            <p style="color: var(--text-secondary); font-weight: 500;">No transactions for this period.</p>
           </div>
         `;
       } else {
-        // Group transactions by date
         const groups = visibleTx.reduce((acc, tx) => {
           if (!acc[tx.date]) acc[tx.date] = [];
           acc[tx.date].push(tx);
           return acc;
         }, {});
 
-        // Sort dates based on historySortOrder
-        const sortedDates = Object.keys(groups).sort((a,b) => {
-          return isAsc ? a.localeCompare(b) : b.localeCompare(a);
-        });
+        const sortedDates = Object.keys(groups).sort((a,b) => isAsc ? a.localeCompare(b) : b.localeCompare(a));
 
         sortedDates.forEach(date => {
           const dayTxs = groups[date];
-          activeDays.add(parseInt(date.split('-')[2])); // store day number
-          
-          const displayDate = new Date(date).toLocaleDateString('en-US', { 
+          const displayDate = new Date(date + 'T00:00:00').toLocaleDateString(undefined, { 
             weekday: 'short', month: 'short', day: 'numeric' 
           });
 
-          contentHtml += `
+          txListHtml += `
             <div id="tx-${date}" class="date-group-container">
               <div class="date-group-header">${displayDate}</div>
               <div class="list-group">
-          `;
-
-          dayTxs.forEach(tx => {
-            const category = state.categories.find(c => c.id === tx.categoryId);
-            const account = state.accounts.find(a => a.id === tx.accountId);
-            contentHtml += window.Components.TransactionItem.render(tx, category, account);
-          });
-
-          contentHtml += `
+                ${dayTxs.map(tx => {
+                  const category = state.categories.find(c => c.id === tx.categoryId);
+                  const account = state.accounts.find(a => a.id === tx.accountId);
+                  return window.Components.TransactionItem.render(tx, category, account);
+                }).join('')}
               </div>
             </div>
           `;
         });
       }
 
-      if (isAsc) {
-        contentHtml += newBalanceHtml;
-      } else {
-        contentHtml += oldBalanceHtml;
-      }
-      contentHtml += '</div>';
-      
-      // Calculate Calendar Grid HTML
-      const daysInMonth = endOfMonth.getDate();
-      const firstDayOfWeek = startOfMonth.getDay(); // 0 = Sun, 1 = Mon
-      // Adjust standard 0=Sun to 1=Mon, 7=Sun logic for a Mon-Sun grid:
-      const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; 
+      if (isAsc) txListHtml += endBalanceHtml;
+      else txListHtml += startBalanceHtml;
 
-      let calendarGridHtml = `
-        <div id="history-calendar-overlay" style="display: none; background: var(--bg-surface); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); box-shadow: 0 4px 12px rgba(0,0,0,0.05); animate-fade-in; position: relative;">
-          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center;">
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">M</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">T</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">W</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">T</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">F</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">S</div>
-            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 8px;">S</div>
-      `;
-      // Filler cells
-      for(let i=0; i < startOffset; i++) {
-        calendarGridHtml += `<div></div>`;
-      }
-      // Actual days
-      for(let day=1; day <= daysInMonth; day++) {
-        const hasTx = activeDays.has(day);
-        const fullDateStr = `${yearStr}-${monthStr}-${String(day).padStart(2,'0')}`;
-        calendarGridHtml += `
-          <button class="calendar-day" data-date="${fullDateStr}" aria-label="${day} ${startOfMonth.toLocaleDateString('en-US', { month: 'long' })}${hasTx ? ', includes transactions' : ''}" style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; ${hasTx ? 'background: var(--bg-body); cursor: pointer; color: var(--text-primary); font-weight: bold;' : 'color: var(--text-tertiary); background: transparent; border: none;'} margin: 0 auto;">
-            <span>${day}</span>
-            ${hasTx ? `<div style="position: absolute; bottom: 4px; width: 4px; height: 4px; background: var(--color-accent); border-radius: 50%;"></div>` : ''}
-          </button>
-        `;
-      }
-      calendarGridHtml += `</div></div>`;
+      const activeAccount = state.accounts.find(a => a.id === state.activeAccountFilter);
+      const accountLabel = activeAccount ? activeAccount.name : 'All Accounts';
+      const tagLabel = state.activeTagFilter ? `#${state.activeTagFilter}` : 'All Tags';
 
       return `
-        <div class="container animate-fade-in" style="padding-top: 0;">
-          <div class="history-header-sticky">
-            ${backBtn}
+        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+          <!-- FIXED STICKY HEADER -->
+          <div class="history-header-sticky" id="history-sticky-header">
             <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
               <h1 class="page-header-title">History</h1>
-              <button id="btn-toggle-calendar" class="btn" style="width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--bg-surface); box-shadow: 0 2px 8px rgba(0,0,0,0.05); color: var(--text-primary); flex-shrink: 0;" aria-label="Toggle calendar visibility">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              </button>
+              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
             </div>
 
-            <div style="display: flex; gap: var(--space-3); margin-bottom: var(--space-4);">
-              <select id="history-account-filter" class="form-control" style="flex: 1; appearance: none; background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23596065' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;" aria-label="Filter by account">
-                ${accountOptions}
-              </select>
-              <select id="history-tag-filter" class="form-control" style="flex: 1; appearance: none; background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23596065' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;" aria-label="Filter by tag">
-                ${tagOptions}
-              </select>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: var(--space-2); border-radius: var(--radius-lg);">
-              <button id="btn-month-prev" class="btn" style="width: 44px; height: 44px; padding: 0; background: transparent; color: var(--text-secondary);" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-              </button>
-              
-              <div id="history-month-picker-btn" style="flex: 1; cursor: pointer; text-align: center; font-family: var(--font-family-display); font-weight: 600; font-size: 1.1rem; padding: 8px; border-radius: var(--radius-md); background: var(--bg-surface-sunken); display: flex; align-items: center; justify-content: center; gap: 8px;" tabindex="0" role="button" aria-label="Select specific month, current: ${availableMonths.length > 0 && currMonthIdx >= 0 ? availableMonths[currMonthIdx].label : ''}">
-                ${availableMonths.length > 0 && currMonthIdx >= 0 ? availableMonths[currMonthIdx].label : 'Select Month'} <span style="font-size: 0.8rem; color: var(--text-tertiary);">▼</span>
-              </div>
-
-              <button id="btn-month-next" class="btn" style="width: 44px; height: 44px; padding: 0; background: transparent; color: var(--text-secondary);" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-              </button>
-            </div>
+            <!-- New Filter Bar -->
+            ${filterBarHtml}
           </div>
 
           <div style="margin-top: var(--space-4);">
-            ${calendarGridHtml}
-            ${contentHtml}
+            ${txListHtml}
           </div>
         </div>
       `;
     },
+
     attachEvents(container, state) {
-      // Handle tab re-press (History tab clicked while already in History)
-      if (this._scrollListener) window.removeEventListener('scroll-history-to-today', this._scrollListener);
-      this._scrollListener = () => this.scrollToToday(container);
-      window.addEventListener('scroll-history-to-today', this._scrollListener);
+      // New Filter Bar Events
+      window.Components.AdvancedFilterBar.attachEvents(container, 'history');
 
-      const accSelect = document.getElementById('history-account-filter');
-      if (accSelect) {
-        accSelect.addEventListener('change', () => {
-          window.Store.dispatch('SET_ACCOUNT_FILTER', accSelect.value);
-        });
+      // Tab Re-tap: Handle expansion and scroll to top
+      const reTapHandler = () => {
+        container.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      window.addEventListener('scroll-history-to-today', reTapHandler);
+      if (container._historyReTapHandler) {
+        window.removeEventListener('scroll-history-to-today', container._historyReTapHandler);
       }
-
-      // Tag filter dropdown
-      const tagSelect = document.getElementById('history-tag-filter');
-      if (tagSelect) {
-        tagSelect.addEventListener('change', () => {
-          window.Store.dispatch('SET_TAG_FILTER', tagSelect.value);
-        });
-      }
-
-      // Month dropdown
-      const monthBtn = document.getElementById('history-month-picker-btn');
-      if (monthBtn) {
-        monthBtn.addEventListener('click', () => {
-          window.Components.MonthPicker.show({
-            initialValue: window.Store.getState().activeMonthFilter,
-            onSelect: (val) => window.Store.dispatch('SET_MONTH_FILTER', val)
-          });
-        });
-      }
-
-      // Arrow navigation
-      const btnPrev = document.getElementById('btn-month-prev');
-      const btnNext = document.getElementById('btn-month-next');
-      if (btnPrev && btnNext) {
-        const availableMonths = window.Store.getAvailableMonths();
-        const currMonthIdx = availableMonths.findIndex(m => m.value === state.activeMonthFilter);
-
-        btnPrev.addEventListener('click', () => {
-          if (currMonthIdx < availableMonths.length - 1) { // array is descending
-            window.Store.dispatch('SET_MONTH_FILTER', availableMonths[currMonthIdx + 1].value);
-          }
-        });
-
-        btnNext.addEventListener('click', () => {
-          if (currMonthIdx > 0) { // array is descending
-            window.Store.dispatch('SET_MONTH_FILTER', availableMonths[currMonthIdx - 1].value);
-          }
-        });
-      }
+      container._historyReTapHandler = reTapHandler;
 
       // Edit transaction on click
       container.querySelectorAll('.list-item[data-id]').forEach(item => {
         item.addEventListener('click', () => {
           const txId = item.dataset.id;
-          if (txId) {
-            window.Router.navigate('#edit?id=' + txId);
-          }
+          if (txId) window.Router.navigate('#edit?id=' + txId);
         });
       });
-      
-      // Calendar Toggle 
-      const btnCalendar = document.getElementById('btn-toggle-calendar');
-      const calendarOverlay = document.getElementById('history-calendar-overlay');
-      if (btnCalendar && calendarOverlay) {
-        btnCalendar.addEventListener('click', () => {
-          calendarOverlay.style.display = calendarOverlay.style.display === 'none' ? 'block' : 'none';
+
+      this.scrollToToday(container);
+    },
+
+    scrollToToday(container) {
+      const today = new Date().toISOString().split('T')[0];
+      const dateGroups = Array.from(container.querySelectorAll('.date-group-container[id^="tx-"]'));
+      const targetGroup = dateGroups.find(g => g.id === `tx-${today}`) || 
+                          dateGroups.filter(g => g.id < `tx-${today}`).sort((a,b) => b.id.localeCompare(a.id))[0];
+
+      if (targetGroup) {
+        requestAnimationFrame(() => {
+          const stickyHeader = document.getElementById('history-sticky-header');
+          const headerHeight = stickyHeader ? stickyHeader.offsetHeight : 180;
+          // Calculate the target Y with a padding offset to ensure date header is visible
+          const targetY = targetGroup.offsetTop - headerHeight - 16;
+          container.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
         });
       }
-      
-      // Calendar Day Scroller
-      container.querySelectorAll('.calendar-day[data-date]').forEach(dayEl => {
-        dayEl.addEventListener('click', () => {
-          const dateStr = dayEl.dataset.date;
-          if (!dateStr) return;
+    },
 
-          // Auto close calendar immediately for better feedback
-          if (calendarOverlay) {
-            calendarOverlay.style.display = 'none';
-          }
-
-          // Find first tx block matching date (now the header)
-          const targetTx = document.getElementById(`tx-${dateStr}`);
-          if (targetTx) {
-            // Using 'start' because it's a section header
-            targetTx.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            
-            // Highlight it briefly
-            targetTx.style.transition = 'background-color 0.3s';
-            const originalBg = targetTx.style.backgroundColor;
-            targetTx.style.backgroundColor = 'var(--bg-surface-sunken)';
-            setTimeout(() => { targetTx.style.backgroundColor = originalBg; }, 1000);
-          }
-        });
-      });
-
-      // Scroll to today or specific tx from Dashboard Click
-      const scrollToTx = sessionStorage.getItem('scrollToTx');
-      if (scrollToTx) {
-        sessionStorage.removeItem('scrollToTx');
-        setTimeout(() => {
-          const targetTx = document.querySelector(`.list-item[data-id="${scrollToTx}"]`);
-          if (targetTx) {
-            targetTx.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetTx.style.transition = 'background-color 0.3s';
-            const originalBg = targetTx.style.backgroundColor;
-            targetTx.style.backgroundColor = 'var(--bg-surface-sunken)';
-            setTimeout(() => { targetTx.style.backgroundColor = originalBg; }, 1500);
-          }
-        }, 100);
-      } else {
-        this.scrollToToday(container);
+    destroy() {
+      // Cleanup window-level listeners
+      const routerView = document.getElementById('router-view');
+      if (routerView && routerView._historyReTapHandler) {
+        window.removeEventListener('scroll-history-to-today', routerView._historyReTapHandler);
       }
     }
   },
@@ -739,7 +596,7 @@ window.Views = {
   // -------------------------
   // ADD TRANSACTION VIEW (Phase 4)
   // -------------------------
-                    AddTransactionView: {
+  AddTransactionView: {
     render(state) {
       if (state.accounts.length === 0) {
         return `
@@ -809,7 +666,7 @@ window.Views = {
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${isEdit ? 'Edit Log' : 'New Log'}</h1>
-            <a href="#${isEdit ? 'transactions' : 'dashboard'}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 50%;">✕</a>
+            <a href="#${isEdit ? 'transactions' : 'dashboard'}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
           </div>
           
           <!-- Type Toggle -->
@@ -905,6 +762,7 @@ window.Views = {
       `;
     },
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       if (state.accounts.length === 0) return;
       
       const btnExpense = document.getElementById('toggle-expense');
@@ -1046,7 +904,7 @@ window.Views = {
       // Category Creation Modal logic (reusable)
       let previousCategory = categorySelect.value;
       const showNewCategoryModal = () => {
-        let selectedEmoji = '📌';
+        let selectedIcon = 'pin';
         window.Components.Modal.show({
           title: 'New Category',
           content: `
@@ -1055,9 +913,9 @@ window.Views = {
               <input type="text" id="new-cat-name" class="form-control" placeholder="e.g. Subscriptions">
             </div>
             <div class="form-group">
-              <label class="form-label">Icon (Emoji)</label>
-              <div id="new-cat-emoji-selector" class="touch-target" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-surface-sunken); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                <span id="selected-emoji-display" style="font-size: 1.5rem;">${selectedEmoji}</span>
+              <label class="form-label">Icon</label>
+              <div id="new-cat-icon-selector" class="touch-target" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-surface-sunken); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <span id="selected-icon-display" style="color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="${selectedIcon}"></i></span>
                 <span style="color: var(--text-tertiary); font-size: 0.8rem;">Change Icon</span>
               </div>
             </div>
@@ -1071,7 +929,7 @@ window.Views = {
               window.Store.dispatch('ADD_CATEGORY', { 
                 id: newId,
                 name, 
-                icon: selectedEmoji, 
+                icon: selectedIcon, 
                 typeHint: typeInput.value 
               });
               
@@ -1087,21 +945,28 @@ window.Views = {
         });
 
         // Attach picker listener
-        const emojiSelector = document.getElementById('new-cat-emoji-selector');
-        if (emojiSelector) {
-          emojiSelector.addEventListener('click', () => {
-            window.Components.EmojiPicker.show({
-              initialEmoji: selectedEmoji,
-              onSelect: (emoji) => {
-                selectedEmoji = emoji;
-                const display = document.getElementById('selected-emoji-display');
-                if (display) display.textContent = emoji;
+        const iconSelector = document.getElementById('new-cat-icon-selector');
+        if (iconSelector) {
+          window.StackdHydrateIcons();
+          iconSelector.addEventListener('click', () => {
+            window.Components.IconPicker.show({
+              initialIcon: selectedIcon,
+              onSelect: (icon) => {
+                selectedIcon = icon;
+                const display = document.getElementById('selected-icon-display');
+                if (display) {
+                  display.innerHTML = `<i data-lucide="${icon}"></i>`;
+                  window.StackdHydrateIcons();
+                }
               }
             });
           });
         }
 
-        setTimeout(() => document.getElementById('new-cat-name')?.focus(), 100);
+        setTimeout(() => {
+          const catNameInput = document.getElementById('new-cat-name');
+          if (catNameInput) catNameInput.focus();
+        }, 100);
       };
 
       // Add custom category button
@@ -1481,7 +1346,7 @@ Object.assign(window.Views, {
                 return `
                   <div class="list-item" style="padding: 0; overflow: hidden; display: flex; align-items: stretch;">
                     <div class="category-main-link touch-target" data-id="${cat.id}" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); flex-grow: 1; cursor: pointer;">
-                      <div class="list-item-icon" style="margin: 0;">${cat.icon}</div>
+                      <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                       <div style="flex-grow: 1;">
                         <div class="list-item-title" style="margin-bottom: 2px;">${cat.name}</div>
                         <div class="list-item-subtitle">${txCount} transaction${txCount !== 1 ? 's' : ''}</div>
@@ -1506,7 +1371,7 @@ Object.assign(window.Views, {
           <div class="page-header">
             <h1 class="page-header-title">Categories</h1>
             <button class="btn btn-primary" id="btn-create-category" aria-label="New category"
-              style="width: 36px; height: 36px; min-width: 36px; padding: 0; border-radius: 50%; font-size: 1.4rem; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">+</button>
+              style="width: 36px; height: 36px; min-width: 36px; padding: 0; border-radius: 14px; font-size: 1.4rem; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">+</button>
           </div>
           ${renderGroup('Income', income)}
           ${renderGroup('Expense', expense)}
@@ -1516,6 +1381,7 @@ Object.assign(window.Views, {
     },
 
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       container.querySelectorAll('.category-main-link').forEach(link => {
         link.addEventListener('click', () => {
           window.Router.navigate('#category-detail?id=' + link.dataset.id);
@@ -1529,9 +1395,12 @@ Object.assign(window.Views, {
         });
       });
 
-      document.getElementById('btn-create-category')?.addEventListener('click', () => {
-        window.Router.navigate('#edit-category');
-      });
+      const createCatBtn = document.getElementById('btn-create-category');
+      if (createCatBtn) {
+        createCatBtn.addEventListener('click', () => {
+          window.Router.navigate('#edit-category');
+        });
+      }
     }
   },
 
@@ -1572,11 +1441,11 @@ Object.assign(window.Views, {
 
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
-          <a href="#categories" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);">‹ Categories</a>
+          <a href="#categories" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Categories"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Categories</a>
           
           <div style="margin-bottom: var(--space-6);">
             <div style="display: flex; align-items: center; gap: var(--space-3);">
-              <div class="list-item-icon" style="font-size: 2rem; width: 48px; height: 48px; min-width: 48px;">${category.icon}</div>
+              <div class="list-item-icon" style="color: var(--color-primary);"><i data-lucide="${category.icon}"></i></div>
               <h1 class="header-title" style="margin: 0;">${category.name}</h1>
             </div>
             <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-1); margin-left: 60px;">
@@ -1589,6 +1458,7 @@ Object.assign(window.Views, {
       `;
     },
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       container.querySelectorAll('.list-item[data-id]').forEach(item => {
         item.addEventListener('click', () => {
           const txId = item.dataset.id;
@@ -1612,7 +1482,7 @@ Object.assign(window.Views, {
       
       const title = isEdit ? 'Edit Category' : 'New Category';
       const name = cat ? cat.name : '';
-      const icon = cat ? cat.icon : '📌';
+      const icon = cat ? cat.icon : 'pin';
       const type = cat ? cat.typeHint : 'expense';
       const txCount = isEdit ? state.transactions.filter(t => t.categoryId === catId).length : 0;
 
@@ -1620,7 +1490,7 @@ Object.assign(window.Views, {
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#categories" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 50%;">✕</a>
+            <a href="#categories" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -1641,7 +1511,7 @@ Object.assign(window.Views, {
             <div class="form-group" style="margin-bottom: 0;">
               <div class="form-label" id="label-cat-icon">Icon</div>
               <div id="icon-trigger-field" tabindex="0" role="button" aria-labelledby="label-cat-icon" aria-label="Current icon: ${icon}. Tap to change icon" style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-surface);border-radius:12px;cursor:pointer;transition:background 0.2s;">
-                <div id="current-icon-display" style="width:56px;height:56px;border-radius:50%;background:var(--bg-surface-elevated);display:flex;align-items:center;justify-content:center;font-size:1.75rem;box-shadow:0 4px 12px rgba(45,51,56,0.1);flex-shrink:0;" aria-hidden="true">${icon}</div>
+                <div id="current-icon-display" style="width:64px;height:64px;border-radius:20px;background:var(--bg-surface-elevated);display:flex;align-items:center;justify-content:center;color:var(--color-primary);box-shadow:0 4px 12px rgba(45,51,56,0.08);flex-shrink:0;" aria-hidden="true"><i data-lucide="${icon}" style="width: 32px; height: 32px;"></i></div>
                 <div style="flex:1;">
                   <div style="font-weight:700;color:var(--text-primary);font-size:1rem;">Tap to change icon</div>
                   <div style="font-size:0.75rem;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Opens picker</div>
@@ -1668,86 +1538,67 @@ Object.assign(window.Views, {
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
       
-      let selectedEmoji = cat ? cat.icon : '📌';
+      let selectedEmoji = cat ? cat.icon : 'pin';
 
-      const display = document.getElementById('current-icon-display');
-      const trigger = document.getElementById('icon-trigger-field');
+      const display = container.querySelector('#current-icon-display');
+      const trigger = container.querySelector('#icon-trigger-field');
 
-      const sheet = document.createElement("div");
-      sheet.id = "emoji-picker-sheet";
-      sheet.style.cssText = "position:fixed;inset:0;z-index:9999;display:none;align-items:flex-end;justify-content:center;";
-      sheet.innerHTML = `<div id="eps-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,0.35);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);"></div><div id="eps-panel" style="position:relative;width:100%;max-width:600px;background:rgba(255,255,255,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top-left-radius:32px;border-top-right-radius:32px;padding:24px 16px 40px;transform:translateY(100%);transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);box-shadow:0 -10px 40px rgba(0,0,0,0.12);"><div style="width:40px;height:4px;border-radius:99px;background:#d3dbe2;margin:0 auto 20px;"></div><h3 style="font-family:Manrope,sans-serif;font-size:1.25rem;font-weight:700;color:#2d3338;margin-bottom:16px;letter-spacing:-0.02em;">Select Icon</h3>${window.Components.EmojiPicker.render(selectedEmoji)}</div>`;
-      document.body.appendChild(sheet);
+      window.StackdHydrateIcons();
 
-      const showSheet = () => {
-        sheet.style.display = "flex";
-        requestAnimationFrame(() => {
-          sheet.style.display = "flex";
-          requestAnimationFrame(() => document.getElementById("eps-panel").style.transform = "translateY(0)");
-        });
-      };
-
-      const hideSheet = () => {
-        const p = document.getElementById("eps-panel");
-        if (p) p.style.transform = "translateY(100%)";
-        setTimeout(() => sheet.style.display = "none", 420);
-      };
-
-      if (trigger) trigger.addEventListener("click", showSheet);
-      const backdrop = document.getElementById("eps-backdrop");
-      if (backdrop) backdrop.addEventListener("click", hideSheet);
-
-      const pickerRoot = sheet.querySelector('#emoji-picker');
-      if (pickerRoot) {
-        window.Components.EmojiPicker.attachEvents(pickerRoot, (emoji) => {
-          selectedEmoji = emoji;
-          if (display) display.textContent = emoji;
-          hideSheet();
+      if (trigger) {
+        trigger.addEventListener("click", () => {
+          window.Components.IconPicker.show({
+            initialIcon: selectedEmoji,
+            onSelect: (icon) => {
+              selectedEmoji = icon;
+              if (display) {
+                display.innerHTML = `<i data-lucide="${icon}" style="width: 32px; height: 32px;"></i>`;
+                window.StackdHydrateIcons();
+              }
+            }
+          });
         });
       }
 
-      // Cleanup logic on view destruction / nav away
-      const removeSheet = () => { if (document.body.contains(sheet)) document.body.removeChild(sheet); };
-      const origNavigate = window.Router.navigate;
-      window.Router.navigate = function(path) {
-        removeSheet();
-        window.Router.navigate = origNavigate; // restore
-        origNavigate.call(window.Router, path);
-      };
-
-      document.getElementById('btn-save-category')?.addEventListener('click', () => {
-        const nameInput = document.getElementById('edit-cat-name');
-        const name = nameInput.value.trim();
-        if (!name) {
-          nameInput.style.backgroundColor = 'var(--color-expense-bg)';
-          setTimeout(() => nameInput.style.backgroundColor = 'transparent', 1000);
-          return;
-        }
-
-        const type = document.getElementById('edit-cat-type').value;
-
-        if (isEdit) {
-          window.Store.dispatch('UPDATE_CATEGORY', { id: catId, name, icon: selectedEmoji, typeHint: type });
-        } else {
-          window.Store.dispatch('ADD_CATEGORY', { name, icon: selectedEmoji, typeHint: type });
-        }
-        window.Router.navigate('#categories');
-      });
-
-      document.getElementById('btn-delete-category')?.addEventListener('click', () => {
-        window.Components.Modal.show({
-          title: 'Delete Category?',
-          content: '<p>Are you sure you want to delete this category? This action cannot be undone.</p>',
-          saveText: 'Keep',
-          showDelete: true,
-          onSave: (close) => close(),
-          onDelete: (close) => {
-            window.Store.dispatch('DELETE_CATEGORY', { id: catId });
-            close();
-            window.Router.navigate('#categories');
+      const saveCatBtn = document.getElementById('btn-save-category');
+      if (saveCatBtn) {
+        saveCatBtn.addEventListener('click', () => {
+          const nameInput = document.getElementById('edit-cat-name');
+          const name = nameInput.value.trim();
+          if (!name) {
+            nameInput.style.backgroundColor = 'var(--color-expense-bg)';
+            setTimeout(() => nameInput.style.backgroundColor = 'transparent', 1000);
+            return;
           }
+
+          const type = document.getElementById('edit-cat-type').value;
+
+          if (isEdit) {
+            window.Store.dispatch('UPDATE_CATEGORY', { id: catId, name, icon: selectedEmoji, typeHint: type });
+          } else {
+            window.Store.dispatch('ADD_CATEGORY', { name, icon: selectedEmoji, typeHint: type });
+          }
+          window.Router.navigate('#categories');
         });
-      });
+      }
+
+      const deleteCatBtn = document.getElementById('btn-delete-category');
+      if (deleteCatBtn) {
+        deleteCatBtn.addEventListener('click', () => {
+          window.Components.Modal.show({
+            title: 'Delete Category?',
+            content: '<p>Are you sure you want to delete this category? This action cannot be undone.</p>',
+            saveText: 'Keep',
+            showDelete: true,
+            onSave: (close) => close(),
+            onDelete: (close) => {
+              window.Store.dispatch('DELETE_CATEGORY', { id: catId });
+              close();
+              window.Router.navigate('#categories');
+            }
+          });
+        });
+      }
     }
   },
 
@@ -1822,7 +1673,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="Edit budget for ${cat.name}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon" style="margin: 0;">${cat.icon}</div>
+                  <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${cat.name}${carryOverBadge}</div>
                     <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">of ${limitFormatted}</span></div>
@@ -1840,7 +1691,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="Set budget for ${cat.name}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon" style="margin: 0;">${cat.icon}</div>
+                  <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${cat.name}</div>
                     <div class="list-item-subtitle" style="color: var(--text-tertiary);">No limit set — tap to configure</div>
@@ -1856,29 +1707,39 @@ Object.assign(window.Views, {
         }
       }).join('');
 
+      const overspent = totalSpent > totalAllocated && totalAllocated > 0;
+
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
-          <h1 class="header-title" style="margin-top: var(--space-4); margin-bottom: var(--space-6);">Budget</h1>
-          <!-- Month Selector -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6); background: var(--bg-surface); padding: var(--space-2); border-radius: var(--radius-lg); box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-            <button id="bdg-prev-month" class="btn" style="width: 44px; height: 44px; padding: 0; background: transparent; color: var(--text-secondary);" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="Current budget month: ${currMonthLabel}. Tap to change." style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 600; font-size: 1.1rem; color: var(--text-primary); background: var(--bg-surface-sunken); padding: 8px 16px; border-radius: var(--radius-md); gap: 8px;">
-              ${currMonthLabel} <span style="font-size: 0.8rem; color: var(--text-tertiary);" aria-hidden="true">▼</span>
+          <!-- STICKY HEADER -->
+          <div class="history-header-sticky">
+            <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
+              <h1 class="page-header-title">Budget</h1>
             </div>
-            <button id="bdg-next-month" class="btn" style="width: 44px; height: 44px; padding: 0; background: transparent; color: var(--text-secondary);" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
+
+            <!-- Month Switcher (Modern Pill Style) -->
+            <div style="display: flex; justify-content: center; align-items: center; background: var(--bg-surface-sunken); padding: 4px; border-radius: 24px; margin: 0 auto; width: fit-content; gap: 4px; border: 1px solid var(--border-color);">
+              <button id="bdg-prev-month" class="btn-icon touch-target" style="width: 32px; height: 32px; color: var(--text-secondary); background: transparent;" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+              </button>
+              
+              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="Current budget month: ${currMonthLabel}. Tap to change." style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 16px; min-width: 120px; white-space: nowrap;">
+                ${currMonthLabel}
+              </div>
+
+              <button id="bdg-next-month" class="btn-icon touch-target" style="width: 32px; height: 32px; color: var(--text-secondary); background: transparent;" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
+                <i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i>
+              </button>
+            </div>
           </div>
 
           <!-- Chart Area -->
-          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5); text-align: center;">
-            <div style="position: relative; width: 160px; height: 160px; margin: 0 auto; margin-bottom: var(--space-4);">
+          <div class="card card-elevated" style="margin-top: var(--space-6); margin-bottom: var(--space-6); padding: var(--space-5); text-align: center;">
+            <div style="position: relative; width: 180px; height: 180px; margin: 0 auto; margin-bottom: var(--space-5);">
               <canvas id="budgetChart"></canvas>
-              <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
-                <span style="font-size: var(--text-sm); color: var(--text-secondary);">Allocated</span>
-                <strong style="font-size: 1.2rem; font-family: var(--font-family-display);">${window.Store.formatCurrency(totalAllocated)}</strong>
+              <div class="donut-chart-center">
+                <div class="donut-total-label">${overspent ? 'Overspent' : 'Allocated'}</div>
+                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(totalAllocated)}</div>
               </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
@@ -1919,7 +1780,7 @@ Object.assign(window.Views, {
             <button class="btn btn-icon" id="btn-bdg-back" style="color: var(--text-secondary);">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
             </button>
-            <h2 style="font-size: 1.1rem; margin: 0;">${cat.icon} ${cat.name}</h2>
+            <h2 style="font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 8px;"><i data-lucide="${cat.icon}" style="width: 20px; height: 20px;"></i> ${cat.name}</h2>
             <button class="btn btn-icon" id="btn-bdg-save" style="color: var(--color-accent);">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </button>
@@ -1974,14 +1835,18 @@ Object.assign(window.Views, {
     },
 
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       if (this.editCategoryId) {
         // Edit Mode Events — use container.querySelector for reliable binding
         const savedCategoryId = this.editCategoryId;
 
-        container.querySelector('#btn-bdg-back')?.addEventListener('click', () => {
-          this.editCategoryId = null;
-          window.Store.emit();
-        });
+        const bdgBackBtn = container.querySelector('#btn-bdg-back');
+        if (bdgBackBtn) {
+          bdgBackBtn.addEventListener('click', () => {
+            this.editCategoryId = null;
+            window.Store.emit();
+          });
+        }
 
         setTimeout(() => {
           const amtInput = container.querySelector('#bdg-amount');
@@ -1989,48 +1854,62 @@ Object.assign(window.Views, {
         }, 100);
 
         const startInput = container.querySelector('#bdg-start');
-        startInput?.addEventListener('click', () => {
-          window.Components.MonthPicker.show({
-            initialValue: startInput.value || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-            onSelect: (val) => { startInput.value = val; }
+        if (startInput) {
+          startInput.addEventListener('click', () => {
+            window.Components.MonthPicker.show({
+              initialValue: startInput.value || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
+              onSelect: (val) => { startInput.value = val; }
+            });
           });
-        });
+        }
 
         const endInput = container.querySelector('#bdg-end');
-        endInput?.addEventListener('click', () => {
-          window.Components.MonthPicker.show({
-            initialValue: endInput.value || startInput?.value || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-            onSelect: (val) => { endInput.value = val; }
+        if (endInput) {
+          endInput.addEventListener('click', () => {
+            window.Components.MonthPicker.show({
+                initialValue: endInput.value || (startInput ? startInput.value : '') || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
+                onSelect: (val) => { endInput.value = val; }
+            });
           });
-        });
+        }
 
-        container.querySelector('#btn-bdg-save')?.addEventListener('click', () => {
-          const amt = parseFloat(container.querySelector('#bdg-amount')?.value) || 0;
-          const start = container.querySelector('#bdg-start')?.value || '';
-          const end = container.querySelector('#bdg-end')?.value || '';
-          const isCum = container.querySelector('#bdg-cumulative')?.checked || false;
+        const bdgSaveBtn = container.querySelector('#btn-bdg-save');
+        if (bdgSaveBtn) {
+          bdgSaveBtn.addEventListener('click', () => {
+            const amtElem = container.querySelector('#bdg-amount');
+            const amt = amtElem ? parseFloat(amtElem.value) : 0;
+            const startElem = container.querySelector('#bdg-start');
+            const start = startElem ? startElem.value : '';
+            const endElem = container.querySelector('#bdg-end');
+            const end = endElem ? endElem.value : '';
+            const cumElem = container.querySelector('#bdg-cumulative');
+            const isCum = cumElem ? cumElem.checked : false;
 
-          // CRITICAL: Reset BEFORE dispatch so the store emit re-renders the list, not the edit pane
-          this.editCategoryId = null;
-          window.Store.dispatch('SAVE_BUDGET', {
-            categoryId: savedCategoryId,
-            amount: amt,
-            startDate: start,
-            endDate: end || null,
-            isCumulative: isCum
+            // CRITICAL: Reset BEFORE dispatch so the store emit re-renders the list, not the edit pane
+            this.editCategoryId = null;
+            window.Store.dispatch('SAVE_BUDGET', {
+              categoryId: savedCategoryId,
+              amount: amt,
+              startDate: start,
+              endDate: end || null,
+              isCumulative: isCum
+            });
           });
-        });
+        }
 
-        container.querySelector('#btn-bdg-delete')?.addEventListener('click', () => {
-          this.editCategoryId = null;
-          window.Store.dispatch('SAVE_BUDGET', {
-            categoryId: savedCategoryId,
-            amount: 0,
-            startDate: '',
-            endDate: null,
-            isCumulative: false
+        const bdgDeleteBtn = container.querySelector('#btn-bdg-delete');
+        if (bdgDeleteBtn) {
+          bdgDeleteBtn.addEventListener('click', () => {
+            this.editCategoryId = null;
+            window.Store.dispatch('SAVE_BUDGET', {
+              categoryId: savedCategoryId,
+              amount: 0,
+              startDate: '',
+              endDate: null,
+              isCumulative: false
+            });
           });
-        });
+        }
 
       } else {
         // List Mode Events
@@ -2039,35 +1918,50 @@ Object.assign(window.Views, {
         const selectedMonth = state.activeMonthFilter || currentPhysicalMonthStr;
         const [y, m] = selectedMonth.split('-');
 
-        document.getElementById('bdg-prev-month')?.addEventListener('click', () => {
-          const prevD = new Date(parseInt(y), parseInt(m) - 2, 1);
-          const nextVal = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
-          window.Store.dispatch('SET_MONTH_FILTER', nextVal);
-        });
-        document.getElementById('bdg-next-month')?.addEventListener('click', () => {
-          const nextD = new Date(parseInt(y), parseInt(m), 1);
-          const nextVal = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}`;
-          window.Store.dispatch('SET_MONTH_FILTER', nextVal);
-        });
+        const prevBtn = document.getElementById('bdg-prev-month');
+        if (prevBtn) {
+          prevBtn.addEventListener('click', () => {
+            const prevD = new Date(parseInt(y), parseInt(m) - 2, 1);
+            const nextVal = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
+            window.Store.dispatch('SET_MONTH_FILTER', nextVal);
+          });
+        }
+        const nextBtn = document.getElementById('bdg-next-month');
+        if (nextBtn) {
+          nextBtn.addEventListener('click', () => {
+            const nextD = new Date(parseInt(y), parseInt(m), 1);
+            const nextVal = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}`;
+            window.Store.dispatch('SET_MONTH_FILTER', nextVal);
+          });
+        }
 
-        document.getElementById('bdg-toggle-expense')?.addEventListener('click', () => {
-          this.currentBudgetFilter = 'expense';
-          window.Store.emit();
-        });
-        document.getElementById('bdg-toggle-income')?.addEventListener('click', () => {
-          this.currentBudgetFilter = 'income';
-          window.Store.emit();
-        });
+        const toggleExpense = document.getElementById('bdg-toggle-expense');
+        if (toggleExpense) {
+          toggleExpense.addEventListener('click', () => {
+            this.currentBudgetFilter = 'expense';
+            window.Store.emit();
+          });
+        }
+        const toggleIncome = document.getElementById('bdg-toggle-income');
+        if (toggleIncome) {
+          toggleIncome.addEventListener('click', () => {
+            this.currentBudgetFilter = 'income';
+            window.Store.emit();
+          });
+        }
 
-        document.getElementById('bdg-month-picker-btn')?.addEventListener('click', () => {
+        const monthPickerBtn = document.getElementById('bdg-month-picker-btn');
+        if (monthPickerBtn) {
+          monthPickerBtn.addEventListener('click', () => {
           const today = new Date();
           const currentPhysicalMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
           window.Components.MonthPicker.show({
             initialValue: state.activeMonthFilter || currentPhysicalMonthStr,
             onSelect: (val) => window.Store.dispatch('SET_MONTH_FILTER', val)
           });
-        });
-
+          });
+        }
+        
         // Chart Render
         const ctx = document.getElementById('budgetChart');
         if (ctx) {
@@ -2087,25 +1981,31 @@ Object.assign(window.Views, {
             
           const overspent = totalSpent > totalAllocated && totalAllocated > 0;
 
-          new Chart(ctx, {
+          // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
+          const GAP = 3;
+          new window.Chart(ctx, {
             type: 'doughnut',
             data: {
               labels: ['Spent', 'Remaining'],
               datasets: [{
                 data: chartData,
-                backgroundColor: overspent 
-                  ? ['#e91e63', '#f0f4f8'] // Red for overspent 
-                  : ['#2a6bbd', '#e4e9ee'], // Blue for spent, grey for remaining
-                borderWidth: 0,
-                spacing: 2
+                backgroundColor: overspent
+                  ? ['#ef4444', '#f1f5f9']   // red + light surface for overspent
+                  : ['#64748b', '#e2e8f0'],  // slate-500 + slate-200 (matches analytics)
+                borderWidth: GAP,
+                borderColor: 'transparent',
+                hoverBorderColor: 'transparent',
+                hoverBorderWidth: GAP,
+                borderRadius: 6,
+                hoverOffset: 6
               }]
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              cutout: '80%',
-              plugins: { tooltip: { enabled: false }, legend: { display: false } },
-              animation: false
+              cutout: '74%',
+              animation: { duration: 600, easing: 'easeOutQuart' },
+              plugins: { tooltip: { enabled: false }, legend: { display: false } }
             }
           });
         }
@@ -2129,7 +2029,7 @@ Object.assign(window.Views, {
       let listHtml = tags.map(t => `
         <a href="#tag-detail?tag=${encodeURIComponent(t)}" class="list-item touch-target" style="display: flex; align-items: center; justify-content: space-between; text-decoration: none;">
           <div style="display: flex; align-items: center; gap: var(--space-3);">
-            <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;">#️⃣</div>
+            <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;"><i data-lucide="hash"></i></div>
             <div>
               <div class="list-item-title">#${t}</div>
             </div>
@@ -2152,7 +2052,7 @@ Object.assign(window.Views, {
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">Tags</h1>
-            <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 50%;">✕</a>
+            <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
           </div>
           
           <div class="list-group">
@@ -2162,6 +2062,7 @@ Object.assign(window.Views, {
       `;
     },
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       // Handled by standard hyperlinks
     }
   },
@@ -2203,7 +2104,7 @@ Object.assign(window.Views, {
 
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
-          <a href="#tags" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Tags">‹ Tags</a>
+          <a href="#tags" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Tags"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Tags</a>
           
           <div style="margin-bottom: var(--space-6);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2219,6 +2120,7 @@ Object.assign(window.Views, {
       `;
     },
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       container.querySelectorAll('.list-item[data-id]').forEach(item => {
         item.addEventListener('click', () => {
           const txId = item.dataset.id;
@@ -2243,35 +2145,35 @@ Object.assign(window.Views, {
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div id="btn-manage-accounts" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="Manage your accounts">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;">🏦</div>
+                <div class="list-item-icon" style="margin: 0;"><i data-lucide="landmark"></i></div>
                 <div>
                   <div class="list-item-title">Accounts</div>
                   <div class="list-item-subtitle">${state.accounts.length} account${state.accounts.length !== 1 ? 's' : ''}</div>
                 </div>
               </div>
-              <div style="color: var(--text-tertiary);">›</div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </div>
             
             <a href="#categories" style="display: flex; align-items: center; justify-content: space-between; text-decoration: none;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;">🏷️</div>
+                <div class="list-item-icon" style="margin: 0;"><i data-lucide="tag"></i></div>
                 <div>
                   <div class="list-item-title">Categories</div>
                   <div class="list-item-subtitle">${state.categories.length} categories</div>
                 </div>
               </div>
-              <div style="color: var(--text-tertiary);">›</div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </a>
             
             <a href="#tags" style="display: flex; align-items: center; justify-content: space-between; text-decoration: none; border-top: 1px solid var(--border-color); padding-top: var(--space-4); margin-top: var(--space-4);">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;">#️⃣</div>
+                <div class="list-item-icon" style="margin: 0;"><i data-lucide="hash"></i></div>
                 <div>
                   <div class="list-item-title">Tags</div>
                   <div class="list-item-subtitle">${window.Store.getAllUniqueTags().length} tag${window.Store.getAllUniqueTags().length !== 1 ? 's' : ''}</div>
                 </div>
               </div>
-              <div style="color: var(--text-tertiary);">›</div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </a>
           </div>
 
@@ -2279,24 +2181,24 @@ Object.assign(window.Views, {
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div id="btn-open-currency" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="Choose currency">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;">🪙</div>
+                <div class="list-item-icon" style="margin: 0;"><i data-lucide="coins"></i></div>
                 <div>
                   <div class="list-item-title">Currency</div>
                   <div class="list-item-subtitle" id="current-currency-display">${['USD','EUR','JPY','GBP','CNY'].map(c => { const names = { USD:'USD — US Dollar', EUR:'EUR — Euro', JPY:'JPY — Japanese Yen', GBP:'GBP — Pound Sterling', CNY:'CNY — Renminbi' }; return c === state.currency ? names[c] : null; }).filter(Boolean)[0] || 'USD — US Dollar'}</div>
                 </div>
               </div>
-              <div style="color: var(--text-tertiary);">›</div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </div>
             
             <div id="btn-open-language" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Choose language">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;">🌐</div>
+                <div class="list-item-icon" style="margin: 0;"><i data-lucide="globe"></i></div>
                 <div>
                   <div class="list-item-title">Language</div>
                   <div class="list-item-subtitle" id="current-language-display">${state.language === 'en' ? 'English' : 'English'}</div>
                 </div>
               </div>
-              <div style="color: var(--text-tertiary);">›</div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </div>
           </div>
 
@@ -2304,7 +2206,7 @@ Object.assign(window.Views, {
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;" aria-hidden="true">📊</div>
+                <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="arrow-up-down"></i></div>
                 <div>
                   <div class="list-item-title" id="label-sort-order">History Sort Order</div>
                   <div class="list-item-subtitle">Direction of transactions list</div>
@@ -2372,7 +2274,7 @@ Object.assign(window.Views, {
           <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5); border: 1px solid var(--color-expense-bg);">
             <div id="btn-factory-reset" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0; background: var(--color-expense-bg); color: #fff;">⚠️</div>
+                <div class="list-item-icon" style="margin: 0; background: var(--color-expense-bg); color: #fff;"><i data-lucide="alert-triangle"></i></div>
                 <div>
                   <div class="list-item-title" style="color: var(--color-expense-bg);">Factory Reset</div>
                   <div class="list-item-subtitle text-secondary">Erase all data and start fresh</div>
@@ -2384,9 +2286,19 @@ Object.assign(window.Views, {
         </div>`;
     },
     attachEvents(container, state) {
-      document.getElementById('btn-export-accounts')?.addEventListener('click', () => window.StackdExport.exportAccounts(state));
-      document.getElementById('btn-export-categories')?.addEventListener('click', () => window.StackdExport.exportCategories(state));
-      document.getElementById('btn-export-transactions')?.addEventListener('click', () => window.StackdExport.exportTransactions(state));
+      window.StackdHydrateIcons();
+      const exportAccBtn = document.getElementById('btn-export-accounts');
+      if (exportAccBtn) {
+        exportAccBtn.addEventListener('click', () => window.StackdExport.exportAccounts(state));
+      }
+      const exportCatBtn = document.getElementById('btn-export-categories');
+      if (exportCatBtn) {
+        exportCatBtn.addEventListener('click', () => window.StackdExport.exportCategories(state));
+      }
+      const exportTxBtn = document.getElementById('btn-export-transactions');
+      if (exportTxBtn) {
+        exportTxBtn.addEventListener('click', () => window.StackdExport.exportTransactions(state));
+      }
 
       // Currency picker
       const btnCurrency = document.getElementById('btn-open-currency');
@@ -2436,7 +2348,7 @@ Object.assign(window.Views, {
           const current = window.Store.getState().language || 'en';
           const optionsHtml = LANGUAGES.map(l => `
             <div class="language-opt list-item" data-code="${l.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
-              <span style="font-size: 1.4rem; width: 32px; text-align: center; flex-shrink: 0;">🌐</span>
+              <span style="font-size: 1.4rem; width: 32px; text-align: center; flex-shrink: 0; display: flex; align-items: center; justify-content: center;"><i data-lucide="globe" style="width: 24px; height: 24px;"></i></span>
               <span style="flex: 1; font-weight: ${l.code === current ? '700' : '400'}; color: ${l.code === current ? 'var(--text-primary)' : 'var(--text-secondary)'}">${l.label}</span>
               ${l.code === current ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}
             </div>
@@ -2461,12 +2373,18 @@ Object.assign(window.Views, {
       }
 
       // History Sort Toggle
-      document.getElementById('btn-sort-desc')?.addEventListener('click', () => {
-        window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'desc');
-      });
-      document.getElementById('btn-sort-asc')?.addEventListener('click', () => {
-        window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'asc');
-      });
+      const sortDescBtn = document.getElementById('btn-sort-desc');
+      if (sortDescBtn) {
+        sortDescBtn.addEventListener('click', () => {
+          window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'desc');
+        });
+      }
+      const sortAscBtn = document.getElementById('btn-sort-asc');
+      if (sortAscBtn) {
+        sortAscBtn.addEventListener('click', () => {
+          window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'asc');
+        });
+      }
       
       // Data Import
       const fileInput = document.getElementById('import-csv-file');
@@ -2513,7 +2431,7 @@ Object.assign(window.Views, {
             .map(acc => `
               <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="Edit account ${acc.name}">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${acc.color}; flex-shrink: 0;"></div>
+                  <div style="width: 12px; height: 12px; border-radius: 4px; background-color: ${acc.color}; flex-shrink: 0;"></div>
                   <strong>${acc.name}</strong>
                 </div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
@@ -2612,35 +2530,56 @@ Object.assign(window.Views, {
       const params = window.Router ? window.Router.getParams() : {};
       const accountId = params.id;
       const account = accountId ? state.accounts.find(a => a.id === accountId) : null;
+      const isEdit = !!account;
 
-      if (!account) {
-        return `
-          <div class="container animate-fade-in" style="padding-top: 40px; text-align: center;">
-            <p class="text-secondary">Account not found.</p>
-            <a href="#dashboard" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 20px; margin-top: 16px;">Back to Overview</a>
-          </div>`;
-      }
-
-      const currentOb = state.transactions.find(
+      const currentOb = account ? state.transactions.find(
         t => t.accountId === account.id && t.type === 'opening_balance'
-      );
+      ) : null;
       const currentObAmt = currentOb ? currentOb.amount : 0;
       const currentObDate = currentOb ? currentOb.date : new Date().toISOString().split('T')[0];
-      const currentBalance = window.Store.getAccountBalance(account.id);
+      const currentBalance = account ? window.Store.getAccountBalance(account.id) : 0;
       const currSym = window.Store.getCurrencySymbol();
-      const txCount = state.transactions.filter(t => t.accountId === account.id).length;
+      const txCount = account ? state.transactions.filter(t => t.accountId === account.id).length : 0;
+
+      const title = isEdit ? 'Edit Account' : 'New Account';
+      const nameValue = account ? account.name : '';
+      const iconValue = account ? account.icon : 'wallet';
+      const typeValue = account ? account.type : 'Account';
+      const isDefault = state.defaultAccountId === accountId;
 
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
-            <h1 class="header-title" style="margin: 0;">Edit Account</h1>
-            <a href="#dashboard" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 50%;">✕</a>
+            <h1 class="header-title" style="margin: 0;">${title}</h1>
+            <a href="#dashboard" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group">
               <label class="form-label" for="edit-acc-name">Account Name</label>
-              <input type="text" id="edit-acc-name" class="form-control" value="${account.name}" autocomplete="off">
+              <input type="text" id="edit-acc-name" class="form-control" value="${nameValue}" placeholder="e.g. Wallet, Savings..." autocomplete="off">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Type</label>
+                <select id="edit-acc-type" class="form-control">
+                  <option value="Bank" ${typeValue === 'Bank' ? 'selected' : ''}>Bank</option>
+                  <option value="Debit card" ${typeValue === 'Debit card' ? 'selected' : ''}>Debit card</option>
+                  <option value="Cash" ${typeValue === 'Cash' ? 'selected' : ''}>Cash</option>
+                  <option value="Savings" ${typeValue === 'Savings' ? 'selected' : ''}>Savings</option>
+                  <option value="Credit card" ${typeValue === 'Credit card' ? 'selected' : ''}>Credit card</option>
+                  <option value="Investment" ${typeValue === 'Investment' ? 'selected' : ''}>Investment</option>
+                  <option value="Wallet" ${typeValue === 'Wallet' ? 'selected' : ''}>Wallet</option>
+                  <option value="Account" ${typeValue === 'Account' ? 'selected' : ''}>Account</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Icon</label>
+                <div id="acc-icon-trigger" class="touch-target" style="width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; min-height: var(--target-size);">
+                  <i id="acc-icon-preview" data-lucide="${iconValue}"></i>
+                </div>
+              </div>
             </div>
 
             <div class="form-group">
@@ -2651,6 +2590,7 @@ Object.assign(window.Views, {
               </div>
             </div>
 
+            ${isEdit ? `
             <div class="form-group">
               <label class="form-label" for="edit-acc-current-balance">Current Balance</label>
               <div style="position: relative;">
@@ -2662,27 +2602,69 @@ Object.assign(window.Views, {
                 ⚠️ For consistency purposes, modifying the current balance will calculate and update your initial opening balance.
               </p>
             </div>
+            ` : ''}
 
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group" style="margin-bottom: var(--space-5);">
               <label class="form-label" for="edit-acc-date">Opening Balance Date</label>
               <input type="date" id="edit-acc-date" class="form-control" value="${currentObDate}">
             </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-2);">
+              <div style="flex: 1;">
+                <label class="form-label" style="margin-bottom: 0; cursor: pointer;" for="edit-acc-default">Set as Default Wallet</label>
+                <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 2px 0 0 4px;">Primary account for dashboard overview.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="edit-acc-default" ${isDefault ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <style>
+              .toggle-switch { position: relative; display: inline-block; width: 50px; height: 28px; flex-shrink: 0; }
+              .toggle-switch input { opacity: 0; width: 0; height: 0; }
+              .toggle-switch .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 34px; }
+              .toggle-switch .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; }
+              .toggle-switch input:checked + .slider { background-color: var(--color-primary); }
+              .toggle-switch input:checked + .slider:before { transform: translateX(22px); }
+            </style>
           </div>
 
-          <button id="btn-edit-acc-save" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">Save Changes</button>
+          <button id="btn-edit-acc-save" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">${isEdit ? 'Save Changes' : 'Create Account'}</button>
 
+          ${isEdit ? `
           <button id="btn-edit-acc-delete" class="btn" style="width: 100%; padding: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border-radius: var(--radius-lg); font-weight: 600;">Delete Account</button>
+          ` : ''}
 
-          <p class="text-secondary" style="text-align: center; font-size: var(--text-sm); margin-top: var(--space-4);">${txCount} transaction${txCount !== 1 ? 's' : ''} associated with this account.</p>
+          <p class="text-secondary" style="text-align: center; font-size: var(--text-sm); margin-top: var(--space-4);">${isEdit ? `${txCount} transaction${txCount !== 1 ? 's' : ''} associated with this account.` : 'Enter the balance at the time of creation.'}</p>
         </div>
       `;
     },
 
     attachEvents(container, state) {
+      window.StackdHydrateIcons();
       const params = window.Router ? window.Router.getParams() : {};
       const accountId = params.id;
       const account = accountId ? state.accounts.find(a => a.id === accountId) : null;
-      if (!account) return;
+      
+      let selectedIcon = account ? account.icon : 'wallet';
+
+      const iconTrigger = container.querySelector('#acc-icon-trigger');
+      if (iconTrigger) {
+        iconTrigger.addEventListener('click', () => {
+          window.Components.IconPicker.show({
+            initialIcon: selectedIcon,
+            onSelect: (icon) => {
+              selectedIcon = icon;
+              const preview = container.querySelector('#acc-icon-preview');
+              if (preview) {
+                preview.setAttribute('data-lucide', icon);
+                window.StackdHydrateIcons();
+              }
+            }
+          });
+        });
+      }
 
       // -------------------------------------------------------
       // Bidirectional Balance Sync Engine (v0.31)
@@ -2733,23 +2715,54 @@ Object.assign(window.Views, {
       if (btnSave) {
         btnSave.addEventListener('click', () => {
           const name = document.getElementById('edit-acc-name').value.trim();
-          // Always derive final OB from the OB field (which is kept in sync by the engine above)
           const ob = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
           const dDate = document.getElementById('edit-acc-date').value;
+          const type = document.getElementById('edit-acc-type').value;
+          const makeDefault = document.getElementById('edit-acc-default').checked;
+
           if (!name) {
             const nameInput = document.getElementById('edit-acc-name');
             nameInput.style.backgroundColor = 'var(--color-expense-bg)';
             setTimeout(() => nameInput.style.backgroundColor = '', 1000);
             return;
           }
-          // Only Opening Balance is persisted; Current Balance remains a derived value
-          window.Store.dispatch('UPDATE_ACCOUNT', { id: account.id, name, openingBalance: ob, openingDate: dDate });
+
+          if (account) {
+            window.Store.dispatch('UPDATE_ACCOUNT', { 
+              id: account.id, 
+              name, 
+              openingBalance: ob, 
+              openingDate: dDate,
+              icon: selectedIcon,
+              type: type
+            });
+            if (makeDefault) {
+              window.Store.dispatch('SET_DEFAULT_ACCOUNT', account.id);
+            } else if (state.defaultAccountId === account.id) {
+              window.Store.dispatch('SET_DEFAULT_ACCOUNT', '');
+            }
+          } else {
+            // New account logic needs to handle ID creation first or dispatch to a specific handler that returns the ID
+            // For now, we'll just dispatch and hope for the best, or better, let the store handle it.
+            const newId = window.StackdDB.generateId();
+            window.Store.dispatch('ADD_ACCOUNT', { 
+              id: newId,
+              name, 
+              openingBalance: ob, 
+              openingDate: dDate,
+              icon: selectedIcon,
+              type: type
+            });
+            if (makeDefault) {
+              window.Store.dispatch('SET_DEFAULT_ACCOUNT', newId);
+            }
+          }
           window.Router.navigate('#dashboard');
         });
       }
 
       const btnDelete = document.getElementById('btn-edit-acc-delete');
-      if (btnDelete) {
+      if (btnDelete && account) {
         btnDelete.addEventListener('click', () => {
           window.Components.Modal.show({
             title: 'Delete Account?',
