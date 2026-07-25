@@ -1,7 +1,7 @@
 // db.js - LocalStorage Wrapper
 window.StackdDB = {
   PREFIX: 'stackd_v1_',
-  
+
   load(key, defaultValue = null) {
     try {
       const item = localStorage.getItem(this.PREFIX + key);
@@ -11,7 +11,6 @@ window.StackdDB = {
       return defaultValue;
     }
   },
-  
   save(key, data) {
     try {
       localStorage.setItem(this.PREFIX + key, JSON.stringify(data));
@@ -21,7 +20,8 @@ window.StackdDB = {
       return false;
     }
   },
-  
+
+  // ── ID generation ─────────────────────────────────────────────────────────
   generateId() {
     // Basic fallback since crypto.randomUUID isn't always available on file:// or older environments
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {

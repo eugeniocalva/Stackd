@@ -1,15 +1,15 @@
 // views.js - Application Views
 
 // --- Generic Helpers ---
-function createCategoryOptions(categories, selectedId, includeCreateAction = false) {
+function createCategoryOptions(categories, selectedId, includeDefaultOption = true) {
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
     .map(cat => 
       `<option value="${cat.id}" ${cat.id === selectedId ? 'selected' : ''}>${cat.name}</option>`
     ).join('');
 
-  if (includeCreateAction) {
-    options = `<option value="CREATE_NEW_CATEGORY" style="font-weight: bold; color: var(--color-accent);">+ Create New Category</option>` + options;
+  if (includeDefaultOption) {
+    options = `<option value="" ${!selectedId ? 'selected' : ''}>No category selected</option>` + options;
   }
   return options;
 }
@@ -20,6 +20,41 @@ function createAccountOptions(accounts, selectedId) {
     .map(acc => 
       `<option value="${acc.id}" ${acc.id === selectedId ? 'selected' : ''}>${acc.name}</option>`
     ).join('');
+}
+
+function captureDraftTxFormState(container) {
+  const root = container || document.getElementById('router-view') || document;
+  const typeInput = root.querySelector('#tx-type');
+  const amountInput = root.querySelector('#tx-amount');
+  const accountSelect = root.querySelector('#tx-account');
+  const transferToSelect = root.querySelector('#tx-transfer-to');
+  const categorySelect = root.querySelector('#tx-category');
+  const dateInput = root.querySelector('#tx-date');
+  const noteInput = root.querySelector('#tx-comment');
+  const toggleRecurrent = root.querySelector('#tx-is-recurrent');
+  const endDateInput = root.querySelector('#tx-recurrence-end-date');
+  const intervalInput = root.querySelector('#tx-recurrence-interval');
+  const freqInput = root.querySelector('#tx-recurrence-freq');
+  const seriesIdInput = root.querySelector('#tx-recurrence-series-id');
+  const tagChips = Array.from(root.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
+
+  if (typeInput || amountInput) {
+    window._draftTxFormState = {
+      type: typeInput ? typeInput.value : 'expense',
+      amount: amountInput ? amountInput.value : '',
+      account: accountSelect ? accountSelect.value : '',
+      transferTo: transferToSelect ? transferToSelect.value : '',
+      category: categorySelect ? categorySelect.value : '',
+      date: dateInput ? dateInput.value : '',
+      note: noteInput ? noteInput.value : '',
+      tags: tagChips,
+      isRecurrent: toggleRecurrent ? toggleRecurrent.checked : false,
+      recurrenceEndDate: endDateInput ? endDateInput.value : '',
+      recurrenceInterval: intervalInput ? intervalInput.value : '1',
+      recurrenceFreq: freqInput ? freqInput.value : 'months',
+      recurrenceSeriesId: seriesIdInput ? seriesIdInput.value : ''
+    };
+  }
 }
 
 window.Views = {
@@ -63,13 +98,21 @@ window.Views = {
       const donutData = window.Store.computeCategoryDistribution(filters, 'expense');
       const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
 
+      const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
+      const accountFilterIndicatorHtml = hasAccountFilter
+        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
+        : '';
+
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
             <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
               <h1 class="page-header-title">Analytics</h1>
-              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
+              <div style="text-align: right;">
+                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
+                ${accountFilterIndicatorHtml}
+              </div>
             </div>
 
             <!-- New Filter Bar -->
@@ -80,7 +123,7 @@ window.Views = {
             <!-- DECORATIVE BACKGROUND GRADIENT -->
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
             
-            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">Total Portfolio</p>
+            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">Total Net Balance</p>
             <h2 style="font-family: var(--font-family-display); font-size: 2.5rem; font-weight: 800; margin-bottom: var(--space-4); color: var(--text-primary); letter-spacing: -0.02em;">
               ${window.Store.formatCurrency(currentBalance)}
             </h2>
@@ -95,7 +138,7 @@ window.Views = {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
                 <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Net Change</span>
-                <span style="font-weight: 700; color: ${color}; font-size: 1.05rem;">${sign}${window.Store.formatCurrency(delta)}</span>
+                <span style="font-weight: 700; color: ${color}; font-size: 1.05rem;">${sign}${window.Store.formatCurrency(Math.abs(delta))}</span>
               </div>
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
                 <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Previous</span>
@@ -131,11 +174,20 @@ window.Views = {
     hiddenChartAccounts: [], // Track which account IDs are excluded from the chart
     
     render(state) {
-      const visibleAccountIds = state.accounts
-        .filter(acc => !this.hiddenChartAccounts.includes(acc.id))
-        .map(acc => acc.id);
-      
-      const globalBalance = window.Store.compute12MonthBalances(visibleAccountIds).slice(-1)[0].balance;
+      const savedFilters = state.expandedGraphFilters || { interval: 'monthly', accounts: [], categories: [] };
+      const selectedInterval = savedFilters.interval || 'monthly';
+      const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
+        ? savedFilters.accounts
+        : state.accounts.map(acc => acc.id);
+      const selectedCategoryIds = savedFilters.categories || [];
+
+      const mainResult = window.Store.computeGraphBalances({
+        interval: selectedInterval,
+        accountIds: selectedAccountIds,
+        categoryIds: selectedCategoryIds
+      });
+      const points = (mainResult && mainResult.points) ? mainResult.points : [];
+      const globalBalance = points.length > 0 ? points[points.length - 1].balance : 0;
       const formattedBalance = window.Store.formatCurrency(globalBalance);
       
       let walletsHtml = `
@@ -148,38 +200,36 @@ window.Views = {
               return window.Store.getAccountBalance(b.id) - window.Store.getAccountBalance(a.id);
             });
 
-            return sortedAccounts.map(acc => {
-              const balance = window.Store.getAccountBalance(acc.id);
-              const formattedBal = window.Store.formatCurrency(balance);
-              const isDefault = acc.id === state.defaultAccountId;
-              const isHidden = this.hiddenChartAccounts.includes(acc.id);
+              return sortedAccounts.map(acc => {
+                const balance = window.Store.getAccountBalance(acc.id);
+                const formattedBal = window.Store.formatCurrency(balance);
+                const isDefault = acc.id === state.defaultAccountId;
+                const isHidden = this.hiddenChartAccounts.includes(acc.id);
+                const balColor = balance > 0 ? 'var(--color-income)' : (balance < 0 ? 'var(--color-expense)' : 'var(--text-primary)');
+                const balClass = balance > 0 ? 'text-income' : (balance < 0 ? 'text-expense' : '');
 
-              return `
-                <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${acc.color};">
-                  <div class="wallet-card-accent-bar"></div>
-                  ${isDefault ? '<div class="wallet-card-default-badge">DEFAULT</div>' : ''}
-                  
-                  <div class="wallet-card-icon-box" style="color: ${acc.color};">
-                    <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
-                  </div>
-
-                  <div style="position: absolute; top: 12px; right: 8px; display: flex; align-items: center; gap: 0;">
-                    <div class="account-visibility-toggle touch-target" data-id="${acc.id}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; opacity: 0.5;">
-                      <i data-lucide="${isHidden ? 'eye-off' : 'eye'}" style="width: 14px; height: 14px;"></i>
+                return `
+                  <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${acc.color};">
+                    <div class="wallet-card-accent-bar"></div>
+                    ${isDefault ? '<div class="wallet-card-default-badge">DEFAULT</div>' : ''}
+                    
+                    <div class="wallet-card-header">
+                      <div class="wallet-card-icon-box" style="color: ${acc.color};">
+                        <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
+                      </div>
+                      <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; opacity: 0.8;" aria-label="Edit account">
+                        <i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i>
+                      </div>
                     </div>
-                    <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; opacity: 0.8;">
-                      <i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i>
+
+                    <div class="wallet-card-info">
+                      <div class="wallet-card-type">${acc.type || 'Account'}</div>
+                      <div class="wallet-card-name">${acc.name}</div>
+                      <div class="wallet-card-balance ${balClass}" style="color: ${balColor};">${formattedBal}</div>
                     </div>
                   </div>
-
-                  <div class="wallet-card-info">
-                    <div class="wallet-card-type">${acc.type || 'Account'}</div>
-                    <div class="wallet-card-name">${acc.name}</div>
-                    <div class="wallet-card-balance">${formattedBal}</div>
-                  </div>
-                </div>
-              `;
-            }).join('');
+                `;
+              }).join('');
           })()}
           <div class="btn-add-wallet-card touch-target" id="btn-dashboard-add-wallet">
             <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
@@ -188,25 +238,22 @@ window.Views = {
         </div>
       `;
 
-      // Calculate MoM %
+      // Calculate MoM % variations (as of today and as of EOM)
       const now = new Date();
-      const firstLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-      const thisMonthBalanceRow = window.Store.compute12MonthBalances(visibleAccountIds).find(m => m.label === now.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
-      const lastMonthBalanceRow = window.Store.compute12MonthBalances(visibleAccountIds).find(m => m.label === firstLastMonth.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+      const forecast = window.Store.computeBalanceForecast(selectedAccountIds);
       
-      const thisMonthBal = thisMonthBalanceRow ? thisMonthBalanceRow.balance : window.Store.getGlobalBalance();
-      const lastMonthBal = lastMonthBalanceRow ? lastMonthBalanceRow.balance : 0;
+      const _fmtVariation = (pct) => {
+        if (pct === null || pct === undefined) return { text: '—', color: 'var(--text-tertiary)' };
+        const sign = pct > 0 ? '+' : '';
+        let color;
+        if (pct > 0) color = 'var(--color-income-val)';
+        else if (pct < 0) color = 'var(--color-expense)';
+        else color = 'var(--text-primary)';
+        return { text: `${sign}${pct.toFixed(1)}%`, color };
+      };
       
-      let badgeHtml = '';
-      if (lastMonthBal !== 0 && thisMonthBal >= 0 && lastMonthBal >= 0) {
-        const pct = ((thisMonthBal - lastMonthBal) / Math.abs(lastMonthBal)) * 100;
-        const color = pct >= 0 ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
-        const textcolor = pct >= 0 ? 'var(--color-income-text)' : 'var(--color-expense)';
-        const sign = pct >= 0 ? '+' : '';
-        // Note: For WCAG I am using bg and text variables.
-        badgeHtml = `<div style="position: absolute; top: var(--space-2); right: var(--space-4); font-size: 0.85rem; padding: 4px 8px; border-radius: 12px; background: ${color}; color: ${textcolor}; font-weight: bold; z-index: 10;">${sign}${pct.toFixed(1)}% vs last mo.</div>`;
-      }
+      const todayVar = _fmtVariation(forecast.todayVariation);
+      const eomVar = _fmtVariation(forecast.eomVariation);
       
       // Recent Activities
       const todayStr = now.toISOString().split('T')[0];
@@ -228,15 +275,42 @@ window.Views = {
         }).join('') + '</div>';
       }
 
+      const hasCustomFilters = selectedInterval !== 'monthly' ||
+        (savedFilters.accounts && savedFilters.accounts.length > 0 && savedFilters.accounts.length < state.accounts.length) ||
+        (savedFilters.categories && savedFilters.categories.length > 0);
+      const intervalLabel = selectedInterval.charAt(0).toUpperCase() + selectedInterval.slice(1);
+
       return `
         <div class="container animate-fade-in" style="padding-top: var(--space-8); padding-bottom: 100px;">
           <div style="margin-bottom: var(--space-8);">
             <p class="section-title">Total Balance</p>
-            <h1 class="header-title" style="margin: 0;">${formattedBalance}</h1>
+            <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
+            <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.text} vs. start of mo.</span>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">as of today</span>
+              </div>
+              <div style="width: 1px; height: 28px; background: var(--color-border); flex-shrink: 0;"></div>
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.text} vs. start of mo.</span>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">projected EOM</span>
+              </div>
+            </div>
           </div>
           
-          <div style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: -var(--space-4); margin-right: -var(--space-4);">
-            ${badgeHtml}
+          ${hasCustomFilters ? `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+              <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">
+                Filtered View (${intervalLabel})
+              </span>
+              <button id="btn-reset-graph-filters" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-expense, #ef4444); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px;" aria-label="Reset graph filters to default">
+                <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+                <span>Reset View</span>
+              </button>
+            </div>
+          ` : ''}
+
+          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: -var(--space-4); margin-right: -var(--space-4); cursor: pointer;" title="Click to view expanded graph" role="button" aria-label="Expand balance graph">
             <canvas id="balanceChart"></canvas>
           </div>
           
@@ -277,8 +351,8 @@ window.Views = {
       // Wallet Card Interactions
       container.querySelectorAll('.wallet-card').forEach(card => {
         card.addEventListener('click', (e) => {
-          // If sub-controls (eye/dots) were clicked, don't navigate to history
-          if (e.target.closest('.account-visibility-toggle') || e.target.closest('.account-edit-trigger')) return;
+          // If sub-controls (3-dots) were clicked, don't navigate to history
+          if (e.target.closest('.account-edit-trigger')) return;
           
           const id = card.dataset.id;
           // Set period type to month as requested
@@ -296,23 +370,29 @@ window.Views = {
         });
       });
 
-      container.querySelectorAll('.account-visibility-toggle').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const id = btn.dataset.id;
-          if (this.hiddenChartAccounts.includes(id)) {
-            this.hiddenChartAccounts = this.hiddenChartAccounts.filter(x => x !== id);
-          } else {
-            this.hiddenChartAccounts.push(id);
-          }
-          window.Store.emit();
-        });
-      });
-
       const btnDashboardAddWallet = container.querySelector('#btn-dashboard-add-wallet');
       if (btnDashboardAddWallet) {
         btnDashboardAddWallet.addEventListener('click', () => {
           window.Router.navigate('#edit-account');
+        });
+      }
+
+      // Expand Chart Modal Interaction
+      const chartContainer = container.querySelector('#chart-card-container');
+      if (chartContainer) {
+        chartContainer.addEventListener('click', () => {
+          if (window.Components && window.Components.ExpandedGraphModal) {
+            window.Components.ExpandedGraphModal.show(state);
+          }
+        });
+      }
+
+      // Reset Graph Filters button
+      const resetGraphBtn = container.querySelector('#btn-reset-graph-filters');
+      if (resetGraphBtn) {
+        resetGraphBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.Store.dispatch('RESET_EXPANDED_GRAPH_FILTERS');
         });
       }
 
@@ -325,20 +405,31 @@ window.Views = {
         }
 
         try {
-          // Global (Filtered) Balance Dataset
-          const visibleAccountIds = state.accounts
-            .filter(acc => !this.hiddenChartAccounts.includes(acc.id))
-            .map(acc => acc.id);
+          const savedFilters = state.expandedGraphFilters || { interval: 'monthly', accounts: [], categories: [] };
+          const selectedInterval = savedFilters.interval || 'monthly';
+          const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
+            ? savedFilters.accounts
+            : state.accounts.map(acc => acc.id);
+          const selectedCategoryIds = savedFilters.categories || [];
 
-          const globalData = window.Store.compute12MonthBalances(visibleAccountIds);
+          const graphResult = window.Store.computeGraphBalances({
+            interval: selectedInterval,
+            accountIds: selectedAccountIds,
+            categoryIds: selectedCategoryIds
+          });
+
+          const mainPoints = (graphResult && graphResult.points) ? graphResult.points : [];
+          const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
+          const isQuarter = selectedInterval === 'quarter';
+
           const datasets = [{
             label: 'Total Balance',
-            data: globalData.map(m => m.balance),
-            borderColor: '#5f5e5e', // Dark neutral line
+            data: mainPoints,
+            borderColor: '#5f5e5e',
             backgroundColor: 'rgba(95, 94, 94, 0.05)',
             borderWidth: 3,
             fill: true,
-            tension: 0.4,
+            tension: 0,
             pointRadius: 0,
             pointHoverRadius: 6,
             pointBackgroundColor: '#fff',
@@ -346,28 +437,29 @@ window.Views = {
             pointBorderColor: '#5f5e5e'
           }];
 
-          // Overlay per-account datasets for non-hidden accounts
-          state.accounts.forEach(acc => {
-            if (this.hiddenChartAccounts.includes(acc.id)) return;
-            const accData = window.Store.computeAccount12MonthBalances(acc.id);
+          const visibleAccounts = state.accounts.filter(a => selectedAccountIds.includes(a.id));
+          visibleAccounts.forEach(acc => {
+            const accResult = window.Store.computeGraphBalances({
+              interval: selectedInterval,
+              accountIds: [acc.id],
+              categoryIds: selectedCategoryIds
+            });
+
             datasets.push({
               label: acc.name,
-              data: accData.map(m => m.balance),
+              data: (accResult && accResult.points) ? accResult.points : [],
               borderColor: acc.color,
               borderWidth: 1.5,
               borderDash: [5, 5],
               fill: false,
-              tension: 0.4,
+              tension: 0,
               pointRadius: 0
             });
           });
 
           new window.Chart(ctx, {
             type: 'line',
-            data: {
-              labels: globalData.map(m => m.label),
-              datasets: datasets
-            },
+            data: { datasets },
             options: {
               responsive: true,
               maintainAspectRatio: false,
@@ -387,12 +479,32 @@ window.Views = {
                   padding: 10,
                   itemSort: (a, b) => b.parsed.y - a.parsed.y,
                   callbacks: {
+                    title: (items) => items[0]?.raw?.fullLabel || items[0]?.raw?.label || '',
                     label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y)}`
                   }
                 }
               },
               scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                x: {
+                  type: 'linear',
+                  min: 0,
+                  max: isQuarter ? 3 : 11,
+                  grid: { display: false },
+                  ticks: {
+                    stepSize: 1,
+                    autoSkip: false,
+                    maxRotation: 0,
+                    font: { size: 10 },
+                    color: '#64748b',
+                    callback: (val) => {
+                      const idx = Math.round(val);
+                      if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < monthLabels.length) {
+                        return monthLabels[idx];
+                      }
+                      return '';
+                    }
+                  }
+                },
                 y: { display: false, beginAtZero: false }
               }
             }
@@ -456,27 +568,47 @@ window.Views = {
         })
         .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
 
+      const netChange = endBalance - startBalance;
+
+      const startBalColor  = startBalance > 0 ? 'var(--color-income)' : (startBalance < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+      const endBalColor    = endBalance   > 0 ? 'var(--color-income)' : (endBalance   < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+      const netChangeColor = netChange    > 0 ? 'var(--color-income)' : (netChange    < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+      const netChangeSign  = netChange > 0 ? '+' : '';
+
+      const balanceSummaryHtml = `
+        <div style="
+          background: var(--bg-surface);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-lg);
+          box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+          margin-bottom: var(--space-4);
+          overflow: hidden;
+        ">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--color-border);">
+
+            <!-- Start Balance -->
+            <div style="padding: var(--space-3) var(--space-4); border-right: 1px solid var(--color-border);">
+              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">Start</div>
+              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: ${startBalColor};">${window.Store.formatCurrency(startBalance)}</div>
+            </div>
+
+            <!-- End Balance -->
+            <div style="padding: var(--space-3) var(--space-4); border-right: 1px solid var(--color-border);">
+              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">End</div>
+              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: ${endBalColor};">${window.Store.formatCurrency(endBalance)}</div>
+            </div>
+
+            <!-- Net Change -->
+            <div style="padding: var(--space-3) var(--space-4); background: var(--bg-surface-sunken);">
+              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">Net Change</div>
+              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: 0.95rem; color: ${netChangeColor};">${netChangeSign}${window.Store.formatCurrency(netChange)}</div>
+            </div>
+
+          </div>
+        </div>`;
+
+      let txListHtml = balanceSummaryHtml;
       const isAsc = filters.sortOrder === 'asc';
-      
-      const startBalanceHtml = `
-        <div class="list-item" style="background: var(--bg-body); border-bottom: 2px dashed var(--border-color); border-radius: 0; min-height: 56px;">
-          <div class="list-item-content">
-            <div class="list-item-title" style="color: var(--text-secondary); font-weight: normal; font-size: 0.9rem;">Start Balance</div>
-          </div>
-          <div class="list-item-value" style="color: var(--text-secondary); font-weight: normal; font-size: 1rem;">${window.Store.formatCurrency(startBalance)}</div>
-        </div>`;
-
-      const endBalanceHtml = `
-        <div class="list-item" style="background: var(--bg-body); border-top: 2px dashed var(--border-color); border-radius: 0; margin-top: var(--space-2); min-height: 56px;">
-          <div class="list-item-content">
-            <div class="list-item-title" style="color: var(--color-primary); font-size: 0.9rem;">End Balance</div>
-          </div>
-          <div class="list-item-value" style="color: var(--color-primary); font-size: 1.1rem;">${window.Store.formatCurrency(endBalance)}</div>
-        </div>`;
-
-      let txListHtml = '';
-      if (isAsc) txListHtml += startBalanceHtml;
-      else txListHtml += endBalanceHtml;
 
       if (visibleTx.length === 0) {
         txListHtml += `
@@ -515,12 +647,17 @@ window.Views = {
         });
       }
 
-      if (isAsc) txListHtml += endBalanceHtml;
-      else txListHtml += startBalanceHtml;
-
       const activeAccount = state.accounts.find(a => a.id === state.activeAccountFilter);
       const accountLabel = activeAccount ? activeAccount.name : 'All Accounts';
       const tagLabel = state.activeTagFilter ? `#${state.activeTagFilter}` : 'All Tags';
+
+      const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
+      const accountFilterIndicatorHtml = hasAccountFilter
+        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
+        : '';
+
+      const sortLabel = isAsc ? 'Oldest First' : 'Newest First';
+      const sortIndicatorHtml = `<div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); opacity: 0.85; text-align: right; margin-top: 2px;">Sorted: ${sortLabel}</div>`;
 
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
@@ -528,7 +665,11 @@ window.Views = {
           <div class="history-header-sticky" id="history-sticky-header">
             <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
               <h1 class="page-header-title">History</h1>
-              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
+              <div style="text-align: right;">
+                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
+                ${accountFilterIndicatorHtml}
+                ${sortIndicatorHtml}
+              </div>
             </div>
 
             <!-- New Filter Bar -->
@@ -581,6 +722,10 @@ window.Views = {
           const targetY = targetGroup.offsetTop - headerHeight - 16;
           container.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
         });
+      } else {
+        requestAnimationFrame(() => {
+          container.scrollTo({ top: 0, behavior: 'smooth' });
+        });
       }
     },
 
@@ -628,6 +773,11 @@ window.Views = {
       let initialAccount = '';
       let initialCategory = window._pendingCategorySelection || '';
       let initialToAccount = '';
+      let initialIsRecurrent = false;
+      let initialRecurrenceEndDate = '';
+      let initialRecurrenceInterval = '1';
+      let initialRecurrenceFreq = 'months';
+      let initialRecurrenceSeriesId = '';
       
       if (txToEdit) {
         initialAmount = Math.abs(txToEdit.amount);
@@ -655,10 +805,39 @@ window.Views = {
         } else {
           initialType = txToEdit.type === 'opening_balance' ? 'income' : txToEdit.type;
         }
+
+        if (txToEdit.recurrence) {
+          initialIsRecurrent = true;
+          initialRecurrenceEndDate = txToEdit.recurrence.endDate || '';
+          initialRecurrenceInterval = txToEdit.recurrence.interval || '1';
+          initialRecurrenceFreq = txToEdit.recurrence.frequency || 'months';
+          initialRecurrenceSeriesId = txToEdit.recurrence.seriesId || '';
+        }
       }
 
-      // Cleanup pending selection only after all logic has had a chance to read it
-      if (window._pendingCategorySelection) delete window._pendingCategorySelection;
+      // Apply temporary draft form state if available (e.g. while adding a new category)
+      if (window._draftTxFormState) {
+        const draft = window._draftTxFormState;
+        if (draft.type) initialType = draft.type;
+        if (draft.amount !== undefined) initialAmount = draft.amount;
+        if (draft.date) initialDate = draft.date;
+        if (draft.note !== undefined) initialNote = draft.note;
+        if (draft.tags) initialTags = draft.tags;
+        if (draft.account) initialAccount = draft.account;
+        if (draft.transferTo) initialToAccount = draft.transferTo;
+        if (draft.category) initialCategory = draft.category;
+        if (draft.isRecurrent !== undefined) initialIsRecurrent = draft.isRecurrent;
+        if (draft.recurrenceEndDate !== undefined) initialRecurrenceEndDate = draft.recurrenceEndDate;
+        if (draft.recurrenceInterval !== undefined) initialRecurrenceInterval = draft.recurrenceInterval;
+        if (draft.recurrenceFreq !== undefined) initialRecurrenceFreq = draft.recurrenceFreq;
+        if (draft.recurrenceSeriesId !== undefined) initialRecurrenceSeriesId = draft.recurrenceSeriesId;
+        delete window._draftTxFormState;
+      }
+
+      if (window._pendingCategorySelection) {
+        initialCategory = window._pendingCategorySelection;
+        delete window._pendingCategorySelection;
+      }
 
       const disableToggles = ''; // Allow switching even in edit mode now that save logic is improved
       
@@ -739,17 +918,17 @@ window.Views = {
                   <span id="tx-recurrent-text" style="font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;">Disabled</span>
                 </div>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="tx-is-recurrent" ${txToEdit && txToEdit.recurrence ? 'checked' : ''}>
+                  <input type="checkbox" id="tx-is-recurrent" ${initialIsRecurrent ? 'checked' : ''}>
                   <span class="slider"></span>
                 </label>
               </div>
               <div id="tx-recurrence-end-group" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 4px;">
                 <label class="form-label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px;">End Date</label>
-                <input type="date" id="tx-recurrence-end-date" class="form-control" value="${txToEdit && txToEdit.recurrence && txToEdit.recurrence.endDate ? txToEdit.recurrence.endDate : ''}">
+                <input type="date" id="tx-recurrence-end-date" class="form-control" value="${initialRecurrenceEndDate}">
               </div>
-              <input type="hidden" id="tx-recurrence-interval" value="${txToEdit && txToEdit.recurrence ? txToEdit.recurrence.interval : '1'}">
-              <input type="hidden" id="tx-recurrence-freq" value="${txToEdit && txToEdit.recurrence ? txToEdit.recurrence.frequency : 'months'}">
-              <input type="hidden" id="tx-recurrence-series-id" value="${txToEdit && txToEdit.recurrence ? txToEdit.recurrence.seriesId : ''}">
+              <input type="hidden" id="tx-recurrence-interval" value="${initialRecurrenceInterval}">
+              <input type="hidden" id="tx-recurrence-freq" value="${initialRecurrenceFreq}">
+              <input type="hidden" id="tx-recurrence-series-id" value="${initialRecurrenceSeriesId}">
             </div>
           </div>
           
@@ -903,7 +1082,8 @@ window.Views = {
 
       // Category Creation Modal logic (reusable)
       let previousCategory = categorySelect.value;
-      const showNewCategoryModal = () => {
+      const showNewCategoryModal = (onCreatedCallback) => {
+        captureDraftTxFormState(container);
         let selectedIcon = 'pin';
         window.Components.Modal.show({
           title: 'New Category',
@@ -926,18 +1106,27 @@ window.Views = {
             if (name) {
               const newId = window.StackdDB.generateId();
               window._pendingCategorySelection = newId;
-              window.Store.dispatch('ADD_CATEGORY', { 
+              const newCat = { 
                 id: newId,
                 name, 
                 icon: selectedIcon, 
                 typeHint: typeInput.value 
-              });
-              
+              };
+              window.Store.dispatch('ADD_CATEGORY', newCat);
+
+              updateCategories();
+              categorySelect.value = newId;
+              categorySelect.setAttribute('data-initial', newId);
+              previousCategory = newId;
+
               closeModal();
+
+              if (typeof onCreatedCallback === 'function') {
+                onCreatedCallback(newCat);
+              }
             }
           },
           onClose: () => {
-            // Restore previous choice if they just closed the modal without saving
             if (categorySelect.value === 'CREATE_NEW_CATEGORY') {
               categorySelect.value = previousCategory;
             }
@@ -969,17 +1158,45 @@ window.Views = {
         }, 100);
       };
 
-      // Add custom category button
-      btnAddCategory.addEventListener('click', showNewCategoryModal);
+      // Category Selection Modal trigger
+      const openCategoryModal = () => {
+        captureDraftTxFormState(container);
+        const currentVal = categorySelect.value;
+        const typeHint = typeInput.value;
+        window.Components.CategorySelectionModal.show({
+          selectedCategoryId: currentVal,
+          typeHint: typeHint,
+          onSelect: (cat) => {
+            const catId = cat ? (cat.id !== undefined ? cat.id : cat) : '';
+            categorySelect.value = catId;
+            categorySelect.setAttribute('data-initial', catId);
+            previousCategory = catId;
+          },
+          onAddNewCategory: (onCreated) => {
+            showNewCategoryModal(onCreated);
+          }
+        });
+      };
 
-      // Inline dropdown action
-      categorySelect.addEventListener('change', () => {
-        if (categorySelect.value === 'CREATE_NEW_CATEGORY') {
-          showNewCategoryModal();
-        } else {
-          previousCategory = categorySelect.value;
+      categorySelect.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        categorySelect.blur();
+        openCategoryModal();
+      });
+      categorySelect.addEventListener('click', (e) => {
+        e.preventDefault();
+        categorySelect.blur();
+        openCategoryModal();
+      });
+      categorySelect.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openCategoryModal();
         }
       });
+
+      // Add custom category button
+      btnAddCategory.addEventListener('click', () => showNewCategoryModal());
       
       // Tagging Logic
       let currentTags = Array.from(container.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
@@ -1656,8 +1873,8 @@ Object.assign(window.Views, {
           ? Math.min((bdg.spent / bdg.finalLimit) * 100, 100)
           : 0;
         const isOver = hasBudget && bdg.spent > bdg.finalLimit;
-        const barColor = isOver ? 'var(--color-expense-bg)' : 'var(--color-primary)';
-        const pctColor = isOver || pct >= 90 ? 'var(--color-expense-bg)' : pct >= 75 ? '#f59e0b' : 'var(--text-secondary)';
+        const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
+        const pctColor = isOver || pct >= 90 ? 'var(--color-expense)' : pct >= 75 ? '#f59e0b' : 'var(--text-secondary)';
 
         let carryOverBadge = '';
         if (hasBudget && bdg.carryover !== 0) {
@@ -2270,13 +2487,13 @@ Object.assign(window.Views, {
             </div>
           </div>
           
-          <div class="section-title" style="color: var(--color-expense-bg);">Danger Zone</div>
-          <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5); border: 1px solid var(--color-expense-bg);">
+          <div class="section-title" style="color: var(--color-expense);">Danger Zone</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5); border: 1px solid rgba(239, 68, 68, 0.3);">
             <div id="btn-factory-reset" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0; background: var(--color-expense-bg); color: #fff;"><i data-lucide="alert-triangle"></i></div>
+                <div class="list-item-icon" style="margin: 0; background: var(--color-expense-bg); color: var(--color-expense);"><i data-lucide="alert-triangle"></i></div>
                 <div>
-                  <div class="list-item-title" style="color: var(--color-expense-bg);">Factory Reset</div>
+                  <div class="list-item-title" style="color: var(--color-expense); font-weight: 600;">Factory Reset</div>
                   <div class="list-item-subtitle text-secondary">Erase all data and start fresh</div>
                 </div>
               </div>
@@ -2465,34 +2682,8 @@ Object.assign(window.Views, {
             const innerBtn = document.getElementById('modal-btn-new-account');
             if (innerBtn) {
               innerBtn.addEventListener('click', () => {
-                document.getElementById('global-modal').style.display = 'none';
-                window.Components.Modal.show({
-                  title: 'New Account',
-                  content: `
-                    <div class="form-group">
-                      <label class="form-label">Account Name</label>
-                      <input type="text" id="new-account-name" class="form-control" placeholder="e.g. Wallet, Checking..." autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Opening Balance (optional)</label>
-                      <input type="number" id="new-account-balance" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label">Opening Balance Date</label>
-                      <input type="date" id="new-account-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                  `,
-                  saveText: 'Create Account',
-                  onSave: (closeModal) => {
-                    const name = document.getElementById('new-account-name').value.trim();
-                    if (name) {
-                      const ob = parseFloat(document.getElementById('new-account-balance').value) || 0;
-                      const dDate = document.getElementById('new-account-date').value;
-                      window.Store.dispatch('ADD_ACCOUNT', { name, openingBalance: ob, openingDate: dDate });
-                      closeModal();
-                    }
-                  }
-                });
+                window.Components.Modal.hide();
+                window.Router.navigate('#edit-account');
               });
             }
           }, 100);
@@ -2536,6 +2727,7 @@ Object.assign(window.Views, {
         t => t.accountId === account.id && t.type === 'opening_balance'
       ) : null;
       const currentObAmt = currentOb ? currentOb.amount : 0;
+      const isNegativeOb = currentObAmt < 0;
       const currentObDate = currentOb ? currentOb.date : new Date().toISOString().split('T')[0];
       const currentBalance = account ? window.Store.getAccountBalance(account.id) : 0;
       const currSym = window.Store.getCurrencySymbol();
@@ -2545,10 +2737,12 @@ Object.assign(window.Views, {
       const nameValue = account ? account.name : '';
       const iconValue = account ? account.icon : 'wallet';
       const typeValue = account ? account.type : 'Account';
+      const defaultColor = (window.Store.ACCOUNT_COLORS || [])[state.accounts.length % (window.Store.ACCOUNT_COLORS || []).length] || '#0075EB';
+      const colorValue = account ? account.color : defaultColor;
       const isDefault = state.defaultAccountId === accountId;
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container animate-fade-in" style="padding-bottom: 160px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
             <a href="#dashboard" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
@@ -2582,12 +2776,31 @@ Object.assign(window.Views, {
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="edit-acc-balance">Opening Balance</label>
-              <div style="position: relative;">
-                <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${currSym}</span>
-                <input type="number" id="edit-acc-balance" class="form-control" value="${currentObAmt}" step="0.01" inputmode="decimal" style="padding-left: 30px;">
+            <div class="form-group" style="margin-bottom: var(--space-5);">
+              <label class="form-label">Account Color</label>
+              <div id="acc-color-picker" style="display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0;" role="radiogroup" aria-label="Account Color">
+                ${(window.Store.ACCOUNT_COLORS || []).map(c => {
+                  const isSelected = c.toLowerCase() === (colorValue || '').toLowerCase();
+                  return `
+                    <button type="button" class="color-swatch-btn ${isSelected ? 'active' : ''}" data-color="${c}" aria-label="Select color ${c}" style="width: 34px; height: 34px; border-radius: 50%; background-color: ${c}; border: ${isSelected ? '3px solid var(--color-primary)' : '2px solid transparent'}; cursor: pointer; transition: transform 0.2s, border-color 0.2s; transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'}; box-shadow: 0 2px 6px rgba(0,0,0,0.15);" role="radio" aria-checked="${isSelected}"></button>
+                  `;
+                }).join('')}
               </div>
+            </div>
+
+            <div class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" for="edit-acc-balance" style="margin-bottom: 0;">Opening Balance</label>
+                <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 14px; padding: 2px;" role="group" aria-label="Balance sign">
+                  <button type="button" id="btn-ob-pos" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${!isNegativeOb ? 'background: var(--color-primary); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!isNegativeOb}">Positive</button>
+                  <button type="button" id="btn-ob-neg" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${isNegativeOb ? 'background: var(--color-expense); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${isNegativeOb}">Negative</button>
+                </div>
+              </div>
+              <div style="position: relative;">
+                <span id="ob-sign-symbol" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: ${isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)'}; font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${isNegativeOb ? '-' : ''}${currSym}</span>
+                <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(2)}" placeholder="0.00" inputmode="numeric" style="padding-left: ${isNegativeOb ? '38px' : '30px'}; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
+              </div>
+              <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">Use negative for credit cards, loans, or existing debts.</p>
             </div>
 
             ${isEdit ? `
@@ -2647,7 +2860,29 @@ Object.assign(window.Views, {
       const accountId = params.id;
       const account = accountId ? state.accounts.find(a => a.id === accountId) : null;
       
+      const currentOb = account ? state.transactions.find(
+        t => t.accountId === account.id && t.type === 'opening_balance'
+      ) : null;
+      const currentObAmt = currentOb ? currentOb.amount : 0;
+      let isNegativeOb = currentObAmt < 0;
+      const currSym = window.Store.getCurrencySymbol();
+
       let selectedIcon = account ? account.icon : 'wallet';
+      let selectedColor = account ? account.color : ((window.Store.ACCOUNT_COLORS || [])[state.accounts.length % (window.Store.ACCOUNT_COLORS || []).length] || '#0075EB');
+
+      const swatches = container.querySelectorAll('.color-swatch-btn');
+      swatches.forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedColor = btn.dataset.color;
+          swatches.forEach(s => {
+            const isSelected = s.dataset.color.toLowerCase() === selectedColor.toLowerCase();
+            s.style.border = isSelected ? '3px solid var(--color-primary)' : '2px solid transparent';
+            s.style.transform = isSelected ? 'scale(1.15)' : 'scale(1)';
+            s.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+            s.classList.toggle('active', isSelected);
+          });
+        });
+      });
 
       const iconTrigger = container.querySelector('#acc-icon-trigger');
       if (iconTrigger) {
@@ -2671,27 +2906,162 @@ Object.assign(window.Views, {
       // txDelta = sum of all non-opening-balance transactions
       // currentBalance = openingBalance + txDelta
       // -------------------------------------------------------
-      const allTx = state.transactions.filter(
+      const allTx = account ? state.transactions.filter(
         t => t.accountId === account.id && t.type !== 'opening_balance'
-      );
+      ) : [];
       const txDelta = allTx.reduce((sum, t) => {
         return window.Store._isPositiveTx(t) ? sum + t.amount : sum - t.amount;
       }, 0);
 
       const obInput  = document.getElementById('edit-acc-balance');
       const curInput = document.getElementById('edit-acc-current-balance');
+      const btnObPos = container.querySelector('#btn-ob-pos');
+      const btnObNeg = container.querySelector('#btn-ob-neg');
+      const obSignSymbol = container.querySelector('#ob-sign-symbol');
 
       let syncLock = false; // prevents recursive input events
 
-      // Scenario A: Opening Balance edited → update Current Balance
+      const updateObSignUI = () => {
+        if (btnObPos && btnObNeg) {
+          if (isNegativeOb) {
+            btnObNeg.style.background = 'var(--color-expense)';
+            btnObNeg.style.color = 'white';
+            btnObNeg.setAttribute('aria-pressed', 'true');
+            btnObPos.style.background = 'transparent';
+            btnObPos.style.color = 'var(--text-secondary)';
+            btnObPos.setAttribute('aria-pressed', 'false');
+          } else {
+            btnObPos.style.background = 'var(--color-primary)';
+            btnObPos.style.color = 'white';
+            btnObPos.setAttribute('aria-pressed', 'true');
+            btnObNeg.style.background = 'transparent';
+            btnObNeg.style.color = 'var(--text-secondary)';
+            btnObNeg.setAttribute('aria-pressed', 'false');
+          }
+        }
+        if (obSignSymbol) {
+          obSignSymbol.textContent = (isNegativeOb ? '-' : '') + currSym;
+          obSignSymbol.style.color = isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)';
+        }
+        if (obInput) {
+          obInput.style.paddingLeft = isNegativeOb ? '38px' : '30px';
+          obInput.style.color = isNegativeOb ? 'var(--color-expense)' : '';
+        }
+      };
+
+      const getSignedOb = () => {
+        if (!obInput) return 0;
+        const rawDigits = obInput.value.replace(/\D/g, '').slice(0, 12);
+        const cents = parseInt(rawDigits || '0', 10);
+        const absVal = cents / 100;
+        return isNegativeOb ? -absVal : absVal;
+      };
+
+      if (btnObPos) {
+        btnObPos.addEventListener('click', () => {
+          isNegativeOb = false;
+          updateObSignUI();
+          if (!syncLock) {
+            syncLock = true;
+            const newOb = getSignedOb();
+            const newCur = newOb + txDelta;
+            if (curInput) curInput.value = newCur.toFixed(2);
+            syncLock = false;
+          }
+        });
+      }
+
+      if (btnObNeg) {
+        btnObNeg.addEventListener('click', () => {
+          isNegativeOb = true;
+          updateObSignUI();
+          if (!syncLock) {
+            syncLock = true;
+            const newOb = getSignedOb();
+            const newCur = newOb + txDelta;
+            if (curInput) curInput.value = newCur.toFixed(2);
+            syncLock = false;
+          }
+        });
+      }
+
+      const typeSelect = container.querySelector('#edit-acc-type');
+      if (typeSelect && !account) {
+        typeSelect.addEventListener('change', () => {
+          if (typeSelect.value === 'Credit card') {
+            isNegativeOb = true;
+            updateObSignUI();
+            if (!syncLock) {
+              syncLock = true;
+              const newOb = getSignedOb();
+              const newCur = newOb + txDelta;
+              if (curInput) curInput.value = newCur.toFixed(2);
+              syncLock = false;
+            }
+          }
+        });
+      }
+
+      // Scenario A: Opening Balance edited → strict numeric input (0-9 only), right-to-left decimal shift & update Current Balance
       if (obInput) {
+        const processDecimalShift = () => {
+          const rawDigits = obInput.value.replace(/\D/g, '').slice(0, 12);
+          const cents = parseInt(rawDigits || '0', 10);
+          const formatted = (cents / 100).toFixed(2);
+          obInput.value = formatted;
+          return isNegativeOb ? -(cents / 100) : (cents / 100);
+        };
+
+        // Strict numeric input: allow navigation/control keys, block non-digits (0-9 only)
+        obInput.addEventListener('keydown', (e) => {
+          if (
+            e.key === 'Backspace' ||
+            e.key === 'Delete' ||
+            e.key === 'ArrowLeft' ||
+            e.key === 'ArrowRight' ||
+            e.key === 'Tab' ||
+            e.key === 'Enter' ||
+            e.key === 'Escape' ||
+            e.key === 'Home' ||
+            e.key === 'End' ||
+            e.ctrlKey ||
+            e.metaKey
+          ) {
+            return;
+          }
+          if (!/^[0-9]$/.test(e.key)) {
+            e.preventDefault();
+          }
+        });
+
+        // Decimal shift filling on input
         obInput.addEventListener('input', () => {
           if (syncLock) return;
           syncLock = true;
-          const newOb = parseFloat(obInput.value) || 0;
+          const newOb = processDecimalShift();
           const newCur = newOb + txDelta;
           if (curInput) curInput.value = newCur.toFixed(2);
           syncLock = false;
+        });
+
+        // Sanitize pasted content
+        obInput.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+          const pastedDigits = pastedText.replace(/\D/g, '');
+          const currentDigits = obInput.value.replace(/\D/g, '');
+          const combinedDigits = (currentDigits + pastedDigits).slice(0, 12);
+          const cents = parseInt(combinedDigits || '0', 10);
+          const formatted = (cents / 100).toFixed(2);
+          obInput.value = formatted;
+
+          if (!syncLock) {
+            syncLock = true;
+            const newOb = isNegativeOb ? -(cents / 100) : (cents / 100);
+            const newCur = newOb + txDelta;
+            if (curInput) curInput.value = newCur.toFixed(2);
+            syncLock = false;
+          }
         });
       }
 
@@ -2706,7 +3076,9 @@ Object.assign(window.Views, {
 
           const newCur = parseFloat(curInput.value) || 0;
           const newOb = newCur - txDelta;
-          if (obInput) obInput.value = newOb.toFixed(2);
+          isNegativeOb = newOb < 0;
+          updateObSignUI();
+          if (obInput) obInput.value = Math.abs(newOb).toFixed(2);
           syncLock = false;
         });
       }
@@ -2715,7 +3087,8 @@ Object.assign(window.Views, {
       if (btnSave) {
         btnSave.addEventListener('click', () => {
           const name = document.getElementById('edit-acc-name').value.trim();
-          const ob = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
+          const absOb = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
+          const ob = isNegativeOb ? -absOb : absOb;
           const dDate = document.getElementById('edit-acc-date').value;
           const type = document.getElementById('edit-acc-type').value;
           const makeDefault = document.getElementById('edit-acc-default').checked;
@@ -2734,6 +3107,7 @@ Object.assign(window.Views, {
               openingBalance: ob, 
               openingDate: dDate,
               icon: selectedIcon,
+              color: selectedColor,
               type: type
             });
             if (makeDefault) {
@@ -2751,6 +3125,7 @@ Object.assign(window.Views, {
               openingBalance: ob, 
               openingDate: dDate,
               icon: selectedIcon,
+              color: selectedColor,
               type: type
             });
             if (makeDefault) {

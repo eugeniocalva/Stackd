@@ -6,6 +6,7 @@ test.describe('Bidirectional Balance Sync Engine', () => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();
+      localStorage.setItem('stackd_v1_setup_done', '1');
       window.location.reload();
     });
     // Wait for the app to initialize

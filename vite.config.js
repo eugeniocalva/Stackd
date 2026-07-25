@@ -6,7 +6,14 @@ export default defineConfig({
   plugins: [viteSingleFile()],
   server: {
     port: 3000,
-    open: false
+    open: false,
+    proxy: {
+      '/api-yahoo': {
+        target: 'https://query1.finance.yahoo.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-yahoo/, '')
+      }
+    }
   },
   build: {
     target: 'es2020',

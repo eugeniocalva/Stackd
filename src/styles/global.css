@@ -5,8 +5,7 @@
 
 body {
   font-family: var(--font-family-body);
-  background: #f1f5f9; /* Solid fallback */
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: #ffffff;
   color: var(--text-primary);
   min-height: 100vh;
   /* Disable text selection and pull-to-refresh for an app-like feel */

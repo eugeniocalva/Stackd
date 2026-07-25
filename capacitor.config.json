@@ -1,5 +1,12 @@
 {
   "appId": "com.stackd.finance",
-  "appName": "Stackd",
-  "webDir": "dist"
+  "appName": "Stack'd",
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#ffffff",
+      "showSpinner": false
+    }
+  }
 }

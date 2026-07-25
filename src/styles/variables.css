@@ -7,17 +7,19 @@
   --bg-surface-dim: #dfe6ed;
   
   --text-primary: #1a1e21;
-  --text-secondary: #64748b; /* slate-500 */
-  --text-tertiary: #94a3b8;  /* slate-400 */
+  --text-secondary: #475569; /* slate-600, contrast 6.1:1 */
+  --text-tertiary: #64748b;  /* slate-500, contrast 4.6:1 */
   --text-placeholder: #cbd5e1;
   
-  /* Primary Accent: Indigo/Violet Gradient */
-  --color-primary: #6366f1; /* indigo-500 */
-  --color-primary-dim: #4f46e5; /* indigo-600 */
+  /* Primary Accent: Dark/Black (Trade Republic Style) */
+  --color-primary: #111111; /* near-black */
+  --color-primary-dim: #000000; /* pure black */
+  --color-primary-bg: #f0f0f0; /* light grey for hover/bg states */
+  --color-accent: #111111;
   --text-on-primary: #ffffff;
   
-  --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  --grad-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+  --grad-primary: #111111; /* flat — no gradient */
+  --grad-surface: transparent; /* flat — no surface gradient */
   
   /* Financial Context Colors */
   --color-income: #10b981;    /* emerald-500 */
@@ -27,9 +29,12 @@
   --color-expense: #ef4444;    /* red-500 */
   --color-expense-bg: #fef2f2; /* red-50 */
   --color-expense-val: #dc2626; /* red-600 */
+  
+  --color-warning: #f59e0b;     /* amber-500 */
+  --color-warning-bg: #fffbeb;  /* amber-50 */
 
-  --color-balance-val: #3b82f6; /* blue-500 */
-  --color-balance-bg: #eff6ff;
+  --color-balance-val: #111111; /* neutral/black */
+  --color-balance-bg: #f8fafc;
   
   /* Glassmorphism Tokens */
   --glass-bg: rgba(255, 255, 255, 0.75);
@@ -74,9 +79,8 @@
   
   /* Z-indexes */
   --z-nav: 100;
-  --z-modal-backdrop: 200;
-  --z-modal: 210;
+  --z-modal-backdrop: 3000;
+  --z-modal: 3100;
   
   --safe-bottom: env(safe-area-inset-bottom, 20px);
 }
-

@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Stackd v0.56</title>
+    <title>Stack'd v0.60</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://unpkg.com">
@@ -12,14 +15,63 @@
     <link rel="stylesheet" href="src/styles/variables.css" />
     <link rel="stylesheet" href="src/styles/global.css" />
     <link rel="stylesheet" href="src/styles/components.css" />
-    <script>
-      /* Inlined Lucide v0.400.0 */
-      (function(a,n){typeof exports=="object"&&typeof module<"u"?n(exports):typeof define=="function"&&define.amd?define(["exports"],n):(a=typeof globalThis<"u"?globalThis:a||self,n(a.lucide={}))})(this,function(a){"use strict";const n=(t,d,c=[])=>{const e=document.createElementNS("http://www.w3.org/2000/svg",t);return Object.keys(d).forEach(M=>{e.setAttribute(M,String(d[M]))}),c.length&&c.forEach(M=>{const l=n(...M);e.appendChild(l)}),e};var u0=([t,d,c])=>n(t,d,c);const Ry=t=>Array.from(t.attributes).reduce((d,c)=>(d[c.name]=c.value,d),{}),qy=t=>typeof t=="string"?t:!t||!t.class?"":t.class&&typeof t.class=="string"?t.class.split(" "):t.class&&Array.isArray(t.class)?t.class:"",Ty=t=>t.flatMap(qy).map(d=>d.trim()).filter(Boolean).filter((d,c,e)=>e.indexOf(d)===c).join(" "),zy=t=>t.replace(/(\w)(\w*)(_|-|\s*)/g,(d,c,e)=>c.toUpperCase()+e.toLowerCase()),C0=(t,{nameAttr:d,icons:c,attrs:e})=>{const M=t.getAttribute(d);if(M==null)return;const l=zy(M),By=c[l];if(!By)return;const Fy=Ry(t),[xy,Uy,Oy]=By,Dy={...Uy,"data-lucide":M,...e,...Fy},Zy=Ty(["lucide",`lucide-${M}`,Fy,e]);Zy&&Object.assign(Dy,{class:Zy});const Gy=u0([xy,Dy,Oy]);return t.parentNode?.replaceChild(Gy,t)},h={xmlns:"http://www.w3.org/2000/svg",width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":2,"stroke-linecap":"round","stroke-linejoin":"round"},I0=["svg",h,[["line",{x1:"3",x2:"21",y1:"6",y2:"6"}],["line",{x1:"3",x2:"21",y1:"12",y2:"12"}],["line",{x1:"3",x2:"21",y1:"18",y2:"18"}]]],I=["svg",h,[["circle",{cx:"12",cy:"12",r:"10"}],["path",{d:"M8 12h8"}]]],j=["svg",h,[["circle",{cx:"12",cy:"12",r:"10"}],["polygon",{points:"10 8 16 12 10 16 10 8"}]]];a.createIcons=(t=>{const{nameAttr:d="data-lucide",icons:c=a,attrs:e={}}=t||{};document.querySelectorAll(`[${d}]`).forEach(M=>C0(M,{nameAttr:d,icons:c,attrs:e}))});Object.keys(a).forEach(t=>{a[t]=a[t]});});
-    </script>
+    <style>
+      #splash-screen {
+        position: fixed;
+        inset: 0;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        z-index: 99999;
+        opacity: 1;
+        transition: opacity 0.5s ease;
+      }
+      #splash-screen.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash-logo {
+        width: 120px;
+        height: 96px;
+      }
+      #splash-title {
+        font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+        font-weight: 800;
+        font-size: 2.2rem;
+        color: #111111;
+        letter-spacing: -0.02em;
+      }
+    </style>
+    <script src="https://unpkg.com/lucide@0.400.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 
-    <script type="module" src="src/libs/chart.js"></script>
+
+
+    <script defer src="src/libs/chart.js"></script>
   </head>
   <body>
+    <!-- Splash Screen Overlay -->
+    <div id="splash-screen" role="presentation" aria-hidden="true">
+      <svg id="splash-logo" viewBox="0 0 130 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Bottom layer -->
+        <polygon points="10,70 45,52 80,70 45,88" fill="#111111"/>
+        <!-- Middle layer -->
+        <polygon points="10,50 45,32 80,50 45,68" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="miter"/>
+        <!-- Top layer -->
+        <polygon points="10,30 45,12 80,30 45,48" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="miter"/>
+        
+        <!-- Arrow shaft -->
+        <rect x="94" y="40" width="12" height="48" fill="#111111"/>
+        <!-- Arrow head -->
+        <polygon points="80,40 100,10 120,40" fill="#111111"/>
+      </svg>
+      <span id="splash-title">Stack'd</span>
+    </div>
+
     <div id="app">
       <!-- Main view container (router outlet) -->
       <main id="router-view" class="view-container"></main>
@@ -33,15 +85,15 @@
       <div id="modal-container"></div>
     </div>
     
-    <script type="module" src="src/db.js?v=7"></script>
-    <script type="module" src="src/utils/scroll.js?v=7"></script>
-    <script type="module" src="src/utils/keyboard.js?v=7"></script>
-    <script type="module" src="src/store.js?v=7"></script>
-    <script type="module" src="src/components.js?v=7"></script>
-    <script type="module" src="src/views.js?v=7"></script>
-    <script type="module" src="src/router.js?v=7"></script>
-    <script type="module" src="src/export.js?v=7"></script>
-    <script type="module" src="src/import.js?v=7"></script>
-    <script type="module" src="src/main.js?v=7"></script>
+    <script defer src="src/db.js?v=13"></script>
+    <script defer src="src/utils/scroll.js?v=13"></script>
+    <script defer src="src/utils/keyboard.js?v=13"></script>
+    <script defer src="src/store.js?v=13"></script>
+    <script defer src="src/components.js?v=14"></script>
+    <script defer src="src/views.js?v=13"></script>
+    <script defer src="src/router.js?v=13"></script>
+    <script defer src="src/export.js?v=13"></script>
+    <script defer src="src/import.js?v=13"></script>
+    <script defer src="src/main.js?v=13"></script>
   </body>
 </html>

@@ -31,12 +31,13 @@ describe('Multi-Period Filtering Integration', () => {
     executeFile('db.js');
     executeFile('store.js');
     
-    // Initialize store
-    global.window.Store.init();
-
-    // Mock system time to Wednesday, April 15, 2026
+    // Mock system time to Wednesday, April 15, 2026 BEFORE store init
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-15T12:00:00'));
+
+    // Initialize store
+    global.window.Store.init();
+    global.window.Store.dispatch('RESET_PERIOD'); // Ensure activePeriod grabs mocked date
   });
 
   afterEach(() => {

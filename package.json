@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node build.cjs",
     "preview": "vite preview",
     "lint": "eslint src",
     "test": "vitest run",
@@ -29,7 +29,7 @@
     "vitest": "^4.1.2"
   },
   "dependencies": {
-    "@capacitor/app": "^8.1.0",
+    "@capacitor/app": "^6.0.0",
     "@capacitor/core": "^6.1.1",
     "chart.js": "^4.4.2"
   }

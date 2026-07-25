@@ -8,20 +8,24 @@ window.Components = {
         <div class="nav-action-menu" id="nav-action-menu" style="position: fixed; bottom: 100px; right: var(--space-4); width: 280px; background-color: #ffffff; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: var(--space-4); box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(255, 255, 255, 0.4); z-index: 999; transform: translateY(20px) scale(0.9); opacity: 0; pointer-events: none; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             <a href="#add" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: #E3F2FD; color: #1E88E5; display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Log</span>
             </a>
-            <a href="#settings" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: #F3E5F5; color: #8E24AA; display: flex; align-items: center; justify-content: center;"><i data-lucide="more-horizontal"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Others</span>
-            </a>
             <a href="#edit-account" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: #E8F5E9; color: #43A047; display: flex; align-items: center; justify-content: center;"><i data-lucide="landmark"></i></div>
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="landmark"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Account</span>
             </a>
+            <a href="#debt" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="percent"></i></div>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Debt</span>
+            </a>
             <a href="#edit-category" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: #FFF3E0; color: #FB8C00; display: flex; align-items: center; justify-content: center;"><i data-lucide="tag"></i></div>
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="tag"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Category</span>
+            </a>
+            <a href="#settings" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: var(--space-3); transition: transform 0.2s ease;">
+              <div style="width: 32px; height: 32px; border-radius: 10px; background: var(--bg-surface-sunken); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></div>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Others &amp; Settings</span>
             </a>
           </div>
         </div>
@@ -73,8 +77,8 @@ window.Components = {
         this.closeMenu(container);
       } else {
         fab.setAttribute('aria-expanded', 'true');
-        fab.style.transform = 'rotate(45deg)';
-        fab.style.color = '#4285F4'; // Change icon color instead of bg
+        fab.style.color = 'var(--text-on-primary)';
+        fab.style.background = 'var(--color-primary)';
         menu.style.opacity = '1';
         menu.style.pointerEvents = 'all';
         menu.style.transform = 'translateY(0) scale(1)';
@@ -89,8 +93,9 @@ window.Components = {
       if (!fab) return;
 
       fab.setAttribute('aria-expanded', 'false');
-      fab.style.transform = 'rotate(0deg)';
       fab.style.color = 'var(--color-primary)';
+      fab.style.background = ''; // Revert to CSS default (glassmorphic)
+      fab.style.transform = 'rotate(0deg)';
       menu.style.opacity = '0';
       menu.style.pointerEvents = 'none';
       menu.style.transform = 'translateY(20px) scale(0.9)';
@@ -135,13 +140,20 @@ window.Components = {
 
   Modal: {
     show(options) {
-      const { title, content, onSave, saveText = 'Save', showDelete = false, onDelete } = options;
+      const { title, content, onSave, saveText = 'Save', showDelete = false, onDelete, showClose = false } = options;
       const container = document.getElementById('modal-container');
       container.innerHTML = `
         <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
           <div class="modal-content">
             <div class="modal-handle"></div>
-            <h2 id="modal-title" class="header-title" style="margin-bottom: var(--space-4); font-size: var(--text-2xl);">${title}</h2>
+            <div class="modal-header-container">
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${title}</h2>
+              ${showClose ? `
+                <button class="modal-close-btn" id="modal-close-icon-btn" aria-label="Close modal">
+                  <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+              ` : ''}
+            </div>
             <div class="modal-body">${content}</div>
             <div style="margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3);">
               <button class="btn btn-primary" id="modal-save-btn">${saveText}</button>
@@ -150,10 +162,52 @@ window.Components = {
             </div>
           </div>
         </div>`;
+      
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+
       requestAnimationFrame(() => {
         const backdrop = document.getElementById('active-modal');
         if (backdrop) backdrop.classList.add('open');
       });
+
+      const backdrop = document.getElementById('active-modal');
+      const modalContent = backdrop.querySelector('.modal-content');
+
+      // Swipe-to-dismiss Logic
+      let startY = 0;
+      let currentY = 0;
+      let isDragging = false;
+
+      const onStart = (e) => {
+        startY = e.touches[0].clientY;
+        isDragging = true;
+        modalContent.style.transition = 'none';
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        currentY = e.touches[0].clientY - startY;
+        if (currentY > 0) {
+          modalContent.style.transform = `translateY(${currentY}px)`;
+        }
+      };
+
+      const onEnd = () => {
+        isDragging = false;
+        modalContent.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+        if (currentY > 150) {
+          modalContent.style.transform = `translateY(100%)`;
+          setTimeout(() => boundClose(), 200);
+        } else {
+          modalContent.style.transform = `translateY(0)`;
+        }
+        currentY = 0;
+      };
+
+      backdrop.addEventListener('touchstart', onStart, { passive: true });
+      backdrop.addEventListener('touchmove', onMove, { passive: true });
+      backdrop.addEventListener('touchend', onEnd);
+
       const boundClose = () => this.hide();
       const saveBtn = document.getElementById('modal-save-btn');
       if (saveBtn) {
@@ -164,6 +218,10 @@ window.Components = {
       const cancelBtn = document.getElementById('modal-cancel-btn');
       if (cancelBtn) {
         cancelBtn.addEventListener('click', boundClose);
+      }
+      const closeIconBtn = document.getElementById('modal-close-icon-btn');
+      if (closeIconBtn) {
+        closeIconBtn.addEventListener('click', boundClose);
       }
       const deleteBtn = document.getElementById('modal-delete-btn');
       if (deleteBtn) {
@@ -189,20 +247,23 @@ window.Components = {
 
   IconPicker: {
     GROUPS: [
-      { label: 'Finance', icons: ['wallet', 'landmark', 'banknote', 'coins', 'credit-card', 'trending-up', 'trending-down', 'receipt', 'piggy-bank', 'percent'] },
-      { label: 'Food & Drink', icons: ['utensils', 'coffee', 'pizza', 'glass-water', 'beer', 'cup-soda', 'cake', 'clover', 'ice-cream', 'leaf'] },
-      { label: 'Transport', icons: ['car', 'bus', 'plane', 'bike', 'fuel', 'train', 'ship', 'map-pin'] },
-      { label: 'Shopping', icons: ['shopping-bag', 'shopping-cart', 'tag', 'gift', 'shirt', 'watch'] },
-      { label: 'Home', icons: ['home', 'zap', 'droplets', 'wifi', 'tv', 'refrigerator'] },
-      { label: 'Tech & Work', icons: ['laptop', 'smartphone', 'briefcase', 'book', 'palette', 'globe'] },
-      { label: 'Education & Health', icons: ['school', 'graduation-cap', 'building', 'hospital', 'heart', 'pill', 'activity', 'dumbbell', 'baby'] },
-      { label: 'Pets & Misc', icons: ['dog', 'cat', 'pin', 'package', 'star', 'bookmark', 'bell', 'flag', 'help-circle'] }
+      { label: 'Finance', icons: ['wallet', 'landmark', 'banknote', 'coins', 'credit-card', 'trending-up', 'trending-down', 'receipt', 'piggy-bank', 'percent', 'bar-chart-3', 'circle-dollar-sign', 'hand-coins', 'vault', 'briefcase'] },
+      { label: 'Food & Drink', icons: ['utensils', 'coffee', 'pizza', 'glass-water', 'beer', 'cup-soda', 'cake', 'leaf', 'ice-cream', 'wine', 'sandwich', 'salad', 'milk', 'soup', 'cooking-pot', 'apple', 'egg', 'cherry', 'grape'] },
+      { label: 'Transport', icons: ['car', 'bus', 'plane', 'bike', 'fuel', 'train', 'ship', 'map-pin', 'truck', 'cable-car', 'anchor', 'parking-square', 'ticket', 'navigation'] },
+      { label: 'Shopping', icons: ['shopping-bag', 'shopping-cart', 'tag', 'gift', 'shirt', 'watch', 'gem', 'store', 'barcode', 'layers', 'sparkles', 'package', 'receipt-text'] },
+      { label: 'Home', icons: ['home', 'zap', 'droplets', 'wifi', 'tv', 'refrigerator', 'sofa', 'lamp', 'bath', 'door-closed', 'key', 'plug', 'paint-bucket', 'armchair', 'trash-2'] },
+      { label: 'Tech & Work', icons: ['laptop', 'smartphone', 'briefcase', 'book', 'palette', 'globe', 'monitor', 'keyboard', 'headphones', 'printer', 'cpu', 'cloud', 'hard-drive', 'code'] },
+      { label: 'Education', icons: ['school', 'graduation-cap', 'book-open', 'pencil', 'library', 'microscope', 'flask-conical', 'telescope', 'calculator', 'backpack', 'presentation', 'compass'] },
+      { label: 'Health', icons: ['hospital', 'heart', 'pill', 'activity', 'dumbbell', 'baby', 'stethoscope', 'syringe', 'thermometer', 'brain', 'weight'] },
+      { label: 'Pets', icons: ['dog', 'cat', 'bird', 'fish', 'rabbit', 'paw-print', 'bone', 'shell', 'bug'] },
+      { label: 'Currency', icons: ['dollar-sign', 'euro', 'pound-sterling', 'japanese-yen', 'bitcoin', 'indian-rupee', 'swiss-franc', 'russian-ruble', 'percent', 'circle-dollar-sign'] },
+      { label: 'Symbols', icons: ['hash', 'percent', 'star', 'heart', 'check', 'x', 'plus', 'minus', 'help-circle', 'info', 'alert-circle', 'clock', 'settings', 'search', 'bell', 'share-2'] }
     ],
 
     render(selectedIcon = 'pin') {
       return `
         <div class="icon-picker" id="icon-picker-v2" style="font-size: 16px;">
-          <input type="text" id="icon-search" class="form-control" placeholder="Search icons..." autocomplete="off" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">
+          <input type="text" id="icon-search" class="form-control" placeholder="Search icons..." aria-label="Search icons" autocomplete="off" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">
           <div id="icon-selected-display-v2" style="display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 auto var(--space-3); color: var(--color-primary); background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 2px dashed var(--border-color);">
             <i data-lucide="${selectedIcon}" style="font-size: 48px; width: 48px; height: 48px; display: inline-block; vertical-align: middle;"></i>
           </div>
@@ -218,9 +279,9 @@ window.Components = {
         if (!filtered.length) return '';
         return `<div style="margin-bottom: var(--space-3);">
           <div class="section-title" style="font-size: 0.75rem; margin-bottom: var(--space-2); opacity: 0.7;">${group.label}</div>
-          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;" role="group" aria-label="${group.label}">
-            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="Select icon ${i}" aria-pressed="false" style="width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--bg-surface); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-primary); transition: all 0.2s ease;">
-              <i data-lucide="${i}" style="font-size: 24px; width: 24px; height: 24px; display: inline-block; vertical-align: middle;"></i>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;" role="group" aria-label="${group.label}">
+            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="Select icon ${i}" aria-pressed="false" style="width: 40px; height: 40px; border-radius: 50%; background: #F2F2F7; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #1C1C1E; transition: all 0.2s ease;">
+              <i data-lucide="${i}" style="font-size: 20px; width: 20px; height: 20px; display: inline-block; vertical-align: middle;"></i>
             </button>`).join('')}
           </div></div>`;
       }).join('');
@@ -256,10 +317,12 @@ window.Components = {
              window.StackdHydrateIcons();
           }
           grid.querySelectorAll('.icon-btn').forEach(b => {
-            b.style.background = 'var(--bg-surface)';
+            b.style.background = '#F2F2F7';
+            b.style.color = '#1C1C1E';
             b.setAttribute('aria-pressed', 'false');
           });
-          btn.style.background = 'var(--bg-surface-sunken)';
+          btn.style.background = '#1C1C1E';
+          btn.style.color = '#ffffff';
           btn.setAttribute('aria-pressed', 'true');
           if (onSelect) onSelect(icon);
         });
@@ -274,10 +337,12 @@ window.Components = {
       div.innerHTML = `
         <div class="modal-backdrop" id="active-icon-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="ip-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 85vh;">
-            <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-              <button class="btn btn-secondary" id="ip-cancel" style="padding: 8px 16px;" aria-label="Cancel selection">Cancel</button>
-              <h3 id="ip-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">Select Icon</h3>
-              <button class="btn btn-primary" id="ip-confirm" style="padding: 8px 16px;" aria-label="Confirm selection">Done</button>
+            <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; gap: var(--space-3);">
+              <h3 id="ip-title" style="margin: 0; font-size: 1.25rem; font-family: var(--font-family-display); font-weight: 800;">Select Icon</h3>
+              <div style="display: flex; width: 100%; gap: var(--space-3);">
+                <button class="btn btn-secondary" id="ip-cancel" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="Cancel selection">Cancel</button>
+                <button class="btn btn-primary" id="ip-confirm" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="Confirm selection">Done</button>
+              </div>
             </div>
             
             <div style="padding: var(--space-4); overflow-y: auto;">
@@ -339,14 +404,16 @@ window.Components = {
   },
 
   TransactionItem: {
-    render(transaction, category, accountData, id = '') {
+    render(transaction, category, accountData, options = {}) {
       let amountClass = 'text-expense';
       let sign = '';
       
       const isOpeningBalance = transaction.type === 'opening_balance';
+      const isFlush = options && options.flush === true;
+      const allowSwipe = options && options.allowSwipeReveal === true; // v0.62: Renamed to avoid collisions
 
       // 1. Determine the Sign
-      if (transaction.type === 'expense') {
+      if (transaction.type === 'expense' || (isOpeningBalance && transaction.amount < 0)) {
         sign = '-';
       } else {
         sign = '+';
@@ -356,35 +423,57 @@ window.Components = {
       if (transaction.transferRef) {
         amountClass = 'text-transfer';
       } else if (isOpeningBalance) {
-        amountClass = 'text-balance';
+        amountClass = transaction.amount < 0 ? 'text-expense' : 'text-balance';
       } else if (sign === '+') {
         amountClass = 'text-income';
       } else {
         amountClass = 'text-expense';
       }
 
-      const formattedAmount = sign + window.Store.formatCurrency(transaction.amount);
+      const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount));
       const dateStr = new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      return `
-        <div ${id ? `id="${id}"` : ''} class="list-item touch-target" data-id="${transaction.id}" style="cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Edit transaction of ${formattedAmount}">
-          <div class="list-item-icon ${transaction.transferRef ? 'bg-tint-balance' : (category && category.typeHint === 'income' ? 'bg-tint-income' : (category && category.typeHint === 'expense' ? 'bg-tint-expense' : 'bg-tint-primary'))}">
-            <i data-lucide="${category ? category.icon : 'receipt'}"></i>
+      
+      const innerContent = `
+        <div class="list-item-icon">
+          <i data-lucide="${category ? category.icon : 'receipt'}"></i>
+        </div>
+        <div class="list-item-content">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="list-item-title">${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</div>
+            <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
-          <div class="list-item-content">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div class="list-item-title">${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</div>
-              <div class="list-item-value ${amountClass}">${formattedAmount}</div>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-              <div class="list-item-subtitle">${accountData ? accountData.name : 'Account'}</div>
-              <div class="list-item-subtitle">${dateStr}</div>
-            </div>
-            ${transaction.tags && transaction.tags.length > 0 ? `
-            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-              ${transaction.tags.map(tag => `
-                <span style="font-size: 0.7rem; color: var(--text-secondary); background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 12px; font-weight: 600;">#${tag}</span>
-              `).join('')}
-            </div>` : ''}
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <div class="list-item-subtitle">${accountData ? accountData.name : 'Account'}</div>
+            <div class="list-item-subtitle">${dateStr}</div>
+          </div>
+          ${transaction.tags && transaction.tags.length > 0 ? `
+          <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+            ${transaction.tags.map(tag => `
+              <span style="font-size: 0.7rem; color: var(--text-secondary); background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 12px; font-weight: 600;">#${tag}</span>
+            `).join('')}
+          </div>` : ''}
+        </div>`;
+
+      // v0.62: Complete branch isolation
+      if (!allowSwipe) {
+        return `
+          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''}" data-id="${transaction.id}" style="cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Edit transaction of ${formattedAmount}">
+            ${innerContent}
+          </div>`;
+      }
+
+      return `
+        <div class="swipe-container" data-id="${transaction.id}">
+          <div class="swipe-actions right">
+            <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="Edit transaction">
+              <i data-lucide="edit-2" style="width: 20px; height: 20px;"></i>
+            </button>
+            <button class="swipe-action-btn delete" data-id="${transaction.id}" aria-label="Delete transaction">
+              <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
+            </button>
+          </div>
+          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''}" data-id="${transaction.id}" style="cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Edit transaction of ${formattedAmount}">
+            ${innerContent}
           </div>
         </div>`;
     }
@@ -401,13 +490,19 @@ window.Components = {
       ];
       
       const hasCustomRange = type === 'custom';
-      const hasActiveFilters = filters.types.length > 0 || filters.accounts.length > 0 || filters.categories.length > 0;
+      const hasActiveCategoryAccountFilters = (filters.types && filters.types.length > 0) || 
+                                             (filters.accounts && filters.accounts.length > 0) || 
+                                             (filters.categories && filters.categories.length > 0) ||
+                                             (filters.tags && filters.tags.length > 0);
+      const isNonDefaultPeriod = type !== 'month' || hasCustomRange;
+      const hasAnyFilter = hasActiveCategoryAccountFilters || isNonDefaultPeriod;
 
       // Check if "Next" should be disabled (don't allow future navigation for period types)
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const bounds = window.Store._getPeriodBounds(type, value);
-      const isFuture = !hasCustomRange && (bounds.end >= todayStr);
+      const maxTxDate = window.Store.getMaxTransactionDate();
+      const isFuture = !hasCustomRange && (bounds.end >= todayStr) && (!maxTxDate || bounds.end >= maxTxDate);
 
       return `
         <div class="filter-bar-wrapper">
@@ -416,7 +511,7 @@ window.Components = {
             <button class="filter-pill filter-pill-icon" id="btn-prev-${pageKey}" data-page="${pageKey}" ${hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="Previous period">
               <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
             </button>
-            <button class="filter-pill" id="btn-today-${pageKey}" data-page="${pageKey}" ${hasCustomRange ? 'disabled style="opacity:0.3"' : ''}>
+            <button class="filter-pill" id="btn-today-${pageKey}" data-page="${pageKey}" ${hasCustomRange && pageKey !== 'history' ? 'disabled style="opacity:0.3"' : ''}>
               Today
             </button>
             <button class="filter-pill filter-pill-icon" id="btn-next-${pageKey}" data-page="${pageKey}" ${isFuture || hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="Next period">
@@ -424,6 +519,13 @@ window.Components = {
             </button>
 
             <div style="width: 1px; height: 24px; background: var(--border-color); margin: auto 4px; flex-shrink: 0;"></div>
+
+            <button class="filter-pill filter-pill-icon ${hasAnyFilter ? 'active' : ''}" 
+                    id="btn-clear-${pageKey}" data-page="${pageKey}" 
+                    aria-label="Clear all filters" title="Clear all filters"
+                    ${!hasAnyFilter ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>
+              <i data-lucide="filter-x" style="width: 18px; height: 18px;"></i>
+            </button>
 
             ${types.map(t => `
               <button class="filter-pill ${t.id === type ? 'active' : ''}" 
@@ -437,7 +539,7 @@ window.Components = {
               <i data-lucide="calendar" style="width: 18px; height: 18px;"></i>
             </button>
             
-            <button class="filter-pill filter-pill-icon ${hasActiveFilters ? 'active' : ''}" 
+            <button class="filter-pill filter-pill-icon ${hasActiveCategoryAccountFilters ? 'active' : ''}" 
                     id="btn-filter-${pageKey}" data-page="${pageKey}" aria-label="Filter and Sort">
               <i data-lucide="sliders-horizontal" style="width: 18px; height: 18px;"></i>
             </button>
@@ -446,6 +548,14 @@ window.Components = {
       `;
     },
     attachEvents(container, pageKey) {
+      // Clear All Filters
+      const btnClear = container.querySelector(`#btn-clear-${pageKey}`);
+      if (btnClear) {
+        btnClear.addEventListener('click', () => {
+          window.Store.dispatch('CLEAR_ALL_FILTERS', { page: pageKey });
+        });
+      }
+
       // Period Type Selection
       container.querySelectorAll(`.filter-pill[data-type][data-page="${pageKey}"]`).forEach(btn => {
         btn.addEventListener('click', () => {
@@ -466,11 +576,15 @@ window.Components = {
       if (btnPrev) btnPrev.addEventListener('click', () => window.Store.dispatch('NAVIGATE_PERIOD', { offset: -1, page: pageKey }));
       if (btnNext) btnNext.addEventListener('click', () => window.Store.dispatch('NAVIGATE_PERIOD', { offset: 1, page: pageKey }));
       if (btnToday) btnToday.addEventListener('click', () => {
-        const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-        window.Store.dispatch('UPDATE_FILTERS', { 
-            page: pageKey, 
-            filters: { period: { type: 'today', value: fmt(new Date()), start: '', end: '' } } 
-        });
+        if (pageKey === 'history') {
+          window.Views.TransactionsView.scrollToToday(container);
+        } else {
+          const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+          window.Store.dispatch('UPDATE_FILTERS', { 
+              page: pageKey, 
+              filters: { period: { type: 'today', value: fmt(new Date()), start: '', end: '' } } 
+          });
+        }
       });
 
       const btnCal = container.querySelector(`#btn-calendar-${pageKey}`);
@@ -762,7 +876,8 @@ window.Components = {
         div.querySelector('#afm-apply').onclick = apply;
         
         div.querySelector('#afm-show-all').onclick = () => {
-          currentFilters.sortOrder = 'desc';
+          // History defaults to Oldest First; analytics defaults to Newest First
+          currentFilters.sortOrder = pageKey === 'history' ? 'asc' : 'desc';
           currentFilters.types = [];
           currentFilters.accounts = [];
           currentFilters.categories = [];
@@ -922,114 +1037,6 @@ window.Components = {
   },
 
   // -----------------------------------------------------------------------
-  // RECURRING UPDATE MODAL (v0.32)
-  // Shows a 3-choice bottom-sheet when the user saves a tag change on a
-  // transaction that belongs to a recurring series.
-  // -----------------------------------------------------------------------
-  RecurringUpdateModal: {
-    show(options) {
-      const { onlyThis, thisAndFuture, allTransactions } = options;
-      const container = document.getElementById('modal-container');
-
-      const div = document.createElement('div');
-      div.innerHTML = `
-        <div class="modal-backdrop" id="recurring-update-modal" role="dialog" aria-modal="true" aria-labelledby="rum-title">
-          <div class="modal-content" style="padding: 0; overflow: hidden;">
-            <div class="modal-handle"></div>
-            <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-              <h2 id="rum-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">Update Recurring Tag</h2>
-              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">This transaction is part of a recurring series. Which occurrences should be updated?</p>
-            </div>
-
-            <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
-
-              <!-- Option 1: Only this -->
-              <button id="rum-only-this" class="touch-target" style="
-                display: flex; align-items: center; gap: var(--space-4);
-                background: var(--bg-surface); border: 1px solid var(--border-color);
-                border-radius: var(--radius-lg); padding: var(--space-4);
-                cursor: pointer; text-align: left; width: 100%;
-              ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: var(--bg-surface-sunken); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); flex-shrink: 0;"><i data-lucide="pin" style="width: 20px; height: 20px;"></i></div>
-                <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">Only this transaction</div>
-                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">Update just this occurrence</div>
-                </div>
-                <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
-              </button>
-
-              <!-- Option 2: This and future -->
-              <button id="rum-and-future" class="touch-target" style="
-                display: flex; align-items: center; gap: var(--space-4);
-                background: var(--bg-surface); border: 1px solid var(--border-color);
-                border-radius: var(--radius-lg); padding: var(--space-4);
-                cursor: pointer; text-align: left; width: 100%;
-              ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: var(--color-accent-bg, #e8f0ff); display: flex; align-items: center; justify-content: center; color: var(--color-primary); flex-shrink: 0;"><i data-lucide="fast-forward" style="width: 20px; height: 20px;"></i></div>
-                <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">This and future transactions</div>
-                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">Update this and all later occurrences</div>
-                </div>
-                <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
-              </button>
-
-              <!-- Option 3: All transactions -->
-              <button id="rum-all" class="touch-target" style="
-                display: flex; align-items: center; gap: var(--space-4);
-                background: var(--bg-surface); border: 1px solid var(--border-color);
-                border-radius: var(--radius-lg); padding: var(--space-4);
-                cursor: pointer; text-align: left; width: 100%;
-              ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: var(--color-income-bg); display: flex; align-items: center; justify-content: center; color: var(--color-income-text); flex-shrink: 0;"><i data-lucide="refresh-cw" style="width: 20px; height: 20px;"></i></div>
-                <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">All transactions</div>
-                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">Update every occurrence, past and future</div>
-                </div>
-                <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
-              </button>
-
-              <!-- Cancel -->
-              <button id="rum-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
-            </div>
-          </div>
-        </div>`;
-      container.appendChild(div.firstElementChild);
-
-      requestAnimationFrame(() => {
-        const backdrop = document.getElementById('recurring-update-modal');
-        if (backdrop) backdrop.classList.add('open');
-      });
-
-      const close = () => {
-        const backdrop = document.getElementById('recurring-update-modal');
-        if (backdrop) {
-          backdrop.classList.remove('open');
-          setTimeout(() => { backdrop.remove(); }, 300);
-        }
-      };
-
-      const btnOnly = document.getElementById('rum-only-this');
-      if (btnOnly) btnOnly.addEventListener('click', () => { close(); if (onlyThis) onlyThis(); });
-      
-      const btnFuture = document.getElementById('rum-and-future');
-      if (btnFuture) btnFuture.addEventListener('click', () => { close(); if (thisAndFuture) thisAndFuture(); });
-      
-      const btnAll = document.getElementById('rum-all');
-      if (btnAll) btnAll.addEventListener('click', () => { close(); if (allTransactions) allTransactions(); });
-      
-      const btnCancel = document.getElementById('rum-cancel');
-      if (btnCancel) btnCancel.addEventListener('click', close);
-      
-      const modalBackdrop = document.getElementById('recurring-update-modal');
-      if (modalBackdrop) {
-        modalBackdrop.addEventListener('click', (e) => {
-          if (e.target.id === 'recurring-update-modal') close();
-        });
-      }
-    }
-  },
-
-  // -----------------------------------------------------------------------
   // RECURRING CREATION MODAL (v0.32)
   // Shows a 2-choice bottom-sheet when the user creates a new recurring
   // transaction that has tags, asking if tags should propagate.
@@ -1148,7 +1155,6 @@ window.Components = {
                 border-radius: var(--radius-lg); padding: var(--space-4);
                 cursor: pointer; text-align: left; width: 100%;
               ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: var(--color-expense); flex-shrink: 0;"><i data-lucide="trash-2" style="width: 20px; height: 20px;"></i></div>
                 <div style="flex: 1;">
                   <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">Only this transaction</div>
                   <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Keep past and future intact</div>
@@ -1162,7 +1168,6 @@ window.Components = {
                 border-radius: var(--radius-lg); padding: var(--space-4);
                 cursor: pointer; text-align: left; width: 100%;
               ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: var(--color-expense); flex-shrink: 0;"><i data-lucide="trash-2" style="width: 20px; height: 20px;"></i></div>
                 <div style="flex: 1;">
                   <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">This and future transactions</div>
                   <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Stop the series from continuing</div>
@@ -1176,7 +1181,6 @@ window.Components = {
                 border-radius: var(--radius-lg); padding: var(--space-4);
                 cursor: pointer; text-align: left; width: 100%;
               ">
-                <div style="width: 40px; height: 40px; border-radius: 14px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: var(--color-expense); flex-shrink: 0;"><i data-lucide="alert-triangle" style="width: 20px; height: 20px;"></i></div>
                 <div style="flex: 1;">
                   <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">All transactions</div>
                   <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Destroy the entire history of this series</div>
@@ -1190,8 +1194,45 @@ window.Components = {
         </div>`;
       container.appendChild(div.firstElementChild);
 
+      const backdrop = document.getElementById('recurring-delete-modal');
+      const modalContent = backdrop.querySelector('.modal-content');
+
+      // Swipe-to-dismiss Logic
+      let startY = 0;
+      let currentY = 0;
+      let isDragging = false;
+
+      const onStart = (e) => {
+        startY = e.touches[0].clientY;
+        isDragging = true;
+        modalContent.style.transition = 'none';
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        currentY = e.touches[0].clientY - startY;
+        if (currentY > 0) {
+          modalContent.style.transform = `translateY(${currentY}px)`;
+        }
+      };
+
+      const onEnd = () => {
+        isDragging = false;
+        modalContent.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+        if (currentY > 150) {
+          modalContent.style.transform = `translateY(100%)`;
+          setTimeout(() => close(), 200);
+        } else {
+          modalContent.style.transform = `translateY(0)`;
+        }
+        currentY = 0;
+      };
+
+      backdrop.addEventListener('touchstart', onStart, { passive: true });
+      backdrop.addEventListener('touchmove', onMove, { passive: true });
+      backdrop.addEventListener('touchend', onEnd);
+
       requestAnimationFrame(() => {
-        const backdrop = document.getElementById('recurring-delete-modal');
         if (backdrop) backdrop.classList.add('open');
       });
 
@@ -1223,6 +1264,211 @@ window.Components = {
       }
     }
   },
+  RecurringSettingsModal: {
+    show(options) {
+      const { initialRecurrence, onSave } = options;
+      const container = document.getElementById('modal-container');
+      
+      let recurrence = initialRecurrence || {
+        enabled: false,
+        period: 'monthly',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: '',
+        interval: 1,
+        frequency: 'months' // matches store freq parameter
+      };
+
+      // Helper to map frequency pill to store logic
+      const mapFreq = (pill) => {
+        switch(pill) {
+          case 'weekly': return { interval: 1, frequency: 'weeks' };
+          case 'biweekly': return { interval: 2, frequency: 'weeks' };
+          case 'monthly': return { interval: 1, frequency: 'months' };
+          case 'quarterly': return { interval: 3, frequency: 'months' };
+          case 'yearly': return { interval: 1, frequency: 'years' };
+          default: return { interval: 1, frequency: 'months' };
+        }
+      };
+
+      const renderContent = () => {
+        const title = recurrence.enabled ? 'Edit Recurring' : 'Recurring Settings';
+        const isWeekly = recurrence.period === 'weekly';
+        const isBiWeekly = recurrence.period === 'biweekly';
+        const isMonthly = recurrence.period === 'monthly';
+        const isQuarterly = recurrence.period === 'quarterly';
+        const isYearly = recurrence.period === 'yearly';
+
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <div class="modal-backdrop" id="recurring-settings-modal" role="dialog" aria-modal="true">
+            <div class="modal-content" style="padding: 0; overflow: hidden;">
+              <div class="modal-handle"></div>
+              <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
+                <h2 class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${title}</h2>
+                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">Configure repeating rules for this transaction.</p>
+              </div>
+
+              <div style="display: flex; flex-direction: column; padding: var(--space-4) var(--space-5) var(--space-6); gap: var(--space-5);">
+                
+                <!-- Toggle: Enable Recurring -->
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <div>
+                    <div style="font-weight: 600; color: var(--text-primary);">Enable recurring</div>
+                    <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">Generate future transactions automatically</div>
+                  </div>
+                  <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;">
+                    <button id="rs-toggle-off" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${!recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">OFF</button>
+                    <button id="rs-toggle-on" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">ON</button>
+                  </div>
+                </div>
+
+                <div id="rs-config-area" style="display: ${recurrence.enabled ? 'flex' : 'none'}; flex-direction: column; gap: var(--space-5); transition: all 0.3s ease;">
+                  
+                  <!-- Frequency Pills -->
+                  <div>
+                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Frequency</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                      <button class="freq-pill ${isWeekly ? 'active' : ''}" data-freq="weekly">Weekly</button>
+                      <button class="freq-pill ${isBiWeekly ? 'active' : ''}" data-freq="biweekly">Every 2 Weeks</button>
+                      <button class="freq-pill ${isMonthly ? 'active' : ''}" data-freq="monthly">Monthly</button>
+                      <button class="freq-pill ${isQuarterly ? 'active' : ''}" data-freq="quarterly">Quarterly</button>
+                      <button class="freq-pill ${isYearly ? 'active' : ''}" data-freq="yearly">Yearly</button>
+                    </div>
+                  </div>
+
+                  <!-- Dates -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" for="rs-start-date">Start Date</label>
+                      <input type="date" id="rs-start-date" class="form-control" value="${recurrence.startDate}">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" for="rs-end-date">Ends On</label>
+                      <input type="date" id="rs-end-date" class="form-control" value="${recurrence.endDate || ''}">
+                    </div>
+                  </div>
+
+                  <!-- Warning -->
+                  <div id="rs-warning" style="display: none; background: var(--color-expense-bg); color: var(--color-expense); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); line-height: 1.4; border: 1px solid rgba(255, 68, 68, 0.1);">
+                    <div style="display: flex; gap: 8px;">
+                      <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                      <span>Recurring transactions are capped at <strong>5 years (60 months)</strong> to keep the app fast. The end date will be automatically adjusted when saving.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: var(--space-3); margin-top: var(--space-2);">
+                  <button id="rs-cancel" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                  <button id="rs-save" class="btn btn-primary" style="flex: 2;">Save Rules</button>
+                </div>
+              </div>
+            </div>
+            <style>
+              .freq-pill {
+                padding: 6px 14px;
+                border-radius: 20px;
+                background: var(--bg-surface-sunken);
+                border: 1px solid var(--border-color);
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                cursor: pointer;
+                transition: all 0.2s;
+              }
+              .freq-pill.active {
+                background: var(--text-primary);
+                color: #ffffff !important;
+                border-color: var(--text-primary);
+              }
+              .freq-pill:hover:not(.active) {
+                border-color: var(--text-tertiary);
+              }
+            </style>
+          </div>`;
+        
+        const existing = document.getElementById('recurring-settings-modal');
+        if (existing) existing.remove();
+        container.appendChild(div.firstElementChild);
+        window.StackdHydrateIcons?.();
+        attachInternalEvents();
+      };
+
+      const attachInternalEvents = () => {
+        const close = () => {
+          const backdrop = document.getElementById('recurring-settings-modal');
+          if (backdrop) {
+            backdrop.classList.remove('open');
+            setTimeout(() => { backdrop.remove(); }, 300);
+          }
+        };
+
+        document.getElementById('rs-toggle-off').onclick = () => {
+          recurrence.enabled = false;
+          renderContent();
+          document.getElementById('recurring-settings-modal').classList.add('open');
+        };
+        document.getElementById('rs-toggle-on').onclick = () => {
+          recurrence.enabled = true;
+          renderContent();
+          document.getElementById('recurring-settings-modal').classList.add('open');
+        };
+
+        document.querySelectorAll('.freq-pill').forEach(pill => {
+          pill.onclick = () => {
+            recurrence.period = pill.dataset.freq;
+            const mapped = mapFreq(recurrence.period);
+            recurrence.interval = mapped.interval;
+            recurrence.frequency = mapped.frequency;
+            renderContent();
+            document.getElementById('recurring-settings-modal').classList.add('open');
+          };
+        });
+
+        const startDateInput = document.getElementById('rs-start-date');
+        if (startDateInput) {
+          startDateInput.onchange = (e) => { recurrence.startDate = e.target.value; };
+        }
+
+        const endDateInput = document.getElementById('rs-end-date');
+        if (endDateInput) {
+          endDateInput.onchange = (e) => {
+            recurrence.endDate = e.target.value;
+            checkWarning();
+          };
+        }
+
+        const checkWarning = () => {
+          const warning = document.getElementById('rs-warning');
+          if (!warning || !recurrence.startDate || !recurrence.endDate) return;
+          
+          const start = new Date(recurrence.startDate);
+          const end = new Date(recurrence.endDate);
+          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12
+                           + (end.getMonth() - start.getMonth());
+          warning.style.display = diffMonths > 60 ? 'block' : 'none';
+        };
+
+        document.getElementById('rs-save').onclick = () => {
+          if (onSave) onSave(recurrence);
+          close();
+        };
+
+        document.getElementById('rs-cancel').onclick = close;
+
+        const backdropEl = document.getElementById('recurring-settings-modal');
+        if (backdropEl) {
+          backdropEl.onclick = (e) => { if (e.target.id === 'recurring-settings-modal') close(); };
+          requestAnimationFrame(() => backdropEl.classList.add('open'));
+        }
+        
+        checkWarning();
+      };
+
+      renderContent();
+    }
+  },
+
+
 
   FrequencyPicker: {
     show(options) {
@@ -1438,6 +1684,55 @@ window.Components = {
       const colors = data.map(d => d.net >= 0 ? '#10b981' : '#ef4444'); 
       const bgColors = data.map(d => d.net >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)');
 
+      // Destroy any existing Chart.js instance on this canvas to prevent the
+      // 'Canvas is already in use' error when navigating back to the Analytics view.
+      const existingNetFlowChart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
+      if (existingNetFlowChart) existingNetFlowChart.destroy();
+
+      // Calculate dynamic Y-axis scaling using multiples of 10, 50, 100, 200, 250, 500 based on order of magnitude
+      const computeYScale = (vals) => {
+        if (!vals || vals.length === 0) {
+          return { min: 0, max: 10, stepSize: 10 };
+        }
+        const rawMax = Math.max(...vals, 0);
+        const rawMin = Math.min(...vals, 0);
+        if (rawMax === 0 && rawMin === 0) {
+          return { min: 0, max: 10, stepSize: 10 };
+        }
+
+        const baseMultipliers = [10, 50, 100, 200, 250, 500];
+        const candidateStepSizes = [];
+        for (let k = 0; k <= 6; k++) {
+          const factor = Math.pow(10, k);
+          for (const m of baseMultipliers) {
+            candidateStepSizes.push(m * factor);
+          }
+        }
+        const sortedStepSizes = [...new Set(candidateStepSizes)].sort((a, b) => a - b);
+
+        let chosenStepSize = sortedStepSizes[0];
+        for (const s of sortedStepSizes) {
+          const stepsMax = Math.ceil(rawMax / s);
+          const stepsMin = Math.floor(rawMin / s);
+          const totalSteps = stepsMax - stepsMin;
+          if (totalSteps <= 6) {
+            chosenStepSize = s;
+            break;
+          }
+        }
+
+        let axisMax = Math.ceil(rawMax / chosenStepSize) * chosenStepSize;
+        let axisMin = Math.floor(rawMin / chosenStepSize) * chosenStepSize;
+
+        if (axisMin === 0 && axisMax === 0) {
+          axisMax = chosenStepSize;
+        }
+
+        return { min: axisMin, max: axisMax, stepSize: chosenStepSize };
+      };
+
+      const yScale = computeYScale(values);
+
       new window.Chart(canvas, {
         type: 'bar',
         data: {
@@ -1509,8 +1804,24 @@ window.Components = {
               } 
             },
             y: { 
-              display: false,
-              beginAtZero: true
+              display: true,
+              min: yScale.min,
+              max: yScale.max,
+              grid: {
+                color: 'rgba(226, 232, 240, 0.6)',
+                borderDash: [4, 4]
+              },
+              ticks: {
+                stepSize: yScale.stepSize,
+                font: { size: 10, family: 'Manrope', weight: '600' },
+                color: '#94a3b8',
+                callback: (val) => {
+                  const symbol = window.Store.getCurrencySymbol();
+                  const sign = val < 0 ? '-' : '';
+                  const formattedAbs = Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                  return `${sign}${symbol}${formattedAbs}`;
+                }
+              }
             }
           }
         }
@@ -1522,9 +1833,71 @@ window.Components = {
     _chartInstance: null,
     _currentType: 'expense',
 
+    _CATEGORY_COLORS: {
+      'cat_dining': { color: '#f59e0b', hover: '#d97706' },        // Amber
+      'cat_entertainment': { color: '#8b5cf6', hover: '#7c3aed' }, // Violet
+      'cat_groceries': { color: '#10b981', hover: '#059669' },     // Emerald
+      'cat_health': { color: '#ef4444', hover: '#dc2626' },        // Coral Red
+      'cat_rent': { color: '#3b82f6', hover: '#2563eb' },          // Royal Blue
+      'cat_shopping': { color: '#ec4899', hover: '#db2777' },      // Pink
+      'cat_transport': { color: '#06b6d4', hover: '#0891b2' },     // Cyan
+      'cat_utilities': { color: '#eab308', hover: '#ca8a04' },     // Gold
+      'cat_salary': { color: '#10b981', hover: '#059669' },        // Emerald
+      'cat_freelance': { color: '#6366f1', hover: '#4f46e5' },     // Indigo
+      'cat_investments': { color: '#00c9a7', hover: '#009e82' },   // Mint
+      'cat_other': { color: '#64748b', hover: '#475569' }          // Slate
+    },
+
+    _FALLBACK_PALETTE: [
+      { color: '#6366f1', hover: '#4f46e5' }, // Indigo
+      { color: '#f59e0b', hover: '#d97706' }, // Amber
+      { color: '#06b6d4', hover: '#0891b2' }, // Cyan
+      { color: '#ec4899', hover: '#db2777' }, // Pink
+      { color: '#8b5cf6', hover: '#7c3aed' }, // Violet
+      { color: '#10b981', hover: '#059669' }, // Emerald
+      { color: '#3b82f6', hover: '#2563eb' }, // Blue
+      { color: '#f43f5e', hover: '#e11d48' }, // Rose
+      { color: '#eab308', hover: '#ca8a04' }, // Gold
+      { color: '#00c9a7', hover: '#009e82' }  // Mint
+    ],
+
+    _assignColors(data) {
+      if (!data) return [];
+      const usedColors = new Set();
+      return data.map((item, idx) => {
+        if (item.isOthers || item.id === '__others__') {
+          return {
+            ...item,
+            _color: '#94a3b8',
+            _hoverColor: '#64748b'
+          };
+        }
+
+        let assigned = null;
+        if (item.color && item.color !== '#94a3b8' && !usedColors.has(item.color)) {
+          assigned = { color: item.color, hover: item.hoverColor || item.color };
+        } else if (this._CATEGORY_COLORS[item.id] && !usedColors.has(this._CATEGORY_COLORS[item.id].color)) {
+          assigned = this._CATEGORY_COLORS[item.id];
+        }
+
+        if (!assigned) {
+          const fallback = this._FALLBACK_PALETTE.find(p => !usedColors.has(p.color)) ||
+                           this._FALLBACK_PALETTE[idx % this._FALLBACK_PALETTE.length];
+          assigned = fallback;
+        }
+
+        usedColors.add(assigned.color);
+        return {
+          ...item,
+          _color: assigned.color,
+          _hoverColor: assigned.hover
+        };
+      });
+    },
+
     // Collapse raw distribution data into top-5 + 'Others' always as last entry
     _capData(rawData) {
-      if (rawData.length <= 5) return rawData;
+      if (!rawData || rawData.length <= 5) return rawData || [];
       const top5 = rawData.slice(0, 5);
       const rest = rawData.slice(5);
       const othersAmount = rest.reduce((sum, item) => sum + item.amount, 0);
@@ -1543,7 +1916,8 @@ window.Components = {
     render(rawData, type = 'expense') {
       this._currentType = type;
       const isExpense = type === 'expense';
-      const data = this._capData(rawData);
+      const rawCapped = this._capData(rawData);
+      const data = this._assignColors(rawCapped);
       
       const hasData = data && data.length > 0;
       const totalAmount = rawData.reduce((sum, item) => sum + item.amount, 0);
@@ -1557,8 +1931,6 @@ window.Components = {
           </div>
         `;
       } else {
-        const baseColor = isExpense ? '#64748b' : '#6366f1';
-        const othersColor = isExpense ? '#94a3b8' : '#a5b4fc';
         contentHtml = `
           <div class="donut-chart-layout">
             <div class="donut-chart-container">
@@ -1571,8 +1943,8 @@ window.Components = {
             <div class="donut-legend">
               ${data.map(item => `
                 <div class="donut-legend-item touch-target" data-cat-id="${item.id}" style="cursor: pointer; padding: 8px 4px; border-radius: var(--radius-md); transition: background 0.2s; align-items: center;">
-                  <div class="donut-legend-color" style="background: ${item.isOthers ? othersColor : baseColor}; opacity: ${item.isOthers ? '0.6' : '1'}; height: 32px;"></div>
-                  <div class="list-item-icon ${item.isOthers ? 'bg-tint-balance' : (isExpense ? 'bg-tint-expense' : 'bg-tint-income')}" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${item.icon}" style="width: 18px; height: 18px;"></i></div>
+                  <div class="donut-legend-color" style="background: ${item._color}; opacity: ${item.isOthers ? '0.6' : '1'}; height: 32px;"></div>
+                  <div class="list-item-icon" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${item.icon}" style="width: 18px; height: 18px;"></i></div>
                   <div class="donut-legend-info" style="margin-left: 4px;">
                     <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${item.name}</span>
                     <span class="donut-legend-pct">${item.percentage.toFixed(1)}%</span>
@@ -1610,27 +1982,11 @@ window.Components = {
         this._currentType = type;
         const newData = window.Store.computeCategoryDistribution(filters, type);
         
-        // Fully re-render the card's content for simplicity and correctness
-        // but we need to find the card container.
-        // Actually, let's just update the internal content.
         const card = container.querySelector('.donut-chart-layout') || container.querySelector('[style*="height: 200px"]');
         if (card) {
-          const parent = card.parentElement;
-          // We need a way to swap the content without losing the header or the whole view.
-          // Let's just re-render the whole component and swap innerHTML of the card.
-          // Wait, that's messy. Let's just use the Store emit to re-render everything
-          // BUT we need to persist the toggle state.
-          // I'll store the toggle state in the Store's analyticsFilters or as a local var here.
-          // Since it's preferred to be "integrated", maybe I should put it in the store.
-          
-          // Actually, let's just do a manual update for snappy feel.
-          this._currentType = type;
-          const html = this.render(newData, type);
-          // Find the outer card
           const outerCard = container.querySelector('.donut-chart-layout')?.closest('.card') || container.querySelector('[style*="height: 200px"]')?.closest('.card');
           if (outerCard) {
-            outerCard.outerHTML = html;
-            // Need to re-attach events because we replaced the DOM
+            outerCard.outerHTML = this.render(newData, type);
             this.attachEvents(container, filters);
           }
         }
@@ -1670,24 +2026,14 @@ window.Components = {
       if (!canvas || !window.Chart) return;
 
       const rawData = window.Store.computeCategoryDistribution(filters, this._currentType);
-      const data = this._capData(rawData);
+      const rawCapped = this._capData(rawData);
+      const data = this._assignColors(rawCapped);
       if (data.length === 0) return;
 
       if (this._chartInstance) {
         this._chartInstance.destroy();
       }
 
-      const isExpense = this._currentType === 'expense';
-      const baseColor = isExpense ? '#64748b' : '#6366f1';
-      const othersColor = isExpense ? '#94a3b8' : '#a5b4fc';
-      const hoverBase = isExpense ? '#475569' : '#4f46e5';
-      const hoverOthers = isExpense ? '#64748b' : '#818cf8';
-
-      // Use borderWidth + transparent border for EVENLY distributed gaps —
-      // Chart.js `spacing` is added in absolute px per segment, so large
-      // segments and small ones get visually different-looking gaps.
-      // A uniform borderWidth on a transparent background creates perfectly
-      // consistent physical gaps between every segment.
       const GAP = 3; // px gap on each side of every segment
 
       this._chartInstance = new window.Chart(canvas, {
@@ -1696,8 +2042,8 @@ window.Components = {
           labels: data.map(d => d.name),
           datasets: [{
             data: data.map(d => d.amount),
-            backgroundColor: data.map(d => d.isOthers ? othersColor : baseColor),
-            hoverBackgroundColor: data.map(d => d.isOthers ? hoverOthers : hoverBase),
+            backgroundColor: data.map(d => d._color),
+            hoverBackgroundColor: data.map(d => d._hoverColor),
             borderWidth: GAP,
             borderColor: 'transparent',
             hoverBorderWidth: GAP,
@@ -1735,6 +2081,925 @@ window.Components = {
             }
           }
         }
+      });
+    }
+  },
+
+  TagsModal: {
+    show(options) {
+      const { initialTags = [], onSave } = options;
+      const container = document.getElementById('modal-container');
+      let currentTags = (initialTags || []).map(t => String(t).trim().toLowerCase()).filter(Boolean);
+      
+      const renderContent = () => {
+        const allTags = window.Store.getAllUniqueTags().map(t => String(t).toLowerCase());
+        const suggestions = allTags.filter(t => !currentTags.includes(t));
+
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <div class="modal-backdrop" id="tags-modal" role="dialog" aria-modal="true">
+            <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 85vh;">
+              <div class="modal-handle"></div>
+              <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
+                <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">Tags</h2>
+                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 0;">Categorize your transaction with tags.</p>
+              </div>
+
+              <div style="padding: var(--space-4) var(--space-5); flex: 1; overflow-y: auto;">
+                <!-- Tag Input -->
+                <div style="margin-bottom: var(--space-5);">
+                  <div style="display: flex; gap: 8px;">
+                    <div style="flex: 1; position: relative;">
+                      <input type="text" id="tag-input" class="form-control" placeholder="New tag..." aria-label="New tag name" maxlength="20" style="padding-left: 32px;" autocomplete="off">
+                      <i data-lucide="hash" style="position: absolute; left: 10px; top: 12px; width: 14px; color: var(--text-tertiary);" aria-hidden="true"></i>
+                    </div>
+                    <button id="add-tag-btn" class="btn btn-primary" style="width: auto; padding: 0 16px;">Add</button>
+                  </div>
+                  <p style="color: var(--text-tertiary); font-size: var(--text-xs); margin-top: 6px; margin-bottom: 0;">Tags cannot contain spaces (use '_' as delimiter). Press Space or Enter to add a tag.</p>
+                </div>
+
+                <!-- Current Tags -->
+                <div style="margin-bottom: var(--space-6);">
+                  <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Active Tags</label>
+                  <div id="current-tags-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    ${currentTags.length > 0 ? currentTags.map(tag => `
+                      <div class="tag-chip active" data-tag="${tag}">
+                        <span>#${tag}</span>
+                        <i data-lucide="x" style="width: 14px; margin-left: 4px; cursor: pointer;"></i>
+                      </div>
+                    `).join('') : '<p style="color: var(--text-tertiary); font-size: var(--text-sm); font-style: italic;">No tags added yet</p>'}
+                  </div>
+                </div>
+
+                <!-- Suggestions -->
+                ${suggestions.length > 0 ? `
+                  <div>
+                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Recent Tags</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                      ${suggestions.slice(0, 10).map(tag => `
+                        <div class="tag-chip suggestion" data-tag="${tag}">#${tag}</div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+
+              <div style="padding: var(--space-5); border-top: 1px solid var(--border-color); display: flex; gap: var(--space-3);">
+                <button id="tags-cancel" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                <button id="tags-save" class="btn btn-primary" style="flex: 2;">Apply Tags</button>
+              </div>
+            </div>
+            <style>
+              .tag-chip {
+                padding: 6px 12px;
+                border-radius: 16px;
+                font-size: 13px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                transition: all 0.2s;
+                cursor: pointer;
+              }
+              .tag-chip.active {
+                background: var(--text-primary);
+                color: #ffffff;
+              }
+              .tag-chip.suggestion {
+                background: var(--bg-surface-sunken);
+                color: var(--text-secondary);
+                border: 1px solid var(--border-color);
+              }
+              .tag-chip.suggestion:hover {
+                border-color: var(--text-tertiary);
+              }
+            </style>
+          </div>`;
+        
+        const existing = document.getElementById('tags-modal');
+        if (existing) existing.remove();
+        container.appendChild(div.firstElementChild);
+        window.StackdHydrateIcons?.();
+        attachEvents();
+      };
+
+      const attachEvents = () => {
+        const close = () => {
+          const backdrop = document.getElementById('tags-modal');
+          if (backdrop) {
+            backdrop.classList.remove('open');
+            setTimeout(() => backdrop.remove(), 300);
+          }
+        };
+
+        const cancelBtn = document.getElementById('tags-cancel');
+        const saveBtn = document.getElementById('tags-save');
+        if (cancelBtn) cancelBtn.onclick = close;
+        if (saveBtn) saveBtn.onclick = () => {
+          if (onSave) onSave(currentTags);
+          close();
+        };
+
+        const input = document.getElementById('tag-input');
+        const addBtn = document.getElementById('add-tag-btn');
+
+        const addTag = (textOverride) => {
+          const raw = textOverride !== undefined ? textOverride : (input ? input.value : '');
+          const val = raw.trim().toLowerCase().replace(/^#/, '');
+          if (val && !currentTags.includes(val)) {
+            currentTags.push(val);
+            renderContent();
+            const newInput = document.getElementById('tag-input');
+            if (newInput) newInput.focus();
+          } else if (input) {
+            input.value = '';
+          }
+        };
+
+        if (addBtn) addBtn.onclick = () => addTag();
+        if (input) {
+          input.oninput = () => {
+            input.value = input.value.toLowerCase();
+            if (input.value.includes(' ')) {
+              const parts = input.value.split(/\s+/);
+              const toAdd = parts.slice(0, -1);
+              const remainder = parts[parts.length - 1];
+              let addedAny = false;
+              toAdd.forEach(p => {
+                const cleaned = p.trim().toLowerCase().replace(/^#/, '');
+                if (cleaned && !currentTags.includes(cleaned)) {
+                  currentTags.push(cleaned);
+                  addedAny = true;
+                }
+              });
+              input.value = remainder;
+              if (addedAny) {
+                renderContent();
+                const newInput = document.getElementById('tag-input');
+                if (newInput) {
+                  newInput.focus();
+                  newInput.value = remainder;
+                }
+              }
+            }
+          };
+
+          input.onkeydown = (e) => {
+            if (e.key === ' ' || e.code === 'Space' || e.key === 'Enter') {
+              e.preventDefault();
+              addTag();
+            }
+          };
+        }
+
+        document.querySelectorAll('.tag-chip.active').forEach(chip => {
+          chip.onclick = () => {
+            const tag = chip.dataset.tag;
+            currentTags = currentTags.filter(t => t !== tag);
+            renderContent();
+          };
+        });
+
+        document.querySelectorAll('.tag-chip.suggestion').forEach(btn => {
+          btn.onclick = () => {
+            const tag = btn.dataset.tag.toLowerCase();
+            if (!currentTags.includes(tag)) {
+              currentTags.push(tag);
+              renderContent();
+            }
+          };
+        });
+
+        const backdropEl = document.getElementById('tags-modal');
+        if (backdropEl) {
+          backdropEl.onclick = (e) => { if (e.target.id === 'tags-modal') close(); };
+          requestAnimationFrame(() => backdropEl.classList.add('open'));
+        }
+      };
+
+      renderContent();
+    }
+  },
+
+  RecurringUpdateModal: {
+    show(options) {
+      const { onSelection, isRuleChange = false } = options;
+      const container = document.getElementById('modal-container');
+      
+      const description = isRuleChange 
+        ? "You've changed the recurring schedule. Applying this to the series will update all future transactions based on these new rules."
+        : "This transaction is part of a recurring series. How would you like to apply these changes?";
+
+      const buttonsHtml = isRuleChange 
+        ? `<button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Update recurring series</button>`
+        : `
+          <button id="ru-only-this" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to this transaction only</button>
+          <button id="ru-this-future" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to this and future transactions</button>
+          <button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to all in the series</button>
+        `;
+
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <div class="modal-backdrop" id="recurring-update-modal" role="dialog" aria-modal="true">
+          <div class="modal-content" style="padding: var(--space-6); text-align: center;">
+            <div class="modal-handle"></div>
+            <div style="width: 56px; height: 56px; background: var(--bg-surface-sunken); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
+              <i data-lucide="refresh-cw" style="color: var(--text-primary); width: 24px; height: 24px;"></i>
+            </div>
+            <h2 class="header-title" style="margin-bottom: var(--space-2); font-size: var(--text-lg);">Recurring Transaction</h2>
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-6); line-height: 1.5;">
+              ${description}
+            </p>
+            
+            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+              ${buttonsHtml}
+              <button id="ru-cancel" class="btn btn-ghost" style="width: 100%; justify-content: center; margin-top: var(--space-2); color: var(--text-tertiary);">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const existing = document.getElementById('recurring-update-modal');
+      if (existing) existing.remove();
+      container.appendChild(div.firstElementChild);
+      window.StackdHydrateIcons?.();
+
+      const backdrop = document.getElementById('recurring-update-modal');
+      const modalContent = backdrop.querySelector('.modal-content');
+
+      // Swipe-to-dismiss Logic
+      let startY = 0;
+      let currentY = 0;
+      let isDragging = false;
+
+      const onStart = (e) => {
+        startY = e.touches[0].clientY;
+        isDragging = true;
+        modalContent.style.transition = 'none';
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        currentY = e.touches[0].clientY - startY;
+        if (currentY > 0) {
+          modalContent.style.transform = `translateY(${currentY}px)`;
+        }
+      };
+
+      const onEnd = () => {
+        isDragging = false;
+        modalContent.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+        if (currentY > 150) {
+          modalContent.style.transform = `translateY(100%)`;
+          setTimeout(() => close(), 200);
+        } else {
+          modalContent.style.transform = `translateY(0)`;
+        }
+        currentY = 0;
+      };
+
+      backdrop.addEventListener('touchstart', onStart, { passive: true });
+      backdrop.addEventListener('touchmove', onMove, { passive: true });
+      backdrop.addEventListener('touchend', onEnd);
+
+      const close = () => {
+        backdrop.classList.remove('open');
+        setTimeout(() => backdrop.remove(), 300);
+      };
+
+      backdrop.onclick = (e) => {
+        if (e.target === backdrop) close();
+      };
+
+      document.getElementById('ru-cancel').onclick = close;
+      
+      const btnOnly = document.getElementById('ru-only-this');
+      if (btnOnly) btnOnly.onclick = () => { onSelection('single'); close(); };
+
+      const btnFuture = document.getElementById('ru-this-future');
+      if (btnFuture) btnFuture.onclick = () => { onSelection('future'); close(); };
+
+      const btnAll = document.getElementById('ru-all-series');
+      if (btnAll) btnAll.onclick = () => { onSelection('all'); close(); };
+
+      requestAnimationFrame(() => backdrop.classList.add('open'));
+    }
+  },
+
+  // -------------------------
+  // MONTH PICKER (v0.16)
+  // -------------------------
+  MonthPicker: {
+    MONTHS: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    MONTHS_FULL: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+
+    show(options = {}) {
+      const { initialValue, onSelect } = options;
+
+      // Parse the initialValue (expected format: "YYYY-MM") or default to today
+      const now = new Date();
+      let initYear = now.getFullYear();
+      let initMonth = now.getMonth(); // 0-indexed
+
+      if (initialValue && /^\d{4}-\d{2}$/.test(initialValue)) {
+        const [y, m] = initialValue.split('-').map(Number);
+        initYear = y;
+        initMonth = m - 1; // convert to 0-indexed
+      }
+
+      let currentYear = initYear;
+      let selectedYear = initYear;
+      let selectedMonth = initMonth; // 0-indexed
+
+      const container = document.getElementById('modal-container');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'modal-backdrop';
+      wrapper.id = 'active-month-picker';
+      wrapper.setAttribute('role', 'dialog');
+      wrapper.setAttribute('aria-modal', 'true');
+      wrapper.setAttribute('aria-labelledby', 'mp-title');
+
+      const close = () => {
+        wrapper.classList.remove('open');
+        setTimeout(() => wrapper.remove(), 300);
+      };
+
+      const render = () => {
+        const isCurrentDecade = currentYear === now.getFullYear();
+        wrapper.innerHTML = `
+          <div class="modal-content" style="padding: 0; overflow: hidden;">
+            <div class="modal-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border-color);">
+              <button class="modal-btn-top modal-btn-close" id="mp-cancel">Cancel</button>
+              <h3 id="mp-title" style="margin: 0; font-weight: 800; font-size: 1rem;">Select Month</h3>
+              <button class="modal-btn-top" id="mp-done" style="color: var(--color-accent); font-weight: 700;">Done</button>
+            </div>
+
+            <div style="padding: 16px 20px;">
+              <!-- Year Navigator -->
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <button id="mp-prev-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="Previous year">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <span id="mp-year-label" style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.4rem; color: var(--text-primary);">${currentYear}</span>
+                <button id="mp-next-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="Next year">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </div>
+
+              <!-- Month Grid -->
+              <div id="mp-month-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;" role="group" aria-label="Month selection">
+                ${this.MONTHS.map((m, i) => {
+                  const isSelected = (i === selectedMonth && currentYear === selectedYear);
+                  const isToday = (i === now.getMonth() && currentYear === now.getFullYear());
+                  return `<button
+                    class="mp-month-btn touch-target"
+                    data-month="${i}"
+                    aria-pressed="${isSelected}"
+                    aria-label="${this.MONTHS_FULL[i]} ${currentYear}"
+                    style="
+                      padding: 10px 4px;
+                      border-radius: 10px;
+                      border: ${isToday && !isSelected ? '1.5px solid var(--color-primary)' : '1.5px solid transparent'};
+                      background: ${isSelected ? 'var(--color-primary)' : 'var(--bg-surface-sunken)'};
+                      color: ${isSelected ? 'var(--text-on-primary, #fff)' : isToday ? 'var(--color-primary)' : 'var(--text-primary)'};
+                      font-family: var(--font-family-display);
+                      font-weight: ${isSelected || isToday ? '700' : '500'};
+                      font-size: 0.9rem;
+                      cursor: pointer;
+                      transition: background 0.15s ease, transform 0.1s ease;
+                    "
+                  >${m}</button>`;
+                }).join('')}
+              </div>
+
+              <!-- Selected Label -->
+              <div style="text-align: center; margin-top: 20px; color: var(--text-secondary); font-size: 0.85rem;">
+                Selected: <strong id="mp-selected-label" style="color: var(--text-primary);">${this.MONTHS_FULL[selectedMonth]} ${selectedYear}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Bind month button clicks
+        wrapper.querySelectorAll('.mp-month-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            selectedMonth = parseInt(btn.dataset.month);
+            selectedYear = currentYear;
+            render(); // re-render to update selection highlight
+          });
+        });
+
+        // Year navigation
+        const prevYearBtn = wrapper.querySelector('#mp-prev-year');
+        const nextYearBtn = wrapper.querySelector('#mp-next-year');
+        if (prevYearBtn) prevYearBtn.addEventListener('click', () => { currentYear--; render(); });
+        if (nextYearBtn) nextYearBtn.addEventListener('click', () => { currentYear++; render(); });
+
+        // Cancel / Done
+        const cancelBtn = wrapper.querySelector('#mp-cancel');
+        const doneBtn = wrapper.querySelector('#mp-done');
+        if (cancelBtn) cancelBtn.addEventListener('click', close);
+        if (doneBtn) {
+          doneBtn.addEventListener('click', () => {
+            const val = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+            if (onSelect) onSelect(val);
+            close();
+          });
+        }
+
+        // Close on backdrop tap
+        wrapper.addEventListener('click', (e) => {
+          if (e.target === wrapper) close();
+        });
+      };
+
+      container.appendChild(wrapper);
+      render();
+      requestAnimationFrame(() => wrapper.classList.add('open'));
+    }
+  },
+
+  CategorySelectionModal: {
+    show(options) {
+      const { selectedCategoryId, typeHint, onSelect, onAddNewCategory } = options;
+      const container = document.getElementById('modal-container');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      const modalBackdrop = document.createElement('div');
+      modalBackdrop.className = 'modal-backdrop';
+      modalBackdrop.id = 'category-selection-modal';
+      modalBackdrop.style.zIndex = '10000';
+      modalBackdrop.style.display = 'flex';
+      modalBackdrop.style.flexDirection = 'column';
+      modalBackdrop.setAttribute('role', 'dialog');
+      modalBackdrop.setAttribute('aria-modal', 'true');
+      modalBackdrop.setAttribute('aria-labelledby', 'csm-title');
+
+      const categories = window.Store.getState().categories || [];
+      const filteredCategories = categories.filter(c => !typeHint || c.typeHint === typeHint || c.typeHint === 'both' || typeHint === 'both');
+      const sortedCategories = [...filteredCategories].sort((a, b) => window.Store.compareAlpha(a, b));
+
+      modalBackdrop.innerHTML = `
+        <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+          <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+            <button class="modal-btn-top modal-btn-close" id="csm-close" aria-label="Close category selection" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
+            <h2 id="csm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">Select Category</h2>
+            <button class="modal-btn-top" id="csm-add-new" aria-label="Add new category" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--color-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">+</button>
+          </div>
+          
+          <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
+            <div class="list-group" id="csm-category-list">
+              <div class="list-item touch-target category-select-item" data-id="" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-lg); ${!selectedCategoryId ? 'background: var(--bg-surface-sunken); border: 2px solid var(--color-primary);' : ''}">
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                  <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="minus-circle"></i></div>
+                  <div class="list-item-title" style="font-weight: 600; color: var(--text-secondary);">No category selected</div>
+                </div>
+                ${!selectedCategoryId ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-primary);"></i>' : ''}
+              </div>
+              ${sortedCategories.map(cat => {
+                const isSelected = cat.id === selectedCategoryId;
+                return `
+                  <div class="list-item touch-target category-select-item" data-id="${cat.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-lg); ${isSelected ? 'background: var(--bg-surface-sunken); border: 2px solid var(--color-primary);' : ''}">
+                    <div style="display: flex; align-items: center; gap: var(--space-3);">
+                      <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${cat.icon || 'pin'}"></i></div>
+                      <div class="list-item-title" style="font-weight: 600;">${cat.name}</div>
+                    </div>
+                    ${isSelected ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-primary);"></i>' : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const close = () => {
+        modalBackdrop.classList.remove('open');
+        const content = modalBackdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(100%)';
+        setTimeout(() => {
+          modalBackdrop.remove();
+          const mc = document.getElementById('modal-container');
+          if (mc && (!mc.children || mc.children.length === 0)) {
+            mc.innerHTML = '';
+          }
+        }, 300);
+      };
+
+      const closeBtn = modalBackdrop.querySelector('#csm-close');
+      if (closeBtn) closeBtn.onclick = close;
+
+      const addNewBtn = modalBackdrop.querySelector('#csm-add-new');
+      if (addNewBtn) {
+        addNewBtn.onclick = () => {
+          if (onAddNewCategory) {
+            onAddNewCategory((newCat) => {
+              close();
+              if (onSelect) onSelect(newCat);
+            });
+          }
+        };
+      }
+
+      modalBackdrop.querySelectorAll('.category-select-item').forEach(item => {
+        item.onclick = () => {
+          const catId = item.dataset.id;
+          const cat = catId ? sortedCategories.find(c => c.id === catId) : null;
+          close();
+          if (onSelect) onSelect(cat || { id: '', name: 'No category selected' });
+        };
+      });
+
+      container.appendChild(modalBackdrop);
+
+      requestAnimationFrame(() => {
+        modalBackdrop.classList.add('open');
+        const content = modalBackdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(0)';
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      });
+    }
+  },
+
+  ExpandedGraphModal: {
+    _chartInstance: null,
+    show(state) {
+      const container = document.getElementById('modal-container') || document.body;
+      
+      const existing = document.getElementById('expanded-graph-modal');
+      if (existing) existing.remove();
+
+      const modalBackdrop = document.createElement('div');
+      modalBackdrop.className = 'modal-backdrop expanded-graph-modal';
+      modalBackdrop.id = 'expanded-graph-modal';
+
+      const accounts = (state && state.accounts) ? state.accounts : (window.Store.state ? window.Store.state.accounts : []);
+      const categories = (state && state.categories) ? state.categories : (window.Store.state ? window.Store.state.categories : []);
+
+      const savedFilters = (window.Store.state && window.Store.state.expandedGraphFilters)
+        ? window.Store.state.expandedGraphFilters
+        : { interval: 'monthly', accounts: [], categories: [] };
+
+      let activeInterval = savedFilters.interval || 'monthly';
+      let selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
+        ? [...savedFilters.accounts]
+        : accounts.map(a => a.id);
+      let selectedCategoryIds = (savedFilters.categories && savedFilters.categories.length > 0)
+        ? [...savedFilters.categories]
+        : [];
+
+      let showFilterPanel = false;
+
+      const renderModalContent = () => {
+        const visibleAccounts = accounts.filter(a => selectedAccountIds.includes(a.id));
+        const computeIds = visibleAccounts.map(a => a.id);
+        const result = window.Store.computeGraphBalances({
+          interval: activeInterval,
+          accountIds: computeIds,
+          categoryIds: selectedCategoryIds
+        });
+        const balances = (result && result.points) ? result.points : [];
+        const latestBalance = (balances && balances.length > 0) ? balances[balances.length - 1].balance : 0;
+        const formattedTotal = window.Store.formatCurrency(latestBalance);
+
+        modalBackdrop.innerHTML = `
+          <div class="modal-content" style="height: 92vh; border-top-left-radius: 32px; border-top-right-radius: 32px; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface);">
+            <!-- Top Bar with X (Left) and Filter (Right) -->
+            <div class="modal-top-bar" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 20; background: var(--bg-surface);">
+              <button class="modal-btn-icon-left" id="egm-close" aria-label="Close chart modal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" data-hydrated="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <h3 style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.1rem; margin: 0; color: var(--text-primary);">Balance Trend</h3>
+              <button class="modal-btn-filter-right ${showFilterPanel ? 'active' : ''}" id="egm-filter" aria-label="Toggle chart filters">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders" data-hydrated="true"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
+                <span>Filter</span>
+              </button>
+            </div>
+
+            <div class="modal-body" style="padding: var(--space-5); flex: 1; overflow-y: auto;">
+              <!-- Overall Metrics -->
+              <div style="margin-bottom: var(--space-4);">
+                <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em;">Total Balance</span>
+                <div style="font-family: var(--font-family-display); font-size: 2.2rem; font-weight: 850; color: var(--text-primary); margin-top: 2px;">${formattedTotal}</div>
+              </div>
+
+              <!-- Collapsible Filter Menu -->
+              ${showFilterPanel ? `
+                <div class="graph-filter-card animate-fade-in">
+                  <!-- 1. Interval Selector -->
+                  <div>
+                    <div class="filter-section-title">Interval</div>
+                    <div class="filter-interval-group">
+                      <button class="filter-interval-btn ${activeInterval === 'weekly' ? 'active' : ''}" data-interval="weekly">Weekly</button>
+                      <button class="filter-interval-btn ${activeInterval === 'monthly' ? 'active' : ''}" data-interval="monthly">Monthly</button>
+                      <button class="filter-interval-btn ${activeInterval === 'quarter' ? 'active' : ''}" data-interval="quarter">Quarter</button>
+                    </div>
+                  </div>
+
+                  <!-- 2. Accounts Checkboxes -->
+                  <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <div class="filter-section-title" style="margin-bottom: 0;">Accounts</div>
+                      <button id="egm-toggle-all-accounts" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-primary, #111); cursor: pointer;">
+                        ${selectedAccountIds.length === accounts.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    <div class="filter-checkbox-grid">
+                      ${accounts.map(acc => `
+                        <label class="filter-checkbox-label">
+                          <input type="checkbox" class="egm-acc-checkbox" data-acc-id="${acc.id}" ${selectedAccountIds.includes(acc.id) ? 'checked' : ''} />
+                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${acc.color || '#111'}; display: inline-block; flex-shrink: 0;"></span>
+                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${acc.name}</span>
+                        </label>
+                      `).join('')}
+                    </div>
+                  </div>
+
+                  <!-- 3. Categories Checkboxes -->
+                  <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <div class="filter-section-title" style="margin-bottom: 0;">Categories</div>
+                      <button id="egm-toggle-all-categories" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-primary, #111); cursor: pointer;">
+                        ${selectedCategoryIds.length === categories.length || selectedCategoryIds.length === 0 ? 'Select All' : 'Deselect All'}
+                      </button>
+                    </div>
+                    <div class="filter-checkbox-grid">
+                      ${categories.map(cat => `
+                        <label class="filter-checkbox-label">
+                          <input type="checkbox" class="egm-cat-checkbox" data-cat-id="${cat.id}" ${selectedCategoryIds.length === 0 || selectedCategoryIds.includes(cat.id) ? 'checked' : ''} />
+                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${cat.name}</span>
+                        </label>
+                      `).join('')}
+                    </div>
+                  </div>
+
+                  <!-- 4. Save View Button -->
+                  <button class="btn-save-filters" id="egm-save-filters">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    <span>Save View</span>
+                  </button>
+                </div>
+              ` : ''}
+
+              <!-- Chart Canvas Area -->
+              <div class="expanded-chart-wrapper" style="height: 360px; position: relative;">
+                <canvas id="expandedBalanceChart"></canvas>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Event handlers
+        const closeBtn = modalBackdrop.querySelector('#egm-close');
+        if (closeBtn) closeBtn.onclick = close;
+
+        const filterBtn = modalBackdrop.querySelector('#egm-filter');
+        if (filterBtn) {
+          filterBtn.onclick = () => {
+            showFilterPanel = !showFilterPanel;
+            renderModalContent();
+          };
+        }
+
+        // Interval buttons
+        modalBackdrop.querySelectorAll('[data-interval]').forEach(btn => {
+          btn.onclick = () => {
+            activeInterval = btn.dataset.interval;
+            renderModalContent();
+          };
+        });
+
+        // Account checkboxes
+        modalBackdrop.querySelectorAll('.egm-acc-checkbox').forEach(cb => {
+          cb.onchange = (e) => {
+            const accId = cb.dataset.accId;
+            if (e.target.checked) {
+              if (!selectedAccountIds.includes(accId)) selectedAccountIds.push(accId);
+            } else {
+              if (selectedAccountIds.length > 1) {
+                selectedAccountIds = selectedAccountIds.filter(id => id !== accId);
+              } else {
+                e.target.checked = true;
+              }
+            }
+            renderModalContent();
+          };
+        });
+
+        // Toggle all accounts
+        const toggleAccBtn = modalBackdrop.querySelector('#egm-toggle-all-accounts');
+        if (toggleAccBtn) {
+          toggleAccBtn.onclick = () => {
+            if (selectedAccountIds.length === accounts.length) {
+              selectedAccountIds = accounts.length > 0 ? [accounts[0].id] : [];
+            } else {
+              selectedAccountIds = accounts.map(a => a.id);
+            }
+            renderModalContent();
+          };
+        }
+
+        // Category checkboxes
+        modalBackdrop.querySelectorAll('.egm-cat-checkbox').forEach(cb => {
+          cb.onchange = (e) => {
+            const catId = cb.dataset.catId;
+            if (selectedCategoryIds.length === 0) {
+              selectedCategoryIds = categories.map(c => c.id);
+            }
+            if (e.target.checked) {
+              if (!selectedCategoryIds.includes(catId)) selectedCategoryIds.push(catId);
+            } else {
+              selectedCategoryIds = selectedCategoryIds.filter(id => id !== catId);
+            }
+            if (selectedCategoryIds.length === categories.length) {
+              selectedCategoryIds = [];
+            }
+            renderModalContent();
+          };
+        });
+
+        // Toggle all categories
+        const toggleCatBtn = modalBackdrop.querySelector('#egm-toggle-all-categories');
+        if (toggleCatBtn) {
+          toggleCatBtn.onclick = () => {
+            if (selectedCategoryIds.length === 0 || selectedCategoryIds.length === categories.length) {
+              selectedCategoryIds = categories.length > 0 ? [categories[0].id] : [];
+            } else {
+              selectedCategoryIds = [];
+            }
+            renderModalContent();
+          };
+        }
+
+        // Save Filters button
+        const saveFiltersBtn = modalBackdrop.querySelector('#egm-save-filters');
+        if (saveFiltersBtn) {
+          saveFiltersBtn.onclick = () => {
+            window.Store.dispatch('SAVE_EXPANDED_GRAPH_FILTERS', {
+              interval: activeInterval,
+              accounts: selectedAccountIds,
+              categories: selectedCategoryIds
+            });
+            showFilterPanel = false;
+            renderModalContent();
+          };
+        }
+
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+
+        setTimeout(() => {
+          initExpandedChart();
+        }, 50);
+      };
+
+      const close = () => {
+        if (this._chartInstance) {
+          try { this._chartInstance.destroy(); } catch {}
+          this._chartInstance = null;
+        }
+        modalBackdrop.classList.remove('open');
+        const content = modalBackdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(100%)';
+        setTimeout(() => modalBackdrop.remove(), 300);
+      };
+
+      const initExpandedChart = () => {
+        const canvas = modalBackdrop.querySelector('#expandedBalanceChart');
+        if (!canvas || !window.Chart) return;
+
+        if (this._chartInstance) {
+          try { this._chartInstance.destroy(); } catch {}
+          this._chartInstance = null;
+        }
+
+        const visibleAccounts = accounts.filter(a => selectedAccountIds.includes(a.id));
+        const visibleIds = visibleAccounts.map(a => a.id);
+
+        const graphResult = window.Store.computeGraphBalances({
+          interval: activeInterval,
+          accountIds: visibleIds,
+          categoryIds: selectedCategoryIds
+        });
+        const rawData = (graphResult && graphResult.points) ? graphResult.points : [];
+        const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
+        const isQuarter = activeInterval === 'quarter';
+
+        const datasets = [{
+          label: 'Total Balance',
+          data: rawData,
+          borderColor: '#111111',
+          backgroundColor: 'rgba(17, 17, 17, 0.05)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0,
+          pointRadius: activeInterval === 'weekly' ? 3 : 4,
+          pointHoverRadius: 7,
+          pointBackgroundColor: '#ffffff',
+          pointBorderWidth: 3,
+          pointBorderColor: '#111111'
+        }];
+
+        visibleAccounts.forEach(acc => {
+          const accResult = window.Store.computeGraphBalances({
+            interval: activeInterval,
+            accountIds: [acc.id],
+            categoryIds: selectedCategoryIds
+          });
+
+          datasets.push({
+            label: acc.name,
+            data: (accResult && accResult.points) ? accResult.points : [],
+            borderColor: acc.color,
+            borderWidth: 2,
+            borderDash: [4, 4],
+            fill: false,
+            tension: 0,
+            pointRadius: activeInterval === 'weekly' ? 1.5 : 2
+          });
+        });
+
+        this._chartInstance = new window.Chart(canvas, {
+          type: 'line',
+          data: {
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 250 },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { family: 'Manrope', size: 11, weight: 'bold' } } },
+              tooltip: {
+                backgroundColor: '#ffffff',
+                titleColor: '#64748b',
+                titleFont: { family: 'Manrope', size: 11, weight: 'bold' },
+                bodyColor: '#1a1e21',
+                bodyFont: { family: 'Manrope', size: 14, weight: '800' },
+                displayColors: true,
+                usePointStyle: true,
+                boxWidth: 8,
+                boxHeight: 8,
+                pointStyle: 'circle',
+                borderColor: '#e2e8f0',
+                borderWidth: 1,
+                padding: 10,
+                callbacks: {
+                  title: (items) => {
+                    if (!items || !items.length) return '';
+                    const item = items[0];
+                    return item.raw?.fullLabel || item.raw?.label || '';
+                  },
+                  label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear',
+                min: 0,
+                max: isQuarter ? 3 : 11,
+                grid: { display: false },
+                ticks: {
+                  stepSize: 1,
+                  autoSkip: false,
+                  maxRotation: 0,
+                  font: { size: 11, family: 'Manrope', weight: 'bold' },
+                  color: '#64748b',
+                  callback: (val) => {
+                    const idx = Math.round(val);
+                    if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < monthLabels.length) {
+                      return monthLabels[idx];
+                    }
+                    return '';
+                  }
+                }
+              },
+              y: {
+                display: true,
+                beginAtZero: false,
+                grid: { display: true, color: 'rgba(0,0,0,0.05)' },
+                ticks: {
+                  font: { size: 10, family: 'Inter' },
+                  color: '#94a3b8',
+                  callback: (val) => window.Store.formatCurrency(val)
+                }
+              }
+            }
+          }
+        });
+      };
+
+      renderModalContent();
+
+      container.appendChild(modalBackdrop);
+
+      requestAnimationFrame(() => {
+        modalBackdrop.classList.add('open');
+        const content = modalBackdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(0)';
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
       });
     }
   }

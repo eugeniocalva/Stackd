@@ -14,7 +14,8 @@ window.Router = {
     '#tags': 'tags',
     '#tag-detail': 'tag-detail',
     '#category-detail': 'category-detail',
-    '#edit-category': 'edit-category'
+    '#edit-category': 'edit-category',
+    '#debt': 'debt'
   },
 
   // Returns query params parsed from the current hash, e.g. { account: 'abc123' }
