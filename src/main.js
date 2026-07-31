@@ -394,10 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (viewModule && viewModule.render) {
       routerView.innerHTML = viewModule.render(state);
       if (viewModule.attachEvents) {
-        // Need to wait for DOM update before attaching events
-        requestAnimationFrame(() => {
-          viewModule.attachEvents(routerView, state);
-        });
+        viewModule.attachEvents(routerView, state);
       }
       window._currentActiveView = viewModule;
     }

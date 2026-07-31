@@ -5,7 +5,7 @@ window.Components = {
       return `
         <div class="nav-overlay" id="nav-overlay" aria-hidden="true" style="opacity: 0; pointer-events: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.3); background: rgba(0,0,0,0.3); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 998; transition: opacity 0.3s ease;"></div>
         
-        <div class="nav-action-menu" id="nav-action-menu" style="position: fixed; bottom: 100px; right: var(--space-4); width: 280px; background-color: #ffffff; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: var(--space-4); box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(255, 255, 255, 0.4); z-index: 999; transform: translateY(20px) scale(0.9); opacity: 0; pointer-events: none; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
+        <div class="nav-action-menu" id="nav-action-menu" style="position: fixed; bottom: calc(100px + var(--safe-bottom)); right: max(var(--space-4), var(--safe-right)); width: 280px; background-color: #ffffff; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: var(--space-4); box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(255, 255, 255, 0.4); z-index: 999; transform: translateY(20px) scale(0.9); opacity: 0; pointer-events: none; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             <a href="#add" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
               <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
@@ -433,7 +433,20 @@ window.Components = {
       const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount));
       const dateStr = new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       
+      const isSelectionMode = options && options.isSelectionMode === true;
+      const isSelected = options && options.isSelected === true;
+
+      const checkboxHtml = isSelectionMode ? `
+        <div class="select-checkbox-wrapper" style="margin-right: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; pointer-events: none;">
+          <input type="checkbox" class="tx-select-checkbox" data-id="${transaction.id}" ${isSelected ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: var(--color-primary); pointer-events: none;" tabindex="-1" readonly>
+        </div>
+      ` : '';
+
+      const selectedClass = isSelected ? 'list-item-selected' : '';
+      const selectedBgStyle = isSelected ? 'background-color: var(--bg-surface-sunken); border-color: var(--color-primary);' : '';
+
       const innerContent = `
+        ${checkboxHtml}
         <div class="list-item-icon">
           <i data-lucide="${category ? category.icon : 'receipt'}"></i>
         </div>
@@ -455,9 +468,9 @@ window.Components = {
         </div>`;
 
       // v0.62: Complete branch isolation
-      if (!allowSwipe) {
+      if (!allowSwipe || isSelectionMode) {
         return `
-          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''}" data-id="${transaction.id}" style="cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Edit transaction of ${formattedAmount}">
+          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="Transaction of ${formattedAmount}">
             ${innerContent}
           </div>`;
       }
@@ -472,7 +485,7 @@ window.Components = {
               <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
             </button>
           </div>
-          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''}" data-id="${transaction.id}" style="cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Edit transaction of ${formattedAmount}">
+          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="Transaction of ${formattedAmount}">
             ${innerContent}
           </div>
         </div>`;
@@ -1799,7 +1812,18 @@ window.Components = {
             x: { 
               grid: { display: false }, 
               ticks: { 
-                font: { size: 10, family: 'Manrope', weight: '700' },
+                autoSkip: true,
+                autoSkipPadding: 6,
+                maxRotation: 45,
+                minRotation: 0,
+                font: (context) => {
+                  const width = context.chart ? context.chart.width : 360;
+                  return {
+                    size: width < 360 ? 9 : 10,
+                    family: 'Manrope',
+                    weight: '700'
+                  };
+                },
                 color: '#94a3b8'
               } 
             },
@@ -2959,13 +2983,22 @@ window.Components = {
               x: {
                 type: 'linear',
                 min: 0,
-                max: isQuarter ? 3 : 11,
+                max: isQuarter ? 3 : (selectedInterval === 'weekly' ? 51 : 11),
                 grid: { display: false },
                 ticks: {
-                  stepSize: 1,
-                  autoSkip: false,
-                  maxRotation: 0,
-                  font: { size: 11, family: 'Manrope', weight: 'bold' },
+                  stepSize: isQuarter ? 1 : (selectedInterval === 'weekly' ? 4 : 1),
+                  autoSkip: true,
+                  autoSkipPadding: 6,
+                  maxRotation: 45,
+                  minRotation: 0,
+                  font: (context) => {
+                    const width = context.chart ? context.chart.width : 360;
+                    return {
+                      size: width < 360 ? 9 : 10,
+                      family: 'Manrope',
+                      weight: '600'
+                    };
+                  },
                   color: '#64748b',
                   callback: (val) => {
                     const idx = Math.round(val);

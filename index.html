@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Stack'd v0.60</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
@@ -19,6 +19,8 @@
       #splash-screen {
         position: fixed;
         inset: 0;
+        padding-top: var(--safe-top);
+        padding-bottom: var(--safe-bottom);
         background: #ffffff;
         display: flex;
         flex-direction: column;

@@ -57,7 +57,11 @@ window.StackdExport = {
         if (!options.period || !options.period.start || !options.period.end) return true;
         return t.date >= options.period.start && t.date <= options.period.end;
       })
-      .sort((a,b) => b.date.localeCompare(a.date));
+      .sort((a,b) => {
+        const tsA = a.date ? `${a.date}T${a.time || '00:00:00'}` : (a.createdAt || '');
+        const tsB = b.date ? `${b.date}T${b.time || '00:00:00'}` : (b.createdAt || '');
+        return tsB.localeCompare(tsA);
+      });
 
     const rows = filtered.map(t => {
       const acc = state.accounts.find(a => a.id === t.accountId);
@@ -107,7 +111,11 @@ window.StackdExport = {
         if (!options.period || !options.period.start || !options.period.end) return true;
         return t.date >= options.period.start && t.date <= options.period.end;
       })
-      .sort((a,b) => b.date.localeCompare(a.date));
+      .sort((a,b) => {
+        const tsA = a.date ? `${a.date}T${a.time || '00:00:00'}` : (a.createdAt || '');
+        const tsB = b.date ? `${b.date}T${b.time || '00:00:00'}` : (b.createdAt || '');
+        return tsB.localeCompare(tsA);
+      });
 
     const tableData = filtered.map(t => {
       const acc = state.accounts.find(a => a.id === t.accountId);

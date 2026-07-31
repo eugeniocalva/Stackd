@@ -488,13 +488,22 @@ window.Views = {
                 x: {
                   type: 'linear',
                   min: 0,
-                  max: isQuarter ? 3 : 11,
+                  max: isQuarter ? 3 : (selectedInterval === 'weekly' ? 51 : 11),
                   grid: { display: false },
                   ticks: {
-                    stepSize: 1,
-                    autoSkip: false,
-                    maxRotation: 0,
-                    font: { size: 10 },
+                    stepSize: isQuarter ? 1 : (selectedInterval === 'weekly' ? 4 : 1),
+                    autoSkip: true,
+                    autoSkipPadding: 6,
+                    maxRotation: 45,
+                    minRotation: 0,
+                    font: (context) => {
+                      const width = context.chart ? context.chart.width : 360;
+                      return {
+                        size: width < 360 ? 9 : 10,
+                        family: 'Manrope',
+                        weight: '600'
+                      };
+                    },
                     color: '#64748b',
                     callback: (val) => {
                       const idx = Math.round(val);
@@ -541,6 +550,12 @@ window.Views = {
       const filters = state.historyFilters;
       const periodLabel = window.Store._getPeriodLabel(filters.period);
       const visibleTx = window.Store.getFilteredTransactions('history');
+
+      const isSelectionMode = state.isSelectionMode === true;
+      const selectedIds = Array.isArray(state.selectedTransactionIds) ? state.selectedTransactionIds : [];
+      const selectedCount = selectedIds.length;
+      const visibleTxIds = visibleTx.map(t => t.id);
+      const allVisibleSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
 
       const filterBarHtml = window.Components.AdvancedFilterBar.render('history', filters);
 
@@ -632,6 +647,22 @@ window.Views = {
             weekday: 'short', month: 'short', day: 'numeric' 
           });
 
+          const daySum = dayTxs.reduce((sum, tx) => {
+            if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') {
+              return sum;
+            }
+            const isOpeningBalance = tx.type === 'opening_balance';
+            if (tx.type === 'income' || (isOpeningBalance && tx.amount >= 0)) {
+              return sum + Math.abs(tx.amount);
+            } else if (tx.type === 'expense' || (isOpeningBalance && tx.amount < 0)) {
+              return sum - Math.abs(tx.amount);
+            }
+            return sum;
+          }, 0);
+
+          const sumColor = daySum > 0 ? 'var(--color-income)' : (daySum < 0 ? 'var(--color-expense)' : 'var(--text-secondary)');
+          const formattedSum = window.Store.formatCurrency(daySum);
+
           txListHtml += `
             <div id="tx-${date}" class="date-group-container">
               <div class="date-group-header">${displayDate}</div>
@@ -639,8 +670,15 @@ window.Views = {
                 ${dayTxs.map(tx => {
                   const category = state.categories.find(c => c.id === tx.categoryId);
                   const account = state.accounts.find(a => a.id === tx.accountId);
-                  return window.Components.TransactionItem.render(tx, category, account);
+                  const isSelected = selectedIds.includes(tx.id);
+                  return window.Components.TransactionItem.render(tx, category, account, {
+                    isSelectionMode,
+                    isSelected
+                  });
                 }).join('')}
+              </div>
+              <div class="day-summary-footer" style="color: ${sumColor};">
+                sum: ${formattedSum}
               </div>
             </div>
           `;
@@ -659,19 +697,66 @@ window.Views = {
       const sortLabel = isAsc ? 'Oldest First' : 'Newest First';
       const sortIndicatorHtml = `<div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); opacity: 0.85; text-align: right; margin-top: 2px;">Sorted: ${sortLabel}</div>`;
 
-      return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
-          <!-- FIXED STICKY HEADER -->
-          <div class="history-header-sticky" id="history-sticky-header">
+      const headerContentHtml = isSelectionMode
+        ? `
+            <div class="page-header contextual-header-bar" style="margin-top: var(--space-2); margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 10px 14px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
+                  Cancel
+                </button>
+                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
+                  ${selectedCount} Selected
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-toggle-select-all" class="btn-selection-action">
+                  ${allVisibleSelected ? 'Deselect All' : 'Select All'}
+                </button>
+                <button id="btn-bulk-delete-header" class="btn-selection-action btn-selection-delete" ${selectedCount === 0 ? 'disabled' : ''}>
+                  Delete ${selectedCount > 0 ? `(${selectedCount})` : ''}
+                </button>
+              </div>
+            </div>
+          `
+        : `
             <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
               <h1 class="page-header-title">History</h1>
-              <div style="text-align: right;">
+              <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                <button id="btn-start-selection-mode" class="btn-selection-action" aria-label="Enter bulk selection mode">
+                  Select
+                </button>
                 <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
                 ${accountFilterIndicatorHtml}
                 ${sortIndicatorHtml}
               </div>
             </div>
+          `;
 
+      const bulkActionBarHtml = isSelectionMode
+        ? `
+            <div class="bulk-selection-bar" id="bulk-action-bar">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="btn-cancel-selection-bottom" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
+                  Cancel
+                </button>
+                <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
+                  ${selectedCount} Selected
+                </span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-bulk-delete" class="btn-selection-action btn-selection-delete" ${selectedCount === 0 ? 'disabled' : ''}>
+                  Delete ${selectedCount > 0 ? `(${selectedCount})` : ''}
+                </button>
+              </div>
+            </div>
+          `
+        : '';
+
+      return `
+        <div class="container animate-fade-in" style="padding-bottom: 120px;">
+          <!-- FIXED STICKY HEADER -->
+          <div class="history-header-sticky" id="history-sticky-header">
+            ${headerContentHtml}
             <!-- New Filter Bar -->
             ${filterBarHtml}
           </div>
@@ -679,6 +764,8 @@ window.Views = {
           <div style="margin-top: var(--space-4);">
             ${txListHtml}
           </div>
+
+          ${bulkActionBarHtml}
         </div>
       `;
     },
@@ -697,11 +784,160 @@ window.Views = {
       }
       container._historyReTapHandler = reTapHandler;
 
-      // Edit transaction on click
+      const btnSelectMode = container.querySelector('#btn-start-selection-mode');
+      if (btnSelectMode) {
+        btnSelectMode.addEventListener('click', () => {
+          window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
+        });
+      }
+
+      const handleCancelSelection = () => {
+        window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: false });
+      };
+
+      const btnCancelSelection = container.querySelector('#btn-cancel-selection');
+      if (btnCancelSelection) btnCancelSelection.addEventListener('click', handleCancelSelection);
+
+      const btnCancelSelectionBottom = container.querySelector('#btn-cancel-selection-bottom');
+      if (btnCancelSelectionBottom) btnCancelSelectionBottom.addEventListener('click', handleCancelSelection);
+
+      const btnToggleSelectAll = container.querySelector('#btn-toggle-select-all');
+      if (btnToggleSelectAll) {
+        btnToggleSelectAll.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentStoreState = window.Store.getState();
+          const visibleTx = window.Store.getFilteredTransactions('history');
+          const visibleTxIds = visibleTx.map(t => t.id);
+          const selectedIds = currentStoreState.selectedTransactionIds || [];
+          const allSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
+          window.Store.dispatch('SET_ALL_TRANSACTIONS_SELECTION', { selectAll: !allSelected, ids: visibleTxIds });
+        });
+      }
+
+      const handleBulkDelete = () => {
+        const currentStoreState = window.Store.getState();
+        const selectedIds = currentStoreState.selectedTransactionIds || [];
+        if (selectedIds.length === 0) return;
+
+        const selectedTxs = currentStoreState.transactions.filter(t => selectedIds.includes(t.id));
+        const hasRecurring = selectedTxs.some(t => t.recurrence && t.recurrence.seriesId);
+
+        if (!hasRecurring) {
+          const count = selectedIds.length;
+          const label = count === 1 ? 'this transaction' : `these ${count} transactions`;
+          const titleText = count === 1 ? 'Delete Transaction?' : `Delete these ${count} transactions?`;
+
+          window.Components.Modal.show({
+            title: titleText,
+            content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">Are you sure you want to delete ${label}? <strong>This action cannot be undone.</strong></p>`,
+            saveText: 'Cancel',
+            showDelete: true,
+            onSave: (closeModal) => closeModal(),
+            onDelete: (closeModal) => {
+              window.Store.dispatch('DELETE_BULK_TRANSACTIONS', { ids: selectedIds, deleteFuture: false });
+              closeModal();
+            }
+          });
+          setTimeout(() => {
+            const btnModalSave = document.getElementById('modal-save-btn');
+            const btnModalDelete = document.getElementById('modal-delete-btn');
+            if (btnModalSave) btnModalSave.className = 'btn btn-secondary';
+            if (btnModalDelete) btnModalDelete.innerHTML = `Delete ${count === 1 ? 'Transaction' : `${count} Transactions`}`;
+          }, 10);
+        } else {
+          window.Components.Modal.show({
+            title: 'Recurring Items Detected',
+            content: `
+              <p style="margin-bottom: 16px; color: var(--text-secondary);">Some of the selected transactions belong to a recurring series. How would you like to proceed?</p>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button id="btn-delete-only-selected" class="btn btn-secondary" style="width: 100%; text-align: left; justify-content: flex-start; padding: 12px 16px; font-weight: 600;">
+                  📌 Delete ONLY selected (${selectedIds.length} items)
+                </button>
+                <button id="btn-delete-selected-future" class="btn" style="width: 100%; text-align: left; justify-content: flex-start; padding: 12px 16px; font-weight: 600; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">
+                  🔄 Delete selected AND all linked future transactions
+                </button>
+              </div>
+            `,
+            saveText: 'Cancel',
+            showDelete: false,
+            onSave: (closeModal) => closeModal()
+          });
+
+          setTimeout(() => {
+            const btnOnlySelected = document.getElementById('btn-delete-only-selected');
+            const btnSelectedFuture = document.getElementById('btn-delete-selected-future');
+
+            if (btnOnlySelected) {
+              btnOnlySelected.addEventListener('click', () => {
+                window.Store.dispatch('DELETE_BULK_TRANSACTIONS', { ids: selectedIds, deleteFuture: false });
+                if (window.Components.Modal.hide) window.Components.Modal.hide();
+              });
+            }
+            if (btnSelectedFuture) {
+              btnSelectedFuture.addEventListener('click', () => {
+                window.Store.dispatch('DELETE_BULK_TRANSACTIONS', { ids: selectedIds, deleteFuture: true });
+                if (window.Components.Modal.hide) window.Components.Modal.hide();
+              });
+            }
+          }, 10);
+        }
+      };
+
+      const btnBulkDelete = container.querySelector('#btn-bulk-delete');
+      if (btnBulkDelete) btnBulkDelete.addEventListener('click', handleBulkDelete);
+
+      const btnBulkDeleteHeader = container.querySelector('#btn-bulk-delete-header');
+      if (btnBulkDeleteHeader) btnBulkDeleteHeader.addEventListener('click', handleBulkDelete);
+
+      // Long press & Click handling on transaction list items
+      let longPressTimer = null;
+
+      const clearLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
       container.querySelectorAll('.list-item[data-id]').forEach(item => {
-        item.addEventListener('click', () => {
-          const txId = item.dataset.id;
-          if (txId) window.Router.navigate('#edit?id=' + txId);
+        const txId = item.dataset.id;
+        if (!txId) return;
+
+        const startPress = () => {
+          clearLongPress();
+
+          const currentStoreState = window.Store.getState();
+          if (currentStoreState.isSelectionMode) return;
+
+          longPressTimer = setTimeout(() => {
+            if (window.navigator && window.navigator.vibrate) {
+              try { window.navigator.vibrate(40); } catch (_) {}
+            }
+            window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
+            window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
+            clearLongPress();
+          }, 500);
+        };
+
+        item.addEventListener('touchstart', startPress, { passive: true });
+        item.addEventListener('mousedown', startPress);
+
+        item.addEventListener('touchend', clearLongPress);
+        item.addEventListener('touchmove', clearLongPress);
+        item.addEventListener('mouseup', clearLongPress);
+        item.addEventListener('mouseleave', clearLongPress);
+
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const currentStoreState = window.Store.getState();
+          if (currentStoreState.isSelectionMode) {
+            window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
+          } else {
+            window.Router.navigate('#edit?id=' + txId);
+          }
         });
       });
 
@@ -768,6 +1004,9 @@ window.Views = {
       let initialType = 'expense';
       let initialAmount = '';
       let initialDate = new Date().toISOString().split('T')[0];
+      let initialTime = (window.Store && typeof window.Store._getSystemTimeString === 'function')
+        ? window.Store._getSystemTimeString().substring(0, 5)
+        : new Date().toTimeString().substring(0, 5);
       let initialNote = '';
       let initialTags = [];
       let initialAccount = '';
@@ -782,6 +1021,7 @@ window.Views = {
       if (txToEdit) {
         initialAmount = Math.abs(txToEdit.amount);
         initialDate = txToEdit.date;
+        initialTime = txToEdit.time ? txToEdit.time.substring(0, 5) : initialTime;
         initialNote = txToEdit.comment || txToEdit.note || '';
         initialTags = txToEdit.tags || [];
         initialAccount = txToEdit.accountId;
@@ -821,6 +1061,7 @@ window.Views = {
         if (draft.type) initialType = draft.type;
         if (draft.amount !== undefined) initialAmount = draft.amount;
         if (draft.date) initialDate = draft.date;
+        if (draft.time) initialTime = draft.time;
         if (draft.note !== undefined) initialNote = draft.note;
         if (draft.tags) initialTags = draft.tags;
         if (draft.account) initialAccount = draft.account;
@@ -895,23 +1136,29 @@ window.Views = {
               <label class="form-label" for="tx-date">Date</label>
               <input type="date" id="tx-date" class="form-control" value="${initialDate}">
             </div>
+            ${state.enableTimeInput ? `
+            <div class="form-group" id="group-time">
+              <label class="form-label" for="tx-time">Time</label>
+              <input type="time" id="tx-time" class="form-control" value="${initialTime}">
+            </div>
+            ` : ''}
             
             <div class="form-group" style="position: relative;">
               <label class="form-label" for="tx-tags-input">Tags</label>
-              <div id="tx-tags-container" class="form-control" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; min-height: 44px; align-items: center; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+              <div id="tx-tags-container" class="form-control" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; min-height: 44px; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-md); width: 100%; max-width: 100%; box-sizing: border-box;">
                 ${initialTags.map(t => `<span class="tag-chip" data-tag="${t}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${t} <button style="cursor: pointer; color: var(--text-tertiary); background: transparent; border: none; padding: 0 4px;" class="remove-tag" aria-label="Remove tag ${t}">x</button></span>`).join('')}
                 <input type="text" id="tx-tags-input" placeholder="Add a tag..." autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
               </div>
-              <div id="tx-tags-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
+              <div id="tx-tags-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
             <div class="form-group" style="margin-bottom: 0; position: relative;">
               <label class="form-label" for="tx-comment">Note (Optional)</label>
               <input type="text" id="tx-comment" class="form-control" placeholder="What was this for?" value="${initialNote}" autocomplete="off">
-              <div id="tx-comment-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
+              <div id="tx-comment-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
-            <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--border-color); box-shadow: none;" id="group-recurring">
+            <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-recurring">
               <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="flex: 1;">
                   <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">Recurrent</strong>
@@ -922,7 +1169,7 @@ window.Views = {
                   <span class="slider"></span>
                 </label>
               </div>
-              <div id="tx-recurrence-end-group" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 4px;">
+              <div id="tx-recurrence-end-group" style="display: none; border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 4px;">
                 <label class="form-label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px;">End Date</label>
                 <input type="date" id="tx-recurrence-end-date" class="form-control" value="${initialRecurrenceEndDate}">
               </div>
@@ -1343,6 +1590,8 @@ window.Views = {
         const toAccountId = document.getElementById('tx-transfer-to').value;
         const categoryId = categorySelect.value;
         const date = document.getElementById('tx-date').value;
+        const timeEl = document.getElementById('tx-time');
+        const customTime = (timeEl && timeEl.value) ? (timeEl.value.length === 5 ? timeEl.value + ':00' : timeEl.value) : undefined;
         const comment = document.getElementById('tx-comment').value;
         const editIdInput = document.getElementById('tx-edit-id');
         const isEditSave = !!editIdInput;
@@ -1402,6 +1651,7 @@ window.Views = {
                   expenseAccountId: accountId,
                   incomeAccountId: toAccountId,
                   date,
+                  time: customTime,
                   note: comment,
                   recurrence: recurrenceData,
                   tags: currentTags,
@@ -1419,6 +1669,7 @@ window.Views = {
                   expenseAccountId: accountId,
                   incomeAccountId: toAccountId,
                   date,
+                  time: customTime,
                   note: comment,
                   recurrence: recurrenceData,
                   tags: currentTags
@@ -1430,6 +1681,7 @@ window.Views = {
                 expenseAccountId: accountId,
                 incomeAccountId: toAccountId,
                 date,
+                time: customTime,
                 note: comment,
                 recurrence: recurrenceData,
                 tags: currentTags
@@ -1445,6 +1697,7 @@ window.Views = {
                 accountId: accountId,
                 categoryId: categoryId,
                 date: date,
+                time: customTime,
                 comment: comment,
                 recurrence: recurrenceData,
                 tags: currentTags
@@ -1458,6 +1711,7 @@ window.Views = {
                 accountId: accountId,
                 categoryId: categoryId,
                 date: date,
+                time: customTime,
                 comment: comment,
                 recurrence: recurrenceData,
                 tags: currentTags,
@@ -1471,6 +1725,7 @@ window.Views = {
               accountId: accountId,
               categoryId: categoryId,
               date: date,
+              time: customTime,
               comment: comment,
               recurrence: recurrenceData,
               tags: currentTags
@@ -2421,7 +2676,7 @@ Object.assign(window.Views, {
 
           <div class="section-title">Data Visualization</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4);">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="arrow-up-down"></i></div>
                 <div>
@@ -2433,6 +2688,20 @@ Object.assign(window.Views, {
                 <button id="btn-sort-desc" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'desc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'desc'}">DESC</button>
                 <button id="btn-sort-asc" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'asc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'asc'}">ASC</button>
               </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: var(--space-3);">
+                <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="clock"></i></div>
+                <div>
+                  <div class="list-item-title" id="label-enable-time-input">Enable transaction time input</div>
+                  <div class="list-item-subtitle">Show manual time field when creating transactions</div>
+                </div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-enable-time-input" ${state.enableTimeInput ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
             </div>
           </div>
 
@@ -2515,6 +2784,13 @@ Object.assign(window.Views, {
       const exportTxBtn = document.getElementById('btn-export-transactions');
       if (exportTxBtn) {
         exportTxBtn.addEventListener('click', () => window.StackdExport.exportTransactions(state));
+      }
+
+      const toggleTimeInput = document.getElementById('toggle-enable-time-input');
+      if (toggleTimeInput) {
+        toggleTimeInput.addEventListener('change', (e) => {
+          window.Store.dispatch('SET_ENABLE_TIME_INPUT', e.target.checked);
+        });
       }
 
       // Currency picker
@@ -2803,20 +3079,6 @@ Object.assign(window.Views, {
               <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">Use negative for credit cards, loans, or existing debts.</p>
             </div>
 
-            ${isEdit ? `
-            <div class="form-group">
-              <label class="form-label" for="edit-acc-current-balance">Current Balance</label>
-              <div style="position: relative;">
-                <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${currSym}</span>
-                <input type="number" id="edit-acc-current-balance" class="form-control" value="${currentBalance.toFixed(2)}" step="0.01" inputmode="decimal" style="padding-left: 30px;">
-              </div>
-              <p style="margin: 6px 0 0; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4;">Computed from Opening Balance + all transactions. Both fields sync automatically.</p>
-              <p id="current-balance-warning" class="animate-fade-in" style="display: none; margin: 8px 0 0; font-size: var(--text-xs); color: var(--color-expense); background: var(--color-expense-bg); padding: 8px; border-radius: var(--radius-sm); line-height: 1.4; font-weight: 500;">
-                ⚠️ For consistency purposes, modifying the current balance will calculate and update your initial opening balance.
-              </p>
-            </div>
-            ` : ''}
-
             <div class="form-group" style="margin-bottom: var(--space-5);">
               <label class="form-label" for="edit-acc-date">Opening Balance Date</label>
               <input type="date" id="edit-acc-date" class="form-control" value="${currentObDate}">
@@ -2901,25 +3163,10 @@ Object.assign(window.Views, {
         });
       }
 
-      // -------------------------------------------------------
-      // Bidirectional Balance Sync Engine (v0.31)
-      // txDelta = sum of all non-opening-balance transactions
-      // currentBalance = openingBalance + txDelta
-      // -------------------------------------------------------
-      const allTx = account ? state.transactions.filter(
-        t => t.accountId === account.id && t.type !== 'opening_balance'
-      ) : [];
-      const txDelta = allTx.reduce((sum, t) => {
-        return window.Store._isPositiveTx(t) ? sum + t.amount : sum - t.amount;
-      }, 0);
-
       const obInput  = document.getElementById('edit-acc-balance');
-      const curInput = document.getElementById('edit-acc-current-balance');
       const btnObPos = container.querySelector('#btn-ob-pos');
       const btnObNeg = container.querySelector('#btn-ob-neg');
       const obSignSymbol = container.querySelector('#ob-sign-symbol');
-
-      let syncLock = false; // prevents recursive input events
 
       const updateObSignUI = () => {
         if (btnObPos && btnObNeg) {
@@ -2949,25 +3196,10 @@ Object.assign(window.Views, {
         }
       };
 
-      const getSignedOb = () => {
-        if (!obInput) return 0;
-        const rawDigits = obInput.value.replace(/\D/g, '').slice(0, 12);
-        const cents = parseInt(rawDigits || '0', 10);
-        const absVal = cents / 100;
-        return isNegativeOb ? -absVal : absVal;
-      };
-
       if (btnObPos) {
         btnObPos.addEventListener('click', () => {
           isNegativeOb = false;
           updateObSignUI();
-          if (!syncLock) {
-            syncLock = true;
-            const newOb = getSignedOb();
-            const newCur = newOb + txDelta;
-            if (curInput) curInput.value = newCur.toFixed(2);
-            syncLock = false;
-          }
         });
       }
 
@@ -2975,13 +3207,6 @@ Object.assign(window.Views, {
         btnObNeg.addEventListener('click', () => {
           isNegativeOb = true;
           updateObSignUI();
-          if (!syncLock) {
-            syncLock = true;
-            const newOb = getSignedOb();
-            const newCur = newOb + txDelta;
-            if (curInput) curInput.value = newCur.toFixed(2);
-            syncLock = false;
-          }
         });
       }
 
@@ -2991,18 +3216,11 @@ Object.assign(window.Views, {
           if (typeSelect.value === 'Credit card') {
             isNegativeOb = true;
             updateObSignUI();
-            if (!syncLock) {
-              syncLock = true;
-              const newOb = getSignedOb();
-              const newCur = newOb + txDelta;
-              if (curInput) curInput.value = newCur.toFixed(2);
-              syncLock = false;
-            }
           }
         });
       }
 
-      // Scenario A: Opening Balance edited → strict numeric input (0-9 only), right-to-left decimal shift & update Current Balance
+      // Scenario A: Opening Balance edited → strict numeric input (0-9 only), right-to-left decimal shift
       if (obInput) {
         const processDecimalShift = () => {
           const rawDigits = obInput.value.replace(/\D/g, '').slice(0, 12);
@@ -3036,12 +3254,7 @@ Object.assign(window.Views, {
 
         // Decimal shift filling on input
         obInput.addEventListener('input', () => {
-          if (syncLock) return;
-          syncLock = true;
-          const newOb = processDecimalShift();
-          const newCur = newOb + txDelta;
-          if (curInput) curInput.value = newCur.toFixed(2);
-          syncLock = false;
+          processDecimalShift();
         });
 
         // Sanitize pasted content
@@ -3054,32 +3267,6 @@ Object.assign(window.Views, {
           const cents = parseInt(combinedDigits || '0', 10);
           const formatted = (cents / 100).toFixed(2);
           obInput.value = formatted;
-
-          if (!syncLock) {
-            syncLock = true;
-            const newOb = isNegativeOb ? -(cents / 100) : (cents / 100);
-            const newCur = newOb + txDelta;
-            if (curInput) curInput.value = newCur.toFixed(2);
-            syncLock = false;
-          }
-        });
-      }
-
-      // Scenario B: Current Balance edited → back-calculate Opening Balance
-      if (curInput) {
-        curInput.addEventListener('input', () => {
-          if (syncLock) return;
-          syncLock = true;
-          
-          const warningEl = document.getElementById('current-balance-warning');
-          if (warningEl) warningEl.style.display = 'block';
-
-          const newCur = parseFloat(curInput.value) || 0;
-          const newOb = newCur - txDelta;
-          isNegativeOb = newOb < 0;
-          updateObSignUI();
-          if (obInput) obInput.value = Math.abs(newOb).toFixed(2);
-          syncLock = false;
         });
       }
 
@@ -3159,6 +3346,312 @@ Object.assign(window.Views, {
           }, 10);
         });
       }
+    }
+  },
+
+  DebtView: {
+    render(state) {
+      const currency = state.currency || '$';
+      const loans = state.loans || [];
+
+      // Calculate totals
+      let totalPrincipal = 0;
+      let totalRemaining = 0;
+      let totalMonthlyPayment = 0;
+
+      loans.forEach(loan => {
+        totalPrincipal += (loan.amount || 0);
+        const rem = window.Store.computeLoanRemainingBalance ? window.Store.computeLoanRemainingBalance(loan) : (loan.amount || 0);
+        totalRemaining += rem;
+        totalMonthlyPayment += (loan.monthlyPayment || 0);
+      });
+
+      const totalLoansCount = loans.length;
+
+      const formatCurr = (val) => {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: currency === '€' ? 'EUR' : (currency === '£' ? 'GBP' : 'USD'),
+          minimumFractionDigits: 2
+        }).format(val || 0);
+      };
+
+      const loanCardsHtml = loans.length === 0 ? `
+        <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4);">
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--bg-tertiary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--space-3);">
+            <i data-lucide="credit-card" style="width: 28px; height: 28px; color: var(--text-tertiary);"></i>
+          </div>
+          <h3 style="font-size: var(--text-lg); font-weight: 700; margin-bottom: 4px;">No Active Loans</h3>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto var(--space-4);">
+            Track your mortgages, car loans, and credit debts. Calculate monthly payments and simulate payoff schedules.
+          </p>
+          <button id="btn-add-loan-empty" class="btn btn-primary">
+            <i data-lucide="plus" style="width: 18px; height: 18px; margin-right: 6px;"></i> Add Your First Loan
+          </button>
+        </div>
+      ` : loans.map(loan => {
+        const remaining = window.Store.computeLoanRemainingBalance ? window.Store.computeLoanRemainingBalance(loan) : loan.amount;
+        const progressPct = loan.amount > 0 ? Math.min(100, Math.max(0, ((loan.amount - remaining) / loan.amount) * 100)) : 0;
+
+        return `
+          <div class="card" style="margin-bottom: var(--space-3); padding: var(--space-4);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
+              <div>
+                <h3 style="font-size: var(--text-base); font-weight: 700; color: var(--text-primary); margin: 0;">${loan.name}</h3>
+                <div style="display: flex; gap: var(--space-2); margin-top: 4px; align-items: center;">
+                  <span class="debt-dur-chip" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600;">
+                    ${loan.tan || 0}% TAN
+                  </span>
+                  <span style="font-size: 0.75rem; color: var(--text-tertiary);">
+                    ${loan.durationMonths} Months (${loan.startDate || 'N/A'})
+                  </span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 4px;">
+                <button class="btn-edit-loan" data-id="${loan.id}" style="background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-tertiary);" aria-label="Edit loan">
+                  <i data-lucide="edit-2" style="width: 16px; height: 16px;"></i>
+                </button>
+                <button class="btn-delete-loan" data-id="${loan.id}" style="background: none; border: none; padding: 6px; cursor: pointer; color: var(--color-expense);" aria-label="Delete loan">
+                  <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                </button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin: var(--space-3) 0 4px;">
+              <div>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Remaining Principal</span>
+                <div style="font-size: var(--text-xl); font-weight: 800; color: var(--text-primary);">${formatCurr(remaining)}</div>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Monthly Payment</span>
+                <div style="font-size: var(--text-lg); font-weight: 700; color: var(--color-expense);">${formatCurr(loan.monthlyPayment)} / mo</div>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div style="margin-top: var(--space-3);">
+              <div style="display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 4px;">
+                <span>Paid: ${formatCurr(loan.amount - remaining)}</span>
+                <span>Original: ${formatCurr(loan.amount)}</span>
+              </div>
+              <div style="width: 100%; height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden;">
+                <div style="width: ${progressPct}%; height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+          <!-- Top Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <a href="#" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm);" aria-label="Back to Dashboard">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i> Back
+              </a>
+              <div>
+                <h1 class="header-title" style="margin: 0;">Debt Simulator</h1>
+                <div class="text-secondary" style="font-size: var(--text-xs); margin-top: 2px;">Track loans & amortization schedules</div>
+              </div>
+            </div>
+            <button id="btn-add-loan-header" class="btn btn-primary" style="width: auto; padding: 8px 16px; font-size: var(--text-sm);">
+              + Add Loan
+            </button>
+          </div>
+
+          <!-- Summary Metric Cards -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); margin-bottom: var(--space-6);">
+            <div class="card" style="padding: var(--space-4);">
+              <div class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Total Remaining</div>
+              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: var(--text-xl); color: var(--color-expense); margin-top: 4px;">${formatCurr(totalRemaining)}</div>
+            </div>
+            <div class="card" style="padding: var(--space-4);">
+              <div class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Monthly Total</div>
+              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: var(--text-xl); color: var(--text-primary); margin-top: 4px;">${formatCurr(totalMonthlyPayment)}</div>
+            </div>
+          </div>
+
+          <!-- Active Loans Section -->
+          <div style="margin-bottom: var(--space-6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+              <h2 class="header-title" style="font-size: var(--text-lg); margin: 0;">Active Loans (${totalLoansCount})</h2>
+            </div>
+            ${loanCardsHtml}
+          </div>
+        </div>
+      `;
+    },
+
+    attachEvents(container, state) {
+      const openAddEditModal = (loanToEdit = null) => {
+        const isEdit = !!loanToEdit;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const initialValues = loanToEdit ? {
+          name: loanToEdit.name || '',
+          amount: loanToEdit.amount || '',
+          tan: loanToEdit.tan || 0,
+          durationMonths: loanToEdit.durationMonths || 12,
+          startDate: loanToEdit.startDate || todayStr
+        } : {
+          name: '',
+          amount: '',
+          tan: 3.5,
+          durationMonths: 24,
+          startDate: todayStr
+        };
+
+        const calcPMT = (principal, tanPct, months) => {
+          if (!principal || principal <= 0 || !months || months <= 0) return 0;
+          if (!tanPct || tanPct <= 0) return principal / months;
+          const r = (tanPct / 100) / 12;
+          const pmt = principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+          return pmt;
+        };
+
+        window.Components.Modal.show({
+          title: isEdit ? 'Edit Loan' : 'Add New Loan',
+          content: `
+            <form id="loan-form">
+              <div class="form-group" style="margin-bottom: var(--space-3);">
+                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Loan Name</label>
+                <input type="text" id="loan-name" class="form-control" placeholder="e.g. Car Loan, Home Mortgage" value="${initialValues.name}" required />
+              </div>
+              <div class="form-group" style="margin-bottom: var(--space-3);">
+                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Principal Amount (${state.currency || '$'})</label>
+                <input type="number" step="0.01" id="loan-amount" class="form-control" placeholder="0.00" value="${initialValues.amount}" required />
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3);">
+                <div class="form-group">
+                  <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Annual TAN %</label>
+                  <input type="number" step="0.01" id="loan-tan" class="form-control" placeholder="e.g. 3.5" value="${initialValues.tan}" required />
+                </div>
+                <div class="form-group">
+                  <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Duration (Months)</label>
+                  <input type="number" step="1" id="loan-duration" class="form-control" placeholder="e.g. 24" value="${initialValues.durationMonths}" required />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: var(--space-4);">
+                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Start Date</label>
+                <input type="date" id="loan-start-date" class="form-control" value="${initialValues.startDate}" required />
+              </div>
+              <div class="card" style="padding: var(--space-3); background: var(--bg-tertiary); border: none; margin-bottom: var(--space-3);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: var(--text-xs); color: var(--text-secondary); font-weight: 600;">Estimated Monthly Payment:</span>
+                  <span id="loan-pmt-preview" style="font-size: var(--text-base); font-weight: 800; color: var(--color-expense);">$0.00 / mo</span>
+                </div>
+              </div>
+            </form>
+          `,
+          saveText: isEdit ? 'Update Loan' : 'Save Loan',
+          onSave: (closeModal) => {
+            const name = document.getElementById('loan-name').value.trim();
+            const amount = parseFloat(document.getElementById('loan-amount').value);
+            const tan = parseFloat(document.getElementById('loan-tan').value) || 0;
+            const durationMonths = parseInt(document.getElementById('loan-duration').value, 10);
+            const startDate = document.getElementById('loan-start-date').value;
+
+            if (!name || isNaN(amount) || amount <= 0 || isNaN(durationMonths) || durationMonths <= 0 || !startDate) {
+              return;
+            }
+
+            const pmt = calcPMT(amount, tan, durationMonths);
+            const totalReimbursement = pmt * durationMonths;
+
+            // Calculate end date
+            const startD = new Date(startDate + 'T00:00:00');
+            startD.setMonth(startD.getMonth() + durationMonths);
+            const endDate = startD.toISOString().split('T')[0];
+
+            if (isEdit) {
+              window.Store.dispatch('UPDATE_LOAN', {
+                id: loanToEdit.id,
+                name,
+                amount,
+                tan,
+                durationMonths,
+                startDate,
+                endDate,
+                monthlyPayment: pmt,
+                totalReimbursement
+              });
+            } else {
+              window.Store.dispatch('ADD_LOAN', {
+                name,
+                amount,
+                tan,
+                durationMonths,
+                startDate,
+                endDate,
+                monthlyPayment: pmt,
+                totalReimbursement
+              });
+            }
+
+            closeModal();
+          }
+        });
+
+        // Add live calculation listener for PMT preview in modal
+        setTimeout(() => {
+          const updatePMTPreview = () => {
+            const amount = parseFloat(document.getElementById('loan-amount')?.value) || 0;
+            const tan = parseFloat(document.getElementById('loan-tan')?.value) || 0;
+            const durationMonths = parseInt(document.getElementById('loan-duration')?.value, 10) || 0;
+            const pmt = calcPMT(amount, tan, durationMonths);
+            const previewEl = document.getElementById('loan-pmt-preview');
+            if (previewEl) {
+              previewEl.textContent = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: (state.currency === '€' ? 'EUR' : (state.currency === '£' ? 'GBP' : 'USD'))
+              }).format(pmt) + ' / mo';
+            }
+          };
+
+          ['loan-amount', 'loan-tan', 'loan-duration'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.addEventListener('input', updatePMTPreview);
+          });
+          updatePMTPreview();
+        }, 20);
+      };
+
+      const btnAddHeader = container.querySelector('#btn-add-loan-header');
+      if (btnAddHeader) btnAddHeader.addEventListener('click', () => openAddEditModal());
+
+      const btnAddEmpty = container.querySelector('#btn-add-loan-empty');
+      if (btnAddEmpty) btnAddEmpty.addEventListener('click', () => openAddEditModal());
+
+      container.querySelectorAll('.btn-edit-loan').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const loanId = btn.dataset.id;
+          const loan = (state.loans || []).find(l => l.id === loanId);
+          if (loan) openAddEditModal(loan);
+        });
+      });
+
+      container.querySelectorAll('.btn-delete-loan').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const loanId = btn.dataset.id;
+          const loan = (state.loans || []).find(l => l.id === loanId);
+          if (!loan) return;
+
+          window.Components.Modal.show({
+            title: 'Delete Loan?',
+            content: `<p style="color: var(--text-secondary);">Are you sure you want to delete <strong>${loan.name}</strong>? This action cannot be undone.</p>`,
+            saveText: 'Cancel',
+            showDelete: true,
+            onSave: (closeModal) => closeModal(),
+            onDelete: (closeModal) => {
+              window.Store.dispatch('DELETE_LOAN', { id: loanId });
+              closeModal();
+            }
+          });
+        });
+      });
     }
   }
 });

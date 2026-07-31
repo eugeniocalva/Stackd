@@ -49,6 +49,9 @@ window.Store = {
     language: 'en',
     historySortOrder: 'desc', // 'asc' or 'desc'
     defaultAccountId: '', // v0.53
+    enableTimeInput: false,
+    isSelectionMode: false,
+    selectedTransactionIds: [],
 
 
 
@@ -105,6 +108,7 @@ window.Store = {
     this.state.language = window.StackdDB.load('language', 'en');
     this.state.historySortOrder = window.StackdDB.load('historySortOrder', 'desc');
     this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', '');
+    this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     // Restore persisted history sort preference (default: asc = Oldest First)
     this.state.historyFilters.sortOrder = window.StackdDB.load('historyFilterSortOrder', 'asc');
     this.state.expandedGraphFilters = window.StackdDB.load('expandedGraphFilters', {
@@ -175,6 +179,15 @@ window.Store = {
       }
       if (t.isAdjustment) {
         delete t.isAdjustment;
+        migrationChanged = true;
+      }
+      if (!t.time) {
+        if (t.createdAt && t.createdAt.includes('T')) {
+          const timePart = t.createdAt.split('T')[1];
+          t.time = timePart ? timePart.substring(0, 8) : this._getSystemTimeString();
+        } else {
+          t.time = this._getSystemTimeString();
+        }
         migrationChanged = true;
       }
     });
@@ -273,6 +286,7 @@ window.Store = {
         if (e.key === 'stackd_v1_budgets') { this.state.budgets = window.StackdDB.load('budgets', []); changed = true; }
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
+        if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         
 
 
@@ -297,15 +311,37 @@ window.Store = {
     return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true });
   },
 
+  _getSystemTimeString() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  },
+
+  _getTransactionTimestamp(tx) {
+    if (tx.date) {
+      const timePart = tx.time || '00:00:00';
+      return `${tx.date}T${timePart}`;
+    }
+    return tx.createdAt || '';
+  },
+
   _sortTransactions() {
     const isAsc = this.state.historySortOrder === 'asc';
+    const dir = isAsc ? 1 : -1;
     this.state.transactions.sort((a, b) => {
-      if (a.date !== b.date) {
-        const diff = new Date(a.date) - new Date(b.date);
-        return isAsc ? diff : -diff;
+      const tsA = this._getTransactionTimestamp(a);
+      const tsB = this._getTransactionTimestamp(b);
+      if (tsA !== tsB) {
+        return dir * tsA.localeCompare(tsB);
       }
-      const diff = new Date(a.createdAt) - new Date(b.createdAt);
-      return isAsc ? diff : -diff;
+      const createdA = a.createdAt || '';
+      const createdB = b.createdAt || '';
+      if (createdA !== createdB) {
+        return dir * createdA.localeCompare(createdB);
+      }
+      return dir * a.id.localeCompare(b.id);
     });
   },
 
@@ -355,6 +391,7 @@ window.Store = {
              ...gen,
              id: window.StackdDB.generateId(),
              date: nextD,
+             time: gen.time || this._getSystemTimeString(),
              createdAt: new Date().toISOString(),
              tags: gen.recurrence.propagateTags === false ? [] : (gen.tags ? [...gen.tags] : []),
              recurrence: {
@@ -373,6 +410,7 @@ window.Store = {
                    ...cp,
                    id: window.StackdDB.generateId(),
                    date: nextD,
+                   time: cp.time || generatedTx.time || this._getSystemTimeString(),
                    createdAt: new Date().toISOString(),
                    transferRef: generatedTx.transferRef,
                    tags: (cp.recurrence && cp.recurrence.propagateTags === false) ? [] : (cp.tags ? [...cp.tags] : []),
@@ -498,6 +536,8 @@ window.Store = {
     const { period, types, accounts, categories, sortOrder } = filters;
     
     return this.state.transactions.filter(tx => {
+      if (this._isTxBeforeOpeningDate(tx)) return false;
+
       if (pageKey === 'analytics') {
         if (tx.type !== 'expense' && tx.type !== 'income') return false;
         if (tx.transferRef) return false; // Exclude linked transfers
@@ -513,10 +553,17 @@ window.Store = {
       return matchPeriod && matchType && matchAccount && matchCategory;
     }).sort((a, b) => {
       const dir = sortOrder === 'asc' ? 1 : -1;
-      if (a.date !== b.date) {
-        return dir * (a.date.localeCompare(b.date));
+      const tsA = this._getTransactionTimestamp(a);
+      const tsB = this._getTransactionTimestamp(b);
+      if (tsA !== tsB) {
+        return dir * tsA.localeCompare(tsB);
       }
-      return dir * (b.id.localeCompare(a.id));
+      const createdA = a.createdAt || '';
+      const createdB = b.createdAt || '';
+      if (createdA !== createdB) {
+        return dir * createdA.localeCompare(createdB);
+      }
+      return dir * a.id.localeCompare(b.id);
     });
   },
 
@@ -585,9 +632,9 @@ window.Store = {
         this.state.accounts.push(newAccount);
         this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
-        // Auto-create opening balance transaction if provided
+        // Auto-create opening balance transaction (default time to 00:00) if non-zero opening balance or opening date is provided
         const obAmount = parseFloat(payload.openingBalance) || 0;
-        if (obAmount !== 0) {
+        if (obAmount !== 0 || payload.openingDate !== undefined) {
           this.state.transactions.push({
             id: window.StackdDB.generateId(),
             type: 'opening_balance',
@@ -595,6 +642,7 @@ window.Store = {
             accountId: newAccount.id,
             categoryId: 'cat_balance',
             date: payload.openingDate || newAccount.createdAt.split('T')[0],
+            time: '00:00',
             comment: 'Opening Balance',
             createdAt: new Date().toISOString()
           });
@@ -618,27 +666,25 @@ window.Store = {
           
           this._sortData();
           window.StackdDB.save('accounts', this.state.accounts);
-          if (payload.openingBalance !== undefined) {
-            const newObAmt = parseFloat(payload.openingBalance) || 0;
-            const newDate = payload.openingDate || this.state.accounts[accountIndex].createdAt.split('T')[0];
+          if ((payload.openingBalance !== undefined && parseFloat(payload.openingBalance) !== 0) || payload.openingDate !== undefined) {
+            const newObAmt = payload.openingBalance !== undefined ? (parseFloat(payload.openingBalance) || 0) : null;
             const existingObIdx = this.state.transactions.findIndex(
               t => t.accountId === payload.id && t.type === 'opening_balance'
             );
+            const newDate = payload.openingDate || (existingObIdx !== -1 ? this.state.transactions[existingObIdx].date : this.state.accounts[accountIndex].createdAt.split('T')[0]);
             if (existingObIdx !== -1) {
-              if (newObAmt === 0) {
-                this.state.transactions.splice(existingObIdx, 1);
-              } else {
-                this.state.transactions[existingObIdx].amount = newObAmt;
-                this.state.transactions[existingObIdx].date = newDate;
-              }
-            } else if (newObAmt !== 0) {
+              if (newObAmt !== null) this.state.transactions[existingObIdx].amount = newObAmt;
+              this.state.transactions[existingObIdx].date = newDate;
+              this.state.transactions[existingObIdx].time = '00:00';
+            } else {
               this.state.transactions.push({
                 id: window.StackdDB.generateId(),
                 type: 'opening_balance',
-                amount: newObAmt,
+                amount: newObAmt !== null ? newObAmt : 0,
                 accountId: payload.id,
                 categoryId: 'cat_balance',
                 date: newDate,
+                time: '00:00',
                 comment: 'Opening Balance',
                 createdAt: new Date().toISOString()
               });
@@ -696,6 +742,7 @@ window.Store = {
 
         const newTransaction = {
           id: window.StackdDB.generateId(),
+          time: payload.time || this._getSystemTimeString(),
           ...payload,
           tags: tagsArray,
           createdAt: new Date().toISOString()
@@ -821,6 +868,9 @@ window.Store = {
           }
         }
 
+        const transferTime = payload.time || this._getSystemTimeString();
+        const createdAtIso = new Date().toISOString();
+
         // Expense side (From)
         this.state.transactions.push({
           id: window.StackdDB.generateId(),
@@ -829,11 +879,12 @@ window.Store = {
           accountId: payload.expenseAccountId,
           categoryId: '', // Transfers don't have a category
           date: payload.date,
+          time: transferTime,
           comment: payload.note,
           transferRef: transferRef,
           tags: tagsArray,
           recurrence: payload.recurrence,
-          createdAt: new Date().toISOString()
+          createdAt: createdAtIso
         });
 
         // Income side (To)
@@ -844,11 +895,12 @@ window.Store = {
           accountId: payload.incomeAccountId,
           categoryId: '',
           date: payload.date,
+          time: transferTime,
           comment: payload.note,
           transferRef: transferRef,
           tags: tagsArray,
           recurrence: payload.recurrence,
-          createdAt: new Date().toISOString()
+          createdAt: createdAtIso
         });
 
         this._sortTransactions();
@@ -1019,11 +1071,96 @@ window.Store = {
         break;
       }
 
+      case 'TOGGLE_SELECTION_MODE': {
+        const active = payload && payload.active !== undefined ? payload.active : !this.state.isSelectionMode;
+        this.state.isSelectionMode = active;
+        if (!active) {
+          this.state.selectedTransactionIds = [];
+        }
+        changed = true;
+        break;
+      }
+
+      case 'TOGGLE_TRANSACTION_SELECTION': {
+        const id = payload.id;
+        if (!id) break;
+        const current = Array.isArray(this.state.selectedTransactionIds) ? this.state.selectedTransactionIds : [];
+        if (current.includes(id)) {
+          this.state.selectedTransactionIds = current.filter(i => i !== id);
+        } else {
+          this.state.selectedTransactionIds = [...current, id];
+        }
+        changed = true;
+        break;
+      }
+
+      case 'SET_ALL_TRANSACTIONS_SELECTION': {
+        const ids = payload.ids || [];
+        this.state.selectedTransactionIds = payload.selectAll ? [...ids] : [];
+        changed = true;
+        break;
+      }
+
+      case 'DELETE_BULK_TRANSACTIONS': {
+        const targetIds = (payload && payload.ids) || this.state.selectedTransactionIds || [];
+        if (!Array.isArray(targetIds) || targetIds.length === 0) break;
+        const deleteFuture = payload && payload.deleteFuture === true;
+
+        let idsToDelete = new Set();
+        targetIds.forEach(id => {
+          const tx = this.state.transactions.find(t => t.id === id);
+          if (tx) {
+            idsToDelete.add(tx.id);
+            if (tx.transferRef) {
+              this.state.transactions.forEach(t => {
+                if (t.transferRef === tx.transferRef) idsToDelete.add(t.id);
+              });
+            }
+
+            if (deleteFuture && tx.recurrence && tx.recurrence.seriesId) {
+              this.state.transactions.forEach(t => {
+                if (t.recurrence && t.recurrence.seriesId === tx.recurrence.seriesId && t.date >= tx.date) {
+                  idsToDelete.add(t.id);
+                  if (t.transferRef) {
+                    this.state.transactions.forEach(tc => {
+                      if (tc.transferRef === t.transferRef) idsToDelete.add(tc.id);
+                    });
+                  }
+                }
+              });
+            }
+          }
+        });
+
+        // Collect affected account IDs before removal
+        const affectedAccountIds = new Set();
+        this.state.transactions.forEach(t => {
+          if (idsToDelete.has(t.id) && t.accountId) {
+            affectedAccountIds.add(t.accountId);
+          }
+        });
+
+        this.state.transactions = this.state.transactions.filter(t => !idsToDelete.has(t.id));
+        this.state.selectedTransactionIds = [];
+        this.state.isSelectionMode = false;
+
+        // Save batch deletion to database
+        window.StackdDB.save('transactions', this.state.transactions);
+
+        // Sort transactions so dynamic balance calculation from opening date baseline is clean
+        this._sortTransactions();
+
+        changed = true;
+        break;
+      }
+
       case 'BATCH_IMPORT_TRANSACTIONS': {
+        const importTime = this._getSystemTimeString();
         const newTxs = payload.transactions.map(t => ({
           id: window.StackdDB.generateId(),
+          time: t.time || importTime,
           ...t,
-          createdAt: new Date().toISOString()
+          createdAt: t.createdAt || new Date().toISOString()
         }));
         this.state.transactions.push(...newTxs);
         this._sortTransactions();
@@ -1193,6 +1330,13 @@ window.Store = {
         break;
       }
 
+      case 'SET_ENABLE_TIME_INPUT': {
+        this.state.enableTimeInput = !!payload;
+        window.StackdDB.save('enableTimeInput', this.state.enableTimeInput);
+        changed = true;
+        break;
+      }
+
       case 'SET_PERIOD_TYPE':
         this.state.activePeriod.type = payload;
         changed = true;
@@ -1339,11 +1483,26 @@ window.Store = {
     return tx.type === 'income' || tx.type === 'opening_balance' || tx.type === 'transfer_in';
   },
 
+  getAccountOpeningDate(accountId) {
+    if (!accountId) return null;
+    const obTx = this.state.transactions.find(
+      t => t.accountId === accountId && t.type === 'opening_balance'
+    );
+    return obTx ? obTx.date : null;
+  },
+
+  _isTxBeforeOpeningDate(tx) {
+    if (!tx || !tx.accountId || tx.type === 'opening_balance') return false;
+    const obDate = this.getAccountOpeningDate(tx.accountId);
+    if (!obDate) return false;
+    return tx.date < obDate;
+  },
+
   getAccountBalance(accountId) {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return this.state.transactions
-      .filter(t => t.accountId === accountId && t.date <= today)
+      .filter(t => t.accountId === accountId && t.date <= today && !this._isTxBeforeOpeningDate(t))
       .reduce((sum, tx) => this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
   },
 
@@ -1356,6 +1515,7 @@ window.Store = {
   getBalanceAtDate(date, accountIds = [], categoryIds = []) {
     return this.state.transactions
       .filter(t => t.date <= date &&
+        !this._isTxBeforeOpeningDate(t) &&
         (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
         (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId))
       )
@@ -1673,6 +1833,7 @@ window.Store = {
 
     return buckets.map(b => {
       const txs = this.state.transactions.filter(t => {
+        if (this._isTxBeforeOpeningDate(t)) return false;
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments

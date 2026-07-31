@@ -43,6 +43,7 @@
   --color-overlay: rgba(15, 23, 42, 0.3); /* slate-900 with alpha */
   
   --color-border: rgba(226, 232, 240, 0.8); /* slate-200 */
+  --border-color: var(--color-border);
   
   /* Typography */
   --font-family-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -82,5 +83,9 @@
   --z-modal-backdrop: 3000;
   --z-modal: 3100;
   
-  --safe-bottom: env(safe-area-inset-bottom, 20px);
+  /* Global Safe Area Insets (iOS Status Bar/Notch/Dynamic Island & Android System Cutouts) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
