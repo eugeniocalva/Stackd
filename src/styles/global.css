@@ -12,7 +12,7 @@ html, body {
 
 body {
   font-family: var(--font-family-body);
-  background: #ffffff;
+  background: var(--bg-base);
   color: var(--text-primary);
   min-height: 100vh;
   /* Disable text selection and pull-to-refresh for an app-like feel */

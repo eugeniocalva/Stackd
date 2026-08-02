@@ -146,7 +146,8 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
       isSelected: true
     });
 
-    expect(html).toContain('class="tx-select-checkbox"');
+    expect(html).toContain('custom-selection-checkbox');
+    expect(html).toContain('tx-select-checkbox');
     expect(html).toContain('checked');
     expect(html).toContain('list-item-selected');
   });
@@ -159,8 +160,22 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
     const html = global.window.Views.TransactionsView.render(state);
     expect(html).toContain('contextual-header-bar');
     expect(html).toContain('1 Selected');
+    expect(html).toContain('selection-count-label');
     expect(html).toContain('btn-cancel-selection');
     expect(html).toContain('bulk-selection-bar');
     expect(html).toContain('btn-bulk-delete');
+  });
+
+  it('formats 2-digit selection count (25 Selected) with white-space: nowrap to prevent text wrapping', () => {
+    global.window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
+    const ids = Array.from({ length: 25 }, (_, i) => `tx_batch_${i}`);
+    ids.forEach(id => global.window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id }));
+
+    const state = global.window.Store.getState();
+    const html = global.window.Views.TransactionsView.render(state);
+
+    expect(html).toContain('25 Selected');
+    expect(html).toContain('white-space: nowrap');
+    expect(html).toContain('Delete (25)');
   });
 });

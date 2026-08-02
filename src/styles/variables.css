@@ -1,5 +1,5 @@
 :root {
-  /* Colors - Modern Mobile-First (Soft & Premium) */
+  /* Colors - Modern Mobile-First (Soft & Premium Light Mode) */
   --bg-base: #f4f7f9; 
   --bg-surface: #ffffff;
   --bg-surface-elevated: rgba(255, 255, 255, 0.7); /* glass base */
@@ -25,10 +25,12 @@
   --color-income: #10b981;    /* emerald-500 */
   --color-income-bg: #ecfdf5; /* emerald-50 */
   --color-income-val: #059669; /* emerald-600 */
+  --color-income-text: #047857; /* emerald-700 */
   
   --color-expense: #ef4444;    /* red-500 */
   --color-expense-bg: #fef2f2; /* red-50 */
   --color-expense-val: #dc2626; /* red-600 */
+  --color-expense-text: #b91c1c; /* red-700 */
   
   --color-warning: #f59e0b;     /* amber-500 */
   --color-warning-bg: #fffbeb;  /* amber-50 */
@@ -89,3 +91,56 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
 }
+
+:root[data-theme="dark"],
+html.dark {
+  /* Colors - Modern Mobile-First Dark Theme */
+  --bg-base: #0b0f19;          /* Slate 950 deep base */
+  --bg-surface: #161e2e;       /* Slate 900 card surface */
+  --bg-surface-elevated: rgba(22, 30, 46, 0.85); /* Glass elevated card base */
+  --bg-surface-sunken: #111827; /* Sunken container/input background */
+  --bg-surface-dim: #1f293d;    /* Dimmed backdrop surface */
+  
+  --text-primary: #f8fafc;     /* Slate 50 near-white high contrast */
+  --text-secondary: #94a3b8;   /* Slate 400 crisp subtext (WCAG AAA 7.1:1) */
+  --text-tertiary: #64748b;    /* Slate 500 muted text */
+  --text-placeholder: #475569; /* Slate 600 input placeholder */
+  
+  /* Primary Accent & Action Tokens for Dark Mode */
+  --color-primary: #f8fafc;    /* High contrast primary white on dark */
+  --color-primary-dim: #e2e8f0;
+  --color-primary-bg: #1f293d;  /* Dark pill background */
+  --color-accent: #38bdf8;     /* Electric sky blue for active controls */
+  --text-on-primary: #0b0f19;  /* Dark text on light primary buttons */
+  
+  --grad-primary: #38bdf8;
+  --grad-surface: transparent;
+  
+  /* Financial Context Colors (Tailored Emerald & Red for Dark Mode) */
+  --color-income: #34d399;     /* Emerald 400 - Positive green */
+  --color-income-bg: rgba(6, 78, 59, 0.35); /* Deep emerald tint */
+  --color-income-val: #34d399; /* Positive balance display green */
+  --color-income-text: #6ee7b7;/* High-visibility green text */
+  
+  --color-expense: #f87171;    /* Red 400 - Negative red */
+  --color-expense-bg: rgba(127, 29, 29, 0.35); /* Deep crimson tint */
+  --color-expense-val: #f87171;/* Negative balance display red */
+  --color-expense-text: #fca5a5;/* High-visibility red text */
+  
+  --color-warning: #fbbf24;    /* Amber 400 */
+  --color-warning-bg: rgba(120, 53, 15, 0.35);
+
+  --color-balance-val: #f8fafc;
+  --color-balance-bg: #161e2e;
+  
+  /* Glassmorphism Tokens - Dark Mode */
+  --glass-bg: rgba(22, 30, 46, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 16px;
+  --color-overlay: rgba(0, 0, 0, 0.7);
+  
+  --color-border: rgba(51, 65, 85, 0.6);
+  --border-color: var(--color-border);
+}
+
+

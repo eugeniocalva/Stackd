@@ -128,4 +128,39 @@ describe('ExpandedGraphModal Unit Tests', () => {
     html = global.window.Views.DashboardView.render(global.window.Store.getState());
     expect(html).not.toContain('id="btn-reset-graph-filters"');
   });
+
+  it('renders modal backdrop with canvas #expandedBalanceChart and initializes chart instance upon show()', () => {
+    let appendedElem = null;
+    global.window.Chart = vi.fn().mockImplementation(function() {
+      this.destroy = vi.fn();
+      this.resize = vi.fn();
+      this.update = vi.fn();
+    });
+
+    const dummyCanvas = { getContext: vi.fn() };
+    const origCreateElem = global.document.createElement;
+    global.document.createElement = (tag) => {
+      const elem = origCreateElem(tag);
+      elem.querySelector = vi.fn((sel) => {
+        if (sel === '#expandedBalanceChart') return dummyCanvas;
+        return null;
+      });
+      return elem;
+    };
+
+    global.document.body.appendChild = vi.fn((elem) => {
+      appendedElem = elem;
+    });
+
+    const state = global.window.Store.getState();
+    global.window.Components.ExpandedGraphModal.show(state);
+
+    expect(appendedElem).not.toBeNull();
+    expect(appendedElem.id).toBe('expanded-graph-modal');
+    expect(appendedElem.innerHTML).toContain('expandedBalanceChart');
+    expect(appendedElem.innerHTML).toContain('Balance Trend');
+
+    expect(global.window.Chart).toHaveBeenCalled();
+    expect(global.window.Components.ExpandedGraphModal._chartInstance).toBeDefined();
+  });
 });

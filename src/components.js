@@ -5,26 +5,26 @@ window.Components = {
       return `
         <div class="nav-overlay" id="nav-overlay" aria-hidden="true" style="opacity: 0; pointer-events: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.3); background: rgba(0,0,0,0.3); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 998; transition: opacity 0.3s ease;"></div>
         
-        <div class="nav-action-menu" id="nav-action-menu" style="position: fixed; bottom: calc(100px + var(--safe-bottom)); right: max(var(--space-4), var(--safe-right)); width: 280px; background-color: #ffffff; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: var(--space-4); box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(255, 255, 255, 0.4); z-index: 999; transform: translateY(20px) scale(0.9); opacity: 0; pointer-events: none; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
+        <div class="nav-action-menu" id="nav-action-menu" style="position: fixed; bottom: calc(100px + var(--safe-bottom)); right: max(var(--space-4), var(--safe-right)); width: 280px; background: var(--bg-surface-elevated); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 24px; padding: var(--space-4); box-shadow: 0 12px 40px var(--color-overlay); border: 1px solid var(--glass-border); z-index: 999; transform: translateY(20px) scale(0.9); opacity: 0; pointer-events: none; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
-            <a href="#add" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
+            <a href="#add" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Log</span>
             </a>
-            <a href="#edit-account" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="landmark"></i></div>
+            <a href="#edit-account" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="landmark"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Account</span>
             </a>
-            <a href="#debt" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="percent"></i></div>
+            <a href="#debt" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="percent"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Debt</span>
             </a>
-            <a href="#edit-category" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
-              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-sunken); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="tag"></i></div>
+            <a href="#edit-category" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
+              <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="tag"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Category</span>
             </a>
-            <a href="#settings" class="menu-action-item" style="text-decoration: none; background: var(--bg-body); padding: var(--space-4) var(--space-2); border-radius: 20px; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: var(--space-3); transition: transform 0.2s ease;">
-              <div style="width: 32px; height: 32px; border-radius: 10px; background: var(--bg-surface-sunken); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></div>
+            <a href="#settings" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: var(--space-3); transition: transform 0.2s ease;">
+              <div style="width: 32px; height: 32px; border-radius: 10px; background: var(--bg-surface-dim); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></div>
               <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Others &amp; Settings</span>
             </a>
           </div>
@@ -437,22 +437,38 @@ window.Components = {
       const isSelected = options && options.isSelected === true;
 
       const checkboxHtml = isSelectionMode ? `
-        <div class="select-checkbox-wrapper" style="margin-right: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; pointer-events: none;">
-          <input type="checkbox" class="tx-select-checkbox" data-id="${transaction.id}" ${isSelected ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: var(--color-primary); pointer-events: none;" tabindex="-1" readonly>
+        <div class="custom-selection-checkbox tx-select-checkbox ${isSelected ? 'checked' : ''}" data-id="${transaction.id}">
+          ${isSelected ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` : ''}
         </div>
       ` : '';
 
       const selectedClass = isSelected ? 'list-item-selected' : '';
-      const selectedBgStyle = isSelected ? 'background-color: var(--bg-surface-sunken); border-color: var(--color-primary);' : '';
+      const selectedBgStyle = isSelected ? 'background-color: var(--bg-surface-sunken); border-width: 2px; border-style: solid;' : '';
+
+      const isPaid = transaction.isPaid === true;
+      const isUnpaid = transaction.isPaid === false;
+
+      const paidBadgeHtml = isPaid ? `
+        <span class="paid-badge">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>Paid</span>
+        </span>
+      ` : '';
+
+      const unpaidBarHtml = isUnpaid ? `<div class="unpaid-edge-bar"></div>` : '';
 
       const innerContent = `
+        ${unpaidBarHtml}
         ${checkboxHtml}
         <div class="list-item-icon">
           <i data-lucide="${category ? category.icon : 'receipt'}"></i>
         </div>
         <div class="list-item-content">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div class="list-item-title">${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</div>
+            <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
+              <span>${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</span>
+              ${paidBadgeHtml}
+            </div>
             <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
           <div style="display: flex; justify-content: space-between; margin-top: 4px;">
@@ -475,8 +491,15 @@ window.Components = {
           </div>`;
       }
 
+      const paidBtnClass = isPaid ? 'is-paid' : (isUnpaid ? 'is-unpaid' : '');
+
       return `
         <div class="swipe-container" data-id="${transaction.id}">
+          <div class="swipe-actions left">
+            <button class="swipe-action-btn paid ${paidBtnClass}" data-id="${transaction.id}" aria-label="${isPaid ? 'Mark as unpaid' : 'Mark as paid'}">
+              <i data-lucide="check" style="width: 20px; height: 20px;"></i>
+            </button>
+          </div>
           <div class="swipe-actions right">
             <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="Edit transaction">
               <i data-lucide="edit-2" style="width: 20px; height: 20px;"></i>
@@ -1745,6 +1768,13 @@ window.Components = {
       };
 
       const yScale = computeYScale(values);
+      const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
+      const tooltipBg = isDark ? '#161e2e' : '#ffffff';
+      const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
+      const tooltipBody = isDark ? '#f8fafc' : '#334155';
+      const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
+      const gridColor = isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.6)';
+      const tickColor = isDark ? '#94a3b8' : '#94a3b8';
 
       new window.Chart(canvas, {
         type: 'bar',
@@ -1794,12 +1824,12 @@ window.Components = {
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#ffffff',
-              titleColor: '#64748b',
+              backgroundColor: tooltipBg,
+              titleColor: tooltipTitle,
               titleFont: { size: 11, weight: '600' },
-              bodyColor: '#334155',
+              bodyColor: tooltipBody,
               bodyFont: { family: 'Manrope', size: 14, weight: '800' },
-              borderColor: '#e2e8f0',
+              borderColor: tooltipBorder,
               borderWidth: 1,
               padding: 12,
               displayColors: false,
@@ -1824,7 +1854,7 @@ window.Components = {
                     weight: '700'
                   };
                 },
-                color: '#94a3b8'
+                color: tickColor
               } 
             },
             y: { 
@@ -1832,13 +1862,13 @@ window.Components = {
               min: yScale.min,
               max: yScale.max,
               grid: {
-                color: 'rgba(226, 232, 240, 0.6)',
+                color: gridColor,
                 borderDash: [4, 4]
               },
               ticks: {
                 stepSize: yScale.stepSize,
                 font: { size: 10, family: 'Manrope', weight: '600' },
-                color: '#94a3b8',
+                color: tickColor,
                 callback: (val) => {
                   const symbol = window.Store.getCurrencySymbol();
                   const sign = val < 0 ? '-' : '';
@@ -2060,6 +2090,12 @@ window.Components = {
 
       const GAP = 3; // px gap on each side of every segment
 
+      const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
+      const tooltipBg = isDark ? '#161e2e' : '#ffffff';
+      const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
+      const tooltipBody = isDark ? '#f8fafc' : '#334155';
+      const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
+
       this._chartInstance = new window.Chart(canvas, {
         type: 'doughnut',
         data: {
@@ -2084,12 +2120,12 @@ window.Components = {
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#ffffff',
-              titleColor: '#64748b',
+              backgroundColor: tooltipBg,
+              titleColor: tooltipTitle,
               titleFont: { size: 11, weight: '600' },
-              bodyColor: '#334155',
+              bodyColor: tooltipBody,
               bodyFont: { family: 'Manrope', size: 13, weight: '800' },
-              borderColor: '#e2e8f0',
+              borderColor: tooltipBorder,
               borderWidth: 1,
               padding: 12,
               displayColors: true,
@@ -2872,15 +2908,13 @@ window.Components = {
 
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
 
-        setTimeout(() => {
-          initExpandedChart();
-        }, 50);
+        initExpandedChart();
       };
 
       const close = () => {
-        if (this._chartInstance) {
-          try { this._chartInstance.destroy(); } catch {}
-          this._chartInstance = null;
+        if (window.Components.ExpandedGraphModal._chartInstance) {
+          try { window.Components.ExpandedGraphModal._chartInstance.destroy(); } catch {}
+          window.Components.ExpandedGraphModal._chartInstance = null;
         }
         modalBackdrop.classList.remove('open');
         const content = modalBackdrop.querySelector('.modal-content');
@@ -2892,9 +2926,9 @@ window.Components = {
         const canvas = modalBackdrop.querySelector('#expandedBalanceChart');
         if (!canvas || !window.Chart) return;
 
-        if (this._chartInstance) {
-          try { this._chartInstance.destroy(); } catch {}
-          this._chartInstance = null;
+        if (window.Components.ExpandedGraphModal._chartInstance) {
+          try { window.Components.ExpandedGraphModal._chartInstance.destroy(); } catch {}
+          window.Components.ExpandedGraphModal._chartInstance = null;
         }
 
         const visibleAccounts = accounts.filter(a => selectedAccountIds.includes(a.id));
@@ -2905,23 +2939,32 @@ window.Components = {
           accountIds: visibleIds,
           categoryIds: selectedCategoryIds
         });
-        const rawData = (graphResult && graphResult.points) ? graphResult.points : [];
+        const mainResult = graphResult;
         const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
         const isQuarter = activeInterval === 'quarter';
 
+        const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
+        const tooltipBg = isDark ? '#161e2e' : '#ffffff';
+        const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
+        const tooltipBody = isDark ? '#f8fafc' : '#1a1e21';
+        const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
+        const gridColor = isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(0, 0, 0, 0.05)';
+        const legendColor = isDark ? '#f8fafc' : '#1a1e21';
+        const tickColor = isDark ? '#94a3b8' : '#64748b';
+
         const datasets = [{
-          label: 'Total Balance',
-          data: rawData,
-          borderColor: '#111111',
-          backgroundColor: 'rgba(17, 17, 17, 0.05)',
+          label: 'Total Net Balance',
+          data: (mainResult && mainResult.points) ? mainResult.points : [],
+          borderColor: isDark ? '#38bdf8' : '#111111',
+          backgroundColor: isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(17, 17, 17, 0.05)',
           borderWidth: 3,
           fill: true,
           tension: 0,
           pointRadius: activeInterval === 'weekly' ? 3 : 4,
           pointHoverRadius: 7,
-          pointBackgroundColor: '#ffffff',
+          pointBackgroundColor: isDark ? '#161e2e' : '#ffffff',
           pointBorderWidth: 3,
-          pointBorderColor: '#111111'
+          pointBorderColor: isDark ? '#38bdf8' : '#111111'
         }];
 
         visibleAccounts.forEach(acc => {
@@ -2943,7 +2986,7 @@ window.Components = {
           });
         });
 
-        this._chartInstance = new window.Chart(canvas, {
+        window.Components.ExpandedGraphModal._chartInstance = new window.Chart(canvas, {
           type: 'line',
           data: {
             datasets: datasets
@@ -2954,19 +2997,19 @@ window.Components = {
             animation: { duration: 250 },
             interaction: { mode: 'index', intersect: false },
             plugins: {
-              legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { family: 'Manrope', size: 11, weight: 'bold' } } },
+              legend: { display: true, position: 'bottom', labels: { color: legendColor, boxWidth: 12, font: { family: 'Manrope', size: 11, weight: 'bold' } } },
               tooltip: {
-                backgroundColor: '#ffffff',
-                titleColor: '#64748b',
+                backgroundColor: tooltipBg,
+                titleColor: tooltipTitle,
                 titleFont: { family: 'Manrope', size: 11, weight: 'bold' },
-                bodyColor: '#1a1e21',
+                bodyColor: tooltipBody,
                 bodyFont: { family: 'Manrope', size: 14, weight: '800' },
                 displayColors: true,
                 usePointStyle: true,
                 boxWidth: 8,
                 boxHeight: 8,
                 pointStyle: 'circle',
-                borderColor: '#e2e8f0',
+                borderColor: tooltipBorder,
                 borderWidth: 1,
                 padding: 10,
                 callbacks: {
@@ -2983,10 +3026,10 @@ window.Components = {
               x: {
                 type: 'linear',
                 min: 0,
-                max: isQuarter ? 3 : (selectedInterval === 'weekly' ? 51 : 11),
+                max: isQuarter ? 3 : (activeInterval === 'weekly' ? 51 : 11),
                 grid: { display: false },
                 ticks: {
-                  stepSize: isQuarter ? 1 : (selectedInterval === 'weekly' ? 4 : 1),
+                  stepSize: isQuarter ? 1 : (activeInterval === 'weekly' ? 4 : 1),
                   autoSkip: true,
                   autoSkipPadding: 6,
                   maxRotation: 45,
@@ -2999,7 +3042,7 @@ window.Components = {
                       weight: '600'
                     };
                   },
-                  color: '#64748b',
+                  color: tickColor,
                   callback: (val) => {
                     const idx = Math.round(val);
                     if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < monthLabels.length) {
@@ -3012,10 +3055,10 @@ window.Components = {
               y: {
                 display: true,
                 beginAtZero: false,
-                grid: { display: true, color: 'rgba(0,0,0,0.05)' },
+                grid: { display: true, color: gridColor },
                 ticks: {
                   font: { size: 10, family: 'Inter' },
-                  color: '#94a3b8',
+                  color: tickColor,
                   callback: (val) => window.Store.formatCurrency(val)
                 }
               }
@@ -3033,6 +3076,13 @@ window.Components = {
         const content = modalBackdrop.querySelector('.modal-content');
         if (content) content.style.transform = 'translateY(0)';
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+        setTimeout(() => {
+          if (window.Components.ExpandedGraphModal._chartInstance && typeof window.Components.ExpandedGraphModal._chartInstance.resize === 'function') {
+            window.Components.ExpandedGraphModal._chartInstance.resize();
+          } else {
+            initExpandedChart();
+          }
+        }, 60);
       });
     }
   }

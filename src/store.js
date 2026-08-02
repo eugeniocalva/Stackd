@@ -92,6 +92,8 @@ window.Store = {
     //   updatedAt: string|null
     // }
     loans: [],
+    theme: 'system', // 'system', 'light', 'dark'
+    activeTheme: 'light', // 'light' or 'dark'
 
     initialized: false
   },
@@ -108,7 +110,10 @@ window.Store = {
     this.state.language = window.StackdDB.load('language', 'en');
     this.state.historySortOrder = window.StackdDB.load('historySortOrder', 'desc');
     this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', '');
+    this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
+    this.applyTheme();
+    this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
     this.state.historyFilters.sortOrder = window.StackdDB.load('historyFilterSortOrder', 'asc');
     this.state.expandedGraphFilters = window.StackdDB.load('expandedGraphFilters', {
@@ -287,6 +292,11 @@ window.Store = {
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
+        if (e.key === 'stackd_v1_theme') {
+          this.state.theme = window.StackdDB.load('theme', 'system');
+          this.applyTheme();
+          changed = true;
+        }
         
 
 
@@ -305,6 +315,62 @@ window.Store = {
   _sortData() {
     this.state.accounts.sort((a, b) => this.compareAlpha(a, b));
     this.state.categories.sort((a, b) => this.compareAlpha(a, b));
+  },
+
+  // ── Theme State Management & Detection ────────────────────────────────────
+  getSystemTheme() {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  },
+
+  resolveActiveTheme(themePref) {
+    const pref = themePref || this.state.theme || 'system';
+    if (pref === 'system') {
+      return this.getSystemTheme();
+    }
+    return pref === 'dark' ? 'dark' : 'light';
+  },
+
+  applyTheme() {
+    const active = this.resolveActiveTheme(this.state.theme);
+    this.state.activeTheme = active;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-theme', active);
+      if (active === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    return active;
+  },
+
+  _themeMediaQuery: null,
+  _themeMediaListener: null,
+
+  initThemeListener() {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    if (this._themeMediaQuery) return; // Listener already registered
+
+    try {
+      this._themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      this._themeMediaListener = () => {
+        if (this.state.theme === 'system') {
+          this.applyTheme();
+          this.emit();
+        }
+      };
+
+      if (typeof this._themeMediaQuery.addEventListener === 'function') {
+        this._themeMediaQuery.addEventListener('change', this._themeMediaListener);
+      } else if (typeof this._themeMediaQuery.addListener === 'function') {
+        this._themeMediaQuery.addListener(this._themeMediaListener);
+      }
+    } catch (err) {
+      console.warn('Failed to initialize theme matchMedia listener:', err);
+    }
   },
 
   compareAlpha(a, b) {
@@ -539,6 +605,7 @@ window.Store = {
       if (this._isTxBeforeOpeningDate(tx)) return false;
 
       if (pageKey === 'analytics') {
+        if (tx.isPaid === false) return false; // Exclude unpaid transactions from analytics
         if (tx.type !== 'expense' && tx.type !== 'income') return false;
         if (tx.transferRef) return false; // Exclude linked transfers
         if (tx.categoryId === 'cat_balance') return false; // Exclude adjustments (initial balances)
@@ -1071,6 +1138,26 @@ window.Store = {
         break;
       }
 
+      case 'TOGGLE_TRANSACTION_PAID': {
+        const tx = this.state.transactions.find(t => t.id === payload.id);
+        if (!tx) break;
+
+        const newPaidState = payload.isPaid !== undefined ? !!payload.isPaid : !tx.isPaid;
+        tx.isPaid = newPaidState;
+
+        if (tx.transferRef) {
+          this.state.transactions.forEach(t => {
+            if (t.transferRef === tx.transferRef) {
+              t.isPaid = newPaidState;
+            }
+          });
+        }
+
+        window.StackdDB.save('transactions', this.state.transactions);
+        changed = true;
+        break;
+      }
+
       case 'TOGGLE_SELECTION_MODE': {
         const active = payload && payload.active !== undefined ? payload.active : !this.state.isSelectionMode;
         this.state.isSelectionMode = active;
@@ -1337,6 +1424,16 @@ window.Store = {
         break;
       }
 
+      case 'SET_THEME': {
+        const validThemes = ['system', 'light', 'dark'];
+        const newTheme = validThemes.includes(payload) ? payload : 'system';
+        this.state.theme = newTheme;
+        window.StackdDB.save('theme', newTheme);
+        this.applyTheme();
+        changed = true;
+        break;
+      }
+
       case 'SET_PERIOD_TYPE':
         this.state.activePeriod.type = payload;
         changed = true;
@@ -1501,9 +1598,7 @@ window.Store = {
   getAccountBalance(accountId) {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return this.state.transactions
-      .filter(t => t.accountId === accountId && t.date <= today && !this._isTxBeforeOpeningDate(t))
-      .reduce((sum, tx) => this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
+    return this.getBalanceAtDate(today, [accountId]);
   },
 
   getGlobalBalance() {
@@ -1516,6 +1611,7 @@ window.Store = {
     return this.state.transactions
       .filter(t => t.date <= date &&
         !this._isTxBeforeOpeningDate(t) &&
+        t.isPaid !== false &&
         (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
         (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId))
       )
@@ -1601,7 +1697,7 @@ window.Store = {
     const now = new Date();
     const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    // Shared baseline: balance as of last day of previous month (= start of current month, before any this-month transactions)
+    // Shared baseline: balance as of last day of previous month (= start of current month)
     const startOfMonthBaseline = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
 
     // As of today
@@ -1610,7 +1706,33 @@ window.Store = {
     // As of EOM: last day of current month (includes actual + scheduled future recurring transactions already generated)
     const eom = fmt(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-    const balanceBaseline    = this.getBalanceAtDate(startOfMonthBaseline, accountIds);
+    const targetAccounts = (accountIds && accountIds.length > 0)
+      ? this.state.accounts.filter(a => accountIds.includes(a.id))
+      : this.state.accounts;
+
+    // Calculate effective start-of-month baseline balance for a cutoff date (today or eom).
+    // For accounts opened on or before startOfMonthBaseline: use historical balance at startOfMonthBaseline.
+    // For accounts whose opening date is after startOfMonthBaseline:
+    // - If opening date <= cutoff, include initial opening balance amount (since it was opened during current month).
+    // - If opening date > cutoff, account has not opened yet, so baseline contribution is 0.
+    const computeBaselineForCutoff = (cutoffDate) => {
+      return targetAccounts.reduce((sum, acc) => {
+        const obDate = this.getAccountOpeningDate(acc.id);
+        if (!obDate || obDate <= startOfMonthBaseline) {
+          return sum + this.getBalanceAtDate(startOfMonthBaseline, [acc.id]);
+        } else if (obDate <= cutoffDate) {
+          const obTx = this.state.transactions.find(
+            t => t.accountId === acc.id && t.type === 'opening_balance'
+          );
+          return sum + (obTx && obTx.isPaid !== false ? obTx.amount : 0);
+        }
+        return sum;
+      }, 0);
+    };
+
+    const balanceBaselineToday = computeBaselineForCutoff(today);
+    const balanceBaselineEOM   = computeBaselineForCutoff(eom);
+
     const balanceToday       = this.getBalanceAtDate(today, accountIds);
     const balanceEOM         = this.getBalanceAtDate(eom, accountIds);
 
@@ -1621,8 +1743,10 @@ window.Store = {
     };
 
     return {
-      todayVariation: calculatePct(balanceToday, balanceBaseline),
-      eomVariation:   calculatePct(balanceEOM,   balanceBaseline)
+      todayAbsDiff: balanceToday - balanceBaselineToday,
+      eomAbsDiff:   balanceEOM - balanceBaselineEOM,
+      todayVariation: calculatePct(balanceToday, balanceBaselineToday),
+      eomVariation:   calculatePct(balanceEOM,   balanceBaselineEOM)
     };
   },
 
@@ -1834,6 +1958,7 @@ window.Store = {
     return buckets.map(b => {
       const txs = this.state.transactions.filter(t => {
         if (this._isTxBeforeOpeningDate(t)) return false;
+        if (t.isPaid === false) return false; // Exclude unpaid transactions
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments

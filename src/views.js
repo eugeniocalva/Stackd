@@ -242,18 +242,24 @@ window.Views = {
       const now = new Date();
       const forecast = window.Store.computeBalanceForecast(selectedAccountIds);
       
-      const _fmtVariation = (pct) => {
-        if (pct === null || pct === undefined) return { text: '—', color: 'var(--text-tertiary)' };
-        const sign = pct > 0 ? '+' : '';
+      const _fmtVariation = (absVal, pct) => {
+        if (pct === null || pct === undefined || absVal === null || absVal === undefined) {
+          return { text: '—', color: 'var(--text-tertiary)' };
+        }
         let color;
-        if (pct > 0) color = 'var(--color-income-val)';
-        else if (pct < 0) color = 'var(--color-expense)';
+        if (absVal > 0 || pct > 0) color = 'var(--color-income-val)';
+        else if (absVal < 0 || pct < 0) color = 'var(--color-expense)';
         else color = 'var(--text-primary)';
-        return { text: `${sign}${pct.toFixed(1)}%`, color };
+
+        const formattedAbs = window.Store.formatCurrency(absVal);
+        const signedAbs = absVal > 0 ? `+${formattedAbs}` : formattedAbs;
+        const signedPct = pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
+
+        return { text: `${signedAbs} (${signedPct})`, color };
       };
       
-      const todayVar = _fmtVariation(forecast.todayVariation);
-      const eomVar = _fmtVariation(forecast.eomVariation);
+      const todayVar = _fmtVariation(forecast.todayAbsDiff, forecast.todayVariation);
+      const eomVar = _fmtVariation(forecast.eomAbsDiff, forecast.eomVariation);
       
       // Recent Activities
       const todayStr = now.toISOString().split('T')[0];
@@ -648,6 +654,7 @@ window.Views = {
           });
 
           const daySum = dayTxs.reduce((sum, tx) => {
+            if (tx.isPaid === false) return sum;
             if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') {
               return sum;
             }
@@ -673,7 +680,8 @@ window.Views = {
                   const isSelected = selectedIds.includes(tx.id);
                   return window.Components.TransactionItem.render(tx, category, account, {
                     isSelectionMode,
-                    isSelected
+                    isSelected,
+                    allowSwipeReveal: true
                   });
                 }).join('')}
               </div>
@@ -699,16 +707,14 @@ window.Views = {
 
       const headerContentHtml = isSelectionMode
         ? `
-            <div class="page-header contextual-header-bar" style="margin-top: var(--space-2); margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 10px 14px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06);">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
-                  Cancel
-                </button>
-                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
-                  ${selectedCount} Selected
-                </div>
+            <div class="page-header contextual-header-bar" style="margin-top: var(--space-2); margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06); width: 100%; box-sizing: border-box; overflow: hidden; gap: 6px;">
+              <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
+                Cancel
+              </button>
+              <div class="selection-count-label" style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; flex-shrink: 0;">
+                ${selectedCount} Selected
               </div>
-              <div style="display: flex; gap: 8px; align-items: center;">
+              <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0; min-width: 0;">
                 <button id="btn-toggle-select-all" class="btn-selection-action">
                   ${allVisibleSelected ? 'Deselect All' : 'Select All'}
                 </button>
@@ -735,15 +741,15 @@ window.Views = {
       const bulkActionBarHtml = isSelectionMode
         ? `
             <div class="bulk-selection-bar" id="bulk-action-bar">
-              <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
                 <button id="btn-cancel-selection-bottom" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
                   Cancel
                 </button>
-                <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
+                <span class="selection-count-label" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; flex-shrink: 0;">
                   ${selectedCount} Selected
                 </span>
               </div>
-              <div style="display: flex; gap: 8px; align-items: center;">
+              <div style="display: flex; gap: 6px; align-items: center;">
                 <button id="btn-bulk-delete" class="btn-selection-action btn-selection-delete" ${selectedCount === 0 ? 'disabled' : ''}>
                   Delete ${selectedCount > 0 ? `(${selectedCount})` : ''}
                 </button>
@@ -761,6 +767,7 @@ window.Views = {
             ${filterBarHtml}
           </div>
 
+          <!-- Transactions List Container -->
           <div style="margin-top: var(--space-4);">
             ${txListHtml}
           </div>
@@ -771,22 +778,13 @@ window.Views = {
     },
 
     attachEvents(container, state) {
-      // New Filter Bar Events
-      window.Components.AdvancedFilterBar.attachEvents(container, 'history');
+      window.StackdHydrateIcons();
 
-      // Tab Re-tap: Handle expansion and scroll to top
-      const reTapHandler = () => {
-        container.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-      window.addEventListener('scroll-history-to-today', reTapHandler);
-      if (container._historyReTapHandler) {
-        window.removeEventListener('scroll-history-to-today', container._historyReTapHandler);
-      }
-      container._historyReTapHandler = reTapHandler;
+      window.Components.AdvancedFilterBar.attachEvents(container, 'history', state);
 
-      const btnSelectMode = container.querySelector('#btn-start-selection-mode');
-      if (btnSelectMode) {
-        btnSelectMode.addEventListener('click', () => {
+      const btnStartSelectionMode = container.querySelector('#btn-start-selection-mode');
+      if (btnStartSelectionMode) {
+        btnStartSelectionMode.addEventListener('click', () => {
           window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
         });
       }
@@ -890,6 +888,176 @@ window.Views = {
       const btnBulkDeleteHeader = container.querySelector('#btn-bulk-delete-header');
       if (btnBulkDeleteHeader) btnBulkDeleteHeader.addEventListener('click', handleBulkDelete);
 
+      // Paid action buttons handler
+      container.querySelectorAll('.swipe-action-btn.paid').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const txId = btn.dataset.id;
+          if (txId) {
+            window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: txId });
+          }
+        });
+      });
+
+      // Edit action buttons handler
+      container.querySelectorAll('.swipe-action-btn.edit').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const txId = btn.dataset.id;
+          if (txId) {
+            window.Router.navigate('#edit?id=' + txId);
+          }
+        });
+      });
+
+      // Delete action buttons handler
+      container.querySelectorAll('.swipe-action-btn.delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const txId = btn.dataset.id;
+          if (!txId) return;
+          const currentStoreState = window.Store.getState();
+          const txToDelete = currentStoreState.transactions.find(t => t.id === txId);
+          if (!txToDelete) return;
+
+          if (txToDelete.recurrence && txToDelete.recurrence.seriesId) {
+            window.Components.Modal.show({
+              title: 'Delete Recurring Item',
+              content: '<p style="color: var(--text-secondary); margin-bottom: 12px;">This item is part of a recurring series. How would you like to proceed?</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 Delete ONLY this item</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 Delete this and all FUTURE items</button></div>',
+              saveText: 'Cancel',
+              showDelete: false,
+              onSave: (closeModal) => closeModal()
+            });
+            setTimeout(() => {
+              const btnSingle = document.getElementById('btn-delete-single');
+              const btnFutureSeries = document.getElementById('btn-delete-future-series');
+              if (btnSingle) {
+                btnSingle.onclick = () => {
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteAll: false });
+                  if (window.Components.Modal.hide) window.Components.Modal.hide();
+                };
+              }
+              if (btnFutureSeries) {
+                btnFutureSeries.onclick = () => {
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteFuture: true });
+                  if (window.Components.Modal.hide) window.Components.Modal.hide();
+                };
+              }
+            }, 10);
+          } else {
+            window.Components.Modal.show({
+              title: 'Delete Transaction',
+              content: '<p style="color: var(--text-secondary);">Are you sure you want to delete this transaction? <strong>This action cannot be undone.</strong></p>',
+              saveText: 'Cancel',
+              showDelete: true,
+              onSave: (closeModal) => closeModal(),
+              onDelete: (closeModal) => {
+                window.Store.dispatch('DELETE_TRANSACTION', { id: txId });
+                closeModal();
+              }
+            });
+          }
+        });
+      });
+
+      // Bi-directional Swipe Gesture Handler
+      const closeAllSwipes = (exceptContainer = null) => {
+        container.querySelectorAll('.swipe-container').forEach(sc => {
+          if (sc !== exceptContainer) {
+            const content = sc.querySelector('.swipe-content');
+            if (content) content.style.transform = 'translateX(0px)';
+          }
+        });
+      };
+
+      container.querySelectorAll('.swipe-container').forEach(swipeContainer => {
+        const swipeContent = swipeContainer.querySelector('.swipe-content');
+        if (!swipeContent) return;
+
+        let startX = 0;
+        let startY = 0;
+        let isDragging = false;
+        let isHorizontal = false;
+        let currentOffset = 0;
+
+        const handleStart = (clientX, clientY) => {
+          const storeState = window.Store.getState();
+          if (storeState.isSelectionMode) return;
+
+          startX = clientX;
+          startY = clientY;
+          isDragging = true;
+          isHorizontal = false;
+          swipeContent.style.transition = 'none';
+
+          const match = swipeContent.style.transform.match(/translateX\(([-?\d.]+)px\)/);
+          currentOffset = match ? parseFloat(match[1]) : 0;
+        };
+
+        const handleMove = (clientX, clientY, e) => {
+          if (!isDragging) return;
+
+          const deltaX = clientX - startX;
+          const deltaY = clientY - startY;
+
+          if (!isHorizontal) {
+            if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+              isHorizontal = true;
+              closeAllSwipes(swipeContainer);
+            } else if (Math.abs(deltaY) > 8) {
+              isDragging = false;
+              return;
+            }
+          }
+
+          if (isHorizontal) {
+            if (e && e.cancelable) e.preventDefault();
+
+            let targetX = currentOffset + deltaX;
+            if (targetX < -130) targetX = -130;
+            if (targetX > 90) targetX = 90;
+
+            swipeContent.style.transform = `translateX(${targetX}px)`;
+          }
+        };
+
+        const handleEnd = (clientX) => {
+          if (!isDragging) return;
+          isDragging = false;
+          swipeContent.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+          const deltaX = clientX - startX;
+
+          if (isHorizontal) {
+            if (deltaX < -40 || (currentOffset < 0 && deltaX < 20)) {
+              // Swipe Left: reveal Edit & Delete
+              swipeContent.style.transform = 'translateX(-110px)';
+            } else if (deltaX > 40 || (currentOffset > 0 && deltaX > -20)) {
+              // Swipe Right: reveal Paid
+              swipeContent.style.transform = 'translateX(70px)';
+            } else {
+              swipeContent.style.transform = 'translateX(0px)';
+            }
+          }
+        };
+
+        swipeContainer.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        swipeContainer.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
+        }, { passive: false });
+
+        swipeContainer.addEventListener('touchend', (e) => {
+          const endX = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
+          handleEnd(endX);
+        });
+      });
+
       // Long press & Click handling on transaction list items
       let longPressTimer = null;
 
@@ -936,6 +1104,14 @@ window.Views = {
           if (currentStoreState.isSelectionMode) {
             window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
           } else {
+            // Close any swiped items on click if offset
+            const parentSwipe = item.closest('.swipe-container');
+            const match = item.style.transform.match(/translateX\(([-?\d.]+)px\)/);
+            const currentOffset = match ? parseFloat(match[1]) : 0;
+            if (currentOffset !== 0) {
+              item.style.transform = 'translateX(0px)';
+              return;
+            }
             window.Router.navigate('#edit?id=' + txId);
           }
         });
@@ -2705,6 +2881,24 @@ Object.assign(window.Views, {
             </div>
           </div>
 
+          <div class="section-title">Appearance</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: var(--space-3);">
+                <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="sun-moon"></i></div>
+                <div>
+                  <div class="list-item-title" id="label-theme-mode">Theme Preference</div>
+                  <div class="list-item-subtitle" id="current-theme-subtitle">${state.theme === 'light' ? 'Light Mode active' : (state.theme === 'dark' ? 'Dark Mode active' : `System Default (${state.activeTheme === 'dark' ? 'Dark' : 'Light'})`)}</div>
+                </div>
+              </div>
+              <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-theme-mode">
+                <button id="btn-theme-light" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">Light Mode</button>
+                <button id="btn-theme-dark" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">Dark Mode</button>
+                <button id="btn-theme-system" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">System Default</button>
+              </div>
+            </div>
+          </div>
+
           <div class="section-title">Data Export</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
@@ -2791,6 +2985,19 @@ Object.assign(window.Views, {
         toggleTimeInput.addEventListener('change', (e) => {
           window.Store.dispatch('SET_ENABLE_TIME_INPUT', e.target.checked);
         });
+      }
+
+      const btnThemeSystem = document.getElementById('btn-theme-system');
+      const btnThemeLight = document.getElementById('btn-theme-light');
+      const btnThemeDark = document.getElementById('btn-theme-dark');
+      if (btnThemeSystem) {
+        btnThemeSystem.addEventListener('click', () => window.Store.dispatch('SET_THEME', 'system'));
+      }
+      if (btnThemeLight) {
+        btnThemeLight.addEventListener('click', () => window.Store.dispatch('SET_THEME', 'light'));
+      }
+      if (btnThemeDark) {
+        btnThemeDark.addEventListener('click', () => window.Store.dispatch('SET_THEME', 'dark'));
       }
 
       // Currency picker

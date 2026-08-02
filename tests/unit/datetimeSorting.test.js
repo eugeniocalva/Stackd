@@ -23,10 +23,13 @@ describe('Datetime Sorting Algorithm', () => {
     };
     global.localStorage = global.window.localStorage;
     
+    // Set system time to 2026-07-31 so activePeriod defaults to 2026-07
+    vi.setSystemTime(new Date(2026, 6, 31));
+
     // Load dependencies in order
     executeFile('db.js');
     executeFile('store.js');
-    
+
     global.window.Store.init();
   });
 
