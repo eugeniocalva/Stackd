@@ -74,7 +74,7 @@ describe('Absolute Variance Display Unit Tests', () => {
     expect(forecast.todayVariation).toBeCloseTo(20.0, 1);
   });
 
-  it('renders absolute currency value before percentage in DashboardView variance indicators', () => {
+  it('renders absolute currency value and percentage on separate lines in DashboardView variance indicators', () => {
     global.window.Store.state.currency = 'EUR';
     global.window.Store.dispatch('ADD_ACCOUNT', {
       id: 'acc-var',
@@ -94,8 +94,10 @@ describe('Absolute Variance Display Unit Tests', () => {
     const state = global.window.Store.getState();
     const html = global.window.Views.DashboardView.render(state);
 
-    // Should display -€250.00 (-25.0%) vs. start of mo.
-    expect(html).toContain('-€250.00 (-25.0%) vs. start of mo.');
+    // Absolute value and percentage now render as two separate lines
+    expect(html).toContain('>-€250.00</span>');
+    expect(html).toContain('>-25.0% vs. start of mo.</span>');
+    expect(html).not.toContain('-€250.00 (-25.0%)');
     expect(html).toContain('var(--color-expense)');
     expect(html).toContain('as of today');
     expect(html).toContain('projected EOM');

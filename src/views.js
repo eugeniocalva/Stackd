@@ -244,7 +244,7 @@ window.Views = {
       
       const _fmtVariation = (absVal, pct) => {
         if (pct === null || pct === undefined || absVal === null || absVal === undefined) {
-          return { text: '—', color: 'var(--text-tertiary)' };
+          return { abs: '—', pct: '', color: 'var(--text-tertiary)' };
         }
         let color;
         if (absVal > 0 || pct > 0) color = 'var(--color-income-val)';
@@ -255,7 +255,7 @@ window.Views = {
         const signedAbs = absVal > 0 ? `+${formattedAbs}` : formattedAbs;
         const signedPct = pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
 
-        return { text: `${signedAbs} (${signedPct})`, color };
+        return { abs: signedAbs, pct: `${signedPct} vs. start of mo.`, color };
       };
       
       const todayVar = _fmtVariation(forecast.todayAbsDiff, forecast.todayVariation);
@@ -293,12 +293,14 @@ window.Views = {
             <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
             <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
               <div style="display: flex; flex-direction: column; gap: 1px;">
-                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.text} vs. start of mo.</span>
+                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
+                ${todayVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.pct}</span>` : ''}
                 <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">as of today</span>
               </div>
-              <div style="width: 1px; height: 28px; background: var(--color-border); flex-shrink: 0;"></div>
+              <div style="width: 1px; align-self: stretch; background: var(--color-border); flex-shrink: 0;"></div>
               <div style="display: flex; flex-direction: column; gap: 1px;">
-                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.text} vs. start of mo.</span>
+                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.abs}</span>
+                ${eomVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.pct}</span>` : ''}
                 <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">projected EOM</span>
               </div>
             </div>
