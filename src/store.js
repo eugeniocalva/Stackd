@@ -9,7 +9,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat_investments', name: 'Investments', icon: 'trending-up', isDefault: true, typeHint: 'income', color: '#00c9a7' },
   { id: 'cat_other', name: 'Other', icon: 'package', isDefault: true, typeHint: 'both', color: '#64748b' },
   { id: 'cat_rent', name: 'Rent', icon: 'home', isDefault: true, typeHint: 'expense', color: '#3b82f6' },
-  { id: 'cat_salary', name: 'Salary', icon: 'wallet', isDefault: true, typeHint: 'income', color: '#10b981' },
+  { id: 'cat_salary', name: 'Salary', icon: 'hand-coins', isDefault: true, typeHint: 'income', color: '#10b981' },
   { id: 'cat_shopping', name: 'Shopping', icon: 'shopping-bag', isDefault: true, typeHint: 'expense', color: '#ec4899' },
   { id: 'cat_transport', name: 'Transport', icon: 'car', isDefault: true, typeHint: 'expense', color: '#06b6d4' },
   { id: 'cat_utilities', name: 'Utilities', icon: 'zap', isDefault: true, typeHint: 'expense', color: '#eab308' }
@@ -276,10 +276,11 @@ window.Store = {
     }
 
     // v0.59: Icon normalization — map icons removed from the new curated set
+    // v0.66: 'pin' entry dropped — 'pin' is now a pickable Symbols icon and the
+    // remap would silently rewrite a deliberate user choice on every reload.
     const V059_ICON_REMAP = {
       'clover': 'leaf',          // 'clover' removed from main set; leaf is the closest equivalent
       'building': 'hospital',    // 'building' moved to health context
-      'pin': 'map-pin',          // Prefer map-pin for location/misc pins
     };
     let v059Changed = false;
     this.state.categories.forEach(cat => {
@@ -289,6 +290,20 @@ window.Store = {
       }
     });
     if (v059Changed) {
+      window.StackdDB.save('categories', this.state.categories);
+    }
+
+    // v0.66: the account/category icon split moved 'wallet' to the account-only
+    // set; retarget the untouched Salary seed so its icon stays re-selectable
+    // in the category picker. Customized icons are left alone.
+    let v066Changed = false;
+    this.state.categories.forEach(cat => {
+      if (cat.id === 'cat_salary' && cat.icon === 'wallet') {
+        cat.icon = 'hand-coins';
+        v066Changed = true;
+      }
+    });
+    if (v066Changed) {
       window.StackdDB.save('categories', this.state.categories);
     }
 

@@ -3471,6 +3471,7 @@ Object.assign(window.Views, {
       if (iconTrigger) {
         iconTrigger.addEventListener('click', () => {
           window.Components.IconPicker.show({
+            context: 'account', // v0.66: banking icon set, disjoint from categories
             initialIcon: selectedIcon,
             onSelect: (icon) => {
               selectedIcon = icon;

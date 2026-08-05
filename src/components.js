@@ -280,28 +280,38 @@ window.Components = {
   },
 
   IconPicker: {
-    GROUPS: [
-      { label: 'Finance', icons: ['wallet', 'landmark', 'banknote', 'coins', 'credit-card', 'trending-up', 'trending-down', 'receipt', 'piggy-bank', 'percent', 'bar-chart-3', 'circle-dollar-sign', 'hand-coins', 'vault', 'briefcase'] },
+    // v0.66: two disjoint icon sets — accounts get banking/finance icons,
+    // categories get spending/lifestyle icons. Every name must exist in
+    // lucide@0.400.0 AND have an EMERGENCY_ICONS fallback in main.js so it
+    // renders on native/file:// where the CDN script is unavailable.
+    ACCOUNT_GROUPS: [
+      { label: 'Banking', icons: ['wallet', 'wallet-cards', 'wallet-2', 'landmark', 'banknote', 'credit-card', 'coins', 'piggy-bank', 'vault', 'building', 'building-2'] },
+      { label: 'Savings & Goals', icons: ['lock', 'shield-check', 'umbrella', 'sprout', 'goal', 'rocket', 'trophy'] },
+      { label: 'Investments', icons: ['line-chart', 'candlestick-chart', 'area-chart', 'bitcoin', 'diamond'] },
+      { label: 'Currencies', icons: ['dollar-sign', 'euro', 'pound-sterling', 'japanese-yen', 'swiss-franc', 'indian-rupee', 'russian-ruble', 'currency', 'badge-dollar-sign', 'badge-percent'] }
+    ],
+    CATEGORY_GROUPS: [
+      { label: 'Money', icons: ['trending-up', 'trending-down', 'receipt', 'receipt-text', 'percent', 'circle-dollar-sign', 'hand-coins', 'bar-chart-3', 'scale', 'heart-handshake'] },
       { label: 'Food & Drink', icons: ['utensils', 'coffee', 'pizza', 'glass-water', 'beer', 'cup-soda', 'cake', 'leaf', 'ice-cream', 'wine', 'sandwich', 'salad', 'milk', 'soup', 'cooking-pot', 'apple', 'egg', 'cherry', 'grape'] },
-      { label: 'Transport', icons: ['car', 'bus', 'plane', 'bike', 'fuel', 'train', 'ship', 'map-pin', 'truck', 'cable-car', 'anchor', 'parking-square', 'ticket', 'navigation'] },
-      { label: 'Shopping', icons: ['shopping-bag', 'shopping-cart', 'tag', 'gift', 'shirt', 'watch', 'gem', 'store', 'barcode', 'layers', 'sparkles', 'package', 'receipt-text'] },
+      { label: 'Transport', icons: ['car', 'bus', 'plane', 'bike', 'fuel', 'train', 'ship', 'map-pin', 'truck', 'cable-car', 'anchor', 'parking-square', 'navigation'] },
+      { label: 'Shopping', icons: ['shopping-bag', 'shopping-cart', 'tag', 'gift', 'shirt', 'watch', 'gem', 'store', 'barcode', 'layers', 'sparkles', 'package'] },
+      { label: 'Leisure', icons: ['clapperboard', 'film', 'popcorn', 'music', 'guitar', 'gamepad-2', 'dices', 'party-popper', 'camera', 'ticket', 'tent', 'mountain', 'palmtree', 'ferris-wheel'] },
       { label: 'Home', icons: ['home', 'zap', 'droplets', 'wifi', 'tv', 'refrigerator', 'sofa', 'lamp', 'bath', 'door-closed', 'key', 'plug', 'paint-bucket', 'armchair', 'trash-2'] },
       { label: 'Tech & Work', icons: ['laptop', 'smartphone', 'briefcase', 'book', 'palette', 'globe', 'monitor', 'keyboard', 'headphones', 'printer', 'cpu', 'cloud', 'hard-drive', 'code'] },
       { label: 'Education', icons: ['school', 'graduation-cap', 'book-open', 'pencil', 'library', 'microscope', 'flask-conical', 'telescope', 'calculator', 'backpack', 'presentation', 'compass'] },
       { label: 'Health', icons: ['hospital', 'heart', 'pill', 'activity', 'dumbbell', 'baby', 'stethoscope', 'syringe', 'thermometer', 'brain', 'weight'] },
       { label: 'Pets', icons: ['dog', 'cat', 'bird', 'fish', 'rabbit', 'paw-print', 'bone', 'shell', 'bug'] },
-      { label: 'Currency', icons: ['dollar-sign', 'euro', 'pound-sterling', 'japanese-yen', 'bitcoin', 'indian-rupee', 'swiss-franc', 'russian-ruble', 'percent', 'circle-dollar-sign'] },
-      { label: 'Symbols', icons: ['hash', 'percent', 'star', 'heart', 'check', 'x', 'plus', 'minus', 'help-circle', 'info', 'alert-circle', 'clock', 'settings', 'search', 'bell', 'share-2'] }
+      { label: 'Symbols', icons: ['hash', 'star', 'pin', 'bookmark', 'flag', 'check', 'x', 'plus', 'minus', 'help-circle', 'info', 'alert-circle', 'clock', 'settings', 'search', 'bell', 'share-2'] }
     ],
 
-    render(selectedIcon = 'pin') {
+    render(selectedIcon = 'pin', groups = this.CATEGORY_GROUPS) {
       return `
         <div class="icon-picker" id="icon-picker-v2" style="font-size: 16px;">
           <input type="text" id="icon-search" class="form-control" placeholder="Search icons..." aria-label="Search icons" autocomplete="off" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">
           <div id="icon-selected-display-v2" style="display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 auto var(--space-3); color: var(--color-primary); background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 2px dashed var(--border-color);">
             <i data-lucide="${selectedIcon}" style="font-size: 48px; width: 48px; height: 48px; display: inline-block; vertical-align: middle;"></i>
           </div>
-          <div id="icon-grid-v2" style="max-height: 220px; overflow-y: auto; padding-right: 4px;">${this._renderGroups(this.GROUPS)}</div>
+          <div id="icon-grid-v2" style="max-height: 220px; overflow-y: auto; padding-right: 4px;">${this._renderGroups(groups)}</div>
         </div>`;
     },
 
@@ -321,18 +331,18 @@ window.Components = {
       }).join('');
     },
 
-    attachEvents(container, onSelect) {
+    attachEvents(container, onSelect, groups = this.CATEGORY_GROUPS) {
       const grid = container.querySelector('#icon-grid-v2');
       const search = container.querySelector('#icon-search');
       const display = container.querySelector('#icon-selected-display-v2');
-      
+
       const refreshIcons = () => {
         window.StackdHydrateIcons();
       };
 
       if (search) {
         search.addEventListener('input', (e) => {
-          grid.innerHTML = this._renderGroups(this.GROUPS, e.target.value.trim());
+          grid.innerHTML = this._renderGroups(groups, e.target.value.trim());
           this._bindClicks(grid, display, onSelect);
           refreshIcons();
         });
@@ -364,7 +374,14 @@ window.Components = {
     },
 
     show(options) {
-      const { initialIcon = 'pin', onSelect } = options;
+      // context: 'account' shows the banking set, anything else the category set (v0.66)
+      const { initialIcon = 'pin', onSelect, context = 'category' } = options;
+      let groups = context === 'account' ? this.ACCOUNT_GROUPS : this.CATEGORY_GROUPS;
+      // Icons picked before the account/category split may not be in the active
+      // set — surface them in a leading group so they stay re-selectable.
+      if (initialIcon && !groups.some(g => g.icons.includes(initialIcon))) {
+        groups = [{ label: 'Current', icons: [initialIcon] }, ...groups];
+      }
       const container = document.getElementById('modal-container');
       
       const div = document.createElement('div');
@@ -380,7 +397,7 @@ window.Components = {
             </div>
             
             <div style="padding: var(--space-4); overflow-y: auto;">
-              ${this.render(initialIcon)}
+              ${this.render(initialIcon, groups)}
             </div>
           </div>
         </div>`;
@@ -409,7 +426,7 @@ window.Components = {
       const ipContainer = document.getElementById('active-icon-picker');
       this.attachEvents(ipContainer, (icon) => {
         currentSelected = icon;
-      });
+      }, groups);
 
       ipContainer.querySelector('#ip-cancel').addEventListener('click', closePicker);
       ipContainer.querySelector('#ip-confirm').addEventListener('click', () => {
