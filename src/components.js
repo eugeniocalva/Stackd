@@ -491,6 +491,9 @@ window.Components = {
 
       const unpaidBarHtml = isUnpaid ? `<div class="unpaid-edge-bar"></div>` : '';
 
+      // v0.63: Tags render inline on line 2 (after account name) so tile height stays uniform
+      const TAG_PILL_STYLE = 'flex-shrink: 0; font-size: 0.7rem; color: var(--text-secondary); background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 12px; font-weight: 600;';
+
       const innerContent = `
         ${unpaidBarHtml}
         ${checkboxHtml}
@@ -505,16 +508,19 @@ window.Components = {
             </div>
             <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-            <div class="list-item-subtitle">${accountData ? accountData.name : 'Account'}</div>
-            <div class="list-item-subtitle">${dateStr}</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
+              <div class="list-item-subtitle" style="flex-shrink: 0;">${accountData ? accountData.name : 'Account'}</div>
+              ${transaction.tags && transaction.tags.length > 0 ? `
+              <div class="tx-tags-inline" style="display: flex; align-items: center; gap: 4px; overflow: hidden; min-width: 0; flex: 1;">
+                ${transaction.tags.map(tag => `
+                  <span class="tx-tag-pill" style="${TAG_PILL_STYLE}">#${tag}</span>
+                `).join('')}
+                <span class="tx-tag-more" style="display: none; ${TAG_PILL_STYLE}"></span>
+              </div>` : ''}
+            </div>
+            <div class="list-item-subtitle" style="flex-shrink: 0;">${dateStr}</div>
           </div>
-          ${transaction.tags && transaction.tags.length > 0 ? `
-          <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-            ${transaction.tags.map(tag => `
-              <span style="font-size: 0.7rem; color: var(--text-secondary); background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 12px; font-weight: 600;">#${tag}</span>
-            `).join('')}
-          </div>` : ''}
         </div>`;
 
       // v0.62: Complete branch isolation
@@ -546,6 +552,25 @@ window.Components = {
             ${innerContent}
           </div>
         </div>`;
+    },
+
+    // v0.63: Pills that don't fit on line 2 collapse into a "+N" counter.
+    // Must run after the tiles are in the DOM (called from the main.js render loop).
+    applyTagOverflow(root) {
+      (root || document).querySelectorAll('.tx-tags-inline').forEach(container => {
+        const pills = Array.from(container.querySelectorAll('.tx-tag-pill'));
+        const more = container.querySelector('.tx-tag-more');
+        if (pills.length === 0 || !more || container.clientWidth === 0) return;
+        pills.forEach(p => { p.style.display = ''; });
+        more.style.display = 'none';
+        let hiddenCount = 0;
+        for (let i = pills.length - 1; i >= 0 && container.scrollWidth > container.clientWidth; i--) {
+          pills[i].style.display = 'none';
+          hiddenCount++;
+          more.textContent = `+${hiddenCount}`;
+          more.style.display = '';
+        }
+      });
     }
   },
 

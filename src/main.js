@@ -407,6 +407,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.StackdHydrateIcons) {
       window.StackdHydrateIcons();
     }
+
+    // v0.63: Collapse overflowing inline tag pills into a "+N" counter
+    if (window.Components && window.Components.TransactionItem && window.Components.TransactionItem.applyTagOverflow) {
+      window.Components.TransactionItem.applyTagOverflow(routerView);
+    }
+  });
+
+  // v0.63: Re-run tag pill collapse when the viewport width changes (rotation, resize)
+  let tagOverflowResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(tagOverflowResizeTimer);
+    tagOverflowResizeTimer = setTimeout(() => {
+      if (window.Components && window.Components.TransactionItem && window.Components.TransactionItem.applyTagOverflow) {
+        window.Components.TransactionItem.applyTagOverflow(routerView);
+      }
+    }, 150);
   });
 
   // Start initial hydration
