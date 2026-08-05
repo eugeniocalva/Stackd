@@ -22,7 +22,8 @@ describe('HistoryView Daily Summary String', () => {
     global.localStorage = global.window.localStorage;
     global.window.Components = {
       AdvancedFilterBar: { render: () => '<div>FilterBar</div>', attachEvents: vi.fn() },
-      TransactionItem: { render: (tx) => `<div class="tx-item">${tx.id}</div>` }
+      TransactionItem: { render: (tx) => `<div class="tx-item">${tx.id}</div>` },
+      fitNumericFontSize: (values, maxRem) => `${maxRem}rem`
     };
     
     executeFile('db.js');

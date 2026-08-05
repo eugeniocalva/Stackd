@@ -24,7 +24,8 @@ describe('AnalyticsView Account Filter Indicator', () => {
       AdvancedFilterBar: { render: () => '<div>FilterBar</div>', attachEvents: vi.fn() },
       NetFlowChart: { render: () => '<div>Chart</div>' },
       CategoryDonutChart: { render: () => '<div>Donut</div>' },
-      TransactionItem: { render: () => '<div>Item</div>' }
+      TransactionItem: { render: () => '<div>Item</div>' },
+      fitNumericFontSize: (values, maxRem) => `${maxRem}rem`
     };
     
     executeFile('db.js');

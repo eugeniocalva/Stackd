@@ -1,5 +1,39 @@
 // components.js - Reusable UI Components
 window.Components = {
+  // v0.61 - Shared autosizer for money tiles.
+  //
+  // Amounts grow without bound (six-figure balances, large transfers) but the tiles that
+  // hold them are fixed fractions of the viewport, so a long value used to wrap
+  // mid-number. Callers pass EVERY value in a group and get back ONE font-size for all
+  // of them: sibling tiles then shrink together, because a single shrunken tile reads as
+  // a rendering glitch rather than a design.
+  //
+  // Sizing is length-driven, not measured. Views re-render wholesale on every dispatch
+  // (see main.js), so a post-render measure-and-refit pass would run on every state
+  // change and thrash. With tabular figures a value's rendered width is very close to
+  // (character count x NUMERIC_GLYPH_EM x font-size), so the clamp() below just solves
+  // that relation for font-size. Keeping the preferred term as a CSS expression means it
+  // also keeps adapting to viewport width after render, at no runtime cost.
+  //
+  //   values     already-formatted strings, including sign and currency symbol
+  //   maxRem     size to use when everything fits comfortably
+  //   minRem     never shrink past this
+  //   widthExpr  CSS expression for the tile's usable inline width
+  //
+  // Callers must pair this with `white-space: nowrap` and `font-variant-numeric:
+  // tabular-nums`, and zero the `min-width` of any grid cell holding the value -- an
+  // `auto` minimum lets the nowrapped text push its own column wider than its share.
+  NUMERIC_GLYPH_EM: 0.62,
+  fitNumericFontSize(values, maxRem, minRem, widthExpr) {
+    const longest = (values || []).reduce(
+      (max, v) => Math.max(max, String(v === null || v === undefined ? '' : v).length),
+      0
+    );
+    if (!longest) return `${maxRem}rem`;
+    const emNeeded = (longest * this.NUMERIC_GLYPH_EM).toFixed(2);
+    return `clamp(${minRem}rem, calc(${widthExpr} / ${emNeeded}), ${maxRem}rem)`;
+  },
+
   BottomNav: {
     render() {
       return `

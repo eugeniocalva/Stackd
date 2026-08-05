@@ -98,6 +98,22 @@ window.Views = {
       const donutData = window.Store.computeCategoryDistribution(filters, 'expense');
       const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
 
+      // v0.61 - Same autosizing as the History summary bar. The hero figure is its own
+      // group; the two tiles beneath it share a size with each other.
+      const balanceStr = window.Store.formatCurrency(currentBalance);
+      const deltaStr   = `${sign}${window.Store.formatCurrency(Math.abs(delta))}`;
+      const prevStr    = window.Store.formatCurrency(prevBalance);
+
+      // Card content width: container inner width less the card's 32px side padding.
+      const heroWidth = '(min(600px, 100vw) - 96px)';
+      // Each tile: that width less the 12px grid gap, halved, less 16px side padding and
+      // a small margin, so the estimate stays under the real width rather than over it.
+      const statWidth = '((min(600px, 100vw) - 108px) / 2 - 38px)';
+
+      const heroFontSize = window.Components.fitNumericFontSize([balanceStr], 2.5, 1.4, heroWidth);
+      const statFontSize = window.Components.fitNumericFontSize([deltaStr, prevStr], 1.05, 0.65, statWidth);
+      const statValueStyle = `font-weight: 700; font-size: ${statFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
+
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
       const accountFilterIndicatorHtml = hasAccountFilter
         ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
@@ -124,8 +140,8 @@ window.Views = {
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
             
             <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">Total Net Balance</p>
-            <h2 style="font-family: var(--font-family-display); font-size: 2.5rem; font-weight: 800; margin-bottom: var(--space-4); color: var(--text-primary); letter-spacing: -0.02em;">
-              ${window.Store.formatCurrency(currentBalance)}
+            <h2 style="font-family: var(--font-family-display); font-size: ${heroFontSize}; font-weight: 800; margin-bottom: var(--space-4); color: var(--text-primary); letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums;">
+              ${balanceStr}
             </h2>
 
             <!-- DYNAMIC DELTA BADGE -->
@@ -136,13 +152,13 @@ window.Views = {
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
-              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
+              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg); min-width: 0;">
                 <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Net Change</span>
-                <span style="font-weight: 700; color: ${color}; font-size: 1.05rem;">${sign}${window.Store.formatCurrency(Math.abs(delta))}</span>
+                <span style="${statValueStyle} color: ${color};">${deltaStr}</span>
               </div>
-              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg);">
+              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg); min-width: 0;">
                 <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Previous</span>
-                <span style="font-weight: 700; color: var(--text-primary); font-size: 1.05rem;">${window.Store.formatCurrency(prevBalance)}</span>
+                <span style="${statValueStyle} color: var(--text-primary);">${prevStr}</span>
               </div>
             </div>
           </div>
@@ -598,6 +614,25 @@ window.Views = {
       const netChangeColor = netChange    > 0 ? 'var(--color-income)' : (netChange    < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
       const netChangeSign  = netChange > 0 ? '+' : '';
 
+      // v0.61 - Autosize the three figures as one group so they stay the same size as
+      // each other. Net Change was the first to wrap because its leading '+' costs a
+      // whole character the other two never pay.
+      const startStr = window.Store.formatCurrency(startBalance);
+      const endStr   = window.Store.formatCurrency(endBalance);
+      const netStr   = `${netChangeSign}${window.Store.formatCurrency(netChange)}`;
+
+      // Usable width of one cell: container inner width (capped at 600px, less its 16px
+      // side padding), split three ways, less this cell's 12px padding, its divider, and
+      // a small margin so the estimate stays under the real width rather than over it.
+      const summaryCellWidth = '((min(600px, 100vw) - 32px) / 3 - 28px)';
+      const summaryFontSize  = window.Components.fitNumericFontSize([startStr, endStr, netStr], 0.95, 0.6, summaryCellWidth);
+
+      // min-width:0 keeps each column at exactly one third; without it the nowrapped
+      // value would widen its own column and overflow the card.
+      const summaryCellStyle  = 'padding: var(--space-3); min-width: 0;';
+      const summaryLabelStyle = 'font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 4px;';
+      const summaryValueStyle = `font-family: var(--font-family-display); font-weight: 700; font-size: ${summaryFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
+
       const balanceSummaryHtml = `
         <div style="
           background: var(--bg-surface);
@@ -610,21 +645,21 @@ window.Views = {
           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--color-border);">
 
             <!-- Start Balance -->
-            <div style="padding: var(--space-3) var(--space-4); border-right: 1px solid var(--color-border);">
-              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">Start</div>
-              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: ${startBalColor};">${window.Store.formatCurrency(startBalance)}</div>
+            <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
+              <div style="${summaryLabelStyle}">Start</div>
+              <div style="${summaryValueStyle} color: ${startBalColor};">${startStr}</div>
             </div>
 
             <!-- End Balance -->
-            <div style="padding: var(--space-3) var(--space-4); border-right: 1px solid var(--color-border);">
-              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">End</div>
-              <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: ${endBalColor};">${window.Store.formatCurrency(endBalance)}</div>
+            <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
+              <div style="${summaryLabelStyle}">End</div>
+              <div style="${summaryValueStyle} color: ${endBalColor};">${endStr}</div>
             </div>
 
             <!-- Net Change -->
-            <div style="padding: var(--space-3) var(--space-4); background: var(--bg-surface-sunken);">
-              <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px;">Net Change</div>
-              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: 0.95rem; color: ${netChangeColor};">${netChangeSign}${window.Store.formatCurrency(netChange)}</div>
+            <div style="${summaryCellStyle} background: var(--bg-surface-sunken);">
+              <div style="${summaryLabelStyle}">Net Change</div>
+              <div style="${summaryValueStyle} color: ${netChangeColor};">${netStr}</div>
             </div>
 
           </div>
