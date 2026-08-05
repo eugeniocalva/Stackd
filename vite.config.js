@@ -5,7 +5,7 @@ export default defineConfig({
   base: './',
   plugins: [viteSingleFile()],
   server: {
-    port: 3000,
+    port: Number(process.env.PORT) || 3000,
     open: false,
     proxy: {
       '/api-yahoo': {

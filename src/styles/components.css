@@ -1185,6 +1185,34 @@ a:focus-visible,
   color: var(--color-primary);
 }
 
+/* Budget month pill arrows (v0.62): 32px layout width so the pill hugs the
+   month label; the 44px touch target is preserved via the ::after overlay. */
+.btn-month-pill-arrow {
+  position: relative;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.btn-month-pill-arrow::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.btn-month-pill-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

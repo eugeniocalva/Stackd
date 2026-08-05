@@ -2404,15 +2404,15 @@ Object.assign(window.Views, {
 
             <!-- Month Switcher (Modern Pill Style) -->
             <div style="display: flex; justify-content: center; align-items: center; background: var(--bg-surface-sunken); padding: 4px; border-radius: 24px; margin: 0 auto; width: fit-content; gap: 4px; border: 1px solid var(--border-color);">
-              <button id="bdg-prev-month" class="btn-icon touch-target" style="width: 32px; height: 32px; color: var(--text-secondary); background: transparent;" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
+              <button id="bdg-prev-month" class="btn-month-pill-arrow" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
                 <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
               </button>
-              
-              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="Current budget month: ${currMonthLabel}. Tap to change." style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 16px; min-width: 120px; white-space: nowrap;">
+
+              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="Current budget month: ${currMonthLabel}. Tap to change." style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
                 ${currMonthLabel}
               </div>
 
-              <button id="bdg-next-month" class="btn-icon touch-target" style="width: 32px; height: 32px; color: var(--text-secondary); background: transparent;" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
+              <button id="bdg-next-month" class="btn-month-pill-arrow" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
                 <i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i>
               </button>
             </div>
