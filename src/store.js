@@ -94,6 +94,7 @@ window.Store = {
     loans: [],
     theme: 'system', // 'system', 'light', 'dark'
     activeTheme: 'light', // 'light' or 'dark'
+    analyticsBalanceMode: 'today', // v0.64 - 'today' | 'end': hero balance basis when the period extends past today
 
     initialized: false
   },
@@ -112,6 +113,7 @@ window.Store = {
     this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', '');
     this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
+    this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -597,8 +599,10 @@ window.Store = {
     return dateStr >= bounds.start && dateStr <= bounds.end;
   },
 
-  getFilteredTransactions(pageKey) {
-    const filters = pageKey === 'history' ? this.state.historyFilters : this.state.analyticsFilters;
+  // v0.64 - overrideFilters lets callers evaluate a different period (e.g. clamped-to-today
+  // or previous-period comparisons) without touching the persisted page filters.
+  getFilteredTransactions(pageKey, overrideFilters = null) {
+    const filters = overrideFilters || (pageKey === 'history' ? this.state.historyFilters : this.state.analyticsFilters);
     const { period, types, accounts, categories, sortOrder } = filters;
     
     return this.state.transactions.filter(tx => {
@@ -1434,6 +1438,14 @@ window.Store = {
         break;
       }
 
+      case 'SET_ANALYTICS_BALANCE_MODE': {
+        // v0.64 - 'today' shows the balance as of now; 'end' shows the projected period-end balance
+        this.state.analyticsBalanceMode = payload === 'end' ? 'end' : 'today';
+        window.StackdDB.save('analyticsBalanceMode', this.state.analyticsBalanceMode);
+        changed = true;
+        break;
+      }
+
       case 'SET_PERIOD_TYPE':
         this.state.activePeriod.type = payload;
         changed = true;
@@ -1616,6 +1628,23 @@ window.Store = {
         (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId))
       )
       .reduce((sum, tx) => this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
+  },
+
+  // v0.64 - Future-dated transactions (after today, up to endDate) that are already
+  // counted by getBalanceAtDate(endDate). Lets Analytics caveat projected balances.
+  computeUpcomingImpact(endDate, accountIds = []) {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const upcoming = this.state.transactions.filter(t =>
+      t.date > todayStr && t.date <= endDate &&
+      !this._isTxBeforeOpeningDate(t) &&
+      t.isPaid !== false &&
+      (accountIds.length === 0 || accountIds.includes(t.accountId))
+    );
+    return {
+      count: upcoming.length,
+      net: upcoming.reduce((sum, tx) => this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0)
+    };
   },
 
   computeGraphBalances({ interval = 'monthly', accountIds = [], categoryIds = [] } = {}) {
@@ -1884,7 +1913,9 @@ window.Store = {
     return allNotes.sort();
   },
 
-  computeNetFlowData(filters) {
+  // v0.64 - clampEnd (YYYY-MM-DD) caps every bucket at that date so "as of today" mode
+  // excludes future-dated transactions from the current bucket.
+  computeNetFlowData(filters, clampEnd = null) {
     const { period, accounts, categories } = filters;
     const { type, value } = period;
     
@@ -1956,14 +1987,15 @@ window.Store = {
     }
 
     return buckets.map(b => {
+      const bucketEnd = clampEnd && b.end > clampEnd ? clampEnd : b.end;
       const txs = this.state.transactions.filter(t => {
         if (this._isTxBeforeOpeningDate(t)) return false;
         if (t.isPaid === false) return false; // Exclude unpaid transactions
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments
-        
-        const matchDate = t.date >= b.start && t.date <= b.end;
+
+        const matchDate = t.date >= b.start && t.date <= bucketEnd;
         const matchAcc = accounts.length === 0 || accounts.includes(t.accountId);
         const matchCat = categories.length === 0 || categories.includes(t.categoryId);
         return matchDate && matchAcc && matchCat;
@@ -1988,7 +2020,9 @@ window.Store = {
   },
 
   computeAnalyticalSummary(filters) {
-    const txs = this.getFilteredTransactions('analytics');
+    // v0.64 - actually honor the passed filters (previously always read state.analyticsFilters,
+    // which made previous-period comparisons compare the period to itself)
+    const txs = this.getFilteredTransactions('analytics', filters);
     const income = txs
       .filter(t => this._isPositiveTx(t))
       .reduce((sum, t) => sum + t.amount, 0);
@@ -2000,7 +2034,7 @@ window.Store = {
   },
 
   computeCategoryDistribution(filters, distributionType) {
-    const transactions = this.getFilteredTransactions('analytics');
+    const transactions = this.getFilteredTransactions('analytics', filters); // v0.64 - honor passed filters
     
     // distributionType is 'income' or 'expense'
     const filteredByRequestedType = transactions.filter(tx => {

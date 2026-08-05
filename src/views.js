@@ -62,20 +62,62 @@ window.Views = {
   // ANALYTICS VIEW
   // -------------------------
   AnalyticsView: {
-    render(state) {
+    // v0.64 - Shared basis for the hero balance when the selected period extends past
+    // today: 'today' clamps everything to the current date, 'end' keeps the projected
+    // period-end view. Used by render() and attachEvents() so charts stay consistent.
+    _getBalanceModeContext(state) {
       const filters = state.analyticsFilters;
       const activePeriod = filters.period;
+      const bounds = window.Store._getPeriodBounds(activePeriod.type, activePeriod.value);
+      const rangeStart = activePeriod.type === 'custom' ? activePeriod.start : bounds.start;
+      const rangeEnd = activePeriod.type === 'custom' ? activePeriod.end : bounds.end;
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const straddlesToday = rangeStart <= todayStr && rangeEnd > todayStr;
+      const balanceMode = straddlesToday ? (state.analyticsBalanceMode || 'today') : 'end';
+      const clampToToday = straddlesToday && balanceMode === 'today';
+      return {
+        filters, activePeriod, bounds, rangeStart, rangeEnd, todayStr, straddlesToday, balanceMode, clampToToday,
+        effectiveEnd: clampToToday ? todayStr : rangeEnd,
+        effectiveFilters: clampToToday
+          ? { ...filters, period: { type: 'custom', start: rangeStart, end: todayStr } }
+          : filters,
+        chartClampEnd: clampToToday ? todayStr : null
+      };
+    },
+
+    render(state) {
+      const ctx = this._getBalanceModeContext(state);
+      const { filters, activePeriod, rangeStart, rangeEnd, todayStr, straddlesToday, balanceMode, clampToToday, effectiveEnd, effectiveFilters } = ctx;
       const periodLabel = window.Store._getPeriodLabel(activePeriod);
       const filterBarHtml = window.Components.AdvancedFilterBar.render('analytics', filters);
 
-      const bounds = window.Store._getPeriodBounds(activePeriod.type, activePeriod.value);
-      const rangeEnd = activePeriod.type === 'custom' ? activePeriod.end : bounds.end;
-      
-      const currentBalance = window.Store.getBalanceAtDate(rangeEnd, filters.accounts);
-      const summary = window.Store.computeAnalyticalSummary(filters);
-      
+      const currentBalance = window.Store.getBalanceAtDate(effectiveEnd, filters.accounts);
+      const summary = window.Store.computeAnalyticalSummary(effectiveFilters);
+
+      // v0.64 - Future-dated transactions inside the selected period (relative to today)
+      const upcoming = rangeEnd > todayStr
+        ? window.Store.computeUpcomingImpact(rangeEnd, filters.accounts)
+        : { count: 0, net: 0 };
+      // The hero is a projection only when it actually includes future transactions
+      const isProjected = balanceMode === 'end' && upcoming.count > 0;
+
       const prevPeriod = window.Store._getPreviousPeriod(activePeriod);
-      const prevSummary = window.Store.computeAnalyticalSummary({ ...filters, period: prevPeriod });
+      // v0.64 - In 'today' mode compare like-for-like: clamp the previous period to the
+      // same number of elapsed days, so "vs last month" means month-to-date vs month-to-date.
+      let prevCompareFilters = { ...filters, period: prevPeriod };
+      if (clampToToday) {
+        const prevBounds = prevPeriod.type === 'custom'
+          ? { start: prevPeriod.start, end: prevPeriod.end }
+          : window.Store._getPeriodBounds(prevPeriod.type, prevPeriod.value);
+        const elapsedDays = Math.round((new Date(todayStr + 'T00:00:00') - new Date(rangeStart + 'T00:00:00')) / 86400000);
+        const prevEndDt = new Date(prevBounds.start + 'T00:00:00');
+        prevEndDt.setDate(prevEndDt.getDate() + elapsedDays);
+        let prevEndClamped = `${prevEndDt.getFullYear()}-${String(prevEndDt.getMonth() + 1).padStart(2, '0')}-${String(prevEndDt.getDate()).padStart(2, '0')}`;
+        if (prevEndClamped > prevBounds.end) prevEndClamped = prevBounds.end;
+        prevCompareFilters = { ...filters, period: { type: 'custom', start: prevBounds.start, end: prevEndClamped } };
+      }
+      const prevSummary = window.Store.computeAnalyticalSummary(prevCompareFilters);
       
       const delta = summary.net;
       const prevNet = prevSummary.net;
@@ -90,12 +132,12 @@ window.Views = {
       const bgColor = isPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
       const textColor = isPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
       
-      const deltaLabel = `vs last ${activePeriod.type === 'custom' ? 'period' : (activePeriod.type === 'today' ? 'day' : activePeriod.type)}`;
-      
-      const chartData = window.Store.computeNetFlowData(filters);
+      const deltaLabel = `vs last ${activePeriod.type === 'custom' ? 'period' : (activePeriod.type === 'today' ? 'day' : activePeriod.type)}${clampToToday ? ' to date' : ''}`;
+
+      const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom');
 
-      const donutData = window.Store.computeCategoryDistribution(filters, 'expense');
+      const donutData = window.Store.computeCategoryDistribution(effectiveFilters, 'expense');
       const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
 
       // v0.61 - Same autosizing as the History summary bar. The hero figure is its own
@@ -119,6 +161,22 @@ window.Views = {
         ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
         : '';
 
+      // v0.64 - Projection caveat + Today/period-end toggle
+      const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const upcomingNetStr = `${upcoming.net >= 0 ? '+' : '-'}${window.Store.formatCurrency(Math.abs(upcoming.net))}`;
+      const upcomingNoteHtml = (upcoming.count > 0 && rangeEnd > todayStr) ? `
+            <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: var(--space-4);">
+              <i data-lucide="clock" style="width: 13px; height: 13px; flex-shrink: 0;"></i>
+              <span>${balanceMode === 'end' ? 'Includes' : 'Excludes'} ${upcoming.count} upcoming transaction${upcoming.count === 1 ? '' : 's'} (${upcomingNetStr})</span>
+            </div>` : '';
+      const balanceModeToggleHtml = straddlesToday ? `
+            <div style="display: flex; justify-content: center; margin-bottom: var(--space-4);">
+              <div class="chart-toggle-group" id="balance-mode-toggle">
+                <button class="chart-toggle-btn ${balanceMode === 'today' ? 'active' : ''}" data-mode="today">Today</button>
+                <button class="chart-toggle-btn ${balanceMode === 'end' ? 'active' : ''}" data-mode="end">${endShortLabel}</button>
+              </div>
+            </div>` : '';
+
       return `
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
@@ -139,10 +197,11 @@ window.Views = {
             <!-- DECORATIVE BACKGROUND GRADIENT -->
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
             
-            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">Total Net Balance</p>
-            <h2 style="font-family: var(--font-family-display); font-size: ${heroFontSize}; font-weight: 800; margin-bottom: var(--space-4); color: var(--text-primary); letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums;">
+            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">${isProjected ? `Projected Balance · ${endShortLabel}` : (clampToToday ? 'Total Net Balance · Today' : 'Total Net Balance')}</p>
+            <h2 style="font-family: var(--font-family-display); font-size: ${heroFontSize}; font-weight: 800; margin-bottom: ${upcomingNoteHtml ? 'var(--space-2)' : 'var(--space-4)'}; color: var(--text-primary); letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums;">
               ${balanceStr}
             </h2>
+            ${upcomingNoteHtml}
 
             <!-- DYNAMIC DELTA BADGE -->
             <div style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 6px 12px; border-radius: 20px; background: ${bgColor}; color: ${textColor}; font-weight: 700; font-size: 0.85rem; margin-bottom: var(--space-6);">
@@ -150,7 +209,7 @@ window.Views = {
               <span>${sign}${pct.toFixed(1)}%</span>
               <span style="opacity: 0.8; font-weight: 500; margin-left: 2px;">${deltaLabel}</span>
             </div>
-            
+            ${balanceModeToggleHtml}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg); min-width: 0;">
                 <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Net Change</span>
@@ -170,15 +229,27 @@ window.Views = {
     },
     attachEvents(container, state) {
       window.Components.AdvancedFilterBar.attachEvents(container, 'analytics');
-      
-      const filters = state.analyticsFilters;
-      const chartData = window.Store.computeNetFlowData(filters);
+
+      // v0.64 - Use the same today/period-end basis as render() so chart interactions match
+      const ctx = this._getBalanceModeContext(state);
+      const filters = ctx.filters;
+      const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       if (filters.period.type !== 'custom') {
         window.Components.NetFlowChart.attachEvents(container, chartData, filters);
       }
-      
-      window.Components.CategoryDonutChart.attachEvents(container, filters);
-      
+
+      window.Components.CategoryDonutChart.attachEvents(container, ctx.effectiveFilters);
+
+      // v0.64 - Today / period-end balance mode toggle
+      container.querySelectorAll('#balance-mode-toggle .chart-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.mode;
+          if (mode !== ctx.balanceMode) {
+            window.Store.dispatch('SET_ANALYTICS_BALANCE_MODE', mode);
+          }
+        });
+      });
+
       window.StackdHydrateIcons();
     }
   },

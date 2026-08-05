@@ -242,5 +242,91 @@ describe('Store Logic', () => {
     let tx2 = state.transactions.find(t => t.recurrence && t.recurrence.endDate === '2031-01-01');
     expect(tx2).toBeDefined();
   });
+
+  it('should compute upcoming impact of future-dated transactions (v0.64)', () => {
+    global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 1000 });
+    const account = global.window.Store.getState().accounts[0];
+
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    const plusDays = (n) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + n);
+      return fmt(d);
+    };
+
+    // Past transaction: not upcoming
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 50, accountId: account.id,
+      categoryId: 'cat_groceries', date: plusDays(-1)
+    });
+    // Two future transactions inside the window
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'income', amount: 2000, accountId: account.id,
+      categoryId: 'cat_salary', date: plusDays(2)
+    });
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 300, accountId: account.id,
+      categoryId: 'cat_groceries', date: plusDays(3)
+    });
+    // Future but beyond the window: excluded
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 999, accountId: account.id,
+      categoryId: 'cat_groceries', date: plusDays(20)
+    });
+
+    const impact = global.window.Store.computeUpcomingImpact(plusDays(10), [account.id]);
+    expect(impact.count).toBe(2);
+    expect(impact.net).toBe(1700);
+
+    // Consistency: balance at window end === balance today + upcoming net
+    const balanceToday = global.window.Store.getBalanceAtDate(plusDays(0), [account.id]);
+    const balanceEnd = global.window.Store.getBalanceAtDate(plusDays(10), [account.id]);
+    expect(balanceEnd - balanceToday).toBe(impact.net);
+  });
+
+  it('should persist analytics balance mode (v0.64)', () => {
+    expect(global.window.Store.getState().analyticsBalanceMode).toBe('today');
+
+    global.window.Store.dispatch('SET_ANALYTICS_BALANCE_MODE', 'end');
+    expect(global.window.Store.getState().analyticsBalanceMode).toBe('end');
+
+    // Invalid payloads fall back to 'today'
+    global.window.Store.dispatch('SET_ANALYTICS_BALANCE_MODE', 'bogus');
+    expect(global.window.Store.getState().analyticsBalanceMode).toBe('today');
+  });
+
+  it('should honor passed filters in computeAnalyticalSummary (v0.64)', () => {
+    global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 0 });
+    const account = global.window.Store.getState().accounts[0];
+
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    const plusDays = (n) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + n);
+      return fmt(d);
+    };
+
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 100, accountId: account.id,
+      categoryId: 'cat_groceries', date: plusDays(0)
+    });
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 250, accountId: account.id,
+      categoryId: 'cat_groceries', date: plusDays(5)
+    });
+
+    const baseFilters = { types: [], accounts: [], categories: [], sortOrder: 'desc' };
+    const fullWindow = global.window.Store.computeAnalyticalSummary({
+      ...baseFilters, period: { type: 'custom', start: plusDays(0), end: plusDays(10) }
+    });
+    const clampedToToday = global.window.Store.computeAnalyticalSummary({
+      ...baseFilters, period: { type: 'custom', start: plusDays(0), end: plusDays(0) }
+    });
+
+    expect(fullWindow.expense).toBe(350);
+    expect(clampedToToday.expense).toBe(100);
+  });
 });
 
