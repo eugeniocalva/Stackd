@@ -65,7 +65,7 @@
 
 /* Cards (Surface Hierarchy & Glassmorphism) */
 .card {
-  background-color: #ffffff;
+  background-color: var(--bg-surface);
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -132,7 +132,7 @@
 
 .btn-balance {
   background: var(--color-balance-val);
-  color: #ffffff;
+  color: var(--text-on-primary);
   box-shadow: none;
 }
 
@@ -174,9 +174,9 @@
 }
 
 .form-control:focus {
-  background-color: #ffffff;
-  border-color: #111111;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+  background-color: var(--bg-surface);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-border);
 }
 
 /* Date and Time input framing, centering, and overflow prevention */
@@ -293,11 +293,11 @@ body.keyboard-active .bottom-nav {
 
 .nav-pill {
   height: 64px;
-  background-color: #ffffff;
-  background: rgba(255, 255, 255, 0.9);
+  background-color: var(--bg-surface);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--glass-border);
   border-radius: 32px;
   display: flex;
   align-items: center;
@@ -321,7 +321,7 @@ body.keyboard-active .bottom-nav {
 }
 
 .nav-item.active {
-  color: #111111;
+  color: var(--color-accent);
 }
 
 .nav-icon {
@@ -337,7 +337,7 @@ body.keyboard-active .bottom-nav {
   bottom: 12px;
   width: 16px;
   height: 3px;
-  background: #111111;
+  background: var(--color-accent);
   border-radius: var(--radius-full);
   opacity: 0;
   transform: scaleX(0);
@@ -353,8 +353,8 @@ body.keyboard-active .bottom-nav {
   width: 64px;
   height: 64px;
   border-radius: 32px;
-  background-color: #ffffff;
-  background: rgba(255, 255, 255, 0.9);
+  background-color: var(--bg-surface);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   color: var(--color-primary);
@@ -362,7 +362,7 @@ body.keyboard-active .bottom-nav {
   align-items: center;
   justify-content: center;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--glass-border);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
 }
@@ -491,7 +491,7 @@ body.keyboard-active .bottom-nav {
   align-items: center;
   min-height: 72px;
   padding: var(--space-3) var(--space-4);
-  background: #ffffff;
+  background: var(--bg-surface);
   border: 1px solid var(--color-border);
   margin-bottom: var(--space-3);
   border-radius: var(--radius-lg);
@@ -557,30 +557,30 @@ body.keyboard-active .bottom-nav {
 }
 
 .swipe-action-btn.edit {
-  background: #f8fafc; /* Subtle off-white for better contrast */
-  color: #1e293b;
-  border: 1px solid rgba(0,0,0,0.05);
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+  border: 1px solid var(--color-border);
 }
 
 .swipe-action-btn.delete {
-  background: #fee2e2;
-  color: #ef4444;
+  background: var(--color-expense-bg);
+  color: var(--color-expense);
 }
 
 .swipe-action-btn.paid {
-  background: #dcfce7;
-  color: #10b981;
+  background: var(--color-income-bg);
+  color: var(--color-income);
   border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .swipe-action-btn.paid.is-paid {
-  background: #10b981;
+  background: var(--color-income);
   color: #ffffff;
 }
 
 .swipe-action-btn.paid.is-unpaid {
-  background: #fef08a;
-  color: #854d0e;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
   border: 1px solid rgba(234, 179, 8, 0.3);
 }
 
@@ -626,14 +626,14 @@ body.keyboard-active .bottom-nav {
   height: 38px;
   min-width: 38px;
   border-radius: 50%; /* Perfect circle — v0.59 */
-  background-color: #F2F2F7; /* Bright monochrome background */
+  background-color: var(--bg-surface-sunken); /* Monochrome background */
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: var(--space-4);
   flex-shrink: 0;
   overflow: hidden;
-  color: #1C1C1E; /* Dark monochrome icon glyph */
+  color: var(--text-primary); /* Monochrome icon glyph */
 }
 
 /* Flush variant for Dashboard/Recent Activities */
@@ -644,7 +644,7 @@ body.keyboard-active .bottom-nav {
   margin-bottom: 0 !important;
   padding: var(--space-3) 0 !important;
   border-radius: 0 !important;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.05) !important;
+  border-bottom: 1px solid var(--color-border) !important;
 }
 
 .list-item-flush:last-child {
@@ -793,8 +793,8 @@ body.keyboard-active .bottom-nav {
 
 .note-textarea:focus {
   border-color: var(--color-primary);
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--color-border);
 }
 
 .note-char-counter {
@@ -805,7 +805,7 @@ body.keyboard-active .bottom-nav {
   font-weight: 700;
   color: var(--text-tertiary);
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--glass-bg);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -865,9 +865,9 @@ body.keyboard-active .bottom-nav {
 .account-visibility-toggle:focus-visible,
 a:focus-visible,
 [tabindex="0"]:focus-visible {
-  outline: 3px solid #111111;
+  outline: 3px solid var(--color-primary);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 4px var(--color-border);
   border-radius: var(--radius-sm);
   z-index: 10;
 }
@@ -956,11 +956,11 @@ a:focus-visible,
   width: 38px;
   height: 38px;
   border-radius: 50%; /* Circle — v0.59 */
-  background: #F2F2F7;
+  background: var(--bg-surface-sunken);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1C1C1E;
+  color: var(--text-primary);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
   margin-bottom: 0;
   flex-shrink: 0;
@@ -997,7 +997,7 @@ a:focus-visible,
 }
 
 .wallet-card.is-default {
-  border-color: #111111;
+  border-color: var(--color-primary);
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
 }
 
@@ -1007,8 +1007,8 @@ a:focus-visible,
   right: 12px;
   font-size: 8px;
   font-weight: 900;
-  color: #fff;
-  background: #111111;
+  color: var(--text-on-primary);
+  background: var(--color-primary);
   padding: 3px 7px;
   border-radius: 5px;
   text-transform: uppercase;
@@ -1022,12 +1022,12 @@ a:focus-visible,
 }
 
 .account-edit-trigger:hover {
-  background: rgba(0,0,0,0.05);
+  background: var(--bg-surface-sunken);
   opacity: 1;
 }
 
 .account-edit-trigger:active {
-  background: rgba(0,0,0,0.1);
+  background: var(--bg-surface-dim);
   transform: scale(0.9);
 }
 
@@ -1102,8 +1102,8 @@ a:focus-visible,
 }
 
 .filter-pill.active {
-  background: #111111;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
   box-shadow: none;
 }
 
@@ -1115,8 +1115,8 @@ a:focus-visible,
 
 .filter-pill-icon.active {
   background: var(--bg-surface-sunken);
-  color: #111111;
-  border-color: #111111;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 /* Modal Headers with Top Buttons */
@@ -1126,7 +1126,7 @@ a:focus-visible,
   align-items: center;
   padding: calc(var(--space-4) + var(--safe-top)) var(--space-5) var(--space-4);
   border-bottom: 1px solid var(--color-border);
-  background: #ffffff;
+  background: var(--bg-surface);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -1137,7 +1137,7 @@ a:focus-visible,
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  color: #111111;
+  color: var(--color-primary);
   background: transparent;
   border: none;
   transition: opacity 0.2s;
@@ -1152,19 +1152,14 @@ a:focus-visible,
 }
 
 .filter-bar-wrapper {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
   z-index: 10;
   margin-bottom: var(--space-4);
-}
-
-[data-theme="dark"] .filter-bar-wrapper {
-  background: rgba(18, 18, 18, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .calendar-nav-header {
@@ -1264,15 +1259,15 @@ a:focus-visible,
 .calendar-day:not(.empty):active { transform: scale(0.85); background: var(--color-primary-bg); }
 
 .calendar-day.selected {
-  background: #111111 !important;
-  color: #ffffff !important;
+  background: var(--color-primary) !important;
+  color: var(--text-on-primary) !important;
   font-weight: 800;
   box-shadow: none;
 }
 
 .calendar-day.in-range {
-  background: #f0f0f0;
-  color: #111111;
+  background: var(--color-primary-bg);
+  color: var(--text-primary);
   border-radius: 0;
 }
 
@@ -1287,7 +1282,7 @@ a:focus-visible,
 }
 
 .calendar-day.is-today {
-  color: #111111;
+  color: var(--color-primary);
   font-weight: 800;
 }
 
@@ -1297,11 +1292,11 @@ a:focus-visible,
   bottom: 6px;
   width: 5px;
   height: 5px;
-  background: #111111;
+  background: var(--color-primary);
   border-radius: 50%;
 }
 
-.calendar-day.selected.is-today::after { background: #ffffff; }
+.calendar-day.selected.is-today::after { background: var(--text-on-primary); }
 
 .filter-group-title {
   font-family: var(--font-family-display);
@@ -1332,9 +1327,9 @@ a:focus-visible,
 }
 
 .multi-select-chip.active {
-  background: #111111;
-  color: #ffffff;
-  border-color: #111111;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+  border-color: var(--color-primary);
 }
 
 /* Donut Chart Component */
@@ -1449,8 +1444,8 @@ a:focus-visible,
 }
 
 .chart-toggle-btn.active {
-  background: #111111;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
   box-shadow: none;
 }
 
@@ -1602,7 +1597,7 @@ a:focus-visible,
 }
 
 .log-tile {
-  background: #f4f6fb;
+  background: var(--bg-surface-sunken);
   border-radius: var(--radius-lg);
   padding: 14px 16px;
   min-width: 140px; /* Increased for value visibility */
@@ -1611,14 +1606,14 @@ a:focus-visible,
   gap: 6px;
   cursor: pointer;
   transition: transform 0.2s ease;
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid var(--color-border);
   flex-shrink: 0;
   scroll-snap-align: center;
 }
 
 .log-tile:active {
   transform: scale(0.96);
-  background: #eef2fe;
+  background: var(--bg-surface-dim);
 }
 
 .log-tile-header {
@@ -1651,7 +1646,7 @@ a:focus-visible,
 }
 
 .keypad-btn {
-  background: #f4f6fb;
+  background: var(--bg-surface-sunken);
   border: none;
   border-radius: var(--radius-xl);
   height: 64px;
@@ -1677,13 +1672,13 @@ a:focus-visible,
 }
 
 .keypad-btn.confirm {
-  background: #f4f6fb;
+  background: var(--bg-surface-sunken);
   color: var(--text-placeholder);
 }
 
 .keypad-btn.confirm.active {
-  background: #000000;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
 }
 
 .keypad-btn.confirm:disabled {
@@ -1733,7 +1728,7 @@ a:focus-visible,
 .sheet-handle {
   width: 40px;
   height: 5px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--bg-surface-dim);
   border-radius: 3px;
   margin: 0 auto;
 }
@@ -1913,8 +1908,8 @@ a:focus-visible,
 
 .modal-btn-filter-right.active,
 .modal-btn-filter-right:active {
-  background: #111111;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
 }
 
 .expanded-chart-wrapper {
@@ -2001,7 +1996,7 @@ a:focus-visible,
 }
 
 .filter-checkbox-label input[type="checkbox"] {
-  accent-color: #111111;
+  accent-color: var(--color-accent);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -2014,8 +2009,8 @@ a:focus-visible,
 .btn-save-filters {
   width: 100%;
   padding: 12px var(--space-4);
-  background: #111111;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
   border: none;
   border-radius: 12px;
   font-weight: 800;
@@ -2029,7 +2024,7 @@ a:focus-visible,
 }
 
 .btn-save-filters:hover {
-  background: #222222;
+  background: var(--color-primary-dim);
 }
 
 .btn-save-filters:active {
@@ -2058,7 +2053,7 @@ a:focus-visible,
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #cbd5e1;
+  background-color: var(--bg-surface-dim);
   transition: 0.3s;
   border-radius: 34px;
 }
@@ -2077,7 +2072,7 @@ a:focus-visible,
 }
 
 .toggle-switch input:checked + .slider {
-  background-color: var(--color-primary, #34c759);
+  background-color: var(--color-accent, #34c759);
 }
 
 .toggle-switch input:checked + .slider:before {
@@ -2196,12 +2191,13 @@ a:focus-visible,
 }
 
 .custom-selection-checkbox.checked {
-  border-color: var(--text-primary, #111111);
-  background: var(--text-primary, #111111);
+  border-color: var(--color-primary, #111111);
+  background: var(--color-primary, #111111);
+  color: var(--text-on-primary, #ffffff); /* check glyph uses currentColor */
 }
 
 .list-item-selected {
-  border-color: var(--text-primary, #111111) !important;
+  border-color: var(--color-primary, #111111) !important;
 }
 
 

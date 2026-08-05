@@ -314,7 +314,7 @@ window.Components = {
         return `<div style="margin-bottom: var(--space-3);">
           <div class="section-title" style="font-size: 0.75rem; margin-bottom: var(--space-2); opacity: 0.7;">${group.label}</div>
           <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;" role="group" aria-label="${group.label}">
-            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="Select icon ${i}" aria-pressed="false" style="width: 40px; height: 40px; border-radius: 50%; background: #F2F2F7; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #1C1C1E; transition: all 0.2s ease;">
+            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="Select icon ${i}" aria-pressed="false" style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-surface-sunken); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-primary); transition: all 0.2s ease;">
               <i data-lucide="${i}" style="font-size: 20px; width: 20px; height: 20px; display: inline-block; vertical-align: middle;"></i>
             </button>`).join('')}
           </div></div>`;
@@ -351,12 +351,12 @@ window.Components = {
              window.StackdHydrateIcons();
           }
           grid.querySelectorAll('.icon-btn').forEach(b => {
-            b.style.background = '#F2F2F7';
-            b.style.color = '#1C1C1E';
+            b.style.background = 'var(--bg-surface-sunken)';
+            b.style.color = 'var(--text-primary)';
             b.setAttribute('aria-pressed', 'false');
           });
-          btn.style.background = '#1C1C1E';
-          btn.style.color = '#ffffff';
+          btn.style.background = 'var(--color-primary)';
+          btn.style.color = 'var(--text-on-primary)';
           btn.setAttribute('aria-pressed', 'true');
           if (onSelect) onSelect(icon);
         });
@@ -472,7 +472,7 @@ window.Components = {
 
       const checkboxHtml = isSelectionMode ? `
         <div class="custom-selection-checkbox tx-select-checkbox ${isSelected ? 'checked' : ''}" data-id="${transaction.id}">
-          ${isSelected ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` : ''}
+          ${isSelected ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` : ''}
         </div>
       ` : '';
 
@@ -1471,9 +1471,9 @@ window.Components = {
                 transition: all 0.2s;
               }
               .freq-pill.active {
-                background: var(--text-primary);
-                color: #ffffff !important;
-                border-color: var(--text-primary);
+                background: var(--color-primary);
+                color: var(--text-on-primary) !important;
+                border-color: var(--color-primary);
               }
               .freq-pill:hover:not(.active) {
                 border-color: var(--text-tertiary);
@@ -2280,8 +2280,8 @@ window.Components = {
                 cursor: pointer;
               }
               .tag-chip.active {
-                background: var(--text-primary);
-                color: #ffffff;
+                background: var(--color-primary);
+                color: var(--text-on-primary);
               }
               .tag-chip.suggestion {
                 background: var(--bg-surface-sunken);
@@ -2409,11 +2409,11 @@ window.Components = {
         : "This transaction is part of a recurring series. How would you like to apply these changes?";
 
       const buttonsHtml = isRuleChange 
-        ? `<button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Update recurring series</button>`
+        ? `<button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Update recurring series</button>`
         : `
-          <button id="ru-only-this" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to this transaction only</button>
-          <button id="ru-this-future" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to this and future transactions</button>
-          <button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; background: #f1f1f1; color: #000; border: none;">Apply to all in the series</button>
+          <button id="ru-only-this" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to this transaction only</button>
+          <button id="ru-this-future" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to this and future transactions</button>
+          <button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to all in the series</button>
         `;
 
       const div = document.createElement('div');
@@ -2828,7 +2828,7 @@ window.Components = {
                       ${accounts.map(acc => `
                         <label class="filter-checkbox-label">
                           <input type="checkbox" class="egm-acc-checkbox" data-acc-id="${acc.id}" ${selectedAccountIds.includes(acc.id) ? 'checked' : ''} />
-                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${acc.color || '#111'}; display: inline-block; flex-shrink: 0;"></span>
+                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${acc.color || '#64748B'}; display: inline-block; flex-shrink: 0;"></span>
                           <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${acc.name}</span>
                         </label>
                       `).join('')}

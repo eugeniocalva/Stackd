@@ -34,9 +34,13 @@
   
   --color-warning: #f59e0b;     /* amber-500 */
   --color-warning-bg: #fffbeb;  /* amber-50 */
+  --color-warning-text: #854d0e; /* amber-800 readable on warning-bg */
 
   --color-balance-val: #111111; /* neutral/black */
   --color-balance-bg: #f8fafc;
+
+  /* Alias used by list-item-flush swipe backgrounds */
+  --bg-body: var(--bg-base);
   
   /* Glassmorphism Tokens */
   --glass-bg: rgba(255, 255, 255, 0.75);
@@ -134,6 +138,7 @@ html.dark {
   
   --color-warning: #fbbf24;    /* Amber 400 */
   --color-warning-bg: rgba(120, 53, 15, 0.35);
+  --color-warning-text: #fcd34d; /* Amber 300 readable on dark warning-bg */
 
   --color-balance-val: #f8fafc;
   --color-balance-bg: #161e2e;

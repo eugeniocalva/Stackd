@@ -16,22 +16,36 @@ const DEFAULT_CATEGORIES = [
 ];
 
 window.Store = {
+  // v0.65: every color holds >=3:1 (WCAG graphics) against both card surfaces
+  // (#ffffff light, #161e2e dark) — used for chart lines, icon glyphs, accents.
   ACCOUNT_COLORS: [
-    '#E60023', // 01 Monster Red
-    '#FF9500', // 02 Pure Orange
-    '#FFD600', // 03 Neon Gold
-    '#32D74B', // 04 High-Vis Lime
-    '#248A3D', // 05 TR Green
-    '#00C9A7', // 06 Deep Mint
-    '#00B3FF', // 07 Sky Blue
-    '#0075EB', // 08 Revolut Blue
-    '#1326FD', // 09 Electric Blue
-    '#7B61FF', // 10 Royal Purple
-    '#CC00FF', // 11 Magenta Pop
-    '#FF2D55', // 12 Shocking Pink
-    '#374151', // 13 Graphite
-    '#161618', // 14 Obsidian Black
+    '#E60023', // 01 Monster Red     (4.8 / 3.5)
+    '#EA580C', // 02 Pure Orange     (3.6 / 4.7)
+    '#B8860B', // 03 Antique Gold    (3.3 / 5.1)
+    '#61980B', // 04 High-Vis Lime   (3.5 / 4.8)
+    '#248A3D', // 05 TR Green        (4.4 / 3.8)
+    '#0D9488', // 06 Deep Mint       (3.7 / 4.5)
+    '#0284C7', // 07 Sky Blue        (4.1 / 4.1)
+    '#0075EB', // 08 Revolut Blue    (4.4 / 3.8)
+    '#5A5FEF', // 09 Electric Blue   (4.9 / 3.4)
+    '#7B61FF', // 10 Royal Purple    (4.2 / 4.0)
+    '#CC00FF', // 11 Magenta Pop     (4.2 / 4.0)
+    '#FF2D55', // 12 Shocking Pink   (3.7 / 4.6)
+    '#64748B', // 13 Graphite        (4.8 / 3.5)
+    '#78716C', // 14 Warm Stone      (4.8 / 3.5)
   ],
+  // Pre-v0.65 palette values remap to their same-hue replacement so existing
+  // accounts keep their identity instead of being reassigned by index.
+  LEGACY_ACCOUNT_COLOR_MAP: {
+    '#FF9500': '#EA580C', // Pure Orange
+    '#FFD600': '#B8860B', // Neon Gold
+    '#32D74B': '#61980B', // High-Vis Lime
+    '#00C9A7': '#0D9488', // Deep Mint
+    '#00B3FF': '#0284C7', // Sky Blue
+    '#1326FD': '#5A5FEF', // Electric Blue
+    '#374151': '#64748B', // Graphite
+    '#161618': '#78716C', // Obsidian Black -> Warm Stone
+  },
   state: {
     accounts: [],
     categories: [],
@@ -132,8 +146,11 @@ window.Store = {
 
     let accountsChanged = false;
     this.state.accounts.forEach((acc, index) => {
-      // 1. Color Migration
-      if (!acc.color || !this.ACCOUNT_COLORS.includes(acc.color)) {
+      // 1. Color Migration (legacy hues remap 1:1, unknowns assigned by index)
+      if (acc.color && this.LEGACY_ACCOUNT_COLOR_MAP[acc.color]) {
+        acc.color = this.LEGACY_ACCOUNT_COLOR_MAP[acc.color];
+        accountsChanged = true;
+      } else if (!acc.color || !this.ACCOUNT_COLORS.includes(acc.color)) {
         acc.color = this.ACCOUNT_COLORS[index % this.ACCOUNT_COLORS.length];
         accountsChanged = true;
       }

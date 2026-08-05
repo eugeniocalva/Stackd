@@ -517,19 +517,24 @@ window.Views = {
           const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
           const isQuarter = selectedInterval === 'quarter';
 
+          // Theme-aware chart colors (dark mode contrast fix)
+          const isDark = state.activeTheme === 'dark';
+          const mainLineColor = isDark ? '#38bdf8' : '#5f5e5e';
+          const mainFillColor = isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(95, 94, 94, 0.05)';
+
           const datasets = [{
             label: 'Total Balance',
             data: mainPoints,
-            borderColor: '#5f5e5e',
-            backgroundColor: 'rgba(95, 94, 94, 0.05)',
+            borderColor: mainLineColor,
+            backgroundColor: mainFillColor,
             borderWidth: 3,
             fill: true,
             tension: 0,
             pointRadius: 0,
             pointHoverRadius: 6,
-            pointBackgroundColor: '#fff',
+            pointBackgroundColor: isDark ? '#161e2e' : '#fff',
             pointBorderWidth: 4,
-            pointBorderColor: '#5f5e5e'
+            pointBorderColor: mainLineColor
           }];
 
           const visibleAccounts = state.accounts.filter(a => selectedAccountIds.includes(a.id));
@@ -563,13 +568,13 @@ window.Views = {
               plugins: {
                 legend: { display: false },
                 tooltip: {
-                  backgroundColor: '#ffffff',
-                  titleColor: '#596065',
-                  bodyColor: '#2d3338',
+                  backgroundColor: isDark ? '#161e2e' : '#ffffff',
+                  titleColor: isDark ? '#94a3b8' : '#596065',
+                  bodyColor: isDark ? '#f8fafc' : '#2d3338',
                   bodyFont: { family: 'Manrope', size: 13, weight: 'bold' },
                   displayColors: true,
                   boxPadding: 4,
-                  borderColor: '#e4e9ee',
+                  borderColor: isDark ? 'rgba(51, 65, 85, 0.8)' : '#e4e9ee',
                   borderWidth: 1,
                   padding: 10,
                   itemSort: (a, b) => b.parsed.y - a.parsed.y,
@@ -599,7 +604,7 @@ window.Views = {
                         weight: '600'
                       };
                     },
-                    color: '#64748b',
+                    color: isDark ? '#94a3b8' : '#64748b',
                     callback: (val) => {
                       const idx = Math.round(val);
                       if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < monthLabels.length) {
@@ -2739,6 +2744,7 @@ Object.assign(window.Views, {
 
           // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
           const GAP = 3;
+          const isDark = state.activeTheme === 'dark';
           new window.Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -2746,8 +2752,8 @@ Object.assign(window.Views, {
               datasets: [{
                 data: chartData,
                 backgroundColor: overspent
-                  ? ['#ef4444', '#f1f5f9']   // red + light surface for overspent
-                  : ['#64748b', '#e2e8f0'],  // slate-500 + slate-200 (matches analytics)
+                  ? (isDark ? ['#f87171', '#1f293d'] : ['#ef4444', '#f1f5f9'])   // red + surface for overspent
+                  : (isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']),  // slate + track (matches analytics)
                 borderWidth: GAP,
                 borderColor: 'transparent',
                 hoverBorderColor: 'transparent',
