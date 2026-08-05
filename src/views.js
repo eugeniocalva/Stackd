@@ -123,7 +123,7 @@ window.Views = {
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
-            <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
+            <div class="page-header">
               <h1 class="page-header-title">Analytics</h1>
               <div style="text-align: right;">
                 <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
@@ -744,7 +744,7 @@ window.Views = {
 
       const headerContentHtml = isSelectionMode
         ? `
-            <div class="page-header contextual-header-bar" style="margin-top: var(--space-2); margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06); width: 100%; box-sizing: border-box; overflow: hidden; gap: 6px;">
+            <div class="page-header contextual-header-bar" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06); width: 100%; box-sizing: border-box; overflow: hidden; gap: 6px;">
               <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
                 Cancel
               </button>
@@ -762,7 +762,7 @@ window.Views = {
             </div>
           `
         : `
-            <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
+            <div class="page-header">
               <h1 class="page-header-title">History</h1>
               <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
                 <button id="btn-start-selection-mode" class="btn-selection-action" aria-label="Enter bulk selection mode">
@@ -2398,7 +2398,7 @@ Object.assign(window.Views, {
         <div class="container animate-fade-in" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
-            <div class="page-header" style="margin-top: var(--space-2); margin-bottom: var(--space-4);">
+            <div class="page-header">
               <h1 class="page-header-title">Budget</h1>
             </div>
 

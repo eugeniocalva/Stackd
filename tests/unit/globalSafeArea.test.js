@@ -30,8 +30,7 @@ describe('Global Safe Area Implementation', () => {
     const cssPath = path.resolve(__dirname, '../../src/styles/components.css');
     const cssContent = fs.readFileSync(cssPath, 'utf8');
     expect(cssContent).toContain('margin-top: calc(var(--safe-top) * -1)');
-    expect(cssContent).toContain('padding-top: calc(var(--space-4) + var(--safe-top))');
-    expect(cssContent).toContain('margin-bottom: var(--safe-top)');
+    expect(cssContent).toContain('padding-top: calc(var(--space-2) + var(--safe-top))');
     expect(cssContent).toContain('.history-header-sticky');
     expect(cssContent).toContain('.header-nav');
   });

@@ -43,6 +43,11 @@
   --glass-border: rgba(255, 255, 255, 0.4);
   --glass-blur: 16px;
   --color-overlay: rgba(15, 23, 42, 0.3); /* slate-900 with alpha */
+
+  /* Sticky page header: --bg-base with alpha so the bar disappears into the
+     page at rest, but frosts content scrolling underneath (v0.63) */
+  --bg-header: rgba(244, 247, 249, 0.85);
+  --header-scrolled-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
   
   --color-border: rgba(226, 232, 240, 0.8); /* slate-200 */
   --border-color: var(--color-border);
@@ -138,6 +143,9 @@ html.dark {
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-blur: 16px;
   --color-overlay: rgba(0, 0, 0, 0.7);
+
+  --bg-header: rgba(11, 15, 25, 0.85);
+  --header-scrolled-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   
   --color-border: rgba(51, 65, 85, 0.6);
   --border-color: var(--color-border);

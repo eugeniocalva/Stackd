@@ -334,7 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   const routerView = document.getElementById('router-view');
-  
+
+  // v0.63: Sticky headers blend with the page at rest; .is-scrolled lets CSS
+  // add the hairline + shadow only once content actually slides underneath.
+  if (routerView) {
+    routerView.addEventListener('scroll', () => {
+      routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
+    }, { passive: true });
+  }
+
   // 4. Main render loop (reactive to state changes)
   window.Store.subscribe((state) => {
     if (!routerView) return;
@@ -392,6 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (viewModule && viewModule.render) {
+      routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
       routerView.innerHTML = viewModule.render(state);
       if (viewModule.attachEvents) {
         viewModule.attachEvents(routerView, state);

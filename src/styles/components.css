@@ -7,7 +7,9 @@
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
+  /* clip, not hidden: hidden turns .container into a scroll container,
+     which silently breaks position:sticky for the page headers (v0.63) */
+  overflow-x: clip;
 }
 
 /*
@@ -393,41 +395,56 @@ body.keyboard-active .bottom-nav {
 
 
 
-/* Date Grouping Modernization */
-.history-header-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  margin-top: calc(var(--safe-top) * -1);
-  padding-top: calc(var(--space-4) + var(--safe-top));
-  padding-bottom: var(--space-4);
-  padding-left: max(var(--space-4), var(--safe-left));
-  padding-right: max(var(--space-4), var(--safe-right));
-  margin-left: calc(var(--space-4) * -1);
-  margin-right: calc(var(--space-4) * -1);
-  margin-bottom: var(--safe-top);
-  border-bottom: 1px solid var(--color-border);
-}
-
+/* Sticky Page Headers (v0.63)
+   The bar shares the page background (--bg-header = translucent --bg-base)
+   so there is no color band at rest; the backdrop blur keeps titles and
+   pill buttons readable once content slides underneath. Depth (hairline +
+   shadow) appears only while scrolled, via .is-scrolled toggled on the
+   .view-container in main.js — any sticky header added later inherits the
+   behavior for free. */
+.history-header-sticky,
 .header-nav {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: var(--bg-surface);
+  background: var(--bg-header);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  margin-top: calc(var(--safe-top) * -1);
-  padding-top: calc(var(--space-4) + var(--safe-top));
-  padding-bottom: var(--space-4);
+  padding-top: calc(var(--space-2) + var(--safe-top));
+  padding-bottom: var(--space-2);
   padding-left: max(var(--space-4), var(--safe-left));
   padding-right: max(var(--space-4), var(--safe-right));
   margin-left: calc(var(--space-4) * -1);
   margin-right: calc(var(--space-4) * -1);
-  margin-bottom: var(--safe-top);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* A container that opens with a sticky header must hug the top of the
+   screen with no dead strip above the bar. The sticky element itself cannot
+   be pulled up with negative margins — Chromium clamps sticky positions by
+   the margin box, silently neutralizing them — so the wrapper gives up its
+   top padding instead. */
+.view-container > .container:has(> .history-header-sticky) {
+  padding-top: 0;
+  margin-top: calc(var(--safe-top) * -1);
+}
+
+.header-nav {
+  margin-top: calc(var(--safe-top) * -1);
+}
+
+/* Inside a sticky bar the header system owns vertical rhythm */
+.history-header-sticky .page-header,
+.header-nav .page-header {
+  margin-top: 0;
+  margin-bottom: var(--space-3);
+}
+
+.view-container.is-scrolled .history-header-sticky,
+.view-container.is-scrolled .header-nav {
+  border-bottom-color: var(--color-border);
+  box-shadow: var(--header-scrolled-shadow);
 }
 
 .history-collapsible-content {
@@ -454,7 +471,7 @@ body.keyboard-active .bottom-nav {
 }
 
 .date-group-container {
-  scroll-margin-top: 250px; /* Aligned with the History sticky header + buffer */
+  scroll-margin-top: 200px; /* Aligned with the compact History sticky header + buffer (v0.63) */
   margin-bottom: var(--space-12);
 }
 

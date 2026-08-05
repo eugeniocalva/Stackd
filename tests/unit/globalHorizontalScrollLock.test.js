@@ -24,7 +24,9 @@ describe('Global Horizontal Scroll Lock Implementation', () => {
     const componentsPath = path.resolve(__dirname, '../../src/styles/components.css');
     const componentsContent = fs.readFileSync(componentsPath, 'utf8');
 
-    expect(componentsContent).toContain('overflow-x: hidden;');
+    // clip, not hidden: hidden would make .container a scroll container and
+    // break position:sticky page headers (v0.63)
+    expect(componentsContent).toContain('overflow-x: clip;');
   });
 
   it('allows explicit horizontal scroll exceptions for Home account tiles carousel (.wallets-scroll-wrapper)', () => {
