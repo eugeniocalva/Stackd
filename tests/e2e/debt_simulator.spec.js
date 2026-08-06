@@ -1,128 +1,144 @@
 import { test, expect } from '@playwright/test';
 
+// Rewritten for the current DebtView (src/views.js): the standalone
+// "Simulate New Loan" form is gone. #debt is now a loan dashboard — summary
+// tiles, an "Active Loans (n)" list of cards, and an add/edit modal
+// (Components.Modal) reached from #btn-add-loan-header, #btn-add-loan-empty or
+// a card's .btn-edit-loan. The old "Create Expense" payment-prefill flow no
+// longer exists anywhere in src/, so it is not covered here.
 test.describe('Debt Simulator E2E Flow', () => {
-  // v0.67: fixme — this spec predates the DebtView redesign: '#loan-name-input'
-  // and the 'Simulate New Loan' header no longer exist in src/, so it fails at
-  // its first UI assertion. Needs a rewrite against the current loan-card UI.
-  test.fixme('should simulate, save, prefill transaction, and delete a loan', async ({ page }) => {
-    // Collect any page-level console errors
-    const errors = [];
-    page.on('pageerror', err => {
-      console.log('BROWSER EXCEPTION:', err);
-      errors.push(err);
-    });
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        console.log('BROWSER CONSOLE ERROR:', msg.text());
-      }
-    });
-
+  const bootstrap = async (page) => {
     await page.goto('/');
-    
-    // Clear state and bypass welcome modal
     await page.evaluate(() => {
       localStorage.clear();
       localStorage.setItem('stackd_v1_setup_done', '1');
-      window.location.reload();
     });
-
-    // Wait for the app to initialize
+    // page.reload() (not an in-page location.reload) is a real navigation
+    // barrier — #bottom-nav exists in the static markup, so waiting for it
+    // after an in-page reload can resolve against the pre-reload document.
+    await page.reload();
     await page.waitForSelector('#bottom-nav');
+    await page.waitForFunction(() => !!window.Store);
+  };
 
-    // Programmatically seed an account so the transaction logger has a valid wallet
-    await page.evaluate(() => {
-      window.Store.dispatch('ADD_ACCOUNT', {
-        name: 'Main Bank',
-        openingBalance: 1000,
-        openingDate: '2026-07-15'
-      });
+  // Modal.hide() empties #modal-container on a 300ms timer; wait it out so the
+  // backdrop can't swallow the next click.
+  const expectModalClosed = (page) => expect(page.locator('#active-modal')).toHaveCount(0);
+
+  const fillLoanForm = async (page, { name, amount, tan, duration }) => {
+    await page.waitForSelector('#loan-form');
+    if (name !== undefined) await page.fill('#loan-name', name);
+    if (amount !== undefined) await page.fill('#loan-amount', amount);
+    if (tan !== undefined) await page.fill('#loan-tan', tan);
+    if (duration !== undefined) await page.fill('#loan-duration', duration);
+  };
+
+  test('adds, edits and deletes a loan from the loan dashboard', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+
+    // 1. Navigate to the Debt Simulator via the FAB menu
+    await page.click('#nav-fab-toggle');
+    await page.click('a[href="#debt"]');
+    await expect(page).toHaveURL(/#debt$/);
+    await expect(page.locator('h1', { hasText: 'Debt Simulator' })).toBeVisible();
+
+    // 2. Empty state
+    await expect(page.locator('h2', { hasText: 'Active Loans (0)' })).toBeVisible();
+    await expect(page.locator('h3', { hasText: 'No Active Loans' })).toBeVisible();
+
+    // 3. Add a loan from the empty state. Start date is left at the modal's
+    // default (today), so no instalment has elapsed and the remaining
+    // principal stays equal to the original amount.
+    await page.click('#btn-add-loan-empty');
+    await expect(page.locator('#modal-title')).toHaveText('Add New Loan');
+    await fillLoanForm(page, {
+      name: 'Test Student Loan',
+      amount: '5000',
+      tan: '4.5',
+      duration: '24'
     });
 
-    // 1. Navigate to Debt Simulator via FAB menu
-    const fabToggle = page.locator('#nav-fab-toggle');
-    await expect(fabToggle).toBeVisible();
-    await fabToggle.click();
+    // Live PMT preview: 5000 @ 4.5% TAN over 24m = 218.24/mo
+    await expect(page.locator('#loan-pmt-preview')).toHaveText('$218.24 / mo');
 
-    const debtMenuBtn = page.locator('a[href="#debt"]');
-    await expect(debtMenuBtn).toBeVisible();
-    await debtMenuBtn.click();
+    await page.click('#modal-save-btn');
+    await expectModalClosed(page);
 
-    // Verify navigation hash
-    await page.waitForTimeout(1000);
-    const hash = await page.evaluate(() => window.location.hash);
-    expect(hash).toBe('#debt');
+    // 4. The loan card renders with the computed figures
+    await expect(page.locator('h2', { hasText: 'Active Loans (1)' })).toBeVisible();
+    const card = page.locator('.card', { hasText: 'Test Student Loan' });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('4.5% TAN');
+    await expect(card).toContainText('24 Months');
+    await expect(card).toContainText('$5,000.00');      // remaining principal
+    await expect(card).toContainText('$218.24 / mo');   // monthly payment
 
-    // 2. Fill the simulator form
-    const title = page.locator('h2 >> text=Simulate New Loan');
-    await expect(title).toBeVisible();
+    // Summary tiles mirror the single loan
+    await expect(page.locator('.card', { hasText: 'Total Remaining' })).toContainText('$5,000.00');
+    await expect(page.locator('.card', { hasText: 'Monthly Total' })).toContainText('$218.24');
 
-    await page.fill('#loan-name-input', 'Test Student Loan');
-    await page.fill('#loan-amount-input', '5000');
-    await page.fill('#loan-tan-input', '4.5');
-    await page.fill('#loan-duration-input', '24');
-    await page.fill('#loan-start-date-input', '2026-07-15');
+    // 5. Edit the loan — the modal opens prefilled
+    await page.click('.btn-edit-loan');
+    await expect(page.locator('#modal-title')).toHaveText('Edit Loan');
+    await expect(page.locator('#loan-name')).toHaveValue('Test Student Loan');
+    await expect(page.locator('#loan-amount')).toHaveValue('5000');
+    await expect(page.locator('#loan-tan')).toHaveValue('4.5');
+    await expect(page.locator('#loan-duration')).toHaveValue('24');
 
-    // Trigger calculations
-    await page.dispatchEvent('#loan-amount-input', 'input');
+    // Double the principal: the payment recalculates to 436.48/mo
+    await fillLoanForm(page, { name: 'Renegotiated Student Loan', amount: '10000' });
+    await expect(page.locator('#loan-pmt-preview')).toHaveText('$436.48 / mo');
+    await page.click('#modal-save-btn');
+    await expectModalClosed(page);
 
-    // Verify calculated monthly payment results
-    // PMT for 5000, 4.5%, 24m is exactly 218.24.
-    const monthlyPaymentEl = page.locator('#calc-monthly-payment');
-    await expect(monthlyPaymentEl).toContainText('218');
+    await expect(page.locator('h2', { hasText: 'Active Loans (1)' })).toBeVisible();
+    const editedCard = page.locator('.card', { hasText: 'Renegotiated Student Loan' });
+    await expect(editedCard).toBeVisible();
+    await expect(editedCard).toContainText('$10,000.00');
+    await expect(editedCard).toContainText('$436.48 / mo');
 
-    // 3. Save the loan profile
-    const saveBtn = page.locator('#btn-save-loan');
-    await expect(saveBtn).toBeVisible();
-    await saveBtn.click();
+    // 6. Delete the loan via the confirmation modal's Delete button
+    await page.click('.btn-delete-loan');
+    await expect(page.locator('#modal-title')).toHaveText('Delete Loan?');
+    await page.click('#modal-delete-btn');
+    await expectModalClosed(page);
 
-    // Verify we transitioned to dashboard view showing the active loan
-    await page.waitForTimeout(1000);
-    const dashboardTitle = page.locator('h3 >> text=Your Active Loans');
-    await expect(dashboardTitle).toBeVisible();
+    // 7. Back to the empty state
+    await expect(page.locator('h2', { hasText: 'Active Loans (0)' })).toBeVisible();
+    await expect(page.locator('h3', { hasText: 'No Active Loans' })).toBeVisible();
+    await expect(page.locator('#btn-add-loan-empty')).toBeVisible();
 
-    const loanCardTitle = page.locator('h4 >> text=Test Student Loan');
-    await expect(loanCardTitle).toBeVisible();
-
-    // 4. Click "Create Expense" to trigger transaction prefill
-    const createExpenseBtn = page.locator('.btn-log-payment').first();
-    await expect(createExpenseBtn).toBeVisible();
-    await createExpenseBtn.click();
-
-    // Verify we navigated to #add and the log sheet shows prefilled monthly payment
-    await page.waitForTimeout(1000);
-    const addHash = await page.evaluate(() => window.location.hash);
-    expect(addHash).toBe('#add');
-
-    const amountVal = page.locator('#log-amount-val');
-    // Prefilled amount should format to 218,24
-    await expect(amountVal).toContainText('218,24');
-
-    // 5. Navigate back to Debt Simulator dashboard
-    await page.goto('#debt');
-    await page.waitForTimeout(1000);
-
-    // 6. Delete the loan
-    const deleteBtn = page.locator('.btn-delete-loan').first();
-    await expect(deleteBtn).toBeVisible();
-    await deleteBtn.click();
-
-    // Confirm in modal
-    const confirmBtn = page.locator('button:has-text("Delete")');
-    await expect(confirmBtn).toBeVisible();
-    await confirmBtn.click();
-
-    // Verify it is deleted and we default back to the simulator page
-    await page.waitForTimeout(1000);
-    await expect(page.locator('h2 >> text=Simulate New Loan')).toBeVisible();
-
-    // Ensure no runtime exceptions occurred
     expect(errors).toHaveLength(0);
   });
 
-  // v0.67: the former second test ('should enforce 5-year cap on long loans and
-  // delete transaction via detail delete tile') was removed — it exercised a
-  // "Create Expense" loan-payment prefill flow (.btn-log-payment, #btn-save-log,
-  // #log-delete-tile, "Recurrence Capped" alert) that no longer exists anywhere
-  // in src/, so it could only time out. Recurring edit/delete scope coverage
-  // now lives in tests/e2e/recurring_edit_scope.spec.js.
+  test('rejects an invalid loan and keeps the modal open', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+    await page.goto('#debt');
+    await page.waitForSelector('#btn-add-loan-header');
+
+    // A missing name / non-positive amount makes onSave bail out without
+    // closing the modal, so nothing is persisted.
+    await page.click('#btn-add-loan-header');
+    await fillLoanForm(page, { name: '', amount: '0', tan: '3.5', duration: '24' });
+    await page.click('#modal-save-btn');
+
+    await expect(page.locator('#active-modal')).toBeVisible();
+    expect(await page.evaluate(() => window.Store.getState().loans.length)).toBe(0);
+
+    // Filling it in properly then saves and closes
+    await fillLoanForm(page, { name: 'Car Loan', amount: '12000', duration: '48' });
+    await page.click('#modal-save-btn');
+    await expectModalClosed(page);
+
+    await expect(page.locator('h2', { hasText: 'Active Loans (1)' })).toBeVisible();
+    await expect(page.locator('.card', { hasText: 'Car Loan' })).toContainText('$12,000.00');
+
+    expect(errors).toHaveLength(0);
+  });
 });
