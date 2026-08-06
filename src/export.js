@@ -46,11 +46,21 @@ window.StackdExport = {
     this._download('stackd_categories.csv', [headers, ...rows].join('\n'));
   },
 
+  // v0.68: the CSV is a backup/restore format, so it now carries every field the
+  // importer needs to rebuild a transaction faithfully — time, tags, isPaid, the
+  // transfer pairing ref and the full recurrence descriptor. Dates default to ISO
+  // (YYYY-MM-DD): the app compares dates as raw strings everywhere (sorting,
+  // period filters, `t.date <= today` balance math), so a DD-MM-YYYY value that
+  // reached the store silently broke all of it.
+  TX_HEADERS: ['Date', 'Time', 'Type', 'Amount', 'Account', 'Category', 'Note', 'Tags',
+    'IsPaid', 'TransferRef', 'SeriesId', 'Interval', 'Frequency', 'StartDate', 'EndDate',
+    'NextDate', 'PropagateTags'],
+
   exportTransactions(state, options = {}) {
     const delimiter = options.delimiter || ',';
-    const dateFormat = options.dateFormat || 'dd-mm-yyyy';
-    const headers = this._toRow(['Date', 'Type', 'Amount', 'Account', 'Category', 'Note'], delimiter);
-    
+    const dateFormat = options.dateFormat || 'yyyy-mm-dd';
+    const headers = this._toRow(this.TX_HEADERS, delimiter);
+
     const filtered = state.transactions
       .filter(t => t.type !== 'opening_balance')
       .filter(t => {
@@ -66,13 +76,28 @@ window.StackdExport = {
     const rows = filtered.map(t => {
       const acc = state.accounts.find(a => a.id === t.accountId);
       const cat = state.categories.find(c => c.id === t.categoryId);
+      const rec = t.recurrence || {};
       return this._toRow([
         this._formatDate(t.date, dateFormat),
+        t.time || '',
         t.type,
         t.amount,
         acc ? acc.name : '',
         cat ? cat.name : '',
-        t.comment || ''
+        t.comment || '',
+        Array.isArray(t.tags) ? t.tags.join('|') : '',
+        t.isPaid === false ? 'false' : 'true',
+        t.transferRef || '',
+        rec.seriesId || '',
+        (rec.interval === undefined || rec.interval === null) ? '' : rec.interval,
+        rec.frequency || '',
+        this._formatDate(rec.startDate, dateFormat),
+        this._formatDate(rec.endDate, dateFormat),
+        // Only the chain tail carries nextDate — see the recurrence notes in
+        // CLAUDE.md. Preserving which member is armed is what keeps a restored
+        // series generating from the right slot instead of duplicating.
+        this._formatDate(rec.nextDate, dateFormat),
+        rec.seriesId ? (rec.propagateTags === false ? 'false' : 'true') : ''
       ], delimiter);
     });
 

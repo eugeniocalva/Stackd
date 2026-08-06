@@ -3229,7 +3229,16 @@ Object.assign(window.Views, {
           
           if (window.StackdImport) {
             window.StackdImport.importTransactions(file, state, (result) => {
-              alert(`Success! Imported ${result.importedCount} transactions.\nCreated ${result.newAccounts} missing accounts, and ${result.newCategories} missing categories automatically.`);
+              // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
+              // rows) used to vanish silently — report them.
+              let message = `Success! Imported ${result.importedCount} transactions.\nCreated ${result.newAccounts} missing accounts, and ${result.newCategories} missing categories automatically.`;
+              if (result.skippedCount) {
+                const reasons = Object.keys(result.skipped)
+                  .map(r => `• ${result.skipped[r]} — ${r}`)
+                  .join('\n');
+                message += `\n\nSkipped ${result.skippedCount} row(s):\n${reasons}`;
+              }
+              alert(message);
               btnImport.textContent = "Import CSV";
               btnImport.disabled = false;
               fileInput.value = ''; // reset
