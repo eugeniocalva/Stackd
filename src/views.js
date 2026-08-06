@@ -633,18 +633,9 @@ window.Views = {
   TransactionsView: {
     _scrollListener: null,
 
-    scrollToToday(container) {
-      const today = new Date().toISOString().split('T')[0];
-      const dateGroups = Array.from(container.querySelectorAll('.date-group-container[id^="tx-"]'));
-      const targetGroup = dateGroups.find(g => g.id === `tx-${today}`) || 
-                          dateGroups.filter(g => g.id < `tx-${today}`).sort((a,b) => b.id.localeCompare(a.id))[0];
-
-      if (targetGroup) {
-        requestAnimationFrame(() => {
-          targetGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      }
-    },
+    // NOTE: scrollToToday lives further down in this object literal (the
+    // sticky-header-aware version). An older duplicate used to sit here and was
+    // silently shadowed by it — removed, no behavior change.
 
     render(state) {
       const filters = state.historyFilters;
