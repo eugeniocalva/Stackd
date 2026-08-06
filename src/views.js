@@ -1318,8 +1318,15 @@ window.Views = {
         
         if (txToEdit.transferRef) {
           initialType = 'transfer';
-          // Find the counterpart to know the other account
-          const counterpart = state.transactions.find(t => t.id === txToEdit.transferRef);
+          // Find the counterpart to know the other account.
+          // v0.70: transferRef is the SHARED pair key, not the counterpart's id
+          // (see ADD_TRANSFER — both legs are stamped with the same generated
+          // ref). Matching it against t.id never hit, so initialToAccount stayed
+          // '' and the select fell back to the first account alphabetically —
+          // saving then sent the wrong incomeAccountId to UPDATE_TRANSFER, or
+          // tripped the "Cannot transfer to the same account" alert. Match the
+          // way the store does (store.js UPDATE_TRANSACTION).
+          const counterpart = state.transactions.find(t => t.transferRef === txToEdit.transferRef && t.id !== txToEdit.id);
           if (counterpart) {
             // "Expense" side of a transfer is the "From" account
             if (txToEdit.type === 'expense') {
