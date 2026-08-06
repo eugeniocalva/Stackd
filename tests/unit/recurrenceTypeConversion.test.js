@@ -60,77 +60,155 @@ describe('Recurring series type conversions', () => {
     return { expenseLeg, seriesId: expenseLeg.recurrence.seriesId };
   };
 
-  it('transfer leg converted to expense with future scope leaves future pairs intact', () => {
+  // Replicates the views.js save handler when the user opens a transfer leg,
+  // switches the type toggle away from "Transfer" and saves: type !== 'transfer'
+  // -> else-if (isEditSave) branch -> UPDATE_TRANSACTION with convertFromTransfer.
+  const convert = (leg, overrides = {}) => {
+    Store.dispatch('UPDATE_TRANSACTION', {
+      id: leg.id,
+      type: 'expense',
+      convertFromTransfer: true,
+      amount: 200,
+      accountId: bankId,
+      categoryId: 'cat_groceries',
+      date: leg.date,                // unchanged
+      time: undefined,
+      comment: 'Monthly savings',
+      recurrence: leg.recurrence ? {  // form rebuilds it, same schedule
+        seriesId: leg.recurrence.seriesId,
+        interval: 1,
+        frequency: 'months',
+        endDate: '2026-12-10',
+        nextDate: Store._calculateNextRecurrenceDate(leg.date, 1, 'months')
+      } : null,
+      tags: [],
+      updateFuture: false,
+      updateAll: false,
+      ...overrides
+    });
+  };
+
+  const seriesMembers = (seriesId) =>
+    Store.getState().transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId);
+
+  // v0.69: converting a transfer leg deletes the counterpart and unlinks the
+  // kept leg. Before, the other account kept a phantom leg forever.
+  it('one-off transfer converted to an expense deletes the counterpart leg', () => {
+    Store.dispatch('ADD_TRANSFER', {
+      amount: 200,
+      expenseAccountId: bankId,
+      incomeAccountId: savingsId,
+      date: '2026-08-10',
+      note: 'Rainy day',
+      tags: []
+    });
+    const expenseLeg = Store.getState().transactions.find(t => t.comment === 'Rainy day' && t.type === 'expense');
+
+    convert(expenseLeg, { comment: 'Rainy day' });
+
+    const legs = Store.getState().transactions.filter(t => t.comment === 'Rainy day');
+    expect(legs).toHaveLength(1);
+    expect(legs[0].type).toBe('expense');
+    expect(legs[0].accountId).toBe(bankId);
+    expect(legs[0].transferRef).toBeFalsy();
+    // The phantom leg no longer skews the other account
+    expect(Store.getBalanceAtDate('2026-12-31', [savingsId])).toBe(0);
+    expect(Store.getBalanceAtDate('2026-12-31', [bankId])).toBe(-200);
+  });
+
+  it('the leg the user tapped is the one kept, even converting the income side', () => {
+    Store.dispatch('ADD_TRANSFER', {
+      amount: 200,
+      expenseAccountId: bankId,
+      incomeAccountId: savingsId,
+      date: '2026-08-10',
+      note: 'Rainy day',
+      tags: []
+    });
+    const incomeLeg = Store.getState().transactions.find(t => t.comment === 'Rainy day' && t.type === 'income');
+
+    // Tapped the income (Savings) side and saved it as Income. The form shows
+    // the "From" account, so that account is what the payload carries.
+    convert(incomeLeg, { type: 'income', comment: 'Rainy day' });
+
+    const legs = Store.getState().transactions.filter(t => t.comment === 'Rainy day');
+    expect(legs).toHaveLength(1);
+    expect(legs[0].id).toBe(incomeLeg.id);
+    expect(legs[0].type).toBe('income');
+    expect(legs[0].transferRef).toBeFalsy();
+    expect(Store.getBalanceAtDate('2026-12-31', [bankId])).toBe(200);
+    expect(Store.getBalanceAtDate('2026-12-31', [savingsId])).toBe(0);
+  });
+
+  it('transfer leg converted to expense with future scope converts this and later pairs', () => {
     const { expenseLeg, seriesId } = makeRecurringTransfer();
 
-    const before = Store.getState().transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId);
+    const before = seriesMembers(seriesId);
     // sanity: Aug..Dec = 5 pairs = 10 legs
     expect(before).toHaveLength(10);
     expect(before.filter(t => t.type === 'income')).toHaveLength(5);
 
-    // Replicates the views.js save handler when the user taps the expense leg,
-    // switches the type toggle to "Expense", saves, and picks "This and future":
-    // type !== 'transfer'  ->  else-if (isEditSave) branch -> UPDATE_TRANSACTION
-    Store.dispatch('UPDATE_TRANSACTION', {
-      id: expenseLeg.id,
-      type: 'expense',
-      amount: 200,
-      accountId: bankId,
-      categoryId: 'cat_groceries',
-      date: '2026-08-10',           // unchanged
-      time: undefined,
-      comment: 'Monthly savings',
-      recurrence: {                  // form rebuilds it, same schedule
-        seriesId,
-        interval: 1,
-        frequency: 'months',
-        endDate: '2026-12-10',
-        nextDate: Store._calculateNextRecurrenceDate('2026-08-10', 1, 'months')
-      },
-      tags: [],
-      updateFuture: true,
-      updateAll: false
-    });
+    convert(expenseLeg, { updateFuture: true });
 
-    const after = Store.getState().transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId);
-    const incomeLegs = after.filter(t => t.type === 'income');
-
-    // If the store propagated `type`/`accountId`/`categoryId` onto the income
-    // legs of future pairs, the transfer pairs would corrupt into double expenses.
-    expect(incomeLegs).toHaveLength(5);
-    // Counterpart legs keep their own account (Savings side)
-    expect(incomeLegs.every(t => t.accountId === savingsId)).toBe(true);
+    const after = seriesMembers(seriesId);
+    // Every occurrence is Aug or later, so the whole series collapses to
+    // 5 single expenses — no orphaned income legs left on Savings.
+    expect(after).toHaveLength(5);
+    expect(after.filter(t => t.type === 'income')).toHaveLength(0);
+    expect(after.every(t => !t.transferRef)).toBe(true);
+    expect(after.every(t => t.accountId === bankId && t.categoryId === 'cat_groceries')).toBe(true);
+    expect(Store.getBalanceAtDate('2026-12-31', [savingsId])).toBe(0);
+    // Still exactly one armed generator
+    expect(after.filter(t => t.recurrence.nextDate)).toHaveLength(1);
   });
 
-  it('same conversion with scope only-this leaves the rest of the series intact', () => {
+  it('same conversion with scope only-this leaves the rest of the series as transfers', () => {
     const { expenseLeg, seriesId } = makeRecurringTransfer();
 
-    Store.dispatch('UPDATE_TRANSACTION', {
-      id: expenseLeg.id,
-      type: 'expense',
-      amount: 200,
-      accountId: bankId,
-      categoryId: 'cat_groceries',
-      date: '2026-08-10',
-      time: undefined,
-      comment: 'Monthly savings',
-      recurrence: {
-        seriesId,
-        interval: 1,
-        frequency: 'months',
-        endDate: '2026-12-10',
-        nextDate: Store._calculateNextRecurrenceDate('2026-08-10', 1, 'months')
-      },
-      tags: [],
-      updateFuture: false,
-      updateAll: false
-    });
+    convert(expenseLeg);
 
-    const after = Store.getState().transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId);
-    const incomeLegs = after.filter(t => t.type === 'income');
-    // Only the edited leg changed type; the other 9 legs untouched
-    expect(incomeLegs).toHaveLength(5);
-    expect(after.filter(t => t.type === 'expense')).toHaveLength(5);
+    const after = seriesMembers(seriesId);
+    // Only the tapped occurrence lost its counterpart: 4 intact pairs + 1 expense
+    expect(after).toHaveLength(9);
+    expect(after.filter(t => t.type === 'income')).toHaveLength(4);
+    expect(after.filter(t => t.transferRef)).toHaveLength(8);
+    const converted = after.find(t => t.id === expenseLeg.id);
+    expect(converted.transferRef).toBeFalsy();
+    expect(converted.categoryId).toBe('cat_groceries');
+    // The counterpart legs still sit on the Savings side, untouched
+    expect(after.filter(t => t.type === 'income').every(t => t.accountId === savingsId)).toBe(true);
+  });
+
+  it('conversion never restructures past occurrences, not even with scope all', () => {
+    const { seriesId } = makeRecurringTransfer();
+    const oct = seriesMembers(seriesId).find(t => t.date === '2026-10-10' && t.type === 'expense');
+
+    convert(oct, { updateAll: true });
+
+    const after = seriesMembers(seriesId);
+    // Aug + Sep stay transfer pairs; Oct..Dec become single expenses
+    const pastLegs = after.filter(t => t.date < '2026-10-10');
+    expect(pastLegs).toHaveLength(4);
+    expect(pastLegs.every(t => t.transferRef)).toBe(true);
+    expect(pastLegs.filter(t => t.type === 'income').every(t => t.accountId === savingsId)).toBe(true);
+    expect(pastLegs.every(t => t.categoryId !== 'cat_groceries')).toBe(true);
+
+    const futureLegs = after.filter(t => t.date >= '2026-10-10');
+    expect(futureLegs).toHaveLength(3);
+    expect(futureLegs.every(t => t.type === 'expense' && !t.transferRef)).toBe(true);
+    // Savings keeps only the two past income legs
+    expect(Store.getBalanceAtDate('2026-12-31', [savingsId])).toBe(400);
+  });
+
+  it('a plain edit of a transfer leg (no conversion flag) still syncs the counterpart', () => {
+    const { expenseLeg } = makeRecurringTransfer();
+
+    // e.g. UPDATE_RECURRING_SERIES / tag paths, which never convert
+    Store.dispatch('UPDATE_TRANSACTION', { id: expenseLeg.id, amount: 250 });
+
+    const pair = Store.getState().transactions.filter(t => t.transferRef === expenseLeg.transferRef);
+    expect(pair).toHaveLength(2);
+    expect(pair.every(t => t.amount === 250)).toBe(true);
   });
 
   it('regular series member converted to transfer with future scope: fresh seriesId, past intact', () => {

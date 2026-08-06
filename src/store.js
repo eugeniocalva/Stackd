@@ -920,7 +920,16 @@ window.Store = {
            absoluteAmount = Math.abs(absoluteAmount);
         }
 
-        if (existingTx.transferRef) {
+        // v0.69: transfer leg -> plain expense/income conversion. The form
+        // dispatches UPDATE_TRANSACTION on the tapped leg when the type toggle
+        // leaves "transfer"; without this flag the counterpart leg survived as
+        // a phantom (the other account's balance stayed wrong), the kept leg
+        // still carried transferRef (transfer styling, and deleting it later
+        // silently killed a counterpart the user never knew about), and the
+        // sync block below kept pushing amount/date onto that ghost.
+        const convertingFromTransfer = !!(payload.convertFromTransfer && existingTx.transferRef);
+
+        if (existingTx.transferRef && !convertingFromTransfer) {
           const counterpartIndex = this.state.transactions.findIndex(t => t.transferRef === existingTx.transferRef && t.id !== existingTx.id);
           if (counterpartIndex !== -1) {
             const counterpartTx = this.state.transactions[counterpartIndex];
@@ -937,6 +946,9 @@ window.Store = {
         delete updatePayload.updateFuture;
         delete updatePayload.updateAll;
         delete updatePayload.regenerateSeries;
+        delete updatePayload.convertFromTransfer;
+        // v0.69: the kept leg stops being half of a pair
+        if (convertingFromTransfer) updatePayload.transferRef = null;
         // v0.67: an undefined value must mean "leave this field alone", not
         // "overwrite with undefined" (e.g. time when the time input is hidden).
         Object.keys(updatePayload).forEach(k => {
@@ -983,6 +995,41 @@ window.Store = {
           updatedAt: new Date().toISOString()
         };
 
+        if (convertingFromTransfer) {
+          // v0.69: drop the counterpart leg(s) and unlink the kept one(s).
+          // Which leg survives is decided by the ROLE the user tapped
+          // (existingTx.type), not by the new type — tapping the income side
+          // of a transfer and saving it as an expense keeps that same row.
+          // Scope: this occurrence, plus the later members of the series when
+          // future/all was chosen. Past occurrences are never restructured —
+          // the same promise the scope modal makes for the regular -> transfer
+          // direction, so 'all' behaves like 'future' here.
+          const keptType = existingTx.type;
+          const newType = updatePayload.type || existingTx.type;
+          const refsToConvert = new Set([existingTx.transferRef]);
+          if (seriesId && (payload.updateFuture || payload.updateAll)) {
+            this.state.transactions.forEach(t => {
+              if (t.transferRef && t.recurrence && t.recurrence.seriesId === seriesId && t.date >= baseDate) {
+                refsToConvert.add(t.transferRef);
+              }
+            });
+          }
+          const idsToDrop = new Set();
+          this.state.transactions.forEach(t => {
+            if (!t.transferRef || !refsToConvert.has(t.transferRef)) return;
+            if (t.type === keptType) {
+              t.transferRef = null;
+              t.type = newType;
+              t.updatedAt = new Date().toISOString();
+            } else {
+              idsToDrop.add(t.id);
+            }
+          });
+          if (idsToDrop.size > 0) {
+            this.state.transactions = this.state.transactions.filter(t => !idsToDrop.has(t.id));
+          }
+        }
+
         if ((payload.updateFuture || payload.updateAll) && seriesId) {
            // v0.67 scope semantics:
            // - The literal date is NEVER stamped onto other members. Past dates
@@ -1024,7 +1071,10 @@ window.Store = {
            this.state.transactions.forEach((t, i) => {
              if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.id === existingTx.id) return;
              const isFuture = t.date >= baseDate;
-             if (payload.updateAll) {
+             // v0.69: a conversion's 'all' scope stops at the present — past
+             // occurrences stay untouched transfer pairs, so their legs must
+             // not inherit the converted account/category either.
+             if (payload.updateAll && !convertingFromTransfer) {
                if (!isFuture || !regenerate) propagate(t, i);
              } else if (isFuture && !regenerate) {
                propagate(t, i);

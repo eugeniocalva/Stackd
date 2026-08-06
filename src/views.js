@@ -2004,9 +2004,14 @@ window.Views = {
               });
             }
           } else if (isEditSave) {
+            // v0.69: the user opened a transfer and switched the toggle to
+            // Expense/Income. The store has to unlink this leg and delete the
+            // counterpart — otherwise the other account keeps a phantom leg.
+            const convertFromTransfer = !!(txToEditCurrent && txToEditCurrent.transferRef);
             window.Store.dispatch('UPDATE_TRANSACTION', {
               id: targetId,
               type: type,
+              convertFromTransfer,
               amount: amount,
               accountId: accountId,
               categoryId: categoryId,
