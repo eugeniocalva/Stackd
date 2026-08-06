@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Debt Simulator E2E Flow', () => {
-  test('should simulate, save, prefill transaction, and delete a loan', async ({ page }) => {
+  // v0.67: fixme — this spec predates the DebtView redesign: '#loan-name-input'
+  // and the 'Simulate New Loan' header no longer exist in src/, so it fails at
+  // its first UI assertion. Needs a rewrite against the current loan-card UI.
+  test.fixme('should simulate, save, prefill transaction, and delete a loan', async ({ page }) => {
     // Collect any page-level console errors
     const errors = [];
     page.on('pageerror', err => {
@@ -116,101 +119,10 @@ test.describe('Debt Simulator E2E Flow', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('should enforce 5-year cap on long loans and delete transaction via detail delete tile', async ({ page }) => {
-    const errors = [];
-    page.on('pageerror', err => {
-      errors.push(err);
-    });
-
-    await page.goto('/');
-    
-    // Clear state and bypass welcome modal
-    await page.evaluate(() => {
-      localStorage.clear();
-      localStorage.setItem('stackd_v1_setup_done', '1');
-      window.location.reload();
-    });
-
-    await page.waitForSelector('#bottom-nav');
-
-    // Seed account
-    await page.evaluate(() => {
-      window.Store.dispatch('ADD_ACCOUNT', {
-        name: 'Main Bank',
-        openingBalance: 10000,
-        openingDate: '2026-07-15'
-      });
-    });
-
-    // Navigate to #debt
-    await page.goto('#debt');
-
-    // Fill form for 10-year loan (120 months)
-    await page.fill('#loan-name-input', '10-Year Home Loan');
-    await page.fill('#loan-amount-input', '100000');
-    await page.fill('#loan-tan-input', '5.0');
-    await page.fill('#loan-duration-input', '120');
-    await page.fill('#loan-start-date-input', '2026-07-15');
-
-    // Trigger calculations and save
-    await page.dispatchEvent('#loan-amount-input', 'input');
-    await page.click('#btn-save-loan');
-
-    // Click "Create Expense" to trigger transaction prefill
-    await page.waitForSelector('.btn-log-payment');
-    await page.click('.btn-log-payment');
-
-    // Expect the cap alert modal
-    const alertModal = page.locator('h2 >> text=Recurrence Capped');
-    await expect(alertModal).toBeVisible();
-
-    // Click "Continue" to proceed
-    await page.click('button:has-text("Continue")');
-
-    // Verify navigation to #add
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.location.hash)).toBe('#add');
-
-    // Select a category to enable the save button
-    await page.click('#log-category-tile');
-    await page.click('.category-opt:has-text("Groceries")');
-
-    // Save the transaction
-    await page.click('#btn-save-log');
-
-    // Wait for the transaction to save
-    await page.waitForTimeout(500);
-
-    // Go to History
-    await page.goto('#transactions');
-
-    // Find the saved transaction and click it to open edit sheet
-    await page.click('.list-item-content >> text=Groceries');
-
-    // We expect the RecurringUpdateModal since it's recurring. Choose 'only'
-    await page.click('#ru-only-this');
-
-    // Verify we are on #edit page
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.location.hash)).toContain('#edit');
-
-    // Click the new Delete tile in the detail view
-    const deleteTile = page.locator('#log-delete-tile');
-    await expect(deleteTile).toBeVisible();
-    await deleteTile.click();
-
-    // Verify it triggers RecurringDeleteModal. Choose 'rdm-only-this'
-    const confirmDeleteBtn = page.locator('#rdm-only-this');
-    await expect(confirmDeleteBtn).toBeVisible();
-    await confirmDeleteBtn.click();
-
-    // Verify we navigated back to #transactions
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.location.hash)).toBe('#transactions');
-
-    // Verify the transaction is deleted
-    await expect(page.locator('.list-item-content >> text=Groceries')).toBeHidden();
-
-    expect(errors).toHaveLength(0);
-  });
+  // v0.67: the former second test ('should enforce 5-year cap on long loans and
+  // delete transaction via detail delete tile') was removed — it exercised a
+  // "Create Expense" loan-payment prefill flow (.btn-log-payment, #btn-save-log,
+  // #log-delete-tile, "Recurrence Capped" alert) that no longer exists anywhere
+  // in src/, so it could only time out. Recurring edit/delete scope coverage
+  // now lives in tests/e2e/recurring_edit_scope.spec.js.
 });

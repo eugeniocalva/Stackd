@@ -68,6 +68,13 @@ There is **no virtual DOM and no framework**. The render loop lives in `main.js`
 - Default categories are seeded from the `DEFAULT_CATEGORIES` constant at the top of `store.js` (stable ids like `cat_salary`, `cat_groceries`).
 - All mutations go through `Store.dispatch(ACTION, payload)`. To add behavior, add a `case` to the dispatch switch, mutate `this.state`, call `StackdDB.save(...)` for the affected slice, set `changed = true`, and let `emit()` re-render. The store also handles **cross-tab sync** via storage events.
 
+### Recurring transactions (v0.67 semantics)
+
+- A recurrent series is **fully materialized up-front**: `_processRecurringTransactions` creates every occurrence out to `recurrence.endDate` (capped at 60 months from `startDate`) as a chain. Every member carries `recurrence: {seriesId, interval, frequency, startDate, endDate}`; exactly **one member — the chain tail — additionally holds `recurrence.nextDate`** (the live "generator"). For recurring transfers only the **expense leg** is ever armed.
+- `UPDATE_TRANSACTION`/`UPDATE_TRANSFER` **merge** the payload's recurrence and preserve the member's own `nextDate` state — never accept a re-armed `nextDate` from the form for an existing series member, or you resurrect the duplicate-chain bug. Scope flags: no flags = only this member (literal date applies to it alone); `updateFuture` = propagate non-date fields to members with `date >= original date`, and if the date/schedule changed, delete those members and regenerate the chain from the edited one; `updateAll` = same, plus non-date fields to past members. **Past members' dates are never modified by any scope.** `recurrence: null` means detach (no flags), stop the series here (`updateFuture` deletes future members), or unlink every member (`updateAll`).
+- Any edit-save of a series member in the transaction form must go through `Components.RecurringUpdateModal` (3 scope options, same layout family as `RecurringDeleteModal`); it accepts `onSelection(scope)` with `'single'|'future'|'all'` or the `onlyThis/thisAndFuture/allTransactions` callback shape.
+- `_calculateNextRecurrenceDate` is deliberately local-time, noon-anchored string math — do not reintroduce `new Date('YYYY-MM-DD')`/`toISOString()` round-trips, they drift a day at DST boundaries.
+
 ### Icons
 
 Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries a large inline `EMERGENCY_ICONS` fallback map + `window.StackdHydrateIcons` so icons still render on `file://`/native where the CDN script may be unavailable. When adding a new icon name, it may need an entry in that fallback map.

@@ -445,8 +445,35 @@ window.Store = {
     });
   },
 
+  // v0.67: single home for the 60-month recurrence window cap (was duplicated
+  // in the ADD paths and entirely missing from the UPDATE paths, so extending
+  // endDate via an edit could materialize decades of occurrences). Mutates and
+  // returns rec. Local-time formatting on purpose — see _calculateNextRecurrenceDate.
+  _clampRecurrenceEndDate(rec, fallbackStartDate) {
+    if (!rec || !rec.endDate) return rec;
+    const startRef = rec.startDate || fallbackStartDate;
+    if (!startRef) return rec;
+    const capStart = new Date(startRef + 'T00:00:00');
+    const capEnd   = new Date(rec.endDate + 'T00:00:00');
+    if (isNaN(capStart) || isNaN(capEnd)) return rec;
+    const capMonths = (capEnd.getFullYear() - capStart.getFullYear()) * 12
+                    + (capEnd.getMonth()   - capStart.getMonth());
+    if (capMonths > 60) {
+      const clampedEnd = new Date(capStart);
+      clampedEnd.setMonth(clampedEnd.getMonth() + 60);
+      rec.endDate = `${clampedEnd.getFullYear()}-${String(clampedEnd.getMonth() + 1).padStart(2, '0')}-${String(clampedEnd.getDate()).padStart(2, '0')}`;
+    }
+    return rec;
+  },
+
   _calculateNextRecurrenceDate(baseDateStr, interval, freq) {
-    const d = new Date(baseDateStr);
+    // v0.67: parse and format in LOCAL time anchored at noon. The old
+    // UTC-parse + toISOString round-trip slipped one day backwards every
+    // time a DST boundary was crossed, so monthly series drifted (15th ->
+    // 14th -> 13th ...) one day per year.
+    const [by, bm, bd] = String(baseDateStr).split('-').map(Number);
+    if (!by || !bm || !bd) return undefined;
+    const d = new Date(by, bm - 1, bd, 12, 0, 0);
     if (freq === 'days') d.setDate(d.getDate() + interval);
     else if (freq === 'weeks') d.setDate(d.getDate() + (interval * 7));
     else if (freq === 'months') {
@@ -458,8 +485,8 @@ window.Store = {
       }
     }
     else if (freq === 'years') d.setFullYear(d.getFullYear() + interval);
-    
-    return d.toISOString().split('T')[0];
+
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
   _processRecurringTransactions() {
@@ -483,9 +510,30 @@ window.Store = {
       
       if (generators.length > 0) {
         generators.forEach(gen => {
+          // v0.67: re-check at execution time — a transfer counterpart processed
+          // earlier in this same pass may share (or have already consumed) this
+          // generator's recurrence. The old code read a stripped nextDate and
+          // crashed with "Invalid time value", killing recurring transfers.
+          if (!gen.recurrence || !gen.recurrence.nextDate) return;
+
           const nextD = gen.recurrence.nextDate;
           const nextNextD = this._calculateNextRecurrenceDate(nextD, gen.recurrence.interval, gen.recurrence.frequency);
-          
+          if (!nextNextD) { delete gen.recurrence.nextDate; return; }
+
+          // v0.67: collision guard — if this series already has a transaction on
+          // the target date (e.g. data poisoned by the old duplicate-chain bug),
+          // skip creating another one but keep advancing the chain.
+          const seriesId = gen.recurrence.seriesId;
+          const collision = seriesId && this.state.transactions.some(t =>
+            t.id !== gen.id && t.recurrence && t.recurrence.seriesId === seriesId && t.date === nextD
+          );
+          if (collision) {
+            gen.recurrence.nextDate = nextNextD;
+            processing = true;
+            changed = true;
+            return;
+          }
+
           // Create new generated transaction
           const generatedTx = {
              ...gen,
@@ -499,13 +547,18 @@ window.Store = {
                 nextDate: nextNextD
              }
           };
-          
+
           // If transfer, handle ref regenerations
           if (generatedTx.transferRef) {
              generatedTx.transferRef = window.StackdDB.generateId();
              // Find counterpart and duplicate it
              const cp = this.state.transactions.find(t => t.transferRef === gen.transferRef && t.id !== gen.id);
              if (cp) {
+                // v0.67: the generated counterpart deliberately carries NO nextDate —
+                // exactly one leg per pair is the live generator, otherwise both legs
+                // generate and the series doubles every pass.
+                const cpRecurrence = cp.recurrence ? { ...cp.recurrence } : (gen.recurrence ? { ...gen.recurrence } : undefined);
+                if (cpRecurrence) delete cpRecurrence.nextDate;
                 const cpGen = {
                    ...cp,
                    id: window.StackdDB.generateId(),
@@ -514,17 +567,17 @@ window.Store = {
                    createdAt: new Date().toISOString(),
                    transferRef: generatedTx.transferRef,
                    tags: (cp.recurrence && cp.recurrence.propagateTags === false) ? [] : (cp.tags ? [...cp.tags] : []),
-                   recurrence: {
-                      ...cp.recurrence, // cp should also carry the recurrence info since we attach it to both!
-                      nextDate: nextNextD
-                   }
+                   recurrence: cpRecurrence
                 };
                 this.state.transactions.push(cpGen);
+                // Strip the old counterpart's own nextDate (if it had one) so it
+                // can never act as a second generator for the same pair.
+                if (cp.recurrence && cp.recurrence.nextDate) delete cp.recurrence.nextDate;
              }
           }
-          
+
           this.state.transactions.push(generatedTx);
-          
+
           // Strip *only nextDate* from the OLD generator so it stops generating
           delete gen.recurrence.nextDate;
           processing = true;
@@ -822,19 +875,13 @@ window.Store = {
         const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : [];
         
         // Handle recurrence initialization
-        if (payload.recurrence && payload.recurrence.enabled) {
-          // ── Global 60-month cap ─────────────────────────────────────────────
-          if (payload.recurrence.startDate && payload.recurrence.endDate) {
-            const capStart = new Date(payload.recurrence.startDate + 'T00:00:00');
-            const capEnd   = new Date(payload.recurrence.endDate   + 'T00:00:00');
-            const capMonths = (capEnd.getFullYear() - capStart.getFullYear()) * 12
-                            + (capEnd.getMonth()   - capStart.getMonth());
-            if (capMonths > 60) {
-              const clampedEnd = new Date(capStart);
-              clampedEnd.setMonth(clampedEnd.getMonth() + 60);
-              payload.recurrence.endDate = clampedEnd.toISOString().split('T')[0];
-            }
+        // v0.67: no longer gated on recurrence.enabled — the live form never
+        // sets that flag, which made the 60-month cap unreachable in practice.
+        if (payload.recurrence) {
+          if (!payload.recurrence.startDate) {
+            payload.recurrence.startDate = payload.date;
           }
+          this._clampRecurrenceEndDate(payload.recurrence, payload.date);
           if (!payload.recurrence.seriesId) {
             payload.recurrence.seriesId = window.StackdDB.generateId();
           }
@@ -845,8 +892,11 @@ window.Store = {
 
         const newTransaction = {
           id: window.StackdDB.generateId(),
-          time: payload.time || this._getSystemTimeString(),
           ...payload,
+          // v0.67: default applied AFTER the spread — payload.time is an own
+          // (undefined) key when the time input is hidden and used to clobber it
+          time: payload.time || this._getSystemTimeString(),
+          recurrence: payload.recurrence ? { ...payload.recurrence } : payload.recurrence,
           tags: tagsArray,
           createdAt: new Date().toISOString()
         };
@@ -886,58 +936,117 @@ window.Store = {
         if (Array.isArray(payload.tags)) updatePayload.tags = payload.tags.map(t => t.toLowerCase());
         delete updatePayload.updateFuture;
         delete updatePayload.updateAll;
+        delete updatePayload.regenerateSeries;
+        // v0.67: an undefined value must mean "leave this field alone", not
+        // "overwrite with undefined" (e.g. time when the time input is hidden).
+        Object.keys(updatePayload).forEach(k => {
+          if (updatePayload[k] === undefined) delete updatePayload[k];
+        });
+
+        // v0.67: merge recurrence instead of replacing it. The form rebuilds
+        // the recurrence object with a freshly computed nextDate on EVERY save;
+        // blindly accepting it re-armed mid-series members as live generators
+        // and materialized a duplicate future chain. Preserve fields the form
+        // doesn't know about (propagateTags, startDate) and the member's own
+        // generator state. A tx that was NOT part of a series keeps the armed
+        // nextDate so newly-enabled recurrence still materializes.
+        const existingRec = existingTx.recurrence || null;
+        if (updatePayload.recurrence) {
+          const merged = { ...(existingRec || {}), ...updatePayload.recurrence };
+          if (existingRec) {
+            if (existingRec.nextDate) merged.nextDate = existingRec.nextDate;
+            else delete merged.nextDate;
+          } else {
+            if (!merged.startDate) merged.startDate = payload.date || existingTx.date;
+          }
+          // v0.67: the edit path honors the same 60-month window as creation
+          this._clampRecurrenceEndDate(merged, payload.date || existingTx.date);
+          updatePayload.recurrence = merged;
+        }
+
+        // Classify the change BEFORE mutating (drives the future/all scopes)
+        const seriesId = (existingRec && existingRec.seriesId) || (payload.recurrence && payload.recurrence.seriesId);
+        const dateChanged = payload.date !== undefined && payload.date !== existingTx.date;
+        const scheduleChanged = !!(payload.recurrence && existingRec && (
+          String(payload.recurrence.interval) !== String(existingRec.interval) ||
+          String(payload.recurrence.frequency) !== String(existingRec.frequency) ||
+          String(payload.recurrence.endDate) !== String(existingRec.endDate)
+        ));
+        const recurrenceRemoved = !!existingRec && payload.recurrence === null;
+        const baseDate = existingTx.date; // original date: the past/future split point
 
         // Update the target transaction
-        this.state.transactions[index] = { 
-          ...existingTx, 
-          ...updatePayload, 
-          tags: (updatePayload.tags !== undefined) ? updatePayload.tags : (existingTx.tags || []), 
-          updatedAt: new Date().toISOString() 
+        this.state.transactions[index] = {
+          ...existingTx,
+          ...updatePayload,
+          tags: (updatePayload.tags !== undefined) ? updatePayload.tags : (existingTx.tags || []),
+          updatedAt: new Date().toISOString()
         };
-        
-        // If updating future, find all transactions with the same seriesId and date >= this transaction's original date
-        if (payload.updateFuture || payload.updateAll) {
-           const seriesId = (payload.recurrence && payload.recurrence.seriesId) || (existingTx.recurrence && existingTx.recurrence.seriesId);
-           if (seriesId) {
-             const baseDate = existingTx.date;
 
-             if (payload.regenerateSeries) {
-                // Remove all future transactions in this series to start fresh
-                this.state.transactions = this.state.transactions.filter(t => {
-                   const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId && t.id !== existingTx.id && t.date >= baseDate;
-                   return !isFutureInSeries;
-                });
-                // Ensure the current transaction (which is now the new 'head') has the nextDate set
-                const updatedTx = this.state.transactions.find(t => t.id === payload.id);
-                if (updatedTx && updatedTx.recurrence && updatedTx.recurrence.enabled) {
-                   updatedTx.recurrence.nextDate = this._calculateNextRecurrenceDate(updatedTx.date, updatedTx.recurrence.interval, updatedTx.recurrence.frequency);
-                }
-             } else {
-                this.state.transactions.forEach((t, i) => {
-                  let isTarget = false;
-                  if (payload.updateAll) {
-                    isTarget = (t.recurrence && t.recurrence.seriesId === seriesId && t.id !== existingTx.id);
-                  } else if (payload.updateFuture) {
-                    isTarget = (t.recurrence && t.recurrence.seriesId === seriesId && t.id !== existingTx.id && t.date >= baseDate);
-                  }
+        if ((payload.updateFuture || payload.updateAll) && seriesId) {
+           // v0.67 scope semantics:
+           // - The literal date is NEVER stamped onto other members. Past dates
+           //   are untouchable; a date/schedule change reshapes the future by
+           //   REGENERATING it from this member instead.
+           // - "all" additionally applies the non-date fields to past members.
+           // - recurrence:null + future scope = stop the series here (future
+           //   materialized occurrences are removed).
+           const regenerate = payload.regenerateSeries || dateChanged || scheduleChanged || recurrenceRemoved;
 
-                  if (isTarget) {
-                    const tUpdate = { ...updatePayload };
-                    // Do not overwrite nextDate if 't' corresponds to the active generator!
-                    if (t.recurrence && t.recurrence.nextDate) {
-                        tUpdate.recurrence = { ...tUpdate.recurrence, nextDate: t.recurrence.nextDate };
-                    } else if (tUpdate.recurrence) {
-                        delete tUpdate.recurrence.nextDate;
-                    }
-                    delete tUpdate.id; // ensure ID is not overwritten
-                    
-                    this.state.transactions[i] = { ...t, ...tUpdate, updatedAt: new Date().toISOString() };
-                  }
-                });
+           const propagate = (t, i) => {
+             const tUpdate = { ...updatePayload };
+             delete tUpdate.id;
+             delete tUpdate.date; // never move another member's date
+             // v0.67: type is per-member — propagating it flipped the income
+             // legs of future transfer pairs into expenses (double-expense
+             // corruption when a transfer leg's type was converted with a
+             // future/all scope)
+             delete tUpdate.type;
+             if (t.transferRef && t.type !== existingTx.type) {
+               // Counterpart leg of a transfer pair: its account/category
+               // belong to the OTHER side — only shared fields may propagate
+               delete tUpdate.accountId;
+               delete tUpdate.categoryId;
              }
+             if (recurrenceRemoved) {
+               tUpdate.recurrence = null;
+             } else if (tUpdate.recurrence) {
+               // Per-member copy (the old code aliased ONE object across all
+               // members) preserving each member's own generator state.
+               const memberRec = { ...(t.recurrence || {}), ...tUpdate.recurrence };
+               if (t.recurrence && t.recurrence.nextDate) memberRec.nextDate = t.recurrence.nextDate;
+               else delete memberRec.nextDate;
+               tUpdate.recurrence = memberRec;
+             }
+             this.state.transactions[i] = { ...t, ...tUpdate, updatedAt: new Date().toISOString() };
+           };
+
+           this.state.transactions.forEach((t, i) => {
+             if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.id === existingTx.id) return;
+             const isFuture = t.date >= baseDate;
+             if (payload.updateAll) {
+               if (!isFuture || !regenerate) propagate(t, i);
+             } else if (isFuture && !regenerate) {
+               propagate(t, i);
+             }
+           });
+
+           if (regenerate) {
+              // Drop future members and let _processRecurringTransactions
+              // rebuild them from this member's new date/schedule.
+              this.state.transactions = this.state.transactions.filter(t => {
+                 const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
+                   t.id !== existingTx.id && t.date >= baseDate &&
+                   !(existingTx.transferRef && t.transferRef === existingTx.transferRef);
+                 return !isFutureInSeries;
+              });
+              const updatedTx = this.state.transactions.find(t => t.id === payload.id);
+              if (updatedTx && updatedTx.recurrence && !recurrenceRemoved) {
+                 updatedTx.recurrence.nextDate = this._calculateNextRecurrenceDate(updatedTx.date, updatedTx.recurrence.interval, updatedTx.recurrence.frequency);
+              }
            }
         }
-        
+
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
@@ -950,19 +1059,12 @@ window.Store = {
         const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : [];
 
         // Handle recurrence initialization
-        if (payload.recurrence && payload.recurrence.enabled) {
-          // ── Global 60-month cap ─────────────────────────────────────────────
-          if (payload.recurrence.startDate && payload.recurrence.endDate) {
-            const capStart = new Date(payload.recurrence.startDate + 'T00:00:00');
-            const capEnd   = new Date(payload.recurrence.endDate   + 'T00:00:00');
-            const capMonths = (capEnd.getFullYear() - capStart.getFullYear()) * 12
-                            + (capEnd.getMonth()   - capStart.getMonth());
-            if (capMonths > 60) {
-              const clampedEnd = new Date(capStart);
-              clampedEnd.setMonth(clampedEnd.getMonth() + 60);
-              payload.recurrence.endDate = clampedEnd.toISOString().split('T')[0];
-            }
+        // v0.67: no longer gated on recurrence.enabled (see ADD_TRANSACTION)
+        if (payload.recurrence) {
+          if (!payload.recurrence.startDate) {
+            payload.recurrence.startDate = payload.date;
           }
+          this._clampRecurrenceEndDate(payload.recurrence, payload.date);
           if (!payload.recurrence.seriesId) {
             payload.recurrence.seriesId = window.StackdDB.generateId();
           }
@@ -973,6 +1075,14 @@ window.Store = {
 
         const transferTime = payload.time || this._getSystemTimeString();
         const createdAtIso = new Date().toISOString();
+
+        // v0.67: each leg gets its OWN recurrence object, and only the expense
+        // leg carries the live nextDate. When both legs shared one object (and
+        // both held nextDate) the generation pass consumed it twice: the second
+        // leg read a stripped nextDate and crashed with "Invalid time value".
+        const expenseRecurrence = payload.recurrence ? { ...payload.recurrence } : payload.recurrence;
+        let incomeRecurrence = payload.recurrence ? { ...payload.recurrence } : payload.recurrence;
+        if (incomeRecurrence) delete incomeRecurrence.nextDate;
 
         // Expense side (From)
         this.state.transactions.push({
@@ -986,7 +1096,7 @@ window.Store = {
           comment: payload.note,
           transferRef: transferRef,
           tags: tagsArray,
-          recurrence: payload.recurrence,
+          recurrence: expenseRecurrence,
           createdAt: createdAtIso
         });
 
@@ -1002,7 +1112,7 @@ window.Store = {
           comment: payload.note,
           transferRef: transferRef,
           tags: tagsArray,
-          recurrence: payload.recurrence,
+          recurrence: incomeRecurrence,
           createdAt: createdAtIso
         });
 
@@ -1017,32 +1127,60 @@ window.Store = {
         // Specifically designed to reliably update both legs simultaneously from views
         // Requires payload: { transferRef, amount, expenseAccountId, incomeAccountId, date, note }
         // Update logic for Transfer
-        const updatePayload = { ...payload };
-        delete updatePayload.updateFuture;
-
         const items = this.state.transactions.filter(t => t.transferRef === payload.transferRef);
-        let baseDate = null;
-        let seriesId = null;
-        const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : undefined;
-        
-        items.forEach(item => {
-           if (!baseDate) baseDate = item.date;
-           if (!seriesId && item.recurrence && item.recurrence.seriesId) seriesId = item.recurrence.seriesId;
+        if (items.length === 0) break;
 
+        const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : undefined;
+
+        // Classify BEFORE mutating (v0.67)
+        const baseDate = items[0].date;
+        const existingRecT = (items.find(t => t.recurrence && t.recurrence.seriesId) || {}).recurrence || null;
+        const seriesId = (existingRecT && existingRecT.seriesId) || (payload.recurrence && payload.recurrence.seriesId) || null;
+        const dateChanged = payload.date !== undefined && payload.date !== baseDate;
+        const scheduleChanged = !!(payload.recurrence && existingRecT && (
+          String(payload.recurrence.interval) !== String(existingRecT.interval) ||
+          String(payload.recurrence.frequency) !== String(existingRecT.frequency) ||
+          String(payload.recurrence.endDate) !== String(existingRecT.endDate)
+        ));
+        const recurrenceRemoved = !!existingRecT && payload.recurrence === null;
+
+        // v0.67: build a PER-LEG recurrence. The old code assigned the same
+        // payload.recurrence object (with a freshly armed nextDate) to both
+        // legs, which re-armed the pair as duplicate generators and crashed
+        // _processRecurringTransactions ("Invalid time value"). Rules: keep
+        // fields the form doesn't send, preserve the leg's own generator
+        // state, and when recurrence is newly enabled arm ONLY the expense leg.
+        const legRecurrence = (item) => {
+          if (payload.recurrence === undefined) return item.recurrence;
+          if (payload.recurrence === null) return null;
+          const merged = { ...(item.recurrence || {}), ...payload.recurrence };
+          if (item.recurrence) {
+            if (item.recurrence.nextDate) merged.nextDate = item.recurrence.nextDate;
+            else delete merged.nextDate;
+          } else {
+            if (!merged.startDate) merged.startDate = payload.date || item.date;
+            if (item.type !== 'expense') delete merged.nextDate;
+          }
+          // v0.67: the edit path honors the same 60-month window as creation
+          this._clampRecurrenceEndDate(merged, payload.date || item.date);
+          return merged;
+        };
+
+        items.forEach(item => {
            if (item.type === 'expense') {
               if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
               if (payload.expenseAccountId !== undefined) item.accountId = payload.expenseAccountId;
               if (payload.date !== undefined) item.date = payload.date;
               if (payload.note !== undefined) item.comment = payload.note;
-              if (payload.recurrence !== undefined) item.recurrence = payload.recurrence;
+              if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            } else if (item.type === 'income') {
               if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
               if (payload.incomeAccountId !== undefined) item.accountId = payload.incomeAccountId;
               if (payload.date !== undefined) item.date = payload.date;
-              if (payload.note !== undefined) item.comment = payload.note; 
-              if (payload.recurrence !== undefined) item.recurrence = payload.recurrence;
+              if (payload.note !== undefined) item.comment = payload.note;
+              if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            }
@@ -1050,34 +1188,57 @@ window.Store = {
            this.state.transactions[idx] = { ...item };
         });
 
-        // Handle updateFuture or updateAll for Transfers
+        // Handle updateFuture or updateAll for Transfers (v0.67 semantics —
+        // mirrors UPDATE_TRANSACTION: literal dates never propagate, date and
+        // schedule changes regenerate the future, past pairs stay put)
         if ((payload.updateFuture || payload.updateAll) && seriesId && baseDate) {
-           this.state.transactions.forEach((t, i) => {
-              const isTarget = payload.updateAll 
-                ? (t.recurrence && t.recurrence.seriesId === seriesId && t.transferRef !== payload.transferRef)
-                : (t.recurrence && t.recurrence.seriesId === seriesId && t.transferRef !== payload.transferRef && t.date >= baseDate);
+           const regenerate = payload.regenerateSeries || dateChanged || scheduleChanged || recurrenceRemoved;
 
-              if (isTarget) {
-                 if (t.type === 'expense') {
-                    if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
-                    if (payload.expenseAccountId !== undefined) t.accountId = payload.expenseAccountId;
-                    if (payload.note !== undefined) t.comment = payload.note;
-                    if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
-                    t.recurrence = { ...payload.recurrence, nextDate: t.recurrence.nextDate }; // Preserve nextDate
-                    t.updatedAt = new Date().toISOString();
-                 } else if (t.type === 'income') {
-                    if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
-                    if (payload.incomeAccountId !== undefined) t.accountId = payload.incomeAccountId;
-                    if (payload.note !== undefined) t.comment = payload.note; 
-                    if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
-                    t.recurrence = { ...payload.recurrence, nextDate: t.recurrence.nextDate };
-                    t.updatedAt = new Date().toISOString();
-                 }
-                 this.state.transactions[i] = t;
+           this.state.transactions.forEach((t, i) => {
+              if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.transferRef === payload.transferRef) return;
+              const isFuture = t.date >= baseDate;
+              const shouldPropagate = payload.updateAll ? (!isFuture || !regenerate) : (isFuture && !regenerate);
+              if (!shouldPropagate) return;
+
+              if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
+              if (payload.note !== undefined) t.comment = payload.note;
+              if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
+              if (t.type === 'expense' && payload.expenseAccountId !== undefined) t.accountId = payload.expenseAccountId;
+              if (t.type === 'income' && payload.incomeAccountId !== undefined) t.accountId = payload.incomeAccountId;
+              if (recurrenceRemoved) {
+                 t.recurrence = null;
+              } else if (payload.recurrence) {
+                 const memberRec = { ...(t.recurrence || {}), ...payload.recurrence };
+                 if (t.recurrence && t.recurrence.nextDate) memberRec.nextDate = t.recurrence.nextDate;
+                 else delete memberRec.nextDate;
+                 t.recurrence = memberRec;
               }
+              t.updatedAt = new Date().toISOString();
+              this.state.transactions[i] = { ...t };
            });
+
+           if (regenerate) {
+              this.state.transactions = this.state.transactions.filter(t => {
+                 const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
+                   t.transferRef !== payload.transferRef && t.date >= baseDate;
+                 return !isFutureInSeries;
+              });
+              if (!recurrenceRemoved) {
+                 // Re-arm exactly one leg (the expense side) from the new date
+                 const pair = this.state.transactions.filter(t => t.transferRef === payload.transferRef);
+                 pair.forEach(t => {
+                    if (!t.recurrence) return;
+                    if (t.type === 'expense') {
+                       t.recurrence = { ...t.recurrence, nextDate: this._calculateNextRecurrenceDate(t.date, t.recurrence.interval, t.recurrence.frequency) };
+                    } else if (t.recurrence.nextDate) {
+                       t.recurrence = { ...t.recurrence };
+                       delete t.recurrence.nextDate;
+                    }
+                 });
+              }
+           }
         }
-        
+
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();

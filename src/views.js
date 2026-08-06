@@ -1479,7 +1479,13 @@ window.Views = {
     attachEvents(container, state) {
       window.StackdHydrateIcons();
       if (state.accounts.length === 0) return;
-      
+      // v0.67: render() may emit the "Transaction not found" screen (e.g. the
+      // edited tx was just deleted, which re-renders this view before the
+      // delete flow navigates away). That markup has no form: bail out instead
+      // of crashing on null elements — the crash aborted dispatch mid-flight
+      // and stranded the user on the dead edit screen.
+      if (!document.getElementById('tx-type')) return;
+
       const btnExpense = document.getElementById('toggle-expense');
       const btnIncome = document.getElementById('toggle-income');
       const btnTransfer = document.getElementById('toggle-transfer');
@@ -1907,23 +1913,27 @@ window.Views = {
           };
         }
 
-        // --- v0.32: Recurring Tag Propagation Gate ---
-        // Check if we're editing a recurring series AND tags have actually changed.
+        // v0.67: validate the recurrence window before anything dispatches
+        if (recurrenceData && recurrenceData.endDate && recurrenceData.endDate < date) {
+          alert("The recurrence end date can't be before the transaction date.");
+          return;
+        }
+
+        // --- v0.67: Recurring Edit Scope Gate (supersedes the v0.32 tag-only gate) ---
+        // ANY save on a transaction that belongs to a recurrent series asks how
+        // far the change should apply, mirroring the delete flow. Previously
+        // only tag changes prompted (and the modal wiring was broken), so date
+        // or amount edits silently re-armed the series and spawned duplicates.
         const txToEditCurrent = isEditSave
           ? window.Store.getState().transactions.find(t => t.id === targetId)
           : null;
         const seriesId = (txToEditCurrent && txToEditCurrent.recurrence) ? txToEditCurrent.recurrence.seriesId : null;
-
-        const originalTags = (txToEditCurrent && txToEditCurrent.tags) ? txToEditCurrent.tags : [];
-        const tagsChanged = isEditSave && seriesId && (
-          currentTags.length !== originalTags.length ||
-          currentTags.some(t => !originalTags.includes(t)) ||
-          originalTags.some(t => !currentTags.includes(t))
-        );
+        const dateChanged = !!(txToEditCurrent && date !== txToEditCurrent.date);
+        const recurrenceRemoved = !!(seriesId && !recurrenceData);
 
         // Build the actual dispatch logic as a callable function
-        const doDispatch = (tagPropagation) => {
-          // tagPropagation: 'only' | 'future' | 'all'
+        const doDispatch = (scope) => {
+          // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
             if (accountId === toAccountId) {
               alert("Cannot transfer to the same account.");
@@ -1944,15 +1954,32 @@ window.Views = {
                   note: comment,
                   recurrence: recurrenceData,
                   tags: currentTags,
-                  updateFuture: tagPropagation === 'future'
+                  updateFuture: scope === 'future',
+                  updateAll: scope === 'all'
                 });
-                // "All" path for transfers: do a follow-up bulk tag update
-                if (tagPropagation === 'all' && seriesId) {
-                  window.Store.dispatch('UPDATE_TRANSACTION_TAGS_ALL', { seriesId, tags: currentTags });
-                }
               } else {
-                // Converting regular tx to transfer
-                window.Store.dispatch('DELETE_TRANSACTION', { id: targetId });
+                // Converting a regular tx into a transfer. v0.67: the chosen
+                // scope decides how much of the old series the transfer
+                // replaces, and the new transfer starts its OWN series —
+                // reusing the old seriesId mixed transfer pairs into the
+                // original expense/income chain. Past members are NEVER
+                // deleted (the scope modal promises past history is safe), so
+                // 'all' behaves like 'future' here.
+                if (seriesId && (scope === 'future' || scope === 'all')) {
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, deleteFuture: true });
+                } else {
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId });
+                }
+                let transferRecurrence = null;
+                if (recurrenceData) {
+                  if (!seriesId) {
+                    // Standalone tx converted to transfer: honor the recurrence
+                    // exactly as configured (no scope modal was shown)
+                    transferRecurrence = recurrenceData;
+                  } else if (scope !== 'only') {
+                    transferRecurrence = { ...recurrenceData, seriesId: window.StackdDB.generateId() };
+                  }
+                }
                 window.Store.dispatch('ADD_TRANSFER', {
                   amount,
                   expenseAccountId: accountId,
@@ -1960,7 +1987,7 @@ window.Views = {
                   date,
                   time: customTime,
                   note: comment,
-                  recurrence: recurrenceData,
+                  recurrence: transferRecurrence,
                   tags: currentTags
                 });
               }
@@ -1977,36 +2004,20 @@ window.Views = {
               });
             }
           } else if (isEditSave) {
-            if (tagPropagation === 'all' && seriesId) {
-              // Update this transaction first (non-future), then bulk-update all tags
-              window.Store.dispatch('UPDATE_TRANSACTION', {
-                id: targetId,
-                type: type,
-                amount: amount,
-                accountId: accountId,
-                categoryId: categoryId,
-                date: date,
-                time: customTime,
-                comment: comment,
-                recurrence: recurrenceData,
-                tags: currentTags
-              });
-              window.Store.dispatch('UPDATE_TRANSACTION_TAGS_ALL', { seriesId, tags: currentTags });
-            } else {
-              window.Store.dispatch('UPDATE_TRANSACTION', {
-                id: targetId,
-                type: type,
-                amount: amount,
-                accountId: accountId,
-                categoryId: categoryId,
-                date: date,
-                time: customTime,
-                comment: comment,
-                recurrence: recurrenceData,
-                tags: currentTags,
-                updateFuture: tagPropagation === 'future'
-              });
-            }
+            window.Store.dispatch('UPDATE_TRANSACTION', {
+              id: targetId,
+              type: type,
+              amount: amount,
+              accountId: accountId,
+              categoryId: categoryId,
+              date: date,
+              time: customTime,
+              comment: comment,
+              recurrence: recurrenceData,
+              tags: currentTags,
+              updateFuture: scope === 'future',
+              updateAll: scope === 'all'
+            });
           } else {
             window.Store.dispatch('ADD_TRANSACTION', {
               type: type,
@@ -2037,15 +2048,15 @@ window.Views = {
             }
           });
         }
-        // Else If tags changed on an ALREADY recurring transaction (EDIT mode), show the propagation modal
-        else if (tagsChanged) {
+        // Editing a member of a recurrent series: always ask for the scope
+        else if (isEditSave && seriesId) {
           window.Components.RecurringUpdateModal.show({
-            onlyThis:        () => doDispatch('only'),
-            thisAndFuture:   () => doDispatch('future'),
-            allTransactions: () => doDispatch('all')
+            dateChanged,
+            recurrenceRemoved,
+            onSelection: (chosen) => doDispatch(chosen === 'single' ? 'only' : chosen)
           });
         } else {
-          // No tag change (or not recurring) — dispatch immediately
+          // Not part of a series — dispatch immediately
           doDispatch('only');
         }
       });

@@ -1205,6 +1205,10 @@ window.Components = {
             </div>
           </div>
         </div>`;
+      // v0.67: drop any stale instance so a double-tapped Save can't stack
+      // listeners and dispatch the series twice
+      const existingRcm = document.getElementById('recurring-creation-modal');
+      if (existingRcm) existingRcm.remove();
       container.appendChild(div.firstElementChild);
 
       requestAnimationFrame(() => {
@@ -1304,6 +1308,9 @@ window.Components = {
             </div>
           </div>
         </div>`;
+      // v0.67: same duplicate-instance guard as RecurringUpdateModal
+      const existingRdm = document.getElementById('recurring-delete-modal');
+      if (existingRdm) existingRdm.remove();
       container.appendChild(div.firstElementChild);
 
       const backdrop = document.getElementById('recurring-delete-modal');
@@ -2416,39 +2423,65 @@ window.Components = {
     }
   },
 
+  // -----------------------------------------------------------------------
+  // RECURRING UPDATE MODAL (rebuilt v0.67)
+  // 3-choice scope sheet shown when saving ANY change to a transaction that
+  // belongs to a recurrent series (mirrors RecurringDeleteModal's layout).
+  // Accepts either { onSelection(scope) } with scope 'single'|'future'|'all',
+  // or the delete-modal-style { onlyThis, thisAndFuture, allTransactions }
+  // callbacks (the v0.32 caller used the latter shape and crashed — B3).
+  // Optional flags tune the copy: dateChanged, recurrenceRemoved.
+  // -----------------------------------------------------------------------
   RecurringUpdateModal: {
     show(options) {
-      const { onSelection, isRuleChange = false } = options;
+      const { dateChanged = false, recurrenceRemoved = false } = options;
+      const onSelection = options.onSelection || ((scope) => {
+        if (scope === 'single' && options.onlyThis) options.onlyThis();
+        else if (scope === 'future' && options.thisAndFuture) options.thisAndFuture();
+        else if (scope === 'all' && options.allTransactions) options.allTransactions();
+      });
       const container = document.getElementById('modal-container');
-      
-      const description = isRuleChange 
-        ? "You've changed the recurring schedule. Applying this to the series will update all future transactions based on these new rules."
-        : "This transaction is part of a recurring series. How would you like to apply these changes?";
 
-      const buttonsHtml = isRuleChange 
-        ? `<button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Update recurring series</button>`
-        : `
-          <button id="ru-only-this" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to this transaction only</button>
-          <button id="ru-this-future" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to this and future transactions</button>
-          <button id="ru-all-series" class="btn btn-secondary" style="width: 100%; justify-content: center; border: none;">Apply to all in the series</button>
-        `;
+      let description = "This transaction is part of a repeating series. How far should your changes apply? Past transactions always keep their dates.";
+      let futureSub = 'Apply the change from this point on';
+      let allSub = 'Also update past transactions (their dates never move)';
+      if (recurrenceRemoved) {
+        description = "You turned off Recurrent on a transaction that belongs to a repeating series. What should happen to the series?";
+        futureSub = 'Stop the series: upcoming scheduled transactions are removed';
+        allSub = 'Also unlink past transactions (they stay in your history)';
+      } else if (dateChanged) {
+        futureSub = 'Upcoming transactions shift to the new day';
+        allSub = 'Past dates never move; upcoming shift to the new day';
+      }
+
+      const optionCard = (id, title, sub) => `
+        <button id="${id}" class="touch-target" style="
+          display: flex; align-items: center; gap: var(--space-4);
+          background: var(--bg-surface); border: 1px solid var(--border-color);
+          border-radius: var(--radius-lg); padding: var(--space-4);
+          cursor: pointer; text-align: left; width: 100%;
+        ">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">${title}</div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">${sub}</div>
+          </div>
+        </button>`;
 
       const div = document.createElement('div');
       div.innerHTML = `
-        <div class="modal-backdrop" id="recurring-update-modal" role="dialog" aria-modal="true">
-          <div class="modal-content" style="padding: var(--space-6); text-align: center;">
+        <div class="modal-backdrop" id="recurring-update-modal" role="dialog" aria-modal="true" aria-labelledby="rum-title">
+          <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-handle"></div>
-            <div style="width: 56px; height: 56px; background: var(--bg-surface-sunken); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
-              <i data-lucide="refresh-cw" style="color: var(--text-primary); width: 24px; height: 24px;"></i>
+            <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
+              <h2 id="rum-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${recurrenceRemoved ? 'Stop Recurring?' : 'Recurring Transaction'}</h2>
+              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${description}</p>
             </div>
-            <h2 class="header-title" style="margin-bottom: var(--space-2); font-size: var(--text-lg);">Recurring Transaction</h2>
-            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-6); line-height: 1.5;">
-              ${description}
-            </p>
-            
-            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-              ${buttonsHtml}
-              <button id="ru-cancel" class="btn btn-ghost" style="width: 100%; justify-content: center; margin-top: var(--space-2); color: var(--text-tertiary);">Cancel</button>
+
+            <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
+              ${optionCard('ru-only-this', 'Only this transaction', recurrenceRemoved ? 'Unlink just this one; the series continues' : 'Everything else in the series stays as it is')}
+              ${optionCard('ru-this-future', 'This and future transactions', futureSub)}
+              ${optionCard('ru-all-series', 'All transactions in the series', allSub)}
+              <button id="ru-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
             </div>
           </div>
         </div>
@@ -2507,15 +2540,16 @@ window.Components = {
       };
 
       document.getElementById('ru-cancel').onclick = close;
-      
+
+      // v0.67: close first, then invoke — matches the sibling recurring modals
       const btnOnly = document.getElementById('ru-only-this');
-      if (btnOnly) btnOnly.onclick = () => { onSelection('single'); close(); };
+      if (btnOnly) btnOnly.onclick = () => { close(); onSelection('single'); };
 
       const btnFuture = document.getElementById('ru-this-future');
-      if (btnFuture) btnFuture.onclick = () => { onSelection('future'); close(); };
+      if (btnFuture) btnFuture.onclick = () => { close(); onSelection('future'); };
 
       const btnAll = document.getElementById('ru-all-series');
-      if (btnAll) btnAll.onclick = () => { onSelection('all'); close(); };
+      if (btnAll) btnAll.onclick = () => { close(); onSelection('all'); };
 
       requestAnimationFrame(() => backdrop.classList.add('open'));
     }
