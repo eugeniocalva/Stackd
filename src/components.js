@@ -3204,6 +3204,94 @@ window.Components = {
         }, 60);
       });
     }
+  },
+
+  // v0.72 Add-widget gallery (docs/home-widgets-plan.md §6.3).
+  // Phase 1 is the gallery only: tapping a type adds it straight away. The
+  // detail/preview and config steps land in Phases 2–3 inside this same sheet.
+  AddWidgetModal: {
+    show() {
+      const container = document.getElementById('modal-container');
+      if (!container) return;
+      if (!window.Widgets) return;
+
+      const existing = document.getElementById('add-widget-modal');
+      if (existing) existing.remove();
+
+      const types = window.Widgets.listTypes();
+      const esc = window.Widgets._esc.bind(window.Widgets);
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.id = 'add-widget-modal';
+      backdrop.style.zIndex = '10000';
+      backdrop.style.display = 'flex';
+      backdrop.style.flexDirection = 'column';
+      backdrop.setAttribute('role', 'dialog');
+      backdrop.setAttribute('aria-modal', 'true');
+      backdrop.setAttribute('aria-labelledby', 'awm-title');
+
+      backdrop.innerHTML = `
+        <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+          <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+            <button class="modal-btn-top modal-btn-close" id="awm-close" aria-label="Close add widget" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
+            <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">Add widget</h2>
+            <div style="width: 36px;"></div>
+          </div>
+
+          <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
+            <div class="widget-gallery-grid">
+              ${types.map(t => `
+                <button type="button" class="widget-gallery-card touch-target" data-widget-type="${esc(t.type)}">
+                  <div class="widget-gallery-icon"><i data-lucide="${esc(t.icon)}"></i></div>
+                  <span class="widget-gallery-title">${esc(t.title)}</span>
+                  <span class="widget-gallery-desc">${esc(t.description)}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const close = () => {
+        backdrop.classList.remove('open');
+        const content = backdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(100%)';
+        setTimeout(() => {
+          backdrop.remove();
+          const mc = document.getElementById('modal-container');
+          if (mc && (!mc.children || mc.children.length === 0)) mc.innerHTML = '';
+        }, 300);
+      };
+
+      const closeBtn = backdrop.querySelector('#awm-close');
+      if (closeBtn) closeBtn.onclick = close;
+
+      backdrop.querySelectorAll('.widget-gallery-card').forEach(card => {
+        card.onclick = () => {
+          const type = card.dataset.widgetType;
+          const def = window.Widgets.registry[type];
+          if (!def) return;
+          // Close before dispatching: the dispatch re-renders the dashboard
+          // underneath, and closing first keeps the sheet animation clean.
+          close();
+          window.Store.dispatch('ADD_HOME_WIDGET', {
+            type,
+            size: (def.sizes && def.sizes[0]) || 'small',
+            config: def.defaultConfig ? { ...def.defaultConfig } : {}
+          });
+        };
+      });
+
+      container.appendChild(backdrop);
+
+      requestAnimationFrame(() => {
+        backdrop.classList.add('open');
+        const content = backdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(0)';
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      });
+    }
   }
 };
 

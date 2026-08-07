@@ -1966,3 +1966,336 @@ a:focus-visible,
 }
 
 
+
+/* ── Home dashboard widgets (v0.72, docs/home-widgets-plan.md §6.1) ──────── */
+.widgets-section {
+  margin-top: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.widgets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.widgets-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.widget-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.widget-pill-btn:active {
+  transform: scale(0.96);
+}
+
+.widget-pill-btn.is-active,
+.widget-pill-btn--accent {
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+}
+
+.widgets-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.widget-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 140px;
+  padding: var(--space-4);
+  margin-bottom: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.widget-card--large {
+  grid-column: 1 / -1;
+}
+
+.widget-card-title {
+  font-family: var(--font-family-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.widget-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.widget-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 60px;
+  padding: var(--space-2);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+/* Widget rows (list-style widget bodies) */
+.widget-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.widget-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.widget-row-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--bg-surface-sunken);
+  color: var(--text-secondary);
+}
+
+.widget-row-icon i,
+.widget-row-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.widget-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.widget-row-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.widget-row-sub {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.widget-row-value {
+  flex-shrink: 0;
+  font-family: var(--font-family-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Empty-state CTA (mirrors .btn-add-wallet-card) */
+.widget-empty-cta {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-xl);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.widget-empty-cta:active {
+  background: var(--bg-surface-sunken);
+  transform: scale(0.99);
+}
+
+.widget-empty-cta-title {
+  font-family: var(--font-family-display);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.widget-empty-cta-sub {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Edit mode chrome */
+.widgets-grid.is-editing .widget-card {
+  animation: widget-jiggle 2.4s ease-in-out infinite;
+}
+
+@keyframes widget-jiggle {
+  0%, 100% { transform: rotate(-0.35deg); }
+  50% { transform: rotate(0.35deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widgets-grid.is-editing .widget-card {
+    animation: none;
+  }
+}
+
+.widget-card.is-editing {
+  padding-bottom: 44px;
+}
+
+.widget-remove-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-expense);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.widget-edit-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 6px;
+  background: var(--bg-surface-sunken);
+  border-top: 1px solid var(--color-border);
+}
+
+.widget-chrome-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.widget-chrome-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.widget-size-pill {
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-family-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Add-widget gallery sheet */
+.widget-gallery-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.widget-gallery-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.widget-gallery-card:active {
+  background: var(--bg-surface-sunken);
+  transform: scale(0.98);
+}
+
+.widget-gallery-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.widget-gallery-icon i,
+.widget-gallery-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.widget-gallery-title {
+  font-family: var(--font-family-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.widget-gallery-desc {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}

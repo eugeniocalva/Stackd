@@ -42,7 +42,7 @@ npx playwright test tests/e2e/debt_simulator.spec.js
 The app is **vanilla JS using global objects, not ES modules**. Each `src/*.js` file attaches a singleton to `window` and is loaded via ordered `<script defer>` tags in `index.html`. Dependency order matters and is fixed by that tag order:
 
 ```
-db.js → utils/scroll.js → utils/keyboard.js → loan-engine.js → store.js → components.js → views.js → router.js → export.js → import.js → main.js
+db.js → utils/scroll.js → utils/keyboard.js → loan-engine.js → store.js → components.js → widgets.js → views.js → router.js → export.js → import.js → main.js
 ```
 
 The core globals and their roles:
@@ -54,6 +54,7 @@ The core globals and their roles:
 | `window.Store` | `store.js` | Single source of truth. Holds `state`, a pub/sub `subscribe()`/`emit()`, and one large `dispatch(action, payload)` switch. Persists each slice to `StackdDB` on mutation. |
 | `window.Router` | `router.js` | Hash-based SPA router. Maps `#route` → `viewId`, parses `?account=` query params, dispatches `SET_VIEW`, and drives scroll reset. |
 | `window.Components` | `components.js` | Reusable UI pieces (BottomNav, modals, FAB, etc.) — large file (~150KB). |
+| `window.Widgets` | `widgets.js` | Home dashboard widget registry + section renderer (v0.72). `registry[type]` declares `render(instance, state)`/`attach`; `renderSection`/`attachSection` are called by `DashboardView`. |
 | `window.Views` | `views.js` | The screens (~200KB). Each view is an object with `render(state) → htmlString`, optional `attachEvents(root, state)`, and optional `destroy()`. |
 | `main.js` | — | Entry point. Wires init, subscribes to the store, and on every state change renders the view matching `state.activeView` into `#router-view`, then re-hydrates icons. |
 
@@ -82,6 +83,19 @@ schedule, progress — is derived by `LoanEngine.simulate`, never stored. Routes
 `Store.getLoanLinkedTransactions` reads through to the linked recurring series so a
 deleted series un-tracks the loan. Loans are included in CSV export/import via a
 JSON `Config` column.
+
+### Home dashboard widgets (v0.72)
+
+The dashboard's old static "Financial Milestone" card is gone, replaced by a
+user-configurable widget area. **`docs/home-widgets-plan.md` is the reference —
+read it before touching widget code.** A widget instance is
+`{id, type, size: 'small'|'large', config, createdAt}` under `stackd_v1_homeWidgets`;
+array order is display order. All rendering is driven by `window.Widgets.registry[type]`,
+so adding a widget means adding a registry entry, not editing `DashboardView`.
+`Widgets._renderCard`/`attachSection` wrap each widget's `render`/`attach` in
+try/catch and render a placeholder for unregistered types — keep that containment.
+Edit mode (`state.widgetEditMode`) is transient and cleared by `SET_VIEW`.
+The slice is deliberately **not** in the CSV backup (house convention for prefs).
 
 ### Recurring transactions (v0.67 semantics)
 

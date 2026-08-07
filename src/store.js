@@ -116,6 +116,16 @@ window.Store = {
     activeTheme: 'light', // 'light' or 'dark'
     analyticsBalanceMode: 'today', // v0.64 - 'today' | 'end': hero balance basis when the period extends past today
 
+    // ── Home dashboard widgets (v0.72, docs/home-widgets-plan.md §3) ────────
+    // Record shape: { id, type, size: 'small'|'large', config: {}, createdAt }.
+    // Array order IS display order. Rendering is driven entirely by
+    // window.Widgets.registry[type]; unknown types render a placeholder card
+    // rather than throwing, so a downgrade never bricks the dashboard.
+    homeWidgets: [],
+    // Transient edit affordance (remove/reorder chrome); never persisted, same
+    // as isSelectionMode — it must not survive a reload or a tab switch.
+    widgetEditMode: false,
+
     initialized: false
   },
 
@@ -134,6 +144,7 @@ window.Store = {
     this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
+    this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); // v0.72
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -360,6 +371,7 @@ window.Store = {
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
+        if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -1594,6 +1606,9 @@ window.Store = {
       case 'SET_VIEW':
         if (this.state.activeView !== payload) {
           this.state.activeView = payload;
+          // v0.72: widget edit mode is a dashboard-only affordance; leaving the
+          // dashboard must drop it, or coming back shows the chrome unexpectedly.
+          if (payload !== 'dashboard') this.state.widgetEditMode = false;
           changed = true;
         }
         break;
@@ -1647,15 +1662,80 @@ window.Store = {
 
 
 
+      // ── Home dashboard widgets (v0.72, docs/home-widgets-plan.md §3.2) ────
+
+      case 'ADD_HOME_WIDGET': {
+        if (!payload || !payload.type) break;
+        this.state.homeWidgets.push({
+          id: window.StackdDB.generateId(),
+          type: payload.type,
+          size: payload.size === 'large' ? 'large' : 'small',
+          config: payload.config ? { ...payload.config } : {},
+          createdAt: new Date().toISOString()
+        });
+        window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+        changed = true;
+        break;
+      }
+
+      case 'UPDATE_HOME_WIDGET': {
+        const wIdx = this.state.homeWidgets.findIndex(w => w.id === (payload && payload.id));
+        if (wIdx === -1) break;
+        const currentW = this.state.homeWidgets[wIdx];
+        const nextW = { ...currentW };
+        if (payload.size === 'small' || payload.size === 'large') nextW.size = payload.size;
+        if (payload.config) nextW.config = { ...currentW.config, ...payload.config };
+        this.state.homeWidgets[wIdx] = nextW;
+        window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+        changed = true;
+        break;
+      }
+
+      case 'REMOVE_HOME_WIDGET': {
+        const removeId = payload && (payload.id || payload);
+        const beforeLen = this.state.homeWidgets.length;
+        this.state.homeWidgets = this.state.homeWidgets.filter(w => w.id !== removeId);
+        if (this.state.homeWidgets.length === beforeLen) break;
+        window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+        changed = true;
+        break;
+      }
+
+      case 'REORDER_HOME_WIDGETS': {
+        // Only accept a true permutation of the current ids. A partial or
+        // stale list would silently drop widgets, and this action is driven by
+        // UI that may be one render behind the state.
+        const orderedIds = (payload && payload.orderedIds) || payload;
+        if (!Array.isArray(orderedIds)) break;
+        if (orderedIds.length !== this.state.homeWidgets.length) break;
+        const orderedSet = new Set(orderedIds);
+        if (orderedSet.size !== orderedIds.length) break;
+        if (!this.state.homeWidgets.every(w => orderedSet.has(w.id))) break;
+        this.state.homeWidgets = orderedIds.map(id => this.state.homeWidgets.find(w => w.id === id));
+        window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+        changed = true;
+        break;
+      }
+
+      case 'TOGGLE_WIDGET_EDIT_MODE': {
+        this.state.widgetEditMode = typeof payload === 'boolean'
+          ? payload
+          : !this.state.widgetEditMode;
+        changed = true;
+        break;
+      }
+
       case 'RESET_APP': {
         window.StackdDB.save('accounts', []);
         window.StackdDB.save('categories', [...DEFAULT_CATEGORIES]);
         window.StackdDB.save('transactions', []);
         window.StackdDB.save('budgets', []);
         window.StackdDB.save('loans', []);
+        window.StackdDB.save('homeWidgets', []); // v0.72
         // Clear the first-launch flag so the region setup modal shows again
         localStorage.removeItem('stackd_v1_setup_done');
         this.state.loans = [];
+        this.state.homeWidgets = []; // v0.72
         // App will force reload by the caller, so we don't even need to emit strictly
         break;
       }

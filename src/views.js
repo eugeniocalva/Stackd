@@ -430,19 +430,16 @@ window.Views = {
             ${recentHtml}
           </div>
 
-          <div class="section-title" style="margin-top: var(--space-8); margin-bottom: var(--space-2);">Financial Milestone</div>
-          <div class="card card-elevated" style="padding: var(--space-5); text-align: center; margin-bottom: var(--space-8);">
-             <div style="font-size: 2.5rem; margin-bottom: var(--space-2); color: var(--color-primary); display: flex; justify-content: center;">
-               <i data-lucide="trophy" style="width: 48px; height: 48px;"></i>
-             </div>
-             <div style="color: var(--text-primary); font-weight: 600;">Coming Soon</div>
-             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-2);">Track your debt payoff and savings goals!</p>
-          </div>
+          ${window.Widgets ? window.Widgets.renderSection(state) : ''}
         </div>
       `;
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+
+      // v0.72: home widget area (replaced the static Financial Milestone card)
+      if (window.Widgets) window.Widgets.attachSection(container, state);
+
       // Recent Activity Click -> Jump to History & Scroll
       container.querySelectorAll('.recent-tx-row').forEach(row => {
         row.addEventListener('click', () => {
