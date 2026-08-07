@@ -3237,12 +3237,14 @@ window.Components = {
 
       let step = 'gallery';
       let selectedType = null;
+      let selectedSize = 'small';
       let draft = {};
 
       if (editId) {
         const inst = (window.Store.getState().homeWidgets || []).find(w => w.id === editId);
         if (!inst) return;
         selectedType = inst.type;
+        selectedSize = inst.size;
         draft = W._cfg(inst);
         step = 'config';
       }
@@ -3258,6 +3260,7 @@ window.Components = {
       backdrop.setAttribute('aria-labelledby', 'awm-title');
 
       const close = () => {
+        W.destroyPreview();
         backdrop.classList.remove('open');
         const content = backdrop.querySelector('.modal-content');
         if (content) content.style.transform = 'translateY(100%)';
@@ -3287,33 +3290,67 @@ window.Components = {
           <div id="awm-config">${def.renderConfig ? def.renderConfig(draft, state) : ''}</div>`;
       };
 
+      // Detail step: name, what it does, and a live preview you can flip
+      // between the two sizes before committing.
+      const renderDetailStep = () => {
+        const def = W.registry[selectedType];
+        const sizes = def.sizes || ['small'];
+        return `
+          <h3 class="widget-detail-title">${esc(def.title)}</h3>
+          <p class="widget-detail-desc">${esc(def.description)}</p>
+          <div id="awm-preview">${W.renderPreview(selectedType, selectedSize, draft, window.Store.getState())}</div>
+          ${sizes.length > 1 ? `
+            <div class="widget-size-dots" role="group" aria-label="Widget size">
+              ${sizes.map(s => `
+                <button type="button" class="widget-size-dot ${s === selectedSize ? 'is-active' : ''}"
+                        data-size="${esc(s)}" aria-pressed="${s === selectedSize}"
+                        aria-label="${s === 'large' ? 'Wide size' : 'Small size'}"></button>
+              `).join('')}
+            </div>
+            <p class="widget-size-caption">${selectedSize === 'large' ? 'Wide' : 'Small'}</p>
+          ` : ''}`;
+      };
+
       const renderAll = () => {
+        // Any previous preview chart belongs to markup we are about to discard.
+        W.destroyPreview();
+
         const def = selectedType ? W.registry[selectedType] : null;
         const isConfig = step === 'config';
-        const title = isConfig ? (def ? def.title : 'Configure') : 'Add widget';
-        // In edit mode there is no gallery to go back to.
-        const leftGlyph = (isConfig && !editId) ? '‹' : '✕';
+        const isDetail = step === 'detail';
+        const title = (isConfig && editId) ? (def ? def.title : 'Configure') : 'Add widget';
+        // Only the edit-mode entry point has no earlier step to go back to.
+        const canGoBack = (isDetail || isConfig) && !editId;
+        const leftGlyph = canGoBack ? '‹' : '✕';
+        // Detail advances to config when there is something to configure.
+        const confirmLabel = editId
+          ? 'Save changes'
+          : (isDetail && def && def.hasConfig ? 'Next' : 'Add widget');
 
         backdrop.innerHTML = `
           <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(0); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
             <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
-              <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${(isConfig && !editId) ? 'Back to widget list' : 'Close'}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
+              <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${canGoBack ? 'Back' : 'Close'}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
               <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${esc(title)}</h2>
               <div style="width: 36px;"></div>
             </div>
 
             <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
-              ${isConfig ? renderConfigStep() : renderGallery()}
+              ${isConfig ? renderConfigStep() : (isDetail ? renderDetailStep() : renderGallery())}
             </div>
 
-            ${isConfig ? `
+            ${(isConfig || isDetail) ? `
               <div class="modal-footer-bar" style="padding: var(--space-4); padding-bottom: calc(var(--space-4) + var(--safe-bottom, 0px)); border-top: 1px solid var(--color-border); background: var(--bg-surface);">
-                <button type="button" class="btn btn-primary" id="awm-confirm">${editId ? 'Save changes' : 'Add widget'}</button>
+                <button type="button" class="btn btn-primary" id="awm-confirm">${esc(confirmLabel)}</button>
               </div>` : ''}
           </div>`;
 
         attachAll();
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+        // Mount the preview chart after the markup is in the document.
+        if (isDetail) {
+          W.attachPreview(backdrop, selectedType, selectedSize, draft, window.Store.getState());
+        }
       };
 
       const ctx = {
@@ -3326,7 +3363,11 @@ window.Components = {
         const leftBtn = backdrop.querySelector('#awm-left');
         if (leftBtn) {
           leftBtn.onclick = () => {
-            if (step === 'config' && !editId) {
+            if (editId) { close(); return; }
+            if (step === 'config') {
+              step = 'detail';       // back to the preview
+              renderAll();
+            } else if (step === 'detail') {
               step = 'gallery';
               selectedType = null;
               renderAll();
@@ -3336,27 +3377,25 @@ window.Components = {
           };
         }
 
+        // Gallery → detail. Every type gets a preview first now; config (when
+        // the type has any) comes after, from the detail step's Next button.
         backdrop.querySelectorAll('.widget-gallery-card').forEach(card => {
           card.onclick = () => {
             const type = card.dataset.widgetType;
             const def = W.registry[type];
             if (!def) return;
+            selectedType = type;
+            selectedSize = (def.sizes && def.sizes[0]) || 'small';
+            draft = { ...(def.defaultConfig || {}) };
+            step = 'detail';
+            renderAll();
+          };
+        });
 
-            if (def.hasConfig) {
-              selectedType = type;
-              draft = { ...(def.defaultConfig || {}) };
-              step = 'config';
-              renderAll();
-              return;
-            }
-            // No config to collect — add it straight away. Close first so the
-            // dashboard re-render happens behind a closing sheet.
-            close();
-            window.Store.dispatch('ADD_HOME_WIDGET', {
-              type,
-              size: (def.sizes && def.sizes[0]) || 'small',
-              config: def.defaultConfig ? { ...def.defaultConfig } : {}
-            });
+        backdrop.querySelectorAll('.widget-size-dot').forEach(dot => {
+          dot.onclick = () => {
+            selectedSize = dot.dataset.size;
+            renderAll();
           };
         });
 
@@ -3371,16 +3410,20 @@ window.Components = {
           confirmBtn.onclick = () => {
             const def = W.registry[selectedType];
             if (!def) return;
+
+            // Detail step on a configurable widget just advances a step.
+            if (step === 'detail' && def.hasConfig && !editId) {
+              step = 'config';
+              renderAll();
+              return;
+            }
+
             const config = { ...draft };
             close();
             if (editId) {
               window.Store.dispatch('UPDATE_HOME_WIDGET', { id: editId, config });
             } else {
-              window.Store.dispatch('ADD_HOME_WIDGET', {
-                type: selectedType,
-                size: (def.sizes && def.sizes[0]) || 'small',
-                config
-              });
+              window.Store.dispatch('ADD_HOME_WIDGET', { type: selectedType, size: selectedSize, config });
             }
           };
         }

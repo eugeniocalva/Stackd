@@ -99,6 +99,17 @@ window.Widgets = {
   },
 
   // ── shared config controls ──────────────────────────────────────────────
+  // Signed percentage pill. A null pct means "no baseline to compare against"
+  // (computeBalanceForecast returns null rather than a misleading 0%).
+  _deltaBadge(pct) {
+    if (pct === null || pct === undefined || !isFinite(pct)) {
+      return `<span class="widget-delta">—</span>`;
+    }
+    const cls = pct > 0 ? 'text-income' : (pct < 0 ? 'text-expense' : '');
+    const sign = pct > 0 ? '+' : '';
+    return `<span class="widget-delta ${cls}">${sign}${pct.toFixed(1)}%</span>`;
+  },
+
   _configSection(label, inner) {
     return `
       <div class="widget-config-group">
@@ -509,6 +520,238 @@ window.Widgets = {
           if (key === 'direction') ctx.setConfig({ categoryIds: [] });
         });
       }
+    },
+
+    netWorth: {
+      title: 'Net worth',
+      description: 'Keep an eye on your total balance across accounts as it moves over time.',
+      icon: 'trending-up',
+      sizes: ['small', 'large'],
+      hasConfig: true,
+      defaultConfig: { accountIds: [] },
+
+      // computeGraphBalances already clamps every point to today, so future
+      // recurring occurrences never inflate the trend.
+      _points(instance) {
+        const W = window.Widgets;
+        const result = window.Store.computeGraphBalances({
+          interval: 'monthly',
+          accountIds: W._cfg(instance).accountIds || [],
+          categoryIds: []
+        });
+        return (result && result.points) ? result.points.slice(-6) : [];
+      },
+
+      render(instance) {
+        const W = window.Widgets;
+        const points = this._points(instance);
+        if (points.length === 0) return W._emptyState('No balance history yet');
+
+        const latest = points[points.length - 1].balance;
+        const forecast = window.Store.computeBalanceForecast(W._cfg(instance).accountIds || []);
+
+        return `
+          <div class="widget-stat">
+            <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(latest))}</span>
+            <span class="widget-stat-label">${W._deltaBadge(forecast.todayVariation)} vs. start of mo.</span>
+          </div>
+          <div class="widget-chart-wrap ${instance.size === 'large' ? '' : 'widget-chart-wrap--spark'}">
+            <canvas id="${W._canvasId(instance)}"></canvas>
+          </div>`;
+      },
+
+      attach(instance, card) {
+        const W = window.Widgets;
+        card.addEventListener('click', () => {
+          if (window.Store.getState().widgetEditMode) return;
+          window.Router.navigate('#analytics');
+        });
+
+        const canvas = card.querySelector(`#${W._canvasId(instance)}`);
+        if (!canvas) return;
+        const points = this._points(instance);
+        if (points.length === 0) return;
+
+        const isLarge = instance.size === 'large';
+        const theme = window.Components.NetFlowChart._themeColors();
+        const line = theme.isDark ? '#38bdf8' : '#0284c7';
+
+        W._mountChart(instance.id, canvas, {
+          type: 'line',
+          data: {
+            labels: points.map(p => p.label),
+            datasets: [{
+              data: points.map(p => p.balance),
+              borderColor: line,
+              backgroundColor: theme.isDark ? 'rgba(56, 189, 248, 0.16)' : 'rgba(2, 132, 199, 0.12)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0,
+              pointHoverRadius: isLarge ? 4 : 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 600, easing: 'easeOutQuart' },
+            plugins: {
+              legend: { display: false },
+              // A sparkline has no axes to read a value against, so a tooltip
+              // there would be pointing at nothing.
+              tooltip: isLarge ? {
+                backgroundColor: theme.tooltipBg,
+                titleColor: theme.tooltipTitle,
+                bodyColor: theme.tooltipBody,
+                borderColor: theme.tooltipBorder,
+                borderWidth: 1,
+                padding: 10,
+                displayColors: false,
+                bodyFont: { family: 'Manrope', size: 12, weight: '700' },
+                callbacks: { label: (ctx) => window.Store.formatCurrency(ctx.parsed.y) }
+              } : { enabled: false }
+            },
+            scales: {
+              x: {
+                display: isLarge,
+                grid: { display: false },
+                ticks: { color: theme.tickColor, font: { size: 9, family: 'Manrope', weight: '700' } }
+              },
+              y: { display: false }
+            }
+          }
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+      },
+
+      attachConfig(root, ctx) {
+        window.Widgets.attachSharedConfig(root, ctx);
+      }
+    },
+
+    savings: {
+      title: 'Personal savings',
+      description: 'See how much you actually put aside each month — what is left after expenses.',
+      icon: 'piggy-bank',
+      sizes: ['small', 'large'],
+      hasConfig: true,
+      defaultConfig: { accountIds: [] },
+
+      // Net saved per month = income - expenses. Same buckets the incomeExpense
+      // widget uses, so the two can never disagree about a month.
+      _buckets(instance) {
+        const W = window.Widgets;
+        const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance)), W._todayStr()) || [];
+        return all.slice(-6);
+      },
+
+      render(instance) {
+        const W = window.Widgets;
+        const buckets = this._buckets(instance);
+        if (buckets.length === 0) return W._emptyState('Not enough data yet');
+
+        const current = buckets[buckets.length - 1];
+        const previous = buckets.length > 1 ? buckets[buckets.length - 2] : null;
+        // Percentage change against the previous month's net. A zero (or
+        // absent) baseline has no meaningful percentage — show a dash instead.
+        const pct = (previous && previous.net !== 0)
+          ? ((current.net - previous.net) / Math.abs(previous.net)) * 100
+          : null;
+
+        const head = `
+          <div class="widget-stat">
+            <span class="widget-stat-value ${current.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(current.net))}</span>
+            <span class="widget-stat-label">${W._deltaBadge(pct)} vs. ${W._esc(previous ? previous.label : 'prev.')}</span>
+          </div>`;
+
+        if (instance.size !== 'large') {
+          if (buckets.every(b => b.net === 0)) return head;
+          return `${head}<div class="widget-chart-wrap widget-chart-wrap--spark"><canvas id="${W._canvasId(instance)}"></canvas></div>`;
+        }
+        return `${head}<div class="widget-chart-wrap"><canvas id="${W._canvasId(instance)}"></canvas></div>`;
+      },
+
+      attach(instance, card) {
+        const W = window.Widgets;
+        card.addEventListener('click', () => {
+          if (window.Store.getState().widgetEditMode) return;
+          window.Router.navigate('#analytics');
+        });
+
+        const canvas = card.querySelector(`#${W._canvasId(instance)}`);
+        if (!canvas) return;
+        const buckets = this._buckets(instance);
+        if (buckets.length === 0) return;
+
+        const isLarge = instance.size === 'large';
+        const theme = window.Components.NetFlowChart._themeColors();
+        const yScale = window.Components.NetFlowChart._computeYScale(buckets.map(b => b.net));
+
+        W._mountChart(instance.id, canvas, {
+          type: 'bar',
+          data: {
+            labels: buckets.map(b => b.label),
+            datasets: [{
+              data: buckets.map(b => b.net),
+              // Colour per bar: a month where you overspent should read as a loss.
+              backgroundColor: buckets.map(b => b.net >= 0 ? 'rgba(16, 185, 129, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
+              borderRadius: 4,
+              borderSkipped: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 600, easing: 'easeOutQuart' },
+            plugins: {
+              legend: { display: false },
+              tooltip: isLarge ? {
+                backgroundColor: theme.tooltipBg,
+                titleColor: theme.tooltipTitle,
+                bodyColor: theme.tooltipBody,
+                borderColor: theme.tooltipBorder,
+                borderWidth: 1,
+                padding: 10,
+                displayColors: false,
+                bodyFont: { family: 'Manrope', size: 12, weight: '700' },
+                callbacks: { label: (ctx) => `Saved: ${window.Store.formatCurrency(ctx.parsed.y)}` }
+              } : { enabled: false }
+            },
+            scales: {
+              x: {
+                display: isLarge,
+                grid: { display: false },
+                ticks: { color: theme.tickColor, font: { size: 9, family: 'Manrope', weight: '700' } }
+              },
+              y: {
+                display: isLarge,
+                min: yScale.min,
+                max: yScale.max,
+                grid: { color: theme.gridColor },
+                ticks: {
+                  stepSize: yScale.stepSize,
+                  color: theme.tickColor,
+                  font: { size: 9, family: 'Manrope', weight: '600' },
+                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                }
+              }
+            }
+          }
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+      },
+
+      attachConfig(root, ctx) {
+        window.Widgets.attachSharedConfig(root, ctx);
+      }
     }
   },
 
@@ -611,6 +854,44 @@ window.Widgets = {
         <button type="button" class="widget-size-pill" data-widget-action="toggle-size" data-widget-id="${id}"
                 aria-label="Toggle widget size">${isLarge ? 'Wide' : 'Small'}</button>
       </div>`;
+  },
+
+  // ── live preview (add-widget detail step) ───────────────────────────────
+  // Renders the real card with the real state through the same _renderCard the
+  // dashboard uses, so what you preview is literally what you get. The stage
+  // reuses .widgets-grid so a 'small' widget occupies exactly one of two
+  // columns, as it will on the dashboard.
+  PREVIEW_ID: '__preview__',
+
+  _previewInstance(type, size, config) {
+    return { id: this.PREVIEW_ID, type, size, config: config || {}, createdAt: '' };
+  },
+
+  renderPreview(type, size, config, state) {
+    if (!this.registry[type]) return '';
+    const instance = this._previewInstance(type, size, config);
+    return `
+      <div class="widget-preview-stage">
+        <div class="widgets-grid widgets-grid--preview">
+          ${this._renderCard(instance, state, false, 0, 1)}
+        </div>
+      </div>`;
+  },
+
+  attachPreview(root, type, size, config, state) {
+    const def = this.registry[type];
+    if (!def || !def.attach) return;
+    const card = root.querySelector(`.widget-card[data-widget-id="${this.PREVIEW_ID}"]`);
+    if (!card) return;
+    try {
+      def.attach(this._previewInstance(type, size, config), card, state);
+    } catch (err) {
+      console.error(`[widgets] preview attach failed for "${type}"`, err);
+    }
+  },
+
+  destroyPreview() {
+    this._destroyChart(this.PREVIEW_ID);
   },
 
   // ── section events ──────────────────────────────────────────────────────

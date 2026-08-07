@@ -46,7 +46,7 @@ test.describe('Home dashboard widgets', () => {
     await expect(page.locator('#widgets-section')).toBeVisible();
   });
 
-  test('adds a no-config widget straight from the gallery', async ({ page }) => {
+  test('adds a no-config widget via the detail preview', async ({ page }) => {
     const errors = [];
     page.on('pageerror', err => errors.push(err));
 
@@ -61,13 +61,47 @@ test.describe('Home dashboard widgets', () => {
     await expect(page.locator('#add-widget-modal')).toBeVisible();
     await page.click('.widget-gallery-card[data-widget-type="latest"]');
 
-    // Sheet closes and the card appears with real data.
+    // Detail step: live preview of the real card, and a direct add (no config).
+    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(page.locator('.widget-preview-stage .widget-card')).toContainText('Latest transactions');
+    await expect(page.locator('#awm-confirm')).toHaveText('Add widget');
+
+    await page.click('#awm-confirm');
     await expect(page.locator('#add-widget-modal')).toHaveCount(0);
-    await expect(page.locator('.widget-card')).toHaveCount(1);
-    await expect(page.locator('.widget-card')).toContainText('Latest transactions');
-    await expect(page.locator('.widget-row')).toHaveCount(3);
+    await expect(page.locator('#widgets-grid .widget-card')).toHaveCount(1);
+    await expect(page.locator('#widgets-grid .widget-card')).toContainText('Latest transactions');
+    await expect(page.locator('#widgets-grid .widget-row')).toHaveCount(3);
 
     expect(errors).toEqual([]);
+  });
+
+  test('the size carousel changes the preview and the added widget', async ({ page }) => {
+    await bootstrap(page);
+    await scrollToWidgets(page);
+
+    await page.click('#btn-widgets-add-empty');
+    await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
+
+    // Defaults to small.
+    await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+    await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(0);
+
+    // Flip to wide: the preview re-renders at the other size.
+    await page.click('.widget-size-dot[data-size="large"]');
+    await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+    await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(1);
+
+    // netWorth is configurable, so the detail step advances rather than adding.
+    await expect(page.locator('#awm-confirm')).toHaveText('Next');
+    await page.click('#awm-confirm');
+    await expect(page.locator('#awm-config')).toBeVisible();
+    await page.click('#awm-confirm');
+
+    await expect(page.locator('#add-widget-modal')).toHaveCount(0);
+    // The size chosen in the carousel is the size that gets added.
+    const size = await page.evaluate(() => window.Store.getState().homeWidgets[0].size);
+    expect(size).toBe('large');
+    await expect(page.locator('#widgets-grid .widget-card--large')).toHaveCount(1);
   });
 
   test('walks the config step when adding a configurable widget', async ({ page }) => {
@@ -77,7 +111,11 @@ test.describe('Home dashboard widgets', () => {
     await page.click('#btn-widgets-add-empty');
     await page.click('.widget-gallery-card[data-widget-type="categories"]');
 
-    // Config step, not an immediate add.
+    // Detail first, then config.
+    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(page.locator('#awm-confirm')).toHaveText('Next');
+    await page.click('#awm-confirm');
+
     await expect(page.locator('#awm-config')).toBeVisible();
     await expect(page.locator('#awm-confirm')).toHaveText('Add widget');
 
@@ -92,22 +130,29 @@ test.describe('Home dashboard widgets', () => {
     const config = await page.evaluate(() => window.Store.getState().homeWidgets[0].config);
     expect(config.mode).toBe('selected');
     expect(config.categoryIds).toEqual(['cat_groceries']);
-    await expect(page.locator('.widget-donut')).toBeVisible();
+    await expect(page.locator('#widgets-grid .widget-donut')).toBeVisible();
   });
 
-  test('the back arrow returns to the gallery without adding', async ({ page }) => {
+  test('the back arrow walks back config → detail → gallery without adding', async ({ page }) => {
     await bootstrap(page);
     await scrollToWidgets(page);
 
     await page.click('#btn-widgets-add-empty');
     await page.click('.widget-gallery-card[data-widget-type="categories"]');
+    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+
+    await page.click('#awm-confirm');                       // detail → config
     await expect(page.locator('#awm-config')).toBeVisible();
 
-    await page.click('#awm-left');
+    await page.click('#awm-left');                          // config → detail
+    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(page.locator('#awm-config')).toHaveCount(0);
+
+    await page.click('#awm-left');                          // detail → gallery
     await expect(page.locator('.widget-gallery-grid')).toBeVisible();
     await expect(page.locator('#awm-confirm')).toHaveCount(0);
 
-    await page.click('#awm-left'); // now closes
+    await page.click('#awm-left');                          // gallery → closed
     await expect(page.locator('#add-widget-modal')).toHaveCount(0);
     await expect(page.locator('.widget-card')).toHaveCount(0);
   });

@@ -2460,3 +2460,76 @@ a:focus-visible,
   letter-spacing: 0.05em;
   margin-bottom: var(--space-2);
 }
+
+/* ── Add-widget detail step: live preview + size carousel (v0.72 Phase 3) ── */
+.widget-detail-title {
+  font-family: var(--font-family-display);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.widget-detail-desc {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-6);
+}
+
+.widget-preview-stage {
+  padding: var(--space-5) var(--space-2);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface-sunken);
+}
+
+/* The preview reuses the dashboard grid so a small widget occupies exactly one
+   of two columns, at the real width. It is a picture, not a control. */
+.widgets-grid--preview {
+  pointer-events: none;
+}
+
+.widget-size-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.widget-size-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  cursor: pointer;
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.widget-size-dot.is-active {
+  width: 22px;
+  background: var(--text-secondary);
+}
+
+.widget-size-caption {
+  margin-top: var(--space-2);
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+/* Sparkline: no axes to read against, so it needs less height than a full chart */
+.widget-chart-wrap--spark {
+  height: 54px;
+}
+
+.widget-delta {
+  font-family: var(--font-family-display);
+  font-weight: 700;
+}

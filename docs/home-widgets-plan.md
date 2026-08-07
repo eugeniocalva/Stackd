@@ -9,7 +9,7 @@
 
 - [x] **Phase 1 — Milestone removal + widget framework** (slice, registry, grid, edit mode, add-sheet v1, Latest-transactions widget) — done 2026-08-07; see §8a for what shipped
 - [x] **Phase 2 — Chart widgets** (Income vs Expenses, Categories donut + config step) — done 2026-08-07; see §8b
-- [ ] **Phase 3 — Trend widgets + add-flow polish** (Net worth, Personal savings, detail/preview step with size carousel)
+- [x] **Phase 3 — Trend widgets + add-flow polish** (Net worth, Personal savings, detail/preview step with size carousel) — done 2026-08-07; see §8c
 - [ ] **Phase 4 — Upcoming transactions + Budget goals widgets**
 - [ ] **Phase 5 — 50/30/20 budget widget + final polish**
 
@@ -375,6 +375,53 @@ fresh tab, no horizontal overflow.
   netWorth series delegation, preview renders with empty state.
 - **Acceptance:** lint/tests green; preview proof of full add flow
   (gallery → detail → size toggle → config → add).
+
+### 8c. Phase 3 — as built (2026-08-07, v0.72)
+
+Both trend widgets plus the detail/preview step shipped as specified.
+
+- **The add flow is now gallery → detail → [config] → add**, for *every* type,
+  not just configurable ones. The detail step shows title, description, a live
+  preview and the size carousel; its button reads "Add widget" when there is
+  nothing to configure and "Next" when there is. Back walks
+  config → detail → gallery → close. The gear entry point still jumps straight
+  to config and shows ✕ (there is no earlier step to return to).
+- **The preview is the real thing.** `Widgets.renderPreview` builds a synthetic
+  instance (`id: '__preview__'`) and runs it through the same `_renderCard` the
+  dashboard uses, inside a real `.widgets-grid`, so a "small" preview occupies
+  exactly one of two columns at true width. `attachPreview` mounts the real
+  chart; the stage is `pointer-events: none` so it cannot be interacted with,
+  and `destroyPreview()` runs on every re-render and on close. Verified in the
+  browser that flipping the size dot destroys the old chart and mounts a new one.
+- **Size chosen in the carousel is the size that gets added** — previously add
+  always used `sizes[0]`.
+- **netWorth** delegates to `computeGraphBalances({interval:'monthly'})` (already
+  clamped to today) and takes the last 6 points; the badge comes from
+  `computeBalanceForecast().todayVariation`, which returns `null` when there is
+  no baseline — rendered as an em dash by the shared `_deltaBadge`, never 0% or NaN.
+- **savings** is net saved per month from the same `computeNetFlowData` buckets
+  `incomeExpense` uses, so the two can never disagree (a test pins this).
+  Per-bar colouring marks months that lost money. The percentage baseline is the
+  previous month's net; a zero baseline shows a dash rather than Infinity.
+- Small sizes render a sparkline: axes hidden, tooltip disabled (there is
+  nothing to read a value against), 54px tall.
+
+Files: `src/widgets.js` (2 registry entries, `_deltaBadge`, preview helpers),
+`src/components.js` (detail step, step routing, size dots),
+`src/styles/components.css`, `index.html` (components 24 / widgets 4),
+`tests/unit/homeWidgetsTrends.test.js` (26 tests), updated
+`tests/e2e/home_widgets.spec.js` (7 specs, incl. a size-carousel spec).
+
+Verified: 381 unit tests and 7 e2e green, lint 0 errors. In-browser: full
+gallery → detail → size flip → Next → config → add flow, preview chart mounted
+and released, savings agreeing with incomeExpense ($1,565.00), dark and light
+themes (line colour and grid confirmed switching), clean console in a fresh tab,
+no horizontal overflow.
+
+One test premise was wrong and was corrected rather than the code: an account
+opened in 2020 with a $1,000 opening balance *does* have a start-of-month
+baseline, so 0.0% is right — the dash case needed an account with no opening
+balance at all.
 
 ### Phase 4 — `upcoming` + `budgets`
 - `upcoming` per recipe §4.1 — unit tests MUST cover: transfer-leg dedupe
