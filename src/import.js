@@ -268,6 +268,109 @@ window.StackdImport = {
     });
   },
 
+  // v0.71 ── loans ──────────────────────────────────────────────────────────
+  // A loans CSV is recognised by its Config/Principal columns, so one "Import
+  // CSV" button can accept either file. `Config` (the exported JSON) wins when
+  // present; the flat columns are the fallback for a hand-written sheet.
+  isLoanRows(rows) {
+    if (!rows || !rows.length) return false;
+    const r = rows[0];
+    return Object.prototype.hasOwnProperty.call(r, 'config')
+      || (Object.prototype.hasOwnProperty.call(r, 'principal')
+        && Object.prototype.hasOwnProperty.call(r, 'firstpaymentdate'));
+  },
+
+  _num(raw) {
+    if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+    const n = parseFloat(String(raw).replace(',', '.'));
+    return isNaN(n) ? null : n;
+  },
+
+  buildLoans(rows) {
+    const stats = { importedCount: 0, skippedCount: 0, skipped: {} };
+    const skip = (reason) => {
+      stats.skippedCount++;
+      stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
+    };
+    const loans = [];
+
+    rows.forEach((row, i) => {
+      const name = String(row['name'] || '').trim() || `Loan ${i + 1}`;
+      let config = null;
+
+      const rawConfig = String(row['config'] || '').trim();
+      if (rawConfig) {
+        try { config = JSON.parse(rawConfig); } catch (e) { config = null; }
+      }
+
+      if (!config) {
+        // Rebuild from the flat columns
+        const principal = this._num(row['principal']);
+        const duration = this._num(row['duration']);
+        const firstPaymentDate = this._normalizeDate(row['firstpaymentdate']);
+        if (principal === null || duration === null || !firstPaymentDate) {
+          skip('missing principal, duration or first payment date');
+          return;
+        }
+        const unit = String(row['durationunit'] || '').trim().toLowerCase();
+        const amort = String(row['amortization'] || '').trim().toLowerCase();
+        const type = String(row['type'] || '').trim().toLowerCase();
+        config = {
+          type: ['mortgage', 'personal', 'installment'].indexOf(type) === -1 ? 'personal' : type,
+          principal: principal,
+          downPayment: this._num(row['downpayment']) || 0,
+          duration: Math.round(duration),
+          durationUnit: unit === 'months' ? 'months' : 'years',
+          annualRate: this._num(row['annualrate']) || 0,
+          firstPaymentDate: firstPaymentDate,
+          amortization: amort === 'italian' ? 'italian' : 'french'
+        };
+        if (this._parseBool(row['interestonlyfirst']) === true) {
+          config.firstInstallmentInterestOnly = true;
+          if (this._parseBool(row['interestonlyextends']) === false) {
+            config.interestOnlyExtendsDuration = false;
+          }
+        }
+      }
+
+      // The engine is the gatekeeper: anything it can't simulate would render
+      // as a broken card forever, so reject it at the door.
+      if (window.LoanEngine) {
+        try {
+          window.LoanEngine.simulate({ ...config, computeSavings: false });
+        } catch (e) {
+          skip(e && e.message ? e.message : 'invalid loan configuration');
+          return;
+        }
+      }
+
+      loans.push({
+        name: name,
+        kind: String(row['kind'] || '').trim().toLowerCase() === 'sim' ? 'sim' : 'active',
+        config: config
+      });
+      stats.importedCount++;
+    });
+
+    return { loans: loans, stats: stats };
+  },
+
+  importLoans(file, state, onComplete, onError) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const rows = this.parseCSV(e.target.result);
+        const { loans, stats } = this.buildLoans(rows);
+        loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
+        if (onComplete) onComplete(stats);
+      } catch (err) {
+        if (onError) onError(err);
+      }
+    };
+    reader.onerror = () => { if (onError) onError(new Error('Failed to read file')); };
+    reader.readAsText(file);
+  },
+
   importTransactions(file, state, onComplete, onError) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -280,6 +383,33 @@ window.StackdImport = {
         }
 
         if (onComplete) onComplete(stats);
+      } catch (err) {
+        if (onError) onError(err);
+      }
+    };
+    reader.onerror = () => { if (onError) onError(new Error("Failed to read file")); };
+    reader.readAsText(file);
+  },
+
+  // v0.71: one entry point for the single "Import CSV" button — reads the file
+  // once and routes on its shape, so a loans export doesn't get parsed as
+  // transactions (which would skip every row for a missing date/amount).
+  importCSV(file, state, onComplete, onError) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const rows = this.parseCSV(e.target.result);
+        if (this.isLoanRows(rows)) {
+          const { loans, stats } = this.buildLoans(rows);
+          loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
+          if (onComplete) onComplete({ ...stats, kind: 'loans' });
+          return;
+        }
+        const { transactions, stats } = this.buildTransactions(rows);
+        if (transactions.length > 0) {
+          window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions });
+        }
+        if (onComplete) onComplete({ ...stats, kind: 'transactions' });
       } catch (err) {
         if (onError) onError(err);
       }

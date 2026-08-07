@@ -3059,13 +3059,14 @@ Object.assign(window.Views, {
               <button class="btn btn-secondary" id="btn-export-accounts">Export Accounts</button>
               <button class="btn btn-secondary" id="btn-export-categories">Export Categories</button>
               <button class="btn btn-secondary" id="btn-export-transactions">Export Transactions</button>
+              <button class="btn btn-secondary" id="btn-export-loans">Export Loans</button>
             </div>
           </div>
           
           <div class="section-title">Data Import</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
-              Import historical records from other apps or bank CSV statements. File must include columns: <b>Date, Amount, Type, Account, Category, Note</b>.
+              Import historical records from other apps or bank CSV statements. File must include columns: <b>Date, Amount, Type, Account, Category, Note</b>. A loans export is recognised automatically.
             </p>
             <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
             <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">Import CSV</button>
@@ -3129,6 +3130,11 @@ Object.assign(window.Views, {
       const exportTxBtn = document.getElementById('btn-export-transactions');
       if (exportTxBtn) {
         exportTxBtn.addEventListener('click', () => window.StackdExport.exportTransactions(state));
+      }
+
+      const exportLoansBtn = document.getElementById('btn-export-loans');
+      if (exportLoansBtn) {
+        exportLoansBtn.addEventListener('click', () => window.StackdExport.exportLoans(state));
       }
 
       const toggleTimeInput = document.getElementById('toggle-enable-time-input');
@@ -3254,10 +3260,14 @@ Object.assign(window.Views, {
           btnImport.disabled = true;
           
           if (window.StackdImport) {
-            window.StackdImport.importTransactions(file, state, (result) => {
+            // v0.71: importCSV routes on the file's shape, so the same button
+            // accepts a transactions export or a loans export.
+            window.StackdImport.importCSV(file, state, (result) => {
               // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
               // rows) used to vanish silently — report them.
-              let message = `Success! Imported ${result.importedCount} transactions.\nCreated ${result.newAccounts} missing accounts, and ${result.newCategories} missing categories automatically.`;
+              let message = result.kind === 'loans'
+                ? `Success! Imported ${result.importedCount} loan(s).`
+                : `Success! Imported ${result.importedCount} transactions.\nCreated ${result.newAccounts} missing accounts, and ${result.newCategories} missing categories automatically.`;
               if (result.skippedCount) {
                 const reasons = Object.keys(result.skipped)
                   .map(r => `• ${result.skipped[r]} — ${r}`)

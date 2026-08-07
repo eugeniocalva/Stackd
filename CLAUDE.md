@@ -42,7 +42,7 @@ npx playwright test tests/e2e/debt_simulator.spec.js
 The app is **vanilla JS using global objects, not ES modules**. Each `src/*.js` file attaches a singleton to `window` and is loaded via ordered `<script defer>` tags in `index.html`. Dependency order matters and is fixed by that tag order:
 
 ```
-db.js → utils/scroll.js → utils/keyboard.js → store.js → components.js → views.js → router.js → export.js → import.js → main.js
+db.js → utils/scroll.js → utils/keyboard.js → loan-engine.js → store.js → components.js → views.js → router.js → export.js → import.js → main.js
 ```
 
 The core globals and their roles:
@@ -50,6 +50,7 @@ The core globals and their roles:
 | Global | File | Role |
 |---|---|---|
 | `window.StackdDB` | `db.js` | localStorage wrapper. Keys are namespaced with prefix `stackd_v1_`. `load()`, `save()`, `generateId()`. |
+| `window.LoanEngine` | `loan-engine.js` | Pure amortization engine (integer cents, `'YYYY-MM-DD'` string date math). `simulate(config)` → schedule + totals. Zero deps on other globals. |
 | `window.Store` | `store.js` | Single source of truth. Holds `state`, a pub/sub `subscribe()`/`emit()`, and one large `dispatch(action, payload)` switch. Persists each slice to `StackdDB` on mutation. |
 | `window.Router` | `router.js` | Hash-based SPA router. Maps `#route` → `viewId`, parses `?account=` query params, dispatches `SET_VIEW`, and drives scroll reset. |
 | `window.Components` | `components.js` | Reusable UI pieces (BottomNav, modals, FAB, etc.) — large file (~150KB). |
@@ -67,6 +68,20 @@ There is **no virtual DOM and no framework**. The render loop lives in `main.js`
 - Transactions have a `type` of `income`, `expense`, or `opening_balance`. Creating an account auto-inserts an `opening_balance` transaction (category `cat_balance`).
 - Default categories are seeded from the `DEFAULT_CATEGORIES` constant at the top of `store.js` (stable ids like `cat_salary`, `cat_groceries`).
 - All mutations go through `Store.dispatch(ACTION, payload)`. To add behavior, add a `case` to the dispatch switch, mutate `this.state`, call `StackdDB.save(...)` for the affected slice, set `changed = true`, and let `emit()` re-render. The store also handles **cross-tab sync** via storage events.
+
+### Loans / debt (v0.71 rebuild)
+
+The whole feature was rebuilt in five phases; **`docs/debt-rebuild-plan.md` is the
+reference — read it before touching loan code.** In short: a loan record stores a
+**LoanEngine config** as its single source of truth (`{id, name, kind: 'sim'|'active',
+config, linkedSeriesId, createdAt, updatedAt}` under `stackd_v1_loans`, with an
+idempotent boot migration for pre-v0.71 records). Every figure — payment, totals,
+schedule, progress — is derived by `LoanEngine.simulate`, never stored. Routes:
+`#debt` (hub), `#debt-sim` (simulator form), `#debt-results` (summary + schedule).
+`Store.getLoanProgress` gives schedule-derived paid/remaining/next-payment;
+`Store.getLoanLinkedTransactions` reads through to the linked recurring series so a
+deleted series un-tracks the loan. Loans are included in CSV export/import via a
+JSON `Config` column.
 
 ### Recurring transactions (v0.67 semantics)
 

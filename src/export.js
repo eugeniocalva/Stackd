@@ -46,6 +46,43 @@ window.StackdExport = {
     this._download('stackd_categories.csv', [headers, ...rows].join('\n'));
   },
 
+  // v0.71: loans were the only slice a backup couldn't carry. The flat columns
+  // are there so the file is readable in a spreadsheet; `Config` holds the whole
+  // LoanEngine config as JSON and is what the importer actually trusts, because
+  // rate changes / early repayments / extra costs are nested lists that cannot
+  // be flattened into fixed columns.
+  LOAN_HEADERS: ['Name', 'Kind', 'Type', 'Principal', 'DownPayment', 'Duration',
+    'DurationUnit', 'AnnualRate', 'FirstPaymentDate', 'Amortization',
+    'InterestOnlyFirst', 'InterestOnlyExtends', 'RateChanges', 'EarlyRepayments',
+    'ExtraCosts', 'Config'],
+
+  exportLoans(state, options = {}) {
+    const delimiter = options.delimiter || ',';
+    const headers = this._toRow(this.LOAN_HEADERS, delimiter);
+    const rows = (state.loans || []).map(loan => {
+      const c = loan.config || {};
+      return this._toRow([
+        loan.name,
+        loan.kind === 'sim' ? 'sim' : 'active',
+        c.type || '',
+        c.principal === undefined ? '' : c.principal,
+        c.downPayment || 0,
+        c.duration === undefined ? '' : c.duration,
+        c.durationUnit || '',
+        c.annualRate === undefined ? '' : c.annualRate,
+        c.firstPaymentDate || '',
+        c.amortization || '',
+        c.firstInstallmentInterestOnly ? 'true' : 'false',
+        c.interestOnlyExtendsDuration === false ? 'false' : 'true',
+        (c.rateChanges || []).length,
+        (c.earlyRepayments || []).length,
+        (c.additionalExpenses || []).length,
+        JSON.stringify(c)
+      ], delimiter);
+    });
+    this._download('stackd_loans.csv', [headers, ...rows].join('\n'));
+  },
+
   // v0.68: the CSV is a backup/restore format, so it now carries every field the
   // importer needs to rebuild a transaction faithfully — time, tags, isPaid, the
   // transfer pairing ref and the full recurrence descriptor. Dates default to ISO

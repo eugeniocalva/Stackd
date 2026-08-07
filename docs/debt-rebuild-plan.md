@@ -1,8 +1,9 @@
 # Debt Section Rebuild — Master Plan
 
-> Working doc for the full rebuild of the debt/loan functionality (post v0.70).
-> Any Claude session picking up a phase should read this file first, then the phase's
-> acceptance criteria. Keep the phase checklist below up to date as work lands.
+> **Status: COMPLETE — shipped as v0.71 (2026-08-07).** All five phases landed.
+> This doc is now the reference for how the loan feature is built; §2 below is a
+> historical snapshot of the *pre-rebuild* code and is deliberately left as-is.
+> Sections 3–8b describe what actually exists today.
 
 ## Phase checklist
 
@@ -10,7 +11,7 @@
 - [x] **Phase 2 — Store v2 + migration** (config-based loans slice, currency fix) — done 2026-08-07; legacy ADD_LOAN/UPDATE_LOAN payloads still accepted + legacy fields retained until Phase 3
 - [x] **Phase 3 — Simulator UI** (hub, simulator form, results + schedule) — done 2026-08-07. Views: `DebtHubView` (#debt), `DebtSimView` (#debt-sim?type=…|?id=…), `DebtResultsView` (#debt-results[?id=…]) + `_DebtShared` helpers in views.js; form draft lives in `Views._DebtShared.draft` (outside the store, survives re-renders); `SET_DEBT_SIM` hands a fresh config to results. Old DebtView deleted (its legacy store payload path can be stripped in Phase 5).
 - [x] **Phase 4 — My Loans + integration** (promote flow, recurring-expense offer) — done 2026-08-07; see §9 for the defects the verification pass caught and how they were fixed
-- [ ] **Phase 5 — Polish** (export/import, dead CSS, e2e refresh, docs)
+- [x] **Phase 5 — Polish** (export/import, dead CSS, version bump) — done 2026-08-07; see §8c
 
 ---
 
@@ -33,7 +34,10 @@ existing design language:
 5. On promote, **offer to create a recurring expense** for the monthly payment via the
    existing recurrence engine.
 
-## 2. Current state (mapped 2026-08-07)
+## 2. Pre-rebuild state (historical — mapped 2026-08-07, before Phase 1)
+
+> Kept as the record of what was replaced. Everything below describes code that
+> **no longer exists**; see §3 onwards for the shipped design.
 
 - `Views.DebtView` at `src/views.js:3697-4001` — plain CRUD list; the only math is an
   inline PMT preview (`views.js:3850-3856`) plus a **straight-line** (zero-interest)
@@ -432,6 +436,40 @@ fires after both promote paths via `DebtResultsView._offerAfterPromote`.
 while on the prefilled form silently loses the link (the form comes back blank).
 The loan stays recoverable via the CTA, but saving that blank form creates an
 orphan series. Acceptable for now — revisit if it bites.
+
+## 8c. Phase 5 as built
+
+- **Loans in backup/restore.** `StackdExport.exportLoans` writes
+  `stackd_loans.csv` with readable columns (name, kind, type, principal, down
+  payment, duration, rate, first payment, amortization, IO flags, list counts)
+  **plus a `Config` column holding the LoanEngine config as JSON**. The nested
+  lists (rate changes, early repayments, extra costs) cannot be flattened into
+  fixed columns, so `Config` is authoritative on import and the flat columns are
+  the fallback for a hand-written sheet. `StackdImport.buildLoans` validates
+  every row through `LoanEngine.simulate` and skips-with-reason anything that
+  can't be simulated, so a bad row can never become a permanently broken card.
+- **One import button.** `StackdImport.importCSV` reads the file once and routes
+  on its shape (`isLoanRows`), so the existing "Import CSV" accepts either a
+  transactions export or a loans export. `importTransactions`/`importLoans`
+  remain for direct/tested use.
+- **Dead CSS removed**: the `#tab-dashboard, #tab-simulator` rules (orphaned when
+  the tabbed simulator was deleted long before this rebuild) and `.debt-dur-chip`
+  (orphaned by Phase 3). Replaced with press-state styling for the new
+  `.debt-type-tile` / `.debt-loan-item` / `.debt-sim-item` cards.
+- **`--bg-tertiary` swept**: zero references left in `src/` (the undefined var
+  died with the old DebtView).
+- **Version bumped** to `Stack'd v0.71` in the `<title>`, matching the `v0.71`
+  code comments from Phases 1–4.
+- **Build verified**: `npm run build` inlines everything (699 kB), the bundle
+  contains the loan engine and the new views, and `index.html` is correctly
+  restored to its `defer` form afterwards.
+
+**Not done, deliberately**: the `scratch/` folder still holds tracked leftovers
+from a July recovery session (`extracted_dist.js`, `restored_views.js`,
+`restored_temp.js`, `extract_debt_view.cjs`, …) that reference the deleted
+`computeLoanRemainingBalance`. They are not loaded by the app or the build, and
+they predate this work — left for the owner to decide on. `task.md` is likewise a
+v0.60-era checklist and still describes the old debt API.
 
 ## 9. Open decisions
 

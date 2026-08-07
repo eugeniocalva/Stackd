@@ -1548,29 +1548,17 @@ a:focus-visible,
   100% { opacity: 1; transform: scale(1); filter: blur(0px); }
 }
 
-/* Debt Simulator UI Elements */
-.debt-dur-chip {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+/* v0.71 Loan hub — type tiles and tappable loan/simulation cards */
+.debt-type-tile,
+.debt-loan-item,
+.debt-sim-item {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.debt-dur-chip:hover {
-  transform: translateY(-1px);
-  filter: brightness(0.95);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-.debt-dur-chip:active {
-  transform: translateY(0) scale(0.97);
-}
-
-/* Tabs */
-#tab-dashboard, #tab-simulator {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-#tab-dashboard:hover, #tab-simulator:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-#tab-dashboard:active, #tab-simulator:active {
-  transform: translateY(0) scale(0.98);
+.debt-type-tile:active,
+.debt-loan-item:active,
+.debt-sim-item:active {
+  transform: scale(0.98);
 }
 
 /* Visually Hidden Utility for WCAG 2.2 Screen Reader Compliance */
