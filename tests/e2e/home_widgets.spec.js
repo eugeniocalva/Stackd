@@ -10,6 +10,9 @@ test.describe('Home dashboard widgets', () => {
     await page.evaluate(() => {
       localStorage.clear();
       localStorage.setItem('stackd_v1_setup_done', '1');
+      // Deliberately-empty widget area: an absent key fires the v0.72 Phase 5
+      // upgrade seed (its own spec below), which would shift every count here.
+      localStorage.setItem('stackd_v1_homeWidgets', '[]');
     });
     // A real navigation barrier: #widgets-section is rendered by the app, but
     // page.reload() guarantees we are not asserting against the old document.
@@ -44,6 +47,37 @@ test.describe('Home dashboard widgets', () => {
     await expect(page.locator('#router-view')).not.toContainText('Financial Milestone');
     await expect(page.locator('#router-view')).not.toContainText('Coming Soon');
     await expect(page.locator('#widgets-section')).toBeVisible();
+  });
+
+  test('recent activities is gone and a fresh install is seeded with the latest widget', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem('stackd_v1_setup_done', '1');
+      // NO homeWidgets key: this is the upgrade / fresh-install path.
+    });
+    await page.reload();
+    await page.waitForSelector('#widgets-section');
+
+    // The section is gone from the dashboard...
+    await expect(page.locator('#router-view')).not.toContainText('Recent Activities');
+    // ...and its replacement was seeded: one wide latest widget.
+    await expect(page.locator('#widgets-grid .widget-card')).toHaveCount(1);
+    await expect(page.locator('#widgets-grid .widget-card--large')).toContainText('Latest transactions');
+
+    // Feature parity: tapping a row jumps to that transaction in History.
+    await page.evaluate(() => {
+      const S = window.Store;
+      S.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 100, openingDate: '2020-01-01' });
+      const pad = (n) => String(n).padStart(2, '0');
+      const d = new Date();
+      S.dispatch('ADD_TRANSACTION', {
+        accountId: S.getState().accounts[0].id, categoryId: 'cat_groceries',
+        type: 'expense', amount: 42, date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      });
+    });
+    await page.locator('#widgets-grid .widget-row[data-tx-id]').first().click();
+    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
   });
 
   test('adds a no-config widget via the detail preview', async ({ page }) => {

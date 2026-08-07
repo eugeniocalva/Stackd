@@ -31,13 +31,19 @@ const dateOffset = (days) => {
 
 let uuidCounter = 0;
 
-const bootStore = () => {
+const bootStore = (opts = {}) => {
   uuidCounter = 0;
   global.window = {
     crypto: { randomUUID: () => `uuid-${++uuidCounter}` },
     localStorage: makeLocalStorage()
   };
   global.localStorage = global.window.localStorage;
+  // Deliberately-empty widget area by default: an ABSENT key triggers the
+  // v0.72 Phase 5 upgrade seed (tested explicitly below), which would shift
+  // every count in this file by one.
+  if (!opts.freshInstall) {
+    global.window.localStorage.setItem('stackd_v1_homeWidgets', '[]');
+  }
 
   // Same order as index.html; widgets.js sits after store.js.
   executeFile('db.js');
@@ -53,9 +59,50 @@ const stored = () => JSON.parse(global.window.localStorage.getItem('stackd_v1_ho
 describe('Home widgets — store slice', () => {
   beforeEach(bootStore);
 
-  it('starts empty and persists nothing until a widget is added', () => {
+  it('stays empty when the user deliberately emptied the widget area', () => {
+    // Key present as [] — the seed must NOT fire.
     expect(Store().getState().homeWidgets).toEqual([]);
-    expect(global.window.localStorage.getItem('stackd_v1_homeWidgets')).toBeNull();
+    expect(stored()).toEqual([]);
+  });
+
+  describe('v0.72 Phase 5 upgrade seed', () => {
+    it('seeds a large latest widget when the key has never existed', () => {
+      bootStore({ freshInstall: true });
+      const widgets = Store().getState().homeWidgets;
+      expect(widgets).toHaveLength(1);
+      expect(widgets[0]).toMatchObject({ type: 'latest', size: 'large' });
+      // Persisted immediately — the migration is one-shot.
+      expect(stored()).toHaveLength(1);
+    });
+
+    it('leaves an existing configuration untouched', () => {
+      Store().dispatch('ADD_HOME_WIDGET', { type: 'categories' });
+      const before = stored();
+
+      // Re-boot against the SAME storage object, as a reload would.
+      const carried = global.window.localStorage;
+      global.window = {
+        crypto: { randomUUID: () => `uuid-${++uuidCounter}` },
+        localStorage: carried
+      };
+      global.localStorage = carried;
+      executeFile('db.js');
+      executeFile('loan-engine.js');
+      executeFile('store.js');
+      executeFile('widgets.js');
+      global.window.Store.init();
+
+      expect(JSON.parse(carried.getItem('stackd_v1_homeWidgets'))).toEqual(before);
+      expect(global.window.Store.getState().homeWidgets).toEqual(before);
+    });
+
+    it('re-seeds after RESET_APP (reset = fresh-install experience)', () => {
+      Store().dispatch('ADD_HOME_WIDGET', { type: 'categories' });
+      Store().dispatch('RESET_APP');
+      expect(Store().getState().homeWidgets).toHaveLength(1);
+      expect(Store().getState().homeWidgets[0].type).toBe('latest');
+      expect(stored()[0].type).toBe('latest');
+    });
   });
 
   it('adds a widget with defaults and persists it', () => {
@@ -219,11 +266,15 @@ describe('Home widgets — store slice', () => {
     });
   });
 
-  it('wipes widgets on RESET_APP', () => {
-    Store().dispatch('ADD_HOME_WIDGET', { type: 'latest' });
+  it('drops the user configuration on RESET_APP, back to the fresh-install seed', () => {
+    Store().dispatch('ADD_HOME_WIDGET', { type: 'categories' });
+    Store().dispatch('ADD_HOME_WIDGET', { type: 'netWorth' });
     Store().dispatch('RESET_APP');
-    expect(Store().getState().homeWidgets).toEqual([]);
-    expect(stored()).toEqual([]);
+    // v0.72 Phase 5: reset = fresh install = the seeded latest widget, since
+    // Recent Activities no longer exists outside the widget area.
+    expect(Store().getState().homeWidgets).toHaveLength(1);
+    expect(Store().getState().homeWidgets[0].type).toBe('latest');
+    expect(stored()).toHaveLength(1);
   });
 });
 

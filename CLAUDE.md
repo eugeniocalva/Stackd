@@ -86,12 +86,17 @@ JSON `Config` column.
 
 ### Home dashboard widgets (v0.72)
 
-The dashboard's old static "Financial Milestone" card is gone, replaced by a
-user-configurable widget area. **`docs/home-widgets-plan.md` is the reference —
-read it before touching widget code.** A widget instance is
+The dashboard's old static "Financial Milestone" card AND its Recent Activities
+section are gone, replaced by a user-configurable widget area (8 widget types).
+**`docs/home-widgets-plan.md` is the reference — read its §8a–§8e "as built"
+subsections before touching widget code.** A widget instance is
 `{id, type, size: 'small'|'large', config, createdAt}` under `stackd_v1_homeWidgets`;
 array order is display order. All rendering is driven by `window.Widgets.registry[type]`,
 so adding a widget means adding a registry entry, not editing `DashboardView`.
+An ABSENT `stackd_v1_homeWidgets` key (fresh install / pre-widget upgrade) seeds
+one large `latest` widget on boot — the successor of Recent Activities; a
+present-but-empty `[]` is a deliberate user choice and is respected. Widget
+test boots pre-seed `'[]'` to opt out of the seed.
 `Widgets._renderCard`/`attachSection` wrap each widget's `render`/`attach` in
 try/catch and render a placeholder for unregistered types — keep that containment.
 Edit mode (`state.widgetEditMode`) is transient and cleared by `SET_VIEW`.

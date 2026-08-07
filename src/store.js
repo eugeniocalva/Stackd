@@ -144,7 +144,17 @@ window.Store = {
     this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
-    this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); // v0.72
+    // v0.72 Phase 5: Recent Activities left the dashboard when the widget area
+    // shipped, so a user who has NEVER configured widgets (key absent — distinct
+    // from a deliberately-emptied []) gets a Latest-transactions widget seeded
+    // once, keeping recent movement visible after the upgrade. Idempotent: the
+    // seed itself persists the key, so this branch can never run twice.
+    if (localStorage.getItem(window.StackdDB.PREFIX + 'homeWidgets') === null) {
+      this.state.homeWidgets = this._defaultHomeWidgets();
+      window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+    } else {
+      this.state.homeWidgets = window.StackdDB.load('homeWidgets', []);
+    }
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -806,6 +816,18 @@ window.Store = {
         break;
     }
     return { type, value: fmt(d) };
+  },
+
+  // v0.72 Phase 5: the widget set a fresh (or fully reset) install starts with.
+  // One 'latest' widget — the successor of the old Recent Activities section.
+  _defaultHomeWidgets() {
+    return [{
+      id: window.StackdDB.generateId(),
+      type: 'latest',
+      size: 'large',
+      config: {},
+      createdAt: new Date().toISOString()
+    }];
   },
 
   getState() { return this.state; },
@@ -1731,11 +1753,13 @@ window.Store = {
         window.StackdDB.save('transactions', []);
         window.StackdDB.save('budgets', []);
         window.StackdDB.save('loans', []);
-        window.StackdDB.save('homeWidgets', []); // v0.72
+        // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
+        // comes back (Recent Activities no longer exists outside the widgets).
+        this.state.homeWidgets = this._defaultHomeWidgets();
+        window.StackdDB.save('homeWidgets', this.state.homeWidgets);
         // Clear the first-launch flag so the region setup modal shows again
         localStorage.removeItem('stackd_v1_setup_done');
         this.state.loans = [];
-        this.state.homeWidgets = []; // v0.72
         // App will force reload by the caller, so we don't even need to emit strictly
         break;
       }

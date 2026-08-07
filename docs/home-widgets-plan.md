@@ -1,9 +1,10 @@
 # Home Dashboard Widgets — Master Plan
 
-> **Status: PLANNED — targeted at v0.72.** Written 2026-08-07 from a 6-agent codebase recon.
-> §2 (current state) and §7 (integration conventions) are descriptive; §4–§6 are the
-> normative spec; §8 is the phase breakdown we implement against; §9 lists decisions
-> with recommendations (confirmed choices get folded back into the spec).
+> **Status: COMPLETE — shipped as v0.72 (2026-08-07, all 5 phases).**
+> §2 describes the PRE-widget dashboard (historical). §4–§6 are the spec as
+> designed; the per-phase "as built" subsections (§8a–§8e) record what actually
+> shipped, including deviations — read those first when touching widget code.
+> Line numbers cited in §2–§6 predate later edits; trust `src/`, not the numbers.
 
 ## Phase checklist
 
@@ -11,7 +12,7 @@
 - [x] **Phase 2 — Chart widgets** (Income vs Expenses, Categories donut + config step) — done 2026-08-07; see §8b
 - [x] **Phase 3 — Trend widgets + add-flow polish** (Net worth, Personal savings, detail/preview step with size carousel) — done 2026-08-07; see §8c
 - [x] **Phase 4 — Upcoming transactions + Budget goals widgets** — done 2026-08-07; see §8d
-- [ ] **Phase 5 — 50/30/20 budget widget + final polish**
+- [x] **Phase 5 — 50/30/20 budget widget + final polish** (+ Recent Activities removal & upgrade seed, added to scope by the user) — done 2026-08-07; see §8e
 
 ---
 
@@ -499,6 +500,49 @@ themes; clean console; no horizontal overflow.
   (new `widgets.js` global) + memory notes.
 - **Acceptance:** lint/tests/e2e green; full-dashboard preview proof with 6+
   widgets mixed sizes, both themes; doc updated.
+
+### 8e. Phase 5 — as built (2026-08-07, v0.72)
+
+The 50/30/20 widget, plus a scope addition from the user: **Recent Activities
+left the dashboard** — it duplicated the `latest` widget.
+
+- **`fiftyThirtyTwenty`** (large-only; the detail step correctly shows no size
+  carousel for single-size types). Per §5.3: Needs/Wants are caps sized off the
+  income basis (planned if set, else this month's actual, month-to-date);
+  Savings is a floor whose bar goes green at target, amber under, red negative.
+  **Savings actual is always actual income − expenses** — real money left —
+  even when targets are sized off planned income. An incomplete split
+  (≠ 100%) falls back to 50/30/20 with a visible "fix the split" note, and the
+  config panel shows a live sum hint. `needsCategoryIds` is the one
+  multi-select where **empty ≠ all** (it means "nothing assigned to Needs";
+  everything counts as Wants), so its chips deliberately have no All option.
+  The number inputs update the draft **without rerendering** — a rerender per
+  keystroke would replace the input and drop focus.
+- **Recent Activities removed** from `DashboardView` (render block, injection,
+  and the `.recent-tx-row` handler). Feature parity kept: `latest` widget rows
+  now carry `data-tx-id` and tapping one sets `sessionStorage.scrollToTx`
+  before navigating, exactly as the old rows did.
+- **Upgrade seed**: on boot, an **absent** `stackd_v1_homeWidgets` key (fresh
+  install or pre-widget upgrade — distinct from a deliberately-emptied `[]`)
+  seeds one large `latest` widget via `Store._defaultHomeWidgets()`, so recent
+  movement stays visible. One-shot by construction: the seed persists the key.
+  `RESET_APP` now also seeds the default (reset = fresh-install experience).
+  Every widget test boot pre-seeds `'[]'` to opt out; the seed has dedicated
+  unit tests and an e2e spec.
+- Polish decision: headline numbers rely on CSS (`overflow-wrap`, tabular
+  figures) rather than `fitNumericFontSize` — retrofitting the fitter into four
+  shipped renderers wasn't worth the churn for values under ~$1M.
+
+Files: `src/widgets.js` (fiftyThirtyTwenty + latest row-jump),
+`src/views.js` (Recent Activities removal), `src/store.js`
+(`_defaultHomeWidgets`, seed-on-boot, RESET_APP), `index.html`
+(store 25 / widgets 6 / views 34), `tests/unit/homeWidgetsFifty.test.js`
+(17 tests), migration tests in `homeWidgets.test.js`, e2e seed spec.
+
+Verified: 430 unit tests, 19 e2e, lint 0 errors. In-browser: upgrade path
+(key removed → reload → seeded card with rows, Recent Activities gone), the
+50/30/20 card reconciling to the cent against seeded data, the config panel's
+live split validation, both themes, clean console, no horizontal overflow.
 
 ## 9. Open decisions (recommendation first — confirm or override)
 

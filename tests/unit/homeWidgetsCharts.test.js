@@ -69,6 +69,9 @@ const boot = () => {
     document: { documentElement: { setAttribute: () => {}, classList: { add: () => {}, remove: () => {} } } }
   };
   global.localStorage = global.window.localStorage;
+  // Deliberately-empty widget area: an absent key fires the v0.72 Phase 5
+  // upgrade seed (covered in homeWidgets.test.js), shifting instance indices.
+  global.window.localStorage.setItem('stackd_v1_homeWidgets', '[]');
 
   executeFile('db.js');
   executeFile('loan-engine.js');

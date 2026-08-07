@@ -335,7 +335,6 @@ window.Views = {
       `;
 
       // Calculate MoM % variations (as of today and as of EOM)
-      const now = new Date();
       const forecast = window.Store.computeBalanceForecast(selectedAccountIds);
       
       const _fmtVariation = (absVal, pct) => {
@@ -357,25 +356,8 @@ window.Views = {
       const todayVar = _fmtVariation(forecast.todayAbsDiff, forecast.todayVariation);
       const eomVar = _fmtVariation(forecast.eomAbsDiff, forecast.eomVariation);
       
-      // Recent Activities
-      const todayStr = now.toISOString().split('T')[0];
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-      
-      const recentTxs = state.transactions.filter(t => t.date === todayStr || t.date === yesterdayStr).slice(0, 5);
-      
-      let recentHtml = '';
-      if (recentTxs.length === 0) {
-        recentHtml = '<p class="text-secondary text-center" style="padding: 10px;">No recent activities.</p>';
-      } else {
-        recentHtml = '<div class="list-group">' + recentTxs.map(tx => {
-          const cat = state.categories.find(c => c.id === tx.categoryId);
-          const acc = state.accounts.find(a => a.id === tx.accountId);
-          const txItemStr = window.Components.TransactionItem.render(tx, cat, acc);
-          return txItemStr.replace('<div class="list-item', `<div class="list-item recent-tx-row" data-date="${tx.date}" data-id="${tx.id}" tabindex="0" role="button" aria-label="Edit transaction ${tx.amount}"`);
-        }).join('') + '</div>';
-      }
+      // v0.72 Phase 5: the Recent Activities section moved into the widget area
+      // (the 'latest' widget, seeded on upgrade for never-configured users).
 
       const hasCustomFilters = selectedInterval !== 'monthly' ||
         (savedFilters.accounts && savedFilters.accounts.length > 0 && savedFilters.accounts.length < state.accounts.length) ||
@@ -425,11 +407,6 @@ window.Views = {
             ${walletsHtml}
           </div>
 
-          <div class="section-title" style="margin-top: var(--space-8); margin-bottom: var(--space-2);">Recent Activities</div>
-          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-2) var(--space-4);">
-            ${recentHtml}
-          </div>
-
           ${window.Widgets ? window.Widgets.renderSection(state) : ''}
         </div>
       `;
@@ -439,15 +416,6 @@ window.Views = {
 
       // v0.72: home widget area (replaced the static Financial Milestone card)
       if (window.Widgets) window.Widgets.attachSection(container, state);
-
-      // Recent Activity Click -> Jump to History & Scroll
-      container.querySelectorAll('.recent-tx-row').forEach(row => {
-        row.addEventListener('click', () => {
-          const txId = row.dataset.id;
-          sessionStorage.setItem('scrollToTx', txId);
-          window.Router.navigate('#transactions');
-        });
-      });
 
       // Wallet Card Interactions
       container.querySelectorAll('.wallet-card').forEach(card => {

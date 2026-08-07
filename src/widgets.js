@@ -221,7 +221,7 @@ window.Widgets = {
           const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
           return `
-            <div class="widget-row">
+            <div class="widget-row" data-tx-id="${W._esc(tx.id)}">
               <div class="widget-row-icon"><i data-lucide="${W._esc(cat ? cat.icon : 'receipt')}"></i></div>
               <div class="widget-row-main">
                 <span class="widget-row-title">${W._esc(title)}</span>
@@ -233,8 +233,12 @@ window.Widgets = {
       },
 
       attach(instance, card) {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (e) => {
           if (window.Store.getState().widgetEditMode) return;
+          // v0.72 Phase 5: feature parity with the removed Recent Activities
+          // section — tapping a row jumps to that transaction in History.
+          const row = e.target.closest('.widget-row[data-tx-id]');
+          if (row) sessionStorage.setItem('scrollToTx', row.dataset.txId);
           window.Router.navigate('#transactions');
         });
       }
@@ -1095,6 +1099,195 @@ window.Widgets = {
 
       attachConfig(root, ctx) {
         window.Widgets.attachSharedConfig(root, ctx);
+      }
+    },
+
+    fiftyThirtyTwenty: {
+      title: '50/30/20 budget',
+      description: 'Split your income into needs, wants and savings — and see how this month measures up.',
+      icon: 'scale',
+      sizes: ['large'],
+      hasConfig: true,
+      // needsCategoryIds semantics differ from every other multi-select:
+      // empty means "nothing assigned to Needs" (all spending counts as Wants),
+      // NOT "all" — so its config chips deliberately have no All option.
+      defaultConfig: { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20, needsCategoryIds: [] },
+
+      _pcts(cfg) {
+        const ps = [cfg.pctNeeds, cfg.pctWants, cfg.pctSavings];
+        const valid = ps.every(p => typeof p === 'number' && isFinite(p) && p >= 0)
+          && Math.round(ps[0] + ps[1] + ps[2]) === 100;
+        // An incomplete split renders nonsense targets; fall back to the
+        // classic rule rather than guessing what the user meant.
+        return valid
+          ? { needs: cfg.pctNeeds, wants: cfg.pctWants, savings: cfg.pctSavings, fallback: false }
+          : { needs: 50, wants: 30, savings: 20, fallback: true };
+      },
+
+      _data(instance, state) {
+        const W = window.Widgets;
+        const cfg = W._cfg(instance);
+        const pcts = this._pcts(cfg);
+
+        // Month-to-date, like categories/incomeExpense — future materialised
+        // occurrences are not money already spent.
+        const filters = W._monthToDateFilters({});
+        const summary = window.Store.computeAnalyticalSummary(filters);
+        const dist = window.Store.computeCategoryDistribution(filters, 'expense');
+
+        const needsSet = new Set(cfg.needsCategoryIds || []);
+        const needsSpent = dist.filter(d => needsSet.has(d.id)).reduce((s, d) => s + d.amount, 0);
+        const wantsSpent = summary.expense - needsSpent;
+
+        const usingPlanned = typeof cfg.plannedIncome === 'number' && isFinite(cfg.plannedIncome) && cfg.plannedIncome > 0;
+        const base = usingPlanned ? cfg.plannedIncome : summary.income;
+
+        return {
+          base,
+          usingPlanned,
+          pcts,
+          needsSpent,
+          wantsSpent,
+          // Actual savings is real money left over — always actual income
+          // minus expenses, even when targets are sized off planned income.
+          savingsActual: summary.income - summary.expense,
+          targets: {
+            needs: base * pcts.needs / 100,
+            wants: base * pcts.wants / 100,
+            savings: base * pcts.savings / 100
+          },
+          hasNeedsSplit: needsSet.size > 0
+        };
+      },
+
+      render(instance, state) {
+        const W = window.Widgets;
+        const d = this._data(instance, state);
+        if (d.base <= 0) {
+          return W._emptyState('Add income this month — or set a planned income in the widget settings');
+        }
+
+        const fmt = (v) => window.Store.formatCurrency(v);
+
+        // Needs/Wants are caps (over = red); Savings is a floor (under = amber,
+        // negative = red). Fill widths cap at 100 like the budget bars.
+        const capBar = (label, pct, spent, target) => {
+          const width = target > 0 ? Math.min((spent / target) * 100, 100) : 0;
+          const isOver = spent > target;
+          return `
+            <div class="widget-minibar">
+              <div class="widget-minibar-head">
+                <span class="widget-minibar-label">${W._esc(label)} ${pct}%</span>
+                <span class="widget-minibar-value" style="color: ${isOver ? 'var(--color-expense)' : 'var(--text-secondary)'};">${W._esc(fmt(spent))} / ${W._esc(fmt(target))}</span>
+              </div>
+              <div class="widget-minibar-track">
+                <div class="widget-minibar-fill" style="width: ${width}%; color: ${isOver ? 'var(--color-expense)' : 'var(--color-primary)'};"></div>
+              </div>
+            </div>`;
+        };
+
+        const savingsWidth = d.targets.savings > 0
+          ? Math.max(0, Math.min((d.savingsActual / d.targets.savings) * 100, 100))
+          : 0;
+        const savingsColor = d.savingsActual < 0 ? 'var(--color-expense)'
+          : d.savingsActual >= d.targets.savings ? 'var(--color-income)' : '#f59e0b';
+        const savingsBar = `
+          <div class="widget-minibar">
+            <div class="widget-minibar-head">
+              <span class="widget-minibar-label">Savings ${d.pcts.savings}%</span>
+              <span class="widget-minibar-value" style="color: ${savingsColor};">${W._esc(fmt(d.savingsActual))} / ${W._esc(fmt(d.targets.savings))}</span>
+            </div>
+            <div class="widget-minibar-track">
+              <div class="widget-minibar-fill" style="width: ${savingsWidth}%; color: ${savingsColor};"></div>
+            </div>
+          </div>`;
+
+        return `
+          <div class="widget-stat">
+            <span class="widget-stat-value ${d.savingsActual >= 0 ? 'text-income' : 'text-expense'}">${W._esc(fmt(d.savingsActual))}</span>
+            <span class="widget-stat-label">saved so far · of ${W._esc(fmt(d.base))} ${d.usingPlanned ? 'planned' : 'actual'} income${d.pcts.fallback ? ' · using 50/30/20 (fix the split)' : ''}</span>
+          </div>
+          <div class="widget-minibars">
+            ${capBar('Needs', d.pcts.needs, d.needsSpent, d.targets.needs)}
+            ${capBar('Wants', d.pcts.wants, d.wantsSpent, d.targets.wants)}
+            ${savingsBar}
+          </div>
+          ${d.hasNeedsSplit ? '' : `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">Tip: pick your Needs categories in the widget settings</span>`}`;
+      },
+
+      attach(instance, card) {
+        card.addEventListener('click', () => {
+          if (window.Store.getState().widgetEditMode) return;
+          window.Router.navigate('#analytics');
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        const expenseCats = (state.categories || [])
+          .filter(c => c.id !== 'cat_balance' && (c.typeHint === 'expense' || c.typeHint === 'both'));
+        const sum = (config.pctNeeds || 0) + (config.pctWants || 0) + (config.pctSavings || 0);
+
+        const pctInput = (key, label, value) => `
+          <div>
+            <label class="widget-config-label" for="fifty-${key}" style="display: block;">${label}</label>
+            <input type="number" inputmode="numeric" min="0" max="100" step="1" class="form-control"
+                   id="fifty-${key}" data-fifty-pct="${key}" value="${W._esc(value)}">
+          </div>`;
+
+        // No All chip: empty = "no Needs assigned", not "all categories".
+        const needsChips = `<div class="multi-select-row">
+          ${expenseCats.map(c => {
+            const on = (config.needsCategoryIds || []).includes(c.id);
+            return `<button type="button" class="multi-select-chip ${on ? 'active' : ''}"
+                    data-config-multi="needsCategoryIds" data-config-value="${W._esc(c.id)}"
+                    aria-pressed="${on}">${W._esc(c.name)}</button>`;
+          }).join('')}
+        </div>`;
+
+        return [
+          W._configSection('Planned monthly income', `
+            <input type="number" inputmode="decimal" min="0" step="0.01" class="form-control"
+                   data-fifty-income value="${config.plannedIncome == null ? '' : W._esc(config.plannedIncome)}"
+                   placeholder="Auto — this month's actual income" aria-label="Planned monthly income">`),
+          W._configSection('Split', `
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2);">
+              ${pctInput('pctNeeds', 'Needs %', config.pctNeeds)}
+              ${pctInput('pctWants', 'Wants %', config.pctWants)}
+              ${pctInput('pctSavings', 'Savings %', config.pctSavings)}
+            </div>
+            <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${sum === 100 ? 'display: none;' : ''}">Currently ${sum}% — the split must total 100%</p>`),
+          W._configSection('Needs categories (the rest counts as Wants)', needsChips)
+        ].join('');
+      },
+
+      attachConfig(root, ctx) {
+        // Chips share the standard wiring; the number inputs update the draft
+        // WITHOUT rerendering — a rerender on every keystroke would replace the
+        // input mid-typing and drop focus.
+        window.Widgets.attachSharedConfig(root, ctx);
+
+        const incomeInput = root.querySelector('[data-fifty-income]');
+        if (incomeInput) {
+          incomeInput.addEventListener('input', () => {
+            const n = parseFloat(incomeInput.value);
+            ctx.setConfig({ plannedIncome: isFinite(n) && n > 0 ? n : null });
+          });
+        }
+
+        const hint = root.querySelector('#fifty-sum-hint');
+        root.querySelectorAll('[data-fifty-pct]').forEach(input => {
+          input.addEventListener('input', () => {
+            const n = parseFloat(input.value);
+            ctx.setConfig({ [input.dataset.fiftyPct]: isFinite(n) && n >= 0 ? n : 0 });
+            if (hint) {
+              const cfg = ctx.getConfig();
+              const sum = (cfg.pctNeeds || 0) + (cfg.pctWants || 0) + (cfg.pctSavings || 0);
+              hint.style.display = sum === 100 ? 'none' : 'block';
+              hint.textContent = `Currently ${sum}% — the split must total 100%`;
+            }
+          });
+        });
       }
     }
   },

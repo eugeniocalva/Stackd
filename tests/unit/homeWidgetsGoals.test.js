@@ -63,6 +63,9 @@ const boot = () => {
     matchMedia: () => ({ matches: false, addEventListener: () => {}, addListener: () => {} })
   };
   global.localStorage = global.window.localStorage;
+  // Deliberately-empty widget area: an absent key fires the v0.72 Phase 5
+  // upgrade seed (covered in homeWidgets.test.js), shifting instance indices.
+  global.window.localStorage.setItem('stackd_v1_homeWidgets', '[]');
 
   executeFile('db.js');
   executeFile('loan-engine.js');
@@ -448,10 +451,12 @@ describe('budgets widget', () => {
 describe('phase 4 registry integrity', () => {
   beforeEach(boot);
 
-  it('lists all seven types in gallery order', () => {
-    expect(W().listTypes().map(t => t.type)).toEqual(
-      ['latest', 'incomeExpense', 'categories', 'netWorth', 'savings', 'upcoming', 'budgets']
-    );
+  it('keeps the phase 4 types in the gallery after the trend widgets', () => {
+    // The exact full-gallery order is pinned in homeWidgetsFifty.test.js.
+    const types = W().listTypes().map(t => t.type);
+    expect(types).toContain('upcoming');
+    expect(types).toContain('budgets');
+    expect(types.indexOf('upcoming')).toBeGreaterThan(types.indexOf('savings'));
   });
 
   it('renders both new types in both sizes, empty and with data, without artifacts', () => {
