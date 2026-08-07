@@ -3694,303 +3694,758 @@ Object.assign(window.Views, {
     }
   },
 
-  DebtView: {
+  // ── Debt rebuild Phase 3 (v0.71): shared helpers for the loan views ───────
+  // docs/debt-rebuild-plan.md §3 (nav conventions) + §8 Phase 3. All money
+  // formatting goes through Store.formatCurrency; all math through LoanEngine.
+  _DebtShared: {
+    TYPES: {
+      mortgage: { label: 'Mortgage', icon: 'building-2' },
+      personal: { label: 'Personal Loan', icon: 'wallet' },
+      installment: { label: 'Installment Plan', icon: 'percent' }
+    },
+
+    // Working copy of the simulator form; lives outside the store so wholesale
+    // re-renders can't wipe user input, and survives the form → results round
+    // trip. Cleared by the form's ✕ and after a save/promote.
+    draft: null,
+
+    esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    },
+
+    fmtC(cents) { return window.Store.formatCurrency((cents || 0) / 100); },
+
+    fmtDate(ymd) {
+      if (!ymd) return '';
+      const p = ymd.split('-');
+      return `${p[2]}/${p[1]}/${p[0].slice(2)}`;
+    },
+
+    durationLabel(config) {
+      const unit = config.durationUnit === 'months' ? 'month' : 'year';
+      return `${config.duration} ${unit}${config.duration === 1 ? '' : 's'}`;
+    },
+
+    summary(config) {
+      try {
+        return window.LoanEngine.simulate({ ...config, computeSavings: false });
+      } catch (e) {
+        return null;
+      }
+    },
+
+    todayYMD() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
+
+    newDraft(type, loan) {
+      if (loan && loan.config) {
+        const c = loan.config;
+        return {
+          key: 'id:' + loan.id,
+          editingLoanId: loan.id,
+          type: this.TYPES[c.type] ? c.type : 'personal',
+          principal: c.principal != null ? String(c.principal) : '',
+          downPayment: c.downPayment ? String(c.downPayment) : '',
+          duration: c.duration != null ? String(c.duration) : '',
+          durationUnit: c.durationUnit || 'years',
+          annualRate: c.annualRate != null ? String(c.annualRate) : '',
+          firstPaymentDate: c.firstPaymentDate || '',
+          amortization: c.amortization || 'french',
+          firstInstallmentInterestOnly: !!c.firstInstallmentInterestOnly,
+          interestOnlyExtendsDuration: c.interestOnlyExtendsDuration !== false,
+          rateChanges: (c.rateChanges || []).map(rc => ({ ...rc })),
+          earlyRepayments: (c.earlyRepayments || []).map(er => ({ ...er })),
+          additionalExpenses: (c.additionalExpenses || []).map(ex => ({ ...ex }))
+        };
+      }
+      const t = this.TYPES[type] ? type : 'personal';
+      const today = this.todayYMD();
+      return {
+        key: 'type:' + t,
+        editingLoanId: null,
+        type: t,
+        principal: '',
+        downPayment: '',
+        duration: '',
+        durationUnit: t === 'installment' ? 'months' : 'years',
+        annualRate: t === 'installment' ? '0' : '',
+        firstPaymentDate: window.LoanEngine.addMonthsClamped(today, 1, Number(today.slice(8, 10))),
+        amortization: 'french',
+        firstInstallmentInterestOnly: false,
+        interestOnlyExtendsDuration: true,
+        rateChanges: [],
+        earlyRepayments: [],
+        additionalExpenses: []
+      };
+    },
+
+    buildConfig(d) {
+      const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+      return {
+        type: d.type,
+        principal: num(d.principal),
+        downPayment: d.type === 'mortgage' ? num(d.downPayment) : 0,
+        duration: parseInt(d.duration, 10) || 0,
+        durationUnit: d.durationUnit,
+        annualRate: num(d.annualRate),
+        firstPaymentDate: d.firstPaymentDate,
+        amortization: d.amortization,
+        firstInstallmentInterestOnly: d.firstInstallmentInterestOnly,
+        interestOnlyExtendsDuration: d.interestOnlyExtendsDuration,
+        rateChanges: d.rateChanges.map(rc => ({ ...rc })),
+        earlyRepayments: d.earlyRepayments.map(er => ({ ...er })),
+        additionalExpenses: d.additionalExpenses.map(ex => ({ ...ex }))
+      };
+    }
+  },
+
+  // ── Hub: type tiles + saved simulations + tracked loans (#debt) ───────────
+  DebtHubView: {
     render(state) {
+      const S = window.Views._DebtShared;
       const loans = state.loans || [];
+      const sims = loans.filter(l => l.kind === 'sim');
+      const active = loans.filter(l => l.kind !== 'sim');
 
-      // Calculate totals
-      let totalPrincipal = 0;
-      let totalRemaining = 0;
-      let totalMonthlyPayment = 0;
-
-      loans.forEach(loan => {
-        totalPrincipal += (loan.amount || 0);
-        const rem = window.Store.computeLoanRemainingBalance ? window.Store.computeLoanRemainingBalance(loan) : (loan.amount || 0);
-        totalRemaining += rem;
-        totalMonthlyPayment += (loan.monthlyPayment || 0);
-      });
-
-      const totalLoansCount = loans.length;
-
-      // v0.71 Phase 2: delegate to the store so the debt page respects the
-      // user's currency setting (the old symbol-vs-code comparison never matched
-      // and always rendered $)
-      const formatCurr = (val) => window.Store.formatCurrency(val || 0);
-
-      const loanCardsHtml = loans.length === 0 ? `
-        <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4);">
-          <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--bg-tertiary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--space-3);">
-            <i data-lucide="credit-card" style="width: 28px; height: 28px; color: var(--text-tertiary);"></i>
-          </div>
-          <h3 style="font-size: var(--text-lg); font-weight: 700; margin-bottom: 4px;">No Active Loans</h3>
-          <p style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto var(--space-4);">
-            Track your mortgages, car loans, and credit debts. Calculate monthly payments and simulate payoff schedules.
-          </p>
-          <button id="btn-add-loan-empty" class="btn btn-primary">
-            <i data-lucide="plus" style="width: 18px; height: 18px; margin-right: 6px;"></i> Add Your First Loan
-          </button>
-        </div>
-      ` : loans.map(loan => {
-        const remaining = window.Store.computeLoanRemainingBalance ? window.Store.computeLoanRemainingBalance(loan) : loan.amount;
-        const progressPct = loan.amount > 0 ? Math.min(100, Math.max(0, ((loan.amount - remaining) / loan.amount) * 100)) : 0;
-
+      const tile = (type, extraStyle) => {
+        const t = S.TYPES[type];
         return `
-          <div class="card" style="margin-bottom: var(--space-3); padding: var(--space-4);">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
-              <div>
-                <h3 style="font-size: var(--text-base); font-weight: 700; color: var(--text-primary); margin: 0;">${loan.name}</h3>
-                <div style="display: flex; gap: var(--space-2); margin-top: 4px; align-items: center;">
-                  <span class="debt-dur-chip" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600;">
-                    ${loan.tan || 0}% TAN
-                  </span>
-                  <span style="font-size: 0.75rem; color: var(--text-tertiary);">
-                    ${loan.durationMonths} Months (${loan.startDate || 'N/A'})
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; gap: 4px;">
-                <button class="btn-edit-loan" data-id="${loan.id}" style="background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-tertiary);" aria-label="Edit loan">
-                  <i data-lucide="edit-2" style="width: 16px; height: 16px;"></i>
-                </button>
-                <button class="btn-delete-loan" data-id="${loan.id}" style="background: none; border: none; padding: 6px; cursor: pointer; color: var(--color-expense);" aria-label="Delete loan">
-                  <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                </button>
-              </div>
+          <div class="card debt-type-tile" data-type="${type}" role="button" tabindex="0" aria-label="Simulate a ${t.label}" style="cursor: pointer; display: flex; align-items: center; gap: var(--space-3); ${extraStyle || ''}">
+            <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${t.icon}"></i></div>
+            <div>
+              <div style="font-weight: 700; font-size: var(--text-sm);">${t.label}</div>
+              <div style="color: var(--text-tertiary); font-size: var(--text-xs);">Simulate</div>
             </div>
+          </div>`;
+      };
 
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin: var(--space-3) 0 4px;">
-              <div>
-                <span style="font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Remaining Principal</span>
-                <div style="font-size: var(--text-xl); font-weight: 800; color: var(--text-primary);">${formatCurr(remaining)}</div>
-              </div>
-              <div style="text-align: right;">
-                <span style="font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Monthly Payment</span>
-                <div style="font-size: var(--text-lg); font-weight: 700; color: var(--color-expense);">${formatCurr(loan.monthlyPayment)} / mo</div>
-              </div>
+      const loanRow = (loan, cssClass) => {
+        const t = S.TYPES[(loan.config && loan.config.type)] || S.TYPES.personal;
+        const sum = loan.config ? S.summary(loan.config) : null;
+        const subtitle = sum
+          ? `${S.fmtC(sum.financedPrincipalC)} · ${loan.config.annualRate}% · ${S.durationLabel(loan.config)}`
+          : 'Invalid configuration';
+        const value = sum
+          ? `${S.fmtC(sum.initialPaymentC)}<div style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500; text-align: right;">/ mo</div>`
+          : '—';
+        return `
+          <div class="list-item ${cssClass}" data-id="${loan.id}" role="button" tabindex="0" style="cursor: pointer;">
+            <div class="list-item-icon"><i data-lucide="${t.icon}"></i></div>
+            <div class="list-item-content">
+              <div class="list-item-title">${S.esc(loan.name)}</div>
+              <div class="list-item-subtitle">${subtitle}</div>
             </div>
+            <div class="list-item-value">${value}</div>
+          </div>`;
+      };
 
-            <!-- Progress Bar -->
-            <div style="margin-top: var(--space-3);">
-              <div style="display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: 4px;">
-                <span>Paid: ${formatCurr(loan.amount - remaining)}</span>
-                <span>Original: ${formatCurr(loan.amount)}</span>
-              </div>
-              <div style="width: 100%; height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden;">
-                <div style="width: ${progressPct}%; height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.3s ease;"></div>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
+      const simsHtml = sims.length ? `
+        <div class="section-title" style="margin-top: var(--space-6);">Simulations</div>
+        ${sims.map(l => loanRow(l, 'debt-sim-item')).join('')}
+      ` : '';
+
+      const activeHtml = `
+        <div class="section-title" style="margin-top: var(--space-6);">My Loans</div>
+        ${active.length
+          ? active.map(l => loanRow(l, 'debt-loan-item')).join('')
+          : `<div class="card" id="debt-loans-empty" style="text-align: center; padding: var(--space-6) var(--space-4);">
+               <div style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto;">No active loans yet. Simulate one above, then add it to My Loans to track it.</div>
+             </div>`}
+      `;
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
-          <!-- Top Header -->
+        <div id="debt-hub" class="container animate-fade-in" style="padding-bottom: 100px;">
+          <a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Dashboard"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Dashboard</a>
+          <h1 class="page-header-title" style="margin-bottom: var(--space-1);">Loans</h1>
+          <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">Simulate loans and track the ones you have</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+            ${tile('mortgage')}
+            ${tile('personal')}
+            ${tile('installment', 'grid-column: 1 / -1;')}
+          </div>
+          ${simsHtml}
+          ${activeHtml}
+        </div>
+      `;
+    },
+
+    attachEvents(container) {
+      const nav = (el, href) => {
+        const go = () => window.Router.navigate(href);
+        el.addEventListener('click', go);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      };
+      container.querySelectorAll('.debt-type-tile').forEach(el => nav(el, `#debt-sim?type=${el.dataset.type}`));
+      container.querySelectorAll('.debt-sim-item, .debt-loan-item').forEach(el => nav(el, `#debt-results?id=${el.dataset.id}`));
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+    }
+  },
+
+  // ── Simulator form (#debt-sim?type=… | ?id=…) ─────────────────────────────
+  DebtSimView: {
+    render(state) {
+      const S = window.Views._DebtShared;
+      const params = window.Router.getParams();
+      const key = params.id ? 'id:' + params.id : 'type:' + (params.type || 'personal');
+      if (!S.draft || S.draft.key !== key) {
+        const loan = params.id ? (state.loans || []).find(l => l.id === params.id) : null;
+        S.draft = S.newDraft(params.type, loan);
+      }
+      const d = S.draft;
+      const title = d.editingLoanId ? 'Edit Simulation' : S.TYPES[d.type].label;
+
+      return `
+        <div id="debt-sim-form" class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
-            <div style="display: flex; align-items: center; gap: var(--space-3);">
-              <a href="#" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm);" aria-label="Back to Dashboard">
-                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i> Back
-              </a>
-              <div>
-                <h1 class="header-title" style="margin: 0;">Debt Simulator</h1>
-                <div class="text-secondary" style="font-size: var(--text-xs); margin-top: 2px;">Track loans & amortization schedules</div>
+            <h1 class="header-title" style="margin: 0;">${title}</h1>
+            <a href="#debt" id="dsim-close" aria-label="Close simulator" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+          </div>
+
+          <div class="amount-input-group">
+            <span style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
+            <label for="dsim-principal" class="sr-only">Loan amount</label>
+            <input type="number" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.principal}" style="width: auto; max-width: 220px;">
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            ${d.type === 'mortgage' ? `
+              <div class="form-group">
+                <label class="form-label" for="dsim-down">Down Payment <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
+                <input type="number" id="dsim-down" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.downPayment}">
+              </div>` : ''}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+              <div class="form-group">
+                <label class="form-label" for="dsim-duration">Duration</label>
+                <input type="number" id="dsim-duration" class="form-control" placeholder="e.g. 30" step="1" inputmode="numeric" value="${d.duration}">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="dsim-duration-unit">Unit</label>
+                <select id="dsim-duration-unit" class="form-control" style="appearance: none;">
+                  <option value="years" ${d.durationUnit === 'years' ? 'selected' : ''}>Years</option>
+                  <option value="months" ${d.durationUnit === 'months' ? 'selected' : ''}>Months</option>
+                </select>
               </div>
             </div>
-            <button id="btn-add-loan-header" class="btn btn-primary" style="width: auto; padding: 8px 16px; font-size: var(--text-sm);">
-              + Add Loan
-            </button>
-          </div>
-
-          <!-- Summary Metric Cards -->
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); margin-bottom: var(--space-6);">
-            <div class="card" style="padding: var(--space-4);">
-              <div class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Total Remaining</div>
-              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: var(--text-xl); color: var(--color-expense); margin-top: 4px;">${formatCurr(totalRemaining)}</div>
-            </div>
-            <div class="card" style="padding: var(--space-4);">
-              <div class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Monthly Total</div>
-              <div style="font-family: var(--font-family-display); font-weight: 800; font-size: var(--text-xl); color: var(--text-primary); margin-top: 4px;">${formatCurr(totalMonthlyPayment)}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="dsim-rate">Annual Rate %</label>
+                <input type="number" id="dsim-rate" class="form-control" placeholder="e.g. 4.05" step="0.01" inputmode="decimal" value="${d.annualRate}">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="dsim-first-date">First Payment</label>
+                <input type="date" id="dsim-first-date" class="form-control" value="${d.firstPaymentDate}">
+              </div>
             </div>
           </div>
 
-          <!-- Active Loans Section -->
-          <div style="margin-bottom: var(--space-6);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
-              <h2 class="header-title" style="font-size: var(--text-lg); margin: 0;">Active Loans (${totalLoansCount})</h2>
+          <div class="card" style="margin-bottom: var(--space-6);">
+            <div id="dsim-details-toggle" role="button" tabindex="0" aria-expanded="false" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+              <span style="font-weight: 700;">Details</span>
+              <i data-lucide="chevron-down" id="dsim-details-chevron" style="width: 20px; height: 20px; color: var(--text-tertiary); transition: transform 0.2s;"></i>
             </div>
-            ${loanCardsHtml}
+            <div id="dsim-details-body" style="display: none; padding-top: var(--space-3);">
+              <div class="form-group">
+                <label class="form-label">Payment Type</label>
+                <div class="chart-toggle-group" id="dsim-amortization">
+                  <button type="button" class="chart-toggle-btn ${d.amortization === 'french' ? 'active' : ''}" data-amort="french">Constant payment</button>
+                  <button type="button" class="chart-toggle-btn ${d.amortization === 'italian' ? 'active' : ''}" data-amort="italian">Declining</button>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0;">
+                <span style="font-size: var(--text-sm); font-weight: 600;">First installment — interest only</span>
+                <label class="toggle-switch"><input type="checkbox" id="dsim-io" ${d.firstInstallmentInterestOnly ? 'checked' : ''}><span class="slider"></span></label>
+              </div>
+              <div id="dsim-io-extend-row" style="display: ${d.firstInstallmentInterestOnly ? 'flex' : 'none'}; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0;">
+                <span style="font-size: var(--text-sm); font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">Don't extend the duration
+                  <i data-lucide="info" id="dsim-io-info" style="width: 16px; height: 16px; color: var(--text-tertiary); cursor: pointer;" role="button" tabindex="0" aria-label="About interest-only duration"></i>
+                </span>
+                <label class="toggle-switch"><input type="checkbox" id="dsim-io-noextend" ${d.interestOnlyExtendsDuration ? '' : 'checked'}><span class="slider"></span></label>
+              </div>
+              <div id="dsim-lists"></div>
+            </div>
           </div>
+
+          <div id="dsim-error" role="alert" style="display: none; color: var(--color-expense-val); font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-3); text-align: center;"></div>
+          <button class="btn btn-primary" id="btn-dsim-calculate" style="padding: var(--space-4); border-radius: var(--radius-lg);">Calculate</button>
+        </div>
+      `;
+    },
+
+    attachEvents(container) {
+      const S = window.Views._DebtShared;
+      const d = S.draft;
+      const $ = (id) => container.querySelector('#' + id);
+
+      // ✕ discards the working draft
+      $('dsim-close').addEventListener('click', () => { S.draft = null; });
+
+      const updateDownPct = () => {
+        const pctEl = $('dsim-down-pct');
+        if (!pctEl) return;
+        const p = parseFloat(d.principal), dp = parseFloat(d.downPayment);
+        pctEl.textContent = p > 0 && dp > 0 ? `(${(dp / p * 100).toFixed(1)}%)` : '';
+      };
+      const bind = (id, prop, evt = 'input') => {
+        const el = $(id);
+        if (el) el.addEventListener(evt, () => { d[prop] = el.value; updateDownPct(); });
+      };
+      bind('dsim-principal', 'principal');
+      bind('dsim-down', 'downPayment');
+      bind('dsim-duration', 'duration');
+      bind('dsim-rate', 'annualRate');
+      bind('dsim-first-date', 'firstPaymentDate', 'change');
+      bind('dsim-duration-unit', 'durationUnit', 'change');
+      updateDownPct();
+
+      // Details collapse (pure DOM, no re-render)
+      const detailsBody = $('dsim-details-body');
+      const detailsToggle = $('dsim-details-toggle');
+      const toggleDetails = () => {
+        const open = detailsBody.style.display !== 'none';
+        detailsBody.style.display = open ? 'none' : 'block';
+        detailsToggle.setAttribute('aria-expanded', String(!open));
+        const chev = $('dsim-details-chevron');
+        if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+      };
+      detailsToggle.addEventListener('click', toggleDetails);
+      detailsToggle.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetails(); } });
+
+      container.querySelectorAll('#dsim-amortization .chart-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          d.amortization = btn.dataset.amort;
+          container.querySelectorAll('#dsim-amortization .chart-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+      });
+
+      $('dsim-io').addEventListener('change', (e) => {
+        d.firstInstallmentInterestOnly = e.target.checked;
+        $('dsim-io-extend-row').style.display = e.target.checked ? 'flex' : 'none';
+      });
+      $('dsim-io-noextend').addEventListener('change', (e) => {
+        d.interestOnlyExtendsDuration = !e.target.checked;
+      });
+      $('dsim-io-info').addEventListener('click', () => {
+        window.Components.Modal.show({
+          title: 'Interest-only first installment',
+          content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0;">By default an interest-only first installment is not counted in the loan duration, so the final payment shifts one month later. Some banks keep the original end date instead — enable "Don't extend the duration" to amortize over one fewer installment.</p>`,
+          saveText: 'OK',
+          onSave: (close) => close()
+        });
+      });
+
+      // ── Dynamic lists: rate changes / early repayments / extra costs ──────
+      const listsEl = $('dsim-lists');
+      const ER_MODE_LABEL = { reducePayment: 'reduce payment', reduceDuration: 'reduce duration' };
+
+      const listRow = (text, listName, i) => `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-color);">
+          <span style="font-size: var(--text-sm);">${text}</span>
+          <button type="button" class="dsim-remove touch-target" data-list="${listName}" data-i="${i}" aria-label="Remove entry" style="background: none; border: none; color: var(--text-tertiary); cursor: pointer; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
+        </div>`;
+
+      const addBtn = (kind, label) => `<button type="button" class="btn btn-secondary dsim-add" data-add="${kind}" style="min-height: 40px; font-size: var(--text-sm); margin-top: var(--space-2);">+ ${label}</button>`;
+
+      const renderLists = () => {
+        listsEl.innerHTML = `
+          <div class="form-label" style="margin-top: var(--space-3);">Rate Changes</div>
+          ${d.rateChanges.map((rc, i) => listRow(`${rc.annualRate}% from ${S.fmtDate(rc.effectiveFrom)}`, 'rateChanges', i)).join('')}
+          ${addBtn('rate', 'Add rate change')}
+          <div class="form-label" style="margin-top: var(--space-4);">Early Repayments</div>
+          ${d.earlyRepayments.map((er, i) => listRow(`${window.Store.formatCurrency(er.amount)} · ${er.frequency === 'monthly' ? 'monthly from' : 'on'} ${S.fmtDate(er.date)} · ${ER_MODE_LABEL[er.mode]}`, 'earlyRepayments', i)).join('')}
+          ${addBtn('er', 'Add early repayment')}
+          <div class="form-label" style="margin-top: var(--space-4);">Extra Costs</div>
+          ${d.additionalExpenses.map((ex, i) => listRow(`${S.esc(ex.name)} · ${window.Store.formatCurrency(ex.amount)}${ex.frequency === 'monthly' ? ' / month' : ' on ' + S.fmtDate(ex.date)}`, 'additionalExpenses', i)).join('')}
+          ${addBtn('expense', 'Add extra cost')}
+        `;
+        listsEl.querySelectorAll('.dsim-remove').forEach(btn => {
+          btn.addEventListener('click', () => {
+            d[btn.dataset.list].splice(Number(btn.dataset.i), 1);
+            renderLists();
+          });
+        });
+        listsEl.querySelectorAll('.dsim-add').forEach(btn => {
+          btn.addEventListener('click', () => openAddModal(btn.dataset.add));
+        });
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      };
+
+      const openAddModal = (kind) => {
+        if (kind === 'rate') {
+          window.Components.Modal.show({
+            title: 'Add Rate Change',
+            content: `
+              <div class="form-group"><label class="form-label" for="dsim-rc-rate">New Rate %</label><input type="number" id="dsim-rc-rate" class="form-control" step="0.01" inputmode="decimal" placeholder="e.g. 2.05"></div>
+              <div class="form-group"><label class="form-label" for="dsim-rc-date">Effective From</label><input type="date" id="dsim-rc-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+            saveText: 'Add',
+            onSave: (close) => {
+              const rate = parseFloat(document.getElementById('dsim-rc-rate').value);
+              const date = document.getElementById('dsim-rc-date').value;
+              if (isNaN(rate) || rate < 0 || rate >= 100 || !date) return;
+              d.rateChanges.push({ annualRate: rate, effectiveFrom: date });
+              close();
+              renderLists();
+            }
+          });
+        } else if (kind === 'er') {
+          window.Components.Modal.show({
+            title: 'Add Early Repayment',
+            content: `
+              <div class="form-group"><label class="form-label" for="dsim-er-amount">Amount</label><input type="number" id="dsim-er-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-freq">Frequency</label>
+                <select id="dsim-er-freq" class="form-control" style="appearance: none;">
+                  <option value="once">One-off</option>
+                  <option value="monthly">Monthly</option>
+                </select></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-date">Payment Date</label><input type="date" id="dsim-er-date" class="form-control" value="${d.firstPaymentDate}"></div>
+              <div class="form-group" id="dsim-er-end-group" style="display: none;"><label class="form-label" for="dsim-er-end">Until (optional)</label><input type="date" id="dsim-er-end" class="form-control"></div>
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-er-mode">Repayment Type</label>
+                <select id="dsim-er-mode" class="form-control" style="appearance: none;">
+                  <option value="reducePayment">Reduce the monthly payment</option>
+                  <option value="reduceDuration">Reduce the loan duration</option>
+                </select></div>`,
+            saveText: 'Add',
+            onSave: (close) => {
+              const amount = parseFloat(document.getElementById('dsim-er-amount').value);
+              const frequency = document.getElementById('dsim-er-freq').value;
+              const date = document.getElementById('dsim-er-date').value;
+              const endDate = document.getElementById('dsim-er-end').value || null;
+              const mode = document.getElementById('dsim-er-mode').value;
+              if (isNaN(amount) || amount <= 0 || !date) return;
+              const er = { amount, frequency, date, mode };
+              if (frequency === 'monthly' && endDate) er.endDate = endDate;
+              d.earlyRepayments.push(er);
+              close();
+              renderLists();
+            }
+          });
+          setTimeout(() => {
+            const freqSel = document.getElementById('dsim-er-freq');
+            if (freqSel) freqSel.addEventListener('change', () => {
+              document.getElementById('dsim-er-end-group').style.display = freqSel.value === 'monthly' ? 'block' : 'none';
+            });
+          }, 20);
+        } else if (kind === 'expense') {
+          window.Components.Modal.show({
+            title: 'Add Extra Cost',
+            content: `
+              <div class="form-group"><label class="form-label" for="dsim-ex-name">Name</label><input type="text" id="dsim-ex-name" class="form-control" placeholder="e.g. Insurance"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-amount">Amount</label><input type="number" id="dsim-ex-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-freq">Frequency</label>
+                <select id="dsim-ex-freq" class="form-control" style="appearance: none;">
+                  <option value="once">One-off</option>
+                  <option value="monthly">Monthly</option>
+                </select></div>
+              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">Payment Date</label><input type="date" id="dsim-ex-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+            saveText: 'Add',
+            onSave: (close) => {
+              const name = document.getElementById('dsim-ex-name').value.trim();
+              const amount = parseFloat(document.getElementById('dsim-ex-amount').value);
+              const frequency = document.getElementById('dsim-ex-freq').value;
+              const date = document.getElementById('dsim-ex-date').value;
+              if (!name || isNaN(amount) || amount < 0) return;
+              const ex = { name, amount, frequency };
+              if (frequency === 'once' && date) ex.date = date;
+              d.additionalExpenses.push(ex);
+              close();
+              renderLists();
+            }
+          });
+          setTimeout(() => {
+            const freqSel = document.getElementById('dsim-ex-freq');
+            if (freqSel) freqSel.addEventListener('change', () => {
+              document.getElementById('dsim-ex-date-group').style.display = freqSel.value === 'once' ? 'block' : 'none';
+            });
+          }, 20);
+        }
+      };
+
+      renderLists();
+
+      // keep Details open when the draft already has advanced entries
+      if (d.rateChanges.length || d.earlyRepayments.length || d.additionalExpenses.length ||
+          d.firstInstallmentInterestOnly || d.amortization !== 'french') {
+        toggleDetails();
+      }
+
+      $('btn-dsim-calculate').addEventListener('click', () => {
+        const errEl = $('dsim-error');
+        errEl.style.display = 'none';
+        const config = S.buildConfig(d);
+        try {
+          window.LoanEngine.simulate({ ...config, computeSavings: false });
+        } catch (e) {
+          errEl.textContent = (e && e.name === 'LoanEngineError') ? e.message : 'Please check your inputs.';
+          errEl.style.display = 'block';
+          return;
+        }
+        window.Store.dispatch('SET_DEBT_SIM', { config, fromForm: true, editingLoanId: d.editingLoanId });
+        window.Router.navigate('#debt-results');
+      });
+
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+    }
+  },
+
+  // ── Results: summary + savings + schedule (#debt-results[?id=…]) ──────────
+  DebtResultsView: {
+    _resolve(state) {
+      const params = window.Router.getParams();
+      const out = { loan: null, config: null, name: null, fromForm: false, editingLoanId: null, res: null, error: null };
+      if (params.id) {
+        out.loan = (state.loans || []).find(l => l.id === params.id) || null;
+        if (out.loan) { out.config = out.loan.config; out.name = out.loan.name; }
+      } else if (state.debtSim && state.debtSim.config) {
+        out.config = state.debtSim.config;
+        out.fromForm = !!state.debtSim.fromForm;
+        out.editingLoanId = state.debtSim.editingLoanId || null;
+      }
+      if (out.config) {
+        try { out.res = window.LoanEngine.simulate(out.config); } catch (e) { out.error = e; }
+      }
+      return out;
+    },
+
+    render(state) {
+      const S = window.Views._DebtShared;
+      const r = this._resolve(state);
+
+      if (!r.config || r.error) {
+        const msg = r.error ? 'This simulation could not be computed: ' + S.esc(r.error.message) : 'Nothing to show here.';
+        return `
+          <div id="debt-results-view" class="container animate-fade-in">
+            <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4); margin-top: var(--space-8);">
+              <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${msg}</div>
+              <a href="#debt" class="btn btn-primary" style="text-decoration: none;">Back to Loans</a>
+            </div>
+          </div>`;
+      }
+
+      const res = r.res;
+      const config = r.config;
+      const t = S.TYPES[config.type] || S.TYPES.personal;
+      const backHref = r.fromForm && S.draft
+        ? (S.draft.editingLoanId ? `#debt-sim?id=${S.draft.editingLoanId}` : `#debt-sim?type=${S.draft.type}`)
+        : '#debt';
+
+      const row = (label, value, opts = {}) => `
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); padding: var(--space-2) 0; ${opts.last ? '' : 'border-bottom: 1px solid var(--border-color);'}">
+          <span style="font-size: var(--text-sm); color: var(--text-secondary);">${label}</span>
+          <span style="font-family: var(--font-family-display); font-weight: 700; ${opts.strong ? 'font-size: var(--text-xl);' : ''}">${value}</span>
+        </div>`;
+
+      let savingsHtml = '';
+      if (res.savings && res.totalEarlyRepaymentsC > 0) {
+        savingsHtml = res.savings.degenerate
+          ? `<div class="card" style="margin-top: var(--space-4); background: var(--color-warning-bg); border-color: transparent;">
+               <div style="font-size: var(--text-sm); color: var(--color-warning-text); line-height: 1.5;">At these terms the early-repayment plan doesn't reduce the loan's cost, so no saving is shown. Try a larger repayment amount or different terms.</div>
+             </div>`
+          : `<div class="card" style="margin-top: var(--space-4);">
+               <div class="section-title" style="margin-bottom: var(--space-2);">With Early Repayments</div>
+               ${row('Interest Saved', S.fmtC(res.savings.interestSavedC), res.savings.monthsSaved > 0 ? {} : { last: true })}
+               ${res.savings.monthsSaved > 0 ? row('Months Saved', String(res.savings.monthsSaved), { last: true }) : ''}
+             </div>`;
+      }
+
+      const actionsHtml = r.fromForm
+        ? `<div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6);">
+             <button class="btn btn-primary" id="btn-dres-promote" style="padding: var(--space-4); border-radius: var(--radius-lg);">Add to My Loans</button>
+             <button class="btn btn-secondary" id="btn-dres-save">${r.editingLoanId ? 'Update Simulation' : 'Save Simulation'}</button>
+           </div>`
+        : '';
+
+      return `
+        <div id="debt-results-view" class="container animate-fade-in" style="padding-bottom: 100px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
+            <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : t.label}</h1>
+            <div style="display: flex; gap: var(--space-2);">
+              ${r.loan ? `<button id="btn-dres-menu" aria-label="More actions" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: none; border-radius: 10px; cursor: pointer;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></button>` : ''}
+              <a href="${backHref}" aria-label="Close results" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <div class="list-item-icon"><i data-lucide="${t.icon}"></i></div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm);">${t.label} · ${config.annualRate}% · ${S.durationLabel(config)}</div>
+          </div>
+
+          <div class="card card-elevated">
+            ${row('Monthly Payment', S.fmtC(res.initialPaymentC), { strong: true })}
+            ${row('Loan Amount', S.fmtC(res.financedPrincipalC))}
+            ${res.downPaymentC > 0 ? row('Down Payment', S.fmtC(res.downPaymentC)) : ''}
+            ${row('Total Interest', S.fmtC(res.totalInterestC))}
+            ${res.totalExpensesC > 0 ? row('Extra Costs', S.fmtC(res.totalExpensesC)) : ''}
+            ${res.totalEarlyRepaymentsC > 0 ? row('Early Repayments', S.fmtC(res.totalEarlyRepaymentsC)) : ''}
+            ${row('Total Amount', S.fmtC(res.grandTotalC))}
+            ${row('Installments', String(res.installmentCount))}
+            ${row('Last Payment', S.fmtDate(res.lastPaymentDate), { last: true })}
+          </div>
+
+          ${savingsHtml}
+
+          <div class="card" style="margin-top: var(--space-4);">
+            <div id="dres-schedule-toggle" role="button" tabindex="0" aria-expanded="false" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+              <span style="font-weight: 700; display: inline-flex; align-items: center; gap: var(--space-2);"><i data-lucide="list" style="width: 18px; height: 18px;"></i> Payment Schedule</span>
+              <i data-lucide="chevron-down" id="dres-schedule-chevron" style="width: 20px; height: 20px; color: var(--text-tertiary); transition: transform 0.2s;"></i>
+            </div>
+            <div id="dres-schedule-body" style="display: none; padding-top: var(--space-3);">
+              <div class="chart-toggle-group" id="dres-schedule-mode" style="margin-bottom: var(--space-3);">
+                <button type="button" class="chart-toggle-btn active" data-mode="brief">Brief</button>
+                <button type="button" class="chart-toggle-btn" data-mode="detailed">Detailed</button>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-color);">
+                <span>Date</span><span>Payment</span><span>Balance</span>
+              </div>
+              <div id="dres-schedule-rows"></div>
+            </div>
+          </div>
+
+          ${actionsHtml}
         </div>
       `;
     },
 
     attachEvents(container, state) {
-      const openAddEditModal = (loanToEdit = null) => {
-        const isEdit = !!loanToEdit;
-        const todayStr = new Date().toISOString().split('T')[0];
+      const S = window.Views._DebtShared;
+      const r = this._resolve(state);
+      if (!r.config) { window.Router.navigate('#debt'); return; }
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      if (r.error) return;
+      const res = r.res;
+      const $ = (id) => container.querySelector('#' + id);
 
-        const initialValues = loanToEdit ? {
-          name: loanToEdit.name || '',
-          amount: loanToEdit.amount || '',
-          tan: loanToEdit.tan || 0,
-          durationMonths: loanToEdit.durationMonths || 12,
-          startDate: loanToEdit.startDate || todayStr
-        } : {
-          name: '',
-          amount: '',
-          tan: 3.5,
-          durationMonths: 24,
-          startDate: todayStr
-        };
+      // ── schedule ──
+      const rowsEl = $('dres-schedule-rows');
+      const renderSchedule = (detailed) => {
+        rowsEl.innerHTML = res.schedule.map(row => `
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: var(--text-sm);">
+            <span style="color: var(--text-secondary); flex: 0 0 auto;">${S.fmtDate(row.date)}</span>
+            <span style="text-align: center; flex: 1;">
+              <span style="font-family: var(--font-family-display); font-weight: 700;">${S.fmtC(row.paymentC + row.extraPrincipalC)}</span>
+              ${row.extraPrincipalC > 0 ? `<div style="font-size: var(--text-xs); color: var(--color-income-val);">incl. extra ${S.fmtC(row.extraPrincipalC)}</div>` : ''}
+              ${detailed ? `<div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">interest ${S.fmtC(row.interestC)} · principal ${S.fmtC(row.principalC + row.extraPrincipalC)}</div>` : ''}
+            </span>
+            <span style="font-family: var(--font-family-display); font-weight: 600; flex: 0 0 auto;">${S.fmtC(row.balanceC)}</span>
+          </div>`).join('');
+      };
+      const schedToggle = $('dres-schedule-toggle');
+      const schedBody = $('dres-schedule-body');
+      let schedRendered = false;
+      const toggleSchedule = () => {
+        const open = schedBody.style.display !== 'none';
+        schedBody.style.display = open ? 'none' : 'block';
+        schedToggle.setAttribute('aria-expanded', String(!open));
+        const chev = $('dres-schedule-chevron');
+        if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+        if (!open && !schedRendered) { renderSchedule(false); schedRendered = true; }
+      };
+      schedToggle.addEventListener('click', toggleSchedule);
+      schedToggle.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSchedule(); } });
+      container.querySelectorAll('#dres-schedule-mode .chart-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          container.querySelectorAll('#dres-schedule-mode .chart-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+          renderSchedule(btn.dataset.mode === 'detailed');
+        });
+      });
 
-        const calcPMT = (principal, tanPct, months) => {
-          if (!principal || principal <= 0 || !months || months <= 0) return 0;
-          if (!tanPct || tanPct <= 0) return principal / months;
-          const r = (tanPct / 100) / 12;
-          const pmt = principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
-          return pmt;
-        };
-
+      // ── name prompt helper ──
+      const askName = (title, defaultName, cb) => {
         window.Components.Modal.show({
-          title: isEdit ? 'Edit Loan' : 'Add New Loan',
-          content: `
-            <form id="loan-form">
-              <div class="form-group" style="margin-bottom: var(--space-3);">
-                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Loan Name</label>
-                <input type="text" id="loan-name" class="form-control" placeholder="e.g. Car Loan, Home Mortgage" value="${initialValues.name}" required />
-              </div>
-              <div class="form-group" style="margin-bottom: var(--space-3);">
-                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Principal Amount (${window.Store.getCurrencySymbol()})</label>
-                <input type="number" step="0.01" id="loan-amount" class="form-control" placeholder="0.00" value="${initialValues.amount}" required />
-              </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3);">
-                <div class="form-group">
-                  <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Annual TAN %</label>
-                  <input type="number" step="0.01" id="loan-tan" class="form-control" placeholder="e.g. 3.5" value="${initialValues.tan}" required />
-                </div>
-                <div class="form-group">
-                  <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Duration (Months)</label>
-                  <input type="number" step="1" id="loan-duration" class="form-control" placeholder="e.g. 24" value="${initialValues.durationMonths}" required />
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom: var(--space-4);">
-                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Start Date</label>
-                <input type="date" id="loan-start-date" class="form-control" value="${initialValues.startDate}" required />
-              </div>
-              <div class="card" style="padding: var(--space-3); background: var(--bg-tertiary); border: none; margin-bottom: var(--space-3);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: var(--text-xs); color: var(--text-secondary); font-weight: 600;">Estimated Monthly Payment:</span>
-                  <span id="loan-pmt-preview" style="font-size: var(--text-base); font-weight: 800; color: var(--color-expense);">$0.00 / mo</span>
-                </div>
-              </div>
-            </form>
-          `,
-          saveText: isEdit ? 'Update Loan' : 'Save Loan',
-          onSave: (closeModal) => {
-            const name = document.getElementById('loan-name').value.trim();
-            const amount = parseFloat(document.getElementById('loan-amount').value);
-            const tan = parseFloat(document.getElementById('loan-tan').value) || 0;
-            const durationMonths = parseInt(document.getElementById('loan-duration').value, 10);
-            const startDate = document.getElementById('loan-start-date').value;
-
-            if (!name || isNaN(amount) || amount <= 0 || isNaN(durationMonths) || durationMonths <= 0 || !startDate) {
-              return;
-            }
-
-            const pmt = calcPMT(amount, tan, durationMonths);
-            const totalReimbursement = pmt * durationMonths;
-
-            // Calculate end date
-            const startD = new Date(startDate + 'T00:00:00');
-            startD.setMonth(startD.getMonth() + durationMonths);
-            const endDate = startD.toISOString().split('T')[0];
-
-            if (isEdit) {
-              window.Store.dispatch('UPDATE_LOAN', {
-                id: loanToEdit.id,
-                name,
-                amount,
-                tan,
-                durationMonths,
-                startDate,
-                endDate,
-                monthlyPayment: pmt,
-                totalReimbursement
-              });
-            } else {
-              window.Store.dispatch('ADD_LOAN', {
-                name,
-                amount,
-                tan,
-                durationMonths,
-                startDate,
-                endDate,
-                monthlyPayment: pmt,
-                totalReimbursement
-              });
-            }
-
-            closeModal();
+          title,
+          content: `<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="loan-name-input">Name</label><input type="text" id="loan-name-input" class="form-control" placeholder="e.g. Home Mortgage" value="${S.esc(defaultName || '')}"></div>`,
+          saveText: 'Save',
+          onSave: (close) => {
+            const v = document.getElementById('loan-name-input').value.trim();
+            if (!v) return;
+            close();
+            cb(v);
           }
         });
-
-        // Add live calculation listener for PMT preview in modal
-        setTimeout(() => {
-          const updatePMTPreview = () => {
-            const amount = parseFloat(document.getElementById('loan-amount')?.value) || 0;
-            const tan = parseFloat(document.getElementById('loan-tan')?.value) || 0;
-            const durationMonths = parseInt(document.getElementById('loan-duration')?.value, 10) || 0;
-            const pmt = calcPMT(amount, tan, durationMonths);
-            const previewEl = document.getElementById('loan-pmt-preview');
-            if (previewEl) {
-              // v0.71 Phase 2: store formatter — respects the currency setting
-              previewEl.textContent = window.Store.formatCurrency(pmt) + ' / mo';
-            }
-          };
-
-          ['loan-amount', 'loan-tan', 'loan-duration'].forEach(id => {
-            const input = document.getElementById(id);
-            if (input) input.addEventListener('input', updatePMTPreview);
-          });
-          updatePMTPreview();
-        }, 20);
+        setTimeout(() => { const el = document.getElementById('loan-name-input'); if (el) el.focus(); }, 50);
       };
 
-      const btnAddHeader = container.querySelector('#btn-add-loan-header');
-      if (btnAddHeader) btnAddHeader.addEventListener('click', () => openAddEditModal());
-
-      const btnAddEmpty = container.querySelector('#btn-add-loan-empty');
-      if (btnAddEmpty) btnAddEmpty.addEventListener('click', () => openAddEditModal());
-
-      container.querySelectorAll('.btn-edit-loan').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const loanId = btn.dataset.id;
-          const loan = (state.loans || []).find(l => l.id === loanId);
-          if (loan) openAddEditModal(loan);
-        });
-      });
-
-      container.querySelectorAll('.btn-delete-loan').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const loanId = btn.dataset.id;
-          const loan = (state.loans || []).find(l => l.id === loanId);
-          if (!loan) return;
-
-          window.Components.Modal.show({
-            title: 'Delete Loan?',
-            content: `<p style="color: var(--text-secondary);">Are you sure you want to delete <strong>${loan.name}</strong>? This action cannot be undone.</p>`,
-            saveText: 'Cancel',
-            showDelete: true,
-            onSave: (closeModal) => closeModal(),
-            onDelete: (closeModal) => {
-              window.Store.dispatch('DELETE_LOAN', { id: loanId });
-              closeModal();
+      // ── fresh-simulation actions ──
+      if (r.fromForm) {
+        const saveBtn = $('btn-dres-save');
+        const promoteBtn = $('btn-dres-promote');
+        const currentName = r.editingLoanId
+          ? ((state.loans || []).find(l => l.id === r.editingLoanId) || {}).name
+          : '';
+        if (saveBtn) saveBtn.addEventListener('click', () => {
+          askName(r.editingLoanId ? 'Update Simulation' : 'Save Simulation', currentName, (name) => {
+            if (r.editingLoanId) {
+              window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
+            } else {
+              window.Store.dispatch('ADD_LOAN', { name, kind: 'sim', config: r.config });
             }
+            S.draft = null;
+            window.Router.navigate('#debt');
           });
         });
-      });
+        if (promoteBtn) promoteBtn.addEventListener('click', () => {
+          askName('Add to My Loans', currentName, (name) => {
+            if (r.editingLoanId) {
+              window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
+              window.Store.dispatch('PROMOTE_LOAN', { id: r.editingLoanId });
+            } else {
+              window.Store.dispatch('ADD_LOAN', { name, kind: 'active', config: r.config });
+            }
+            S.draft = null;
+            window.Router.navigate('#debt');
+          });
+        });
+      }
+
+      // ── saved-record menu (⋯): Edit / Add to My Loans / Delete ──
+      const menuBtn = $('btn-dres-menu');
+      if (menuBtn && r.loan) {
+        menuBtn.addEventListener('click', () => {
+          const opt = (act, icon, label, color) => `
+            <div class="dres-menu-opt touch-target" data-act="${act}" role="button" tabindex="0" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-color); cursor: pointer; ${color ? 'color: ' + color + ';' : ''}">
+              <i data-lucide="${icon}" style="width: 18px; height: 18px;"></i><span style="font-weight: 600; font-size: var(--text-sm);">${label}</span>
+            </div>`;
+          window.Components.Modal.show({
+            title: S.esc(r.loan.name),
+            content: `
+              ${opt('edit', 'pencil', 'Edit')}
+              ${r.loan.kind === 'sim' ? opt('promote', 'plus', 'Add to My Loans') : ''}
+              ${opt('delete', 'trash-2', 'Delete', 'var(--color-expense-val)')}`,
+            saveText: 'Close',
+            onSave: (close) => close()
+          });
+          document.querySelectorAll('.dres-menu-opt').forEach(el => {
+            el.addEventListener('click', () => {
+              const act = el.dataset.act;
+              if (act === 'edit') {
+                window.Components.Modal.hide();
+                S.draft = null;
+                window.Router.navigate(`#debt-sim?id=${r.loan.id}`);
+              } else if (act === 'promote') {
+                window.Components.Modal.hide();
+                window.Store.dispatch('PROMOTE_LOAN', { id: r.loan.id });
+                window.Router.navigate('#debt');
+              } else if (act === 'delete') {
+                window.Components.Modal.show({
+                  title: 'Delete this loan?',
+                  content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">"${S.esc(r.loan.name)}" will be permanently removed.</p>`,
+                  saveText: 'Keep it',
+                  showDelete: true,
+                  onSave: (close) => close(),
+                  onDelete: (close) => {
+                    window.Store.dispatch('DELETE_LOAN', { id: r.loan.id });
+                    close();
+                    window.Router.navigate('#debt');
+                  }
+                });
+              }
+            });
+          });
+          if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+        });
+      }
     }
   }
 });

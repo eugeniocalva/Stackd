@@ -411,7 +411,13 @@ document.addEventListener('DOMContentLoaded', () => {
         viewModule = window.Views.EditCategoryView;
         break;
       case 'debt':
-        viewModule = window.Views.DebtView;
+        viewModule = window.Views.DebtHubView;
+        break;
+      case 'debt-sim':
+        viewModule = window.Views.DebtSimView;
+        break;
+      case 'debt-results':
+        viewModule = window.Views.DebtResultsView;
         break;
       default:
         viewModule = window.Views.DashboardView;

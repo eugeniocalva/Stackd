@@ -105,6 +105,8 @@ window.Store = {
     // monthlyPayment, totalReimbursement) are retained on migrated/legacy-added
     // records until Phase 3 replaces the old DebtView.
     loans: [],
+    // v0.71 Phase 3: transient simulator hand-off (form → results); never persisted
+    debtSim: null,
     theme: 'system', // 'system', 'light', 'dark'
     activeTheme: 'light', // 'light' or 'dark'
     analyticsBalanceMode: 'today', // v0.64 - 'today' | 'end': hero balance basis when the period extends past today
@@ -1560,6 +1562,12 @@ window.Store = {
           this.state.activeView = payload;
           changed = true;
         }
+        break;
+
+      case 'SET_DEBT_SIM':
+        // v0.71 Phase 3: carries a freshly calculated simulation to #debt-results
+        this.state.debtSim = payload || null;
+        changed = true;
         break;
 
       case 'SAVE_EXPANDED_GRAPH_FILTERS':

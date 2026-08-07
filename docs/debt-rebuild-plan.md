@@ -8,7 +8,7 @@
 
 - [x] **Phase 1 — Loan engine** (`src/loan-engine.js` + unit tests, no UI) — done 2026-08-07, adversarially verified (see §6.7)
 - [x] **Phase 2 — Store v2 + migration** (config-based loans slice, currency fix) — done 2026-08-07; legacy ADD_LOAN/UPDATE_LOAN payloads still accepted + legacy fields retained until Phase 3
-- [ ] **Phase 3 — Simulator UI** (hub, simulator form, results + schedule)
+- [x] **Phase 3 — Simulator UI** (hub, simulator form, results + schedule) — done 2026-08-07. Views: `DebtHubView` (#debt), `DebtSimView` (#debt-sim?type=…|?id=…), `DebtResultsView` (#debt-results[?id=…]) + `_DebtShared` helpers in views.js; form draft lives in `Views._DebtShared.draft` (outside the store, survives re-renders); `SET_DEBT_SIM` hands a fresh config to results. Old DebtView deleted (its legacy store payload path can be stripped in Phase 5).
 - [ ] **Phase 4 — My Loans + integration** (promote flow, recurring-expense offer)
 - [ ] **Phase 5 — Polish** (export/import, dead CSS, e2e refresh, docs)
 
