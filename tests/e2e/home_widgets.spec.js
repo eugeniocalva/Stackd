@@ -204,6 +204,72 @@ test.describe('Home dashboard widgets', () => {
     expect(errors).toEqual([]);
   });
 
+  test('upcoming and budgets widgets render real engine data (phase 4)', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+    await page.evaluate(() => {
+      const S = window.Store;
+      const accId = S.getState().accounts[0].id;
+      const pad = (n) => String(n).padStart(2, '0');
+      const off = (days) => {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      };
+      // A real recurring series: ADD_TRANSACTION materialises future members.
+      S.dispatch('ADD_TRANSACTION', {
+        accountId: accId, categoryId: 'cat_utilities', type: 'expense', amount: 45,
+        date: off(-25),
+        recurrence: { interval: 1, frequency: 'weeks', startDate: off(-25), endDate: off(60) }
+      });
+      // An untracked active loan whose first payment is inside 30 days.
+      S.dispatch('ADD_LOAN', {
+        name: 'E2E Loan', kind: 'active',
+        config: { type: 'personal', principal: 1200, duration: 12, durationUnit: 'months', annualRate: 5, firstPaymentDate: off(10), amortization: 'french' }
+      });
+      // A budget with spend this month.
+      S.dispatch('SAVE_BUDGET', { categoryId: 'cat_utilities', amount: 300, startDate: '', endDate: null, isCumulative: false });
+      S.dispatch('ADD_HOME_WIDGET', { type: 'upcoming', size: 'large' });
+      S.dispatch('ADD_HOME_WIDGET', { type: 'budgets', size: 'large' });
+    });
+    await scrollToWidgets(page);
+
+    const upcoming = page.locator('.widget-card[data-widget-type="upcoming"]');
+    await expect(upcoming).toContainText('Utilities');       // materialised member
+    await expect(upcoming).toContainText('E2E Loan');        // untracked loan row
+    await expect(upcoming).toContainText('Net impact');
+
+    const budgets = page.locator('.widget-card[data-widget-type="budgets"]');
+    await expect(budgets).toContainText('Utilities');
+    await expect(budgets).toContainText('of $300.00 budgeted');
+    await expect(budgets.locator('.widget-minibar')).toHaveCount(1);
+
+    // Track the loan by giving it a live series → its synthetic row must vanish.
+    await page.evaluate(() => {
+      const S = window.Store;
+      const accId = S.getState().accounts[0].id;
+      const pad = (n) => String(n).padStart(2, '0');
+      const d = new Date(); d.setDate(d.getDate() + 10);
+      const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const loan = S.getState().loans.find(l => l.name === 'E2E Loan');
+      loan.linkedSeriesId = 'e2e-loan-series';
+      S.state.transactions.push({
+        id: 'e2e-loan-tx', accountId: accId, categoryId: 'cat_debt', type: 'expense',
+        amount: 102.73, date,
+        recurrence: { seriesId: 'e2e-loan-series', interval: 1, frequency: 'months', startDate: date, endDate: date },
+        createdAt: new Date().toISOString()
+      });
+      S.dispatch('TOGGLE_WIDGET_EDIT_MODE', true);  // any dispatch to re-render
+      S.dispatch('TOGGLE_WIDGET_EDIT_MODE', false);
+    });
+    await expect(upcoming).not.toContainText('E2E Loan');    // no double-count
+    await expect(upcoming).toContainText('Loan Payment');    // the series member instead
+
+    expect(errors).toEqual([]);
+  });
+
   test('survives a reload and clears edit mode on navigation', async ({ page }) => {
     await bootstrap(page);
     await page.evaluate(() => {

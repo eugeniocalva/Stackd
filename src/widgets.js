@@ -30,6 +30,13 @@ window.Widgets = {
     return `<div class="widget-empty">${this._esc(message)}</div>`;
   },
 
+  // Loan figures are integer cents (LoanEngine), transactions are float units.
+  // This is the one sanctioned crossing point. (Views._DebtShared.fmtC is the
+  // same conversion but lives a layer above us — widgets must not reach into Views.)
+  _fmtC(cents) {
+    return window.Store.formatCurrency((cents || 0) / 100);
+  },
+
   // ── chart lifecycle ─────────────────────────────────────────────────────
   // The dashboard re-renders wholesale via innerHTML, so every canvas element
   // is replaced on each render and Chart.js' own canvas registry can't find the
@@ -747,6 +754,343 @@ window.Widgets = {
       renderConfig(config, state) {
         const W = window.Widgets;
         return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+      },
+
+      attachConfig(root, ctx) {
+        window.Widgets.attachSharedConfig(root, ctx);
+      }
+    },
+
+    upcoming: {
+      title: 'Upcoming transactions',
+      description: 'Your next scheduled payments — recurring transactions, subscriptions and loan instalments.',
+      icon: 'calendar',
+      sizes: ['small', 'large'],
+      hasConfig: true,
+      // horizonDays is a STRING on purpose: _segmented round-trips values
+      // through dataset attributes, which are always strings — a numeric
+      // default would never match its chip. parseInt at the one use site.
+      defaultConfig: { accountIds: [], horizonDays: '30' },
+
+      // Everything inside the horizon, BEFORE transfer dedupe and slicing.
+      // Kept separate because the net-impact figure must use the un-deduped
+      // set (a transfer's two legs cancel there), while the visible list
+      // wants one row per occurrence.
+      _matches(instance, state) {
+        const W = window.Widgets;
+        const cfg = W._cfg(instance);
+        const today = W._todayStr();
+        const days = parseInt(cfg.horizonDays, 10) || 30;
+        // Store's noon-anchored date stepper — the DST-safe way to add days.
+        const horizon = window.Store._calculateNextRecurrenceDate(today, days, 'days');
+        const accountIds = cfg.accountIds || [];
+
+        // Mirrors Store.computeUpcomingImpact's predicate, plus t.recurrence:
+        // this widget lists SCHEDULED payments (materialised series members),
+        // not manually future-dated one-offs — docs/home-widgets-plan.md §4.1.
+        const txs = (state.transactions || []).filter(t =>
+          t.recurrence &&
+          t.date > today && t.date <= horizon &&
+          t.isPaid !== false &&
+          !window.Store._isTxBeforeOpeningDate(t) &&
+          (accountIds.length === 0 || accountIds.includes(t.accountId))
+        );
+
+        // Untracked active loans: a tracked loan's payments already exist as
+        // series members caught above — adding nextPayment would double-count.
+        // The guard MUST be the read-through (a deleted series un-tracks the
+        // loan even though linkedSeriesId dangles forever).
+        // Synthetic rows carry no accountId, so they cannot honour an account
+        // filter — they appear only in the unfiltered view rather than
+        // pretending to belong to whichever account is selected.
+        const loanRows = [];
+        if (accountIds.length === 0) {
+          (state.loans || []).forEach(loan => {
+            if (loan.kind === 'sim') return;
+            if (window.Store.getLoanLinkedTransactions(loan) !== null) return;
+            const progress = window.Store.getLoanProgress(loan);
+            if (!progress || !progress.nextPayment) return;
+            const np = progress.nextPayment;
+            if (np.date <= today || np.date > horizon) return;
+            loanRows.push({ isLoan: true, date: np.date, amount: np.amountC / 100, name: loan.name });
+          });
+        }
+
+        return { txs, loanRows, days };
+      },
+
+      // One row per occurrence: transfer pairs collapse onto the expense leg
+      // (the armed generator and the codebase's canonical leg). transferRef is
+      // the per-occurrence pair key — seriesId would collapse the whole series.
+      _dedupe(txs) {
+        const rows = [];
+        const seenPairs = new Set();
+        txs.forEach(t => {
+          if (!t.transferRef) { rows.push(t); return; }
+          if (seenPairs.has(t.transferRef)) return;
+          seenPairs.add(t.transferRef);
+          const legs = txs.filter(o => o.transferRef === t.transferRef);
+          rows.push(legs.find(l => l.type === 'expense') || legs[0]);
+        });
+        return rows;
+      },
+
+      render(instance, state) {
+        const W = window.Widgets;
+        const isLarge = instance.size === 'large';
+        const { txs, loanRows, days } = this._matches(instance, state);
+
+        const merged = [...this._dedupe(txs), ...loanRows]
+          // Explicit ascending sort: state.transactions order follows the
+          // user's History preference (desc by default) — not an invariant.
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+        if (merged.length === 0) {
+          return W._emptyState(`Nothing scheduled in the next ${days} days`);
+        }
+
+        const limit = isLarge ? 5 : 3;
+        const debtCat = (state.categories || []).find(c => c.id === 'cat_debt');
+
+        const rowsHtml = merged.slice(0, limit).map(row => {
+          const dateLabel = new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          let icon, title, amountHtml, sub;
+
+          if (row.isLoan) {
+            icon = debtCat ? debtCat.icon : 'landmark';
+            title = row.name;
+            amountHtml = `<span class="widget-row-value text-expense">-${W._esc(window.Store.formatCurrency(row.amount))}</span>`;
+            sub = isLarge ? `Loan · ${dateLabel}` : dateLabel;
+          } else {
+            const cat = (state.categories || []).find(c => c.id === row.categoryId);
+            const acc = (state.accounts || []).find(a => a.id === row.accountId);
+            const isExpense = row.type === 'expense';
+            const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
+            icon = row.transferRef ? 'arrow-up-down' : (cat ? cat.icon : 'receipt');
+            title = cat ? cat.name : (row.transferRef ? 'Transfer' : 'Unknown');
+            amountHtml = `<span class="widget-row-value ${cls}">${isExpense ? '-' : '+'}${W._esc(window.Store.formatCurrency(Math.abs(row.amount)))}</span>`;
+            sub = isLarge ? `${acc ? acc.name : 'Account'} · ${dateLabel}` : dateLabel;
+          }
+
+          return `
+            <div class="widget-row">
+              <div class="widget-row-icon"><i data-lucide="${W._esc(icon)}"></i></div>
+              <div class="widget-row-main">
+                <span class="widget-row-title">${W._esc(title)}</span>
+                <span class="widget-row-sub">${W._esc(sub)}</span>
+              </div>
+              ${amountHtml}
+            </div>`;
+        }).join('');
+
+        // Net impact over the whole horizon (not just the sliced rows), from
+        // the UN-deduped set so transfer legs cancel — the same signed sum
+        // computeUpcomingImpact uses. Loans are always outflows.
+        let footer = '';
+        if (isLarge) {
+          const net = txs.reduce((sum, t) =>
+            window.Store._isPositiveTx(t) ? sum + t.amount : sum - t.amount, 0)
+            - loanRows.reduce((sum, l) => sum + l.amount, 0);
+          const cls = net > 0 ? 'text-income' : (net < 0 ? 'text-expense' : '');
+          footer = `
+            <div class="widget-upcoming-footer">
+              <span class="widget-stat-label">Net impact · ${days} days</span>
+              <span class="widget-row-value ${cls}">${net > 0 ? '+' : ''}${W._esc(window.Store.formatCurrency(net))}</span>
+            </div>`;
+        }
+
+        return `<div class="widget-rows">${rowsHtml}</div>${footer}`;
+      },
+
+      attach(instance, card) {
+        card.addEventListener('click', () => {
+          if (window.Store.getState().widgetEditMode) return;
+          window.Router.navigate('#transactions');
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        return [
+          W._configSection('Look ahead', W._segmented('horizonDays', [
+            { value: '7', label: '7 days' },
+            { value: '30', label: '30 days' },
+            { value: '60', label: '60 days' }
+          ], config.horizonDays)),
+          W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds))
+        ].join('');
+      },
+
+      attachConfig(root, ctx) {
+        window.Widgets.attachSharedConfig(root, ctx);
+      }
+    },
+
+    budgets: {
+      title: 'Budget goals',
+      description: 'Track your monthly spending limits and see how much room is left.',
+      icon: 'target',
+      sizes: ['small', 'large'],
+      hasConfig: true,
+      // No accountIds on purpose: getBudgetForMonth has no account dimension,
+      // so an account chip would render, persist and change nothing.
+      defaultConfig: { mode: 'all', categoryIds: [] },
+
+      // Active budgets for the current month. All rules live in
+      // getBudgetForMonth (date bounds, cumulative carryover) — never
+      // recompute them. The one rule that must live here: allocated > 0.
+      // "Deleting" a budget writes amount: 0 but keeps the record, and that
+      // record still reports the category's REAL spend — guarding on spent or
+      // finalLimit would either count un-budgeted spending or drop a live
+      // cumulative budget that is deep in the red (finalLimit <= 0).
+      _rows(instance, state) {
+        const W = window.Widgets;
+        const cfg = W._cfg(instance);
+        const ym = W._todayStr().slice(0, 7);
+        const cats = state.categories || [];
+
+        const rows = (state.budgets || []).map(b => {
+          const cat = cats.find(c => c.id === b.categoryId);
+          if (!cat) return null;                       // orphaned by DELETE_CATEGORY
+          if (cat.id === 'cat_balance') return null;   // adjustment pseudo-category
+          if (cat.typeHint === 'income') return null;  // budgets are expense-only
+          if (cfg.mode === 'selected' && cfg.categoryIds.length > 0 && !cfg.categoryIds.includes(cat.id)) return null;
+          const bdg = window.Store.getBudgetForMonth(cat.id, ym);
+          if (bdg.allocated <= 0) return null;
+          return { cat, bdg };
+        }).filter(Boolean);
+
+        // Most at-risk first. A non-positive limit with real spend is the
+        // worst state there is (cumulative budget in the red).
+        const usage = (r) => r.bdg.finalLimit > 0
+          ? r.bdg.spent / r.bdg.finalLimit
+          : (r.bdg.spent > 0 ? Infinity : 0);
+        rows.sort((a, b) => usage(b) - usage(a));
+        return rows;
+      },
+
+      _totals(rows) {
+        return {
+          limit: rows.reduce((s, r) => s + r.bdg.finalLimit, 0),
+          spent: rows.reduce((s, r) => s + r.bdg.spent, 0)
+        };
+      },
+
+      render(instance, state) {
+        const W = window.Widgets;
+        const rows = this._rows(instance, state);
+        if (rows.length === 0) return W._emptyState('No budget limits set');
+
+        const { limit, spent } = this._totals(rows);
+
+        if (instance.size !== 'large') {
+          const pctLabel = limit > 0 ? `${Math.round((spent / limit) * 100)}%` : '—';
+          return `
+            <div class="widget-donut">
+              <canvas id="${W._canvasId(instance)}"></canvas>
+              <div class="widget-donut-center">
+                <span class="widget-donut-total">${W._esc(pctLabel)}</span>
+              </div>
+            </div>`;
+        }
+
+        // Per-category bars, BudgetView's exact semantics (views.js renderList):
+        // width capped at 100 and forced to 0 for a non-positive limit; isOver
+        // computed independently so a negative-limit category shows a 0% RED bar.
+        const bars = rows.slice(0, 5).map(r => {
+          const pct = r.bdg.finalLimit > 0 ? Math.min((r.bdg.spent / r.bdg.finalLimit) * 100, 100) : 0;
+          const isOver = r.bdg.spent > r.bdg.finalLimit;
+          const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
+          const pctColor = isOver || pct >= 90 ? 'var(--color-expense)' : pct >= 75 ? '#f59e0b' : 'var(--text-secondary)';
+          return `
+            <div class="widget-minibar">
+              <div class="widget-minibar-head">
+                <span class="widget-minibar-label">${W._esc(r.cat.name)}</span>
+                <span class="widget-minibar-value" style="color: ${pctColor};">${pct.toFixed(0)}%</span>
+              </div>
+              <div class="widget-minibar-track">
+                <div class="widget-minibar-fill" style="width: ${pct}%; color: ${barColor};"></div>
+              </div>
+            </div>`;
+        }).join('');
+
+        const overflow = rows.length > 5
+          ? `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">+${rows.length - 5} more in Goals</span>`
+          : '';
+
+        return `
+          <div class="widget-stat">
+            <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(spent))}</span>
+            <span class="widget-stat-label">of ${W._esc(window.Store.formatCurrency(limit))} budgeted</span>
+          </div>
+          <div class="widget-minibars">${bars}</div>
+          ${overflow}`;
+      },
+
+      attach(instance, card, state) {
+        const W = window.Widgets;
+        card.addEventListener('click', () => {
+          if (window.Store.getState().widgetEditMode) return;
+          window.Router.navigate('#budget');
+        });
+
+        if (instance.size === 'large') return;
+        const canvas = card.querySelector(`#${W._canvasId(instance)}`);
+        if (!canvas) return;
+        const rows = this._rows(instance, state);
+        if (rows.length === 0) return;
+        const { limit, spent } = this._totals(rows);
+
+        const theme = window.Components.NetFlowChart._themeColors();
+        // BudgetView's donut palette: remainder floored at 0 so an overspent
+        // ring reads full; red pair when over budget.
+        const overspent = spent > limit && limit > 0;
+        const colors = overspent
+          ? (theme.isDark ? ['#f87171', '#1f293d'] : ['#ef4444', '#f1f5f9'])
+          : (theme.isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']);
+        const data = (limit === 0 && spent === 0) ? [1, 0] : [spent, Math.max(limit - spent, 0)];
+
+        W._mountChart(instance.id, canvas, {
+          type: 'doughnut',
+          data: {
+            datasets: [{
+              data,
+              backgroundColor: colors,
+              borderWidth: 2,
+              borderColor: 'transparent',
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            animation: { duration: 600, easing: 'easeOutQuart' },
+            plugins: { legend: { display: false }, tooltip: { enabled: false } }
+          }
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        const ym = W._todayStr().slice(0, 7);
+        // Offer only categories that actually have an active budget — picking
+        // one without a budget could never render anything.
+        const budgeted = (state.budgets || []).map(b => {
+          const cat = (state.categories || []).find(c => c.id === b.categoryId);
+          if (!cat || cat.id === 'cat_balance' || cat.typeHint === 'income') return null;
+          return window.Store.getBudgetForMonth(cat.id, ym).allocated > 0 ? cat : null;
+        }).filter(Boolean);
+
+        return [
+          W._configSection('Which budgets', W._segmented('mode', [
+            { value: 'all', label: 'All budgets' },
+            { value: 'selected', label: 'Pick categories' }
+          ], config.mode)),
+          config.mode === 'selected'
+            ? W._configSection('Categories', W._multiChips('categoryIds', budgeted, config.categoryIds))
+            : ''
+        ].join('');
       },
 
       attachConfig(root, ctx) {

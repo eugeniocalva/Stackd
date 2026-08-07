@@ -2533,3 +2533,14 @@ a:focus-visible,
   font-family: var(--font-family-display);
   font-weight: 700;
 }
+
+/* Upcoming widget: net-impact footer (v0.72 Phase 4) */
+.widget-upcoming-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}

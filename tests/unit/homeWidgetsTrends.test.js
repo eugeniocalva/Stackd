@@ -299,10 +299,13 @@ describe('add-widget preview', () => {
 describe('registry shape', () => {
   beforeEach(boot);
 
-  it('lists all five widget types for the gallery', () => {
-    expect(W().listTypes().map(t => t.type)).toEqual(
-      ['latest', 'incomeExpense', 'categories', 'netWorth', 'savings']
-    );
+  it('keeps the phase 1-3 types in the gallery, trends after charts', () => {
+    // The exact full-gallery order is pinned in homeWidgetsGoals.test.js —
+    // one place, so adding a widget type breaks one assertion, not two.
+    const types = W().listTypes().map(t => t.type);
+    ['latest', 'incomeExpense', 'categories', 'netWorth', 'savings'].forEach(t =>
+      expect(types).toContain(t));
+    expect(types.indexOf('netWorth')).toBeGreaterThan(types.indexOf('categories'));
   });
 
   it('gives every type a title, description, icon and at least one size', () => {

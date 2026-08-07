@@ -10,7 +10,7 @@
 - [x] **Phase 1 — Milestone removal + widget framework** (slice, registry, grid, edit mode, add-sheet v1, Latest-transactions widget) — done 2026-08-07; see §8a for what shipped
 - [x] **Phase 2 — Chart widgets** (Income vs Expenses, Categories donut + config step) — done 2026-08-07; see §8b
 - [x] **Phase 3 — Trend widgets + add-flow polish** (Net worth, Personal savings, detail/preview step with size carousel) — done 2026-08-07; see §8c
-- [ ] **Phase 4 — Upcoming transactions + Budget goals widgets**
+- [x] **Phase 4 — Upcoming transactions + Budget goals widgets** — done 2026-08-07; see §8d
 - [ ] **Phase 5 — 50/30/20 budget widget + final polish**
 
 ---
@@ -432,6 +432,63 @@ balance at all.
   cumulative carryover semantics — never recompute.
 - **Acceptance:** lint/tests green; preview proof incl. a recurring transfer and
   a tracked + an untracked loan in the upcoming list.
+
+### 8d. Phase 4 — as built (2026-08-07, v0.72)
+
+Both widgets shipped per spec, built from a 3-agent recon that re-verified every
+semantic against the current tree (the §4.1/§5 line refs in this doc predate
+later edits; trust `src/`, not the numbers above). Decisions that bind later work:
+
+- **`upcoming` predicate** mirrors `computeUpcomingImpact` (strictly-future,
+  `isPaid !== false` tri-state, opening-date guard, empty-accounts-means-all)
+  **plus `t.recurrence`** — scheduled payments only; a manually future-dated
+  one-off is deliberately not listed (spec §4.1). Sort is explicitly ascending:
+  `state.transactions` order follows the user's History preference.
+- **Transfer dedupe is keyed on `transferRef`** (per-occurrence pair key —
+  `seriesId` would collapse the whole series), keeping the expense leg, falling
+  back to the surviving leg when an account filter hides it. The large size's
+  **Net impact** figure uses the *un-deduped* set so a transfer's legs cancel,
+  exactly like `computeUpcomingImpact`; loans subtract.
+- **Loan rows**: `kind !== 'sim'`, guard is `getLoanLinkedTransactions(loan)
+  === null` (the read-through — `linkedSeriesId` dangles forever after a series
+  delete), `nextPayment` (not `nextRegularPayment`), `amountC / 100` via the new
+  `Widgets._fmtC` boundary helper. Synthetic rows carry no account, so they are
+  **excluded whenever an account filter is active** rather than pretending to
+  belong to the selected account.
+- **`horizonDays` is a string** (`'7'|'30'|'60'`): `_segmented` round-trips
+  values through dataset attributes, so a numeric default would never match its
+  chip. Parsed once with `parseInt`. Horizon stepping reuses
+  `Store._calculateNextRecurrenceDate(today, days, 'days')` — noon-anchored.
+- **`budgets` enumerates budget-first**, joins to categories, excludes orphans,
+  `cat_balance`, and income categories, then guards on **`allocated > 0`** —
+  never `finalLimit` (a live cumulative budget deep in the red has
+  `finalLimit <= 0`) and never `spent` ("deleting" a budget writes `amount: 0`
+  but the record persists and still reports the category's real spend).
+  All date-bounds/carryover logic stays in `getBudgetForMonth`; the month key is
+  `_todayStr().slice(0, 7)` — **not** `state.activeMonthFilter`, which Analytics
+  paging mutates. Bars copy BudgetView's exact semantics (width capped at 100,
+  forced to 0 for non-positive limits, `isOver` computed independently → a
+  negative-limit budget renders a 0%-wide red bar). No `accountIds` config:
+  `getBudgetForMonth` has no account dimension.
+- **Known, accepted divergence:** `budgets.spent` covers the whole calendar
+  month (materialised future occurrences count as committed spending, matching
+  the Goals tab), while `categories`/`incomeExpense` clamp month-to-date. Reuse
+  of `getBudgetForMonth` is mandated; do not "fix" one side to match the other.
+
+Files: `src/widgets.js` (2 registry entries + `_fmtC`),
+`src/styles/components.css` (net-impact footer), `index.html` (widgets → v5),
+`tests/unit/homeWidgetsGoals.test.js` (32 tests: horizon boundaries, transfer
+dedupe incl. filtered-leg fallback and net-impact cancellation, tracked-loan
+exclusion + dangling-id re-inclusion, cents conversion, sim/broken-config
+skips, deleted-budget guard, cumulative rollover and deep-red rendering,
+escaping), `tests/e2e/home_widgets.spec.js` (+1 spec driving the real
+recurrence engine and toggling a loan tracked live).
+
+Verified: 413 unit tests, 8 e2e, lint 0 errors. In-browser: recurring series +
+recurring transfer + untracked loan rendered with correct dedupe and a net
+impact that reconciled to the cent ($504.84); tracking the loan live removed
+its synthetic row and left the total unchanged; budgets donut and bars in both
+themes; clean console; no horizontal overflow.
 
 ### Phase 5 — `fiftyThirtyTwenty` + polish
 - Register per §5.3 (large only); config panel with planned-income input,
