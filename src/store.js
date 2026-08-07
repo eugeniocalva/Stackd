@@ -90,21 +90,20 @@ window.Store = {
       categories: []
     },
 
-    // ── Debt Simulator ──────────────────────────────────────────────────────
-    // Each loan profile shape:
+    // ── Loans (v0.71 Phase 2, docs/debt-rebuild-plan.md §5) ─────────────────
+    // v2 record shape:
     // {
     //   id: string,                  -- UUID
     //   name: string,                -- e.g. 'Car Loan'
-    //   amount: number,              -- Principal base amount
-    //   tan: number,                 -- Annual interest rate in %
-    //   durationMonths: number,      -- Total number of monthly instalments
-    //   startDate: string,           -- 'YYYY-MM-DD'
-    //   endDate: string,             -- Computed: startDate + durationMonths
-    //   monthlyPayment: number,      -- PMT result
-    //   totalReimbursement: number,  -- monthlyPayment × durationMonths
+    //   kind: 'sim' | 'active',      -- saved simulation vs tracked loan
+    //   config: object,              -- LoanEngine input config (source of truth)
+    //   linkedSeriesId: string|null, -- recurring-expense series (set in Phase 4)
     //   createdAt: string,
     //   updatedAt: string|null
     // }
+    // Legacy v1 fields (amount, tan, durationMonths, startDate, endDate,
+    // monthlyPayment, totalReimbursement) are retained on migrated/legacy-added
+    // records until Phase 3 replaces the old DebtView.
     loans: [],
     theme: 'system', // 'system', 'light', 'dark'
     activeTheme: 'light', // 'light' or 'dark'
@@ -176,6 +175,21 @@ window.Store = {
 
     if (accountsChanged) {
       window.StackdDB.save('accounts', this.state.accounts);
+    }
+
+    // v0.71 Phase 2: wrap legacy v1 loan records with a LoanEngine config.
+    // Idempotent — records that already carry a config are left untouched.
+    let loansChanged = false;
+    this.state.loans.forEach((loan) => {
+      if (!loan.config) {
+        loan.kind = loan.kind === 'sim' ? 'sim' : 'active';
+        loan.config = this._loanConfigFromLegacy(loan);
+        loan.linkedSeriesId = loan.linkedSeriesId || null;
+        loansChanged = true;
+      }
+    });
+    if (loansChanged) {
+      window.StackdDB.save('loans', this.state.loans);
     }
 
     // Initialize filters
@@ -1598,23 +1612,32 @@ window.Store = {
         break;
       }
 
-      // ── Debt Simulator CRUD ───────────────────────────────────────────────
+      // ── Loans CRUD (v0.71 Phase 2: config-based records) ──────────────────
 
       case 'ADD_LOAN': {
-        // payload: { name, amount, tan, durationMonths, startDate, endDate, monthlyPayment, totalReimbursement }
+        // v2 payload: { name, kind: 'sim'|'active', config, linkedSeriesId? }.
+        // Legacy payload ({ name, amount, tan, durationMonths, startDate, ... })
+        // is still accepted while the old DebtView exists: its fields are kept
+        // for rendering and a config is derived so v2 consumers always find one.
+        const isLegacy = !payload.config;
         const newLoan = {
           id: window.StackdDB.generateId(),
           name: payload.name || 'My Loan',
-          amount: payload.amount,
-          tan: payload.tan,
-          durationMonths: payload.durationMonths,
-          startDate: payload.startDate,
-          endDate: payload.endDate,
-          monthlyPayment: payload.monthlyPayment,
-          totalReimbursement: payload.totalReimbursement,
+          kind: payload.kind === 'sim' ? 'sim' : 'active',
+          config: payload.config || this._loanConfigFromLegacy(payload),
+          linkedSeriesId: payload.linkedSeriesId || null,
           createdAt: new Date().toISOString(),
           updatedAt: null
         };
+        if (isLegacy) {
+          newLoan.amount = payload.amount;
+          newLoan.tan = payload.tan;
+          newLoan.durationMonths = payload.durationMonths;
+          newLoan.startDate = payload.startDate;
+          newLoan.endDate = payload.endDate;
+          newLoan.monthlyPayment = payload.monthlyPayment;
+          newLoan.totalReimbursement = payload.totalReimbursement;
+        }
         this.state.loans.push(newLoan);
         window.StackdDB.save('loans', this.state.loans);
         changed = true;
@@ -1622,14 +1645,35 @@ window.Store = {
       }
 
       case 'UPDATE_LOAN': {
-        // payload: { id, ...fieldsToUpdate }
+        // payload: { id, ...fieldsToUpdate } — v2 fields (kind, config,
+        // linkedSeriesId) and legacy fields both merge; when legacy loan terms
+        // change without an explicit config, the config is re-derived from the
+        // merged record so it never goes stale.
         const lIdx = this.state.loans.findIndex(l => l.id === payload.id);
         if (lIdx !== -1) {
-          this.state.loans[lIdx] = {
+          const merged = {
             ...this.state.loans[lIdx],
             ...payload,
             updatedAt: new Date().toISOString()
           };
+          const legacyTermsTouched = ['amount', 'tan', 'durationMonths', 'startDate']
+            .some(k => payload[k] !== undefined);
+          if (!payload.config && legacyTermsTouched) {
+            merged.config = this._loanConfigFromLegacy(merged);
+          }
+          this.state.loans[lIdx] = merged;
+          window.StackdDB.save('loans', this.state.loans);
+          changed = true;
+        }
+        break;
+      }
+
+      case 'PROMOTE_LOAN': {
+        // payload: { id } — flips a saved simulation into a tracked loan
+        const loan = this.state.loans.find(l => l.id === payload.id);
+        if (loan && loan.kind !== 'active') {
+          loan.kind = 'active';
+          loan.updatedAt = new Date().toISOString();
           window.StackdDB.save('loans', this.state.loans);
           changed = true;
         }
@@ -2316,9 +2360,28 @@ window.Store = {
   },
 
   /**
+   * v0.71 Phase 2: derives a LoanEngine input config from a legacy v1 loan
+   * record (or legacy-shaped ADD_LOAN/UPDATE_LOAN payload). Pure data mapping —
+   * no LoanEngine call, so the store stays loadable without loan-engine.js.
+   * See docs/debt-rebuild-plan.md §5.
+   */
+  _loanConfigFromLegacy(rec) {
+    return {
+      type: 'personal',
+      principal: rec.amount,
+      duration: rec.durationMonths,
+      durationUnit: 'months',
+      annualRate: rec.tan || 0,
+      firstPaymentDate: rec.startDate,
+      amortization: 'french'
+    };
+  },
+
+  /**
    * Computes the remaining base principal for a loan using a straight-line method.
    * Deduction is based purely on calendar time vs. start date.
    * The month is considered elapsed once today's day-of-month >= loan start day-of-month.
+   * (Phase 4 of the debt rebuild replaces this with schedule-derived progress.)
    *
    * @param {Object} loan - Loan profile from state.loans
    * @returns {number} Remaining balance (>= 0)

@@ -125,6 +125,19 @@ describe('Store Logic', () => {
     expect(loan.amount).toBe(12000);
     expect(loan.tan).toBe(6);
 
+    // v0.71 Phase 2: a legacy add still produces a v2 record with derived config
+    expect(loan.kind).toBe('active');
+    expect(loan.linkedSeriesId).toBeNull();
+    expect(loan.config).toEqual({
+      type: 'personal',
+      principal: 12000,
+      duration: 24,
+      durationUnit: 'months',
+      annualRate: 6,
+      firstPaymentDate: '2026-01-15',
+      amortization: 'french'
+    });
+
     global.window.Store.dispatch('UPDATE_LOAN', {
       id: loan.id,
       name: 'Updated Car Loan',
@@ -135,9 +148,85 @@ describe('Store Logic', () => {
     const updatedLoan = updatedState.loans.find(l => l.id === loan.id);
     expect(updatedLoan.name).toBe('Updated Car Loan');
     expect(updatedLoan.tan).toBe(5.5);
+    // legacy term change re-derives the config so it never goes stale
+    expect(updatedLoan.config.annualRate).toBe(5.5);
+    expect(updatedLoan.config.principal).toBe(12000);
 
     global.window.Store.dispatch('DELETE_LOAN', { id: loan.id });
     expect(global.window.Store.getState().loans.length).toBe(0);
+  });
+
+  it('should add v2 loans with a config payload and promote simulations', () => {
+    const config = {
+      type: 'mortgage',
+      principal: 111000,
+      duration: 30,
+      durationUnit: 'years',
+      annualRate: 4.05,
+      firstPaymentDate: '2026-09-06',
+      amortization: 'french'
+    };
+    global.window.Store.dispatch('ADD_LOAN', { name: 'My Mortgage', kind: 'sim', config });
+
+    const loan = global.window.Store.getState().loans[0];
+    expect(loan.kind).toBe('sim');
+    expect(loan.config).toEqual(config);
+    expect(loan.linkedSeriesId).toBeNull();
+    expect(loan.amount).toBeUndefined(); // no legacy fields on v2 adds
+
+    global.window.Store.dispatch('PROMOTE_LOAN', { id: loan.id });
+    const promoted = global.window.Store.getState().loans[0];
+    expect(promoted.kind).toBe('active');
+    expect(promoted.updatedAt).not.toBeNull();
+
+    global.window.Store.dispatch('UPDATE_LOAN', { id: loan.id, linkedSeriesId: 'series-123' });
+    expect(global.window.Store.getState().loans[0].linkedSeriesId).toBe('series-123');
+    // v2 update without legacy terms must not touch the config
+    expect(global.window.Store.getState().loans[0].config).toEqual(config);
+  });
+
+  it('should migrate legacy v1 loan records to config-based v2 at boot', () => {
+    const v1Loan = {
+      id: 'loan-legacy-1',
+      name: 'Old Loan',
+      amount: 5000,
+      tan: 4.5,
+      durationMonths: 24,
+      startDate: '2025-03-10',
+      endDate: '2027-03-10',
+      monthlyPayment: 218.24,
+      totalReimbursement: 5237.76,
+      createdAt: '2025-03-01T00:00:00.000Z',
+      updatedAt: null
+    };
+    global.window.localStorage.getItem = vi.fn((key) =>
+      key === 'stackd_v1_loans' ? JSON.stringify([v1Loan]) : null
+    );
+    global.localStorage = global.window.localStorage;
+    executeFile('db.js');
+    executeFile('store.js');
+    global.window.Store.init();
+
+    const migrated = global.window.Store.getState().loans[0];
+    expect(migrated.kind).toBe('active');
+    expect(migrated.linkedSeriesId).toBeNull();
+    expect(migrated.config).toEqual({
+      type: 'personal',
+      principal: 5000,
+      duration: 24,
+      durationUnit: 'months',
+      annualRate: 4.5,
+      firstPaymentDate: '2025-03-10',
+      amortization: 'french'
+    });
+    // legacy fields retained for the old DebtView (removed in Phase 3)
+    expect(migrated.amount).toBe(5000);
+    expect(migrated.monthlyPayment).toBe(218.24);
+    // migration persisted the upgraded slice
+    const saveCalls = global.window.localStorage.setItem.mock.calls
+      .filter(c => c[0] === 'stackd_v1_loans');
+    expect(saveCalls.length).toBeGreaterThan(0);
+    expect(JSON.parse(saveCalls[saveCalls.length - 1][1])[0].config).toBeDefined();
   });
 
   it('should compute remaining loan balance correctly', () => {

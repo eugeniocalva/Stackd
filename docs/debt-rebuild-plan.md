@@ -7,7 +7,7 @@
 ## Phase checklist
 
 - [x] **Phase 1 — Loan engine** (`src/loan-engine.js` + unit tests, no UI) — done 2026-08-07, adversarially verified (see §6.7)
-- [ ] **Phase 2 — Store v2 + migration** (config-based loans slice, currency fix)
+- [x] **Phase 2 — Store v2 + migration** (config-based loans slice, currency fix) — done 2026-08-07; legacy ADD_LOAN/UPDATE_LOAN payloads still accepted + legacy fields retained until Phase 3
 - [ ] **Phase 3 — Simulator UI** (hub, simulator form, results + schedule)
 - [ ] **Phase 4 — My Loans + integration** (promote flow, recurring-expense offer)
 - [ ] **Phase 5 — Polish** (export/import, dead CSS, e2e refresh, docs)

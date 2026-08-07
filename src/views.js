@@ -3696,7 +3696,6 @@ Object.assign(window.Views, {
 
   DebtView: {
     render(state) {
-      const currency = state.currency || '$';
       const loans = state.loans || [];
 
       // Calculate totals
@@ -3713,13 +3712,10 @@ Object.assign(window.Views, {
 
       const totalLoansCount = loans.length;
 
-      const formatCurr = (val) => {
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: currency === '€' ? 'EUR' : (currency === '£' ? 'GBP' : 'USD'),
-          minimumFractionDigits: 2
-        }).format(val || 0);
-      };
+      // v0.71 Phase 2: delegate to the store so the debt page respects the
+      // user's currency setting (the old symbol-vs-code comparison never matched
+      // and always rendered $)
+      const formatCurr = (val) => window.Store.formatCurrency(val || 0);
 
       const loanCardsHtml = loans.length === 0 ? `
         <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4);">
@@ -3864,7 +3860,7 @@ Object.assign(window.Views, {
                 <input type="text" id="loan-name" class="form-control" placeholder="e.g. Car Loan, Home Mortgage" value="${initialValues.name}" required />
               </div>
               <div class="form-group" style="margin-bottom: var(--space-3);">
-                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Principal Amount (${state.currency || '$'})</label>
+                <label style="display: block; font-size: var(--text-xs); font-weight: 600; margin-bottom: 4px;">Principal Amount (${window.Store.getCurrencySymbol()})</label>
                 <input type="number" step="0.01" id="loan-amount" class="form-control" placeholder="0.00" value="${initialValues.amount}" required />
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3);">
@@ -3947,10 +3943,8 @@ Object.assign(window.Views, {
             const pmt = calcPMT(amount, tan, durationMonths);
             const previewEl = document.getElementById('loan-pmt-preview');
             if (previewEl) {
-              previewEl.textContent = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: (state.currency === '€' ? 'EUR' : (state.currency === '£' ? 'GBP' : 'USD'))
-              }).format(pmt) + ' / mo';
+              // v0.71 Phase 2: store formatter — respects the currency setting
+              previewEl.textContent = window.Store.formatCurrency(pmt) + ' / mo';
             }
           };
 
