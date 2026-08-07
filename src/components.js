@@ -1762,6 +1762,65 @@ window.Components = {
   },
 
   NetFlowChart: {
+    // v0.72: extracted from attachEvents' closure so the home widgets can reuse
+    // the exact same axis rounding instead of shipping a second copy of it.
+    // Chooses an axis step from strict multiples of 10/50/100/200/250/500.
+    _computeYScale(vals) {
+      if (!vals || vals.length === 0) {
+        return { min: 0, max: 10, stepSize: 10 };
+      }
+      const rawMax = Math.max(...vals, 0);
+      const rawMin = Math.min(...vals, 0);
+      if (rawMax === 0 && rawMin === 0) {
+        return { min: 0, max: 10, stepSize: 10 };
+      }
+
+      const baseMultipliers = [10, 50, 100, 200, 250, 500];
+      const candidateStepSizes = [];
+      for (let k = 0; k <= 6; k++) {
+        const factor = Math.pow(10, k);
+        for (const m of baseMultipliers) {
+          candidateStepSizes.push(m * factor);
+        }
+      }
+      const sortedStepSizes = [...new Set(candidateStepSizes)].sort((a, b) => a - b);
+
+      let chosenStepSize = sortedStepSizes[0];
+      for (const s of sortedStepSizes) {
+        const stepsMax = Math.ceil(rawMax / s);
+        const stepsMin = Math.floor(rawMin / s);
+        const totalSteps = stepsMax - stepsMin;
+        if (totalSteps <= 6) {
+          chosenStepSize = s;
+          break;
+        }
+      }
+
+      let axisMax = Math.ceil(rawMax / chosenStepSize) * chosenStepSize;
+      let axisMin = Math.floor(rawMin / chosenStepSize) * chosenStepSize;
+
+      if (axisMin === 0 && axisMax === 0) {
+        axisMax = chosenStepSize;
+      }
+
+      return { min: axisMin, max: axisMax, stepSize: chosenStepSize };
+    },
+
+    // v0.72: the per-chart isDark/hex pairs were copy-pasted at every chart site;
+    // widgets read them from here so themes stay consistent as widgets are added.
+    _themeColors() {
+      const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
+      return {
+        isDark,
+        tooltipBg: isDark ? '#161e2e' : '#ffffff',
+        tooltipTitle: isDark ? '#94a3b8' : '#64748b',
+        tooltipBody: isDark ? '#f8fafc' : '#334155',
+        tooltipBorder: isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0',
+        gridColor: isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.6)',
+        tickColor: '#94a3b8'
+      };
+    },
+
     render(data, isCustom = false) {
       if (isCustom) {
         return `
@@ -1817,56 +1876,9 @@ window.Components = {
       const existingNetFlowChart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
       if (existingNetFlowChart) existingNetFlowChart.destroy();
 
-      // Calculate dynamic Y-axis scaling using multiples of 10, 50, 100, 200, 250, 500 based on order of magnitude
-      const computeYScale = (vals) => {
-        if (!vals || vals.length === 0) {
-          return { min: 0, max: 10, stepSize: 10 };
-        }
-        const rawMax = Math.max(...vals, 0);
-        const rawMin = Math.min(...vals, 0);
-        if (rawMax === 0 && rawMin === 0) {
-          return { min: 0, max: 10, stepSize: 10 };
-        }
-
-        const baseMultipliers = [10, 50, 100, 200, 250, 500];
-        const candidateStepSizes = [];
-        for (let k = 0; k <= 6; k++) {
-          const factor = Math.pow(10, k);
-          for (const m of baseMultipliers) {
-            candidateStepSizes.push(m * factor);
-          }
-        }
-        const sortedStepSizes = [...new Set(candidateStepSizes)].sort((a, b) => a - b);
-
-        let chosenStepSize = sortedStepSizes[0];
-        for (const s of sortedStepSizes) {
-          const stepsMax = Math.ceil(rawMax / s);
-          const stepsMin = Math.floor(rawMin / s);
-          const totalSteps = stepsMax - stepsMin;
-          if (totalSteps <= 6) {
-            chosenStepSize = s;
-            break;
-          }
-        }
-
-        let axisMax = Math.ceil(rawMax / chosenStepSize) * chosenStepSize;
-        let axisMin = Math.floor(rawMin / chosenStepSize) * chosenStepSize;
-
-        if (axisMin === 0 && axisMax === 0) {
-          axisMax = chosenStepSize;
-        }
-
-        return { min: axisMin, max: axisMax, stepSize: chosenStepSize };
-      };
-
-      const yScale = computeYScale(values);
-      const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
-      const tooltipBg = isDark ? '#161e2e' : '#ffffff';
-      const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
-      const tooltipBody = isDark ? '#f8fafc' : '#334155';
-      const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
-      const gridColor = isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.6)';
-      const tickColor = isDark ? '#94a3b8' : '#94a3b8';
+      // Dynamic Y-axis scaling (multiples of 10/50/100/200/250/500) — see _computeYScale
+      const yScale = this._computeYScale(values);
+      const { tooltipBg, tooltipTitle, tooltipBody, tooltipBorder, gridColor, tickColor } = this._themeColors();
 
       new window.Chart(canvas, {
         type: 'bar',
@@ -3206,20 +3218,34 @@ window.Components = {
     }
   },
 
-  // v0.72 Add-widget gallery (docs/home-widgets-plan.md §6.3).
-  // Phase 1 is the gallery only: tapping a type adds it straight away. The
-  // detail/preview and config steps land in Phases 2–3 inside this same sheet.
+  // v0.72 Add-widget sheet (docs/home-widgets-plan.md §6.3).
+  // Two steps: gallery → config (config only for registry entries with
+  // hasConfig). show({editId}) jumps straight to the config step for an
+  // existing widget, which is what the gear button in edit mode uses.
+  // The detail/preview step with the size carousel lands in Phase 3.
   AddWidgetModal: {
-    show() {
+    show(options = {}) {
       const container = document.getElementById('modal-container');
-      if (!container) return;
-      if (!window.Widgets) return;
+      if (!container || !window.Widgets) return;
 
       const existing = document.getElementById('add-widget-modal');
       if (existing) existing.remove();
 
-      const types = window.Widgets.listTypes();
-      const esc = window.Widgets._esc.bind(window.Widgets);
+      const W = window.Widgets;
+      const esc = W._esc.bind(W);
+      const editId = options.editId || null;
+
+      let step = 'gallery';
+      let selectedType = null;
+      let draft = {};
+
+      if (editId) {
+        const inst = (window.Store.getState().homeWidgets || []).find(w => w.id === editId);
+        if (!inst) return;
+        selectedType = inst.type;
+        draft = W._cfg(inst);
+        step = 'config';
+      }
 
       const backdrop = document.createElement('div');
       backdrop.className = 'modal-backdrop';
@@ -3230,28 +3256,6 @@ window.Components = {
       backdrop.setAttribute('role', 'dialog');
       backdrop.setAttribute('aria-modal', 'true');
       backdrop.setAttribute('aria-labelledby', 'awm-title');
-
-      backdrop.innerHTML = `
-        <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
-          <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
-            <button class="modal-btn-top modal-btn-close" id="awm-close" aria-label="Close add widget" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
-            <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">Add widget</h2>
-            <div style="width: 36px;"></div>
-          </div>
-
-          <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
-            <div class="widget-gallery-grid">
-              ${types.map(t => `
-                <button type="button" class="widget-gallery-card touch-target" data-widget-type="${esc(t.type)}">
-                  <div class="widget-gallery-icon"><i data-lucide="${esc(t.icon)}"></i></div>
-                  <span class="widget-gallery-title">${esc(t.title)}</span>
-                  <span class="widget-gallery-desc">${esc(t.description)}</span>
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-      `;
 
       const close = () => {
         backdrop.classList.remove('open');
@@ -3264,26 +3268,126 @@ window.Components = {
         }, 300);
       };
 
-      const closeBtn = backdrop.querySelector('#awm-close');
-      if (closeBtn) closeBtn.onclick = close;
+      const renderGallery = () => `
+        <div class="widget-gallery-grid">
+          ${W.listTypes().map(t => `
+            <button type="button" class="widget-gallery-card touch-target" data-widget-type="${esc(t.type)}">
+              <div class="widget-gallery-icon"><i data-lucide="${esc(t.icon)}"></i></div>
+              <span class="widget-gallery-title">${esc(t.title)}</span>
+              <span class="widget-gallery-desc">${esc(t.description)}</span>
+            </button>
+          `).join('')}
+        </div>`;
 
-      backdrop.querySelectorAll('.widget-gallery-card').forEach(card => {
-        card.onclick = () => {
-          const type = card.dataset.widgetType;
-          const def = window.Widgets.registry[type];
-          if (!def) return;
-          // Close before dispatching: the dispatch re-renders the dashboard
-          // underneath, and closing first keeps the sheet animation clean.
-          close();
-          window.Store.dispatch('ADD_HOME_WIDGET', {
-            type,
-            size: (def.sizes && def.sizes[0]) || 'small',
-            config: def.defaultConfig ? { ...def.defaultConfig } : {}
-          });
-        };
-      });
+      const renderConfigStep = () => {
+        const def = W.registry[selectedType];
+        const state = window.Store.getState();
+        return `
+          <p class="widget-config-intro">${esc(def.description)}</p>
+          <div id="awm-config">${def.renderConfig ? def.renderConfig(draft, state) : ''}</div>`;
+      };
+
+      const renderAll = () => {
+        const def = selectedType ? W.registry[selectedType] : null;
+        const isConfig = step === 'config';
+        const title = isConfig ? (def ? def.title : 'Configure') : 'Add widget';
+        // In edit mode there is no gallery to go back to.
+        const leftGlyph = (isConfig && !editId) ? '‹' : '✕';
+
+        backdrop.innerHTML = `
+          <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(0); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+            <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+              <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${(isConfig && !editId) ? 'Back to widget list' : 'Close'}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
+              <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${esc(title)}</h2>
+              <div style="width: 36px;"></div>
+            </div>
+
+            <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
+              ${isConfig ? renderConfigStep() : renderGallery()}
+            </div>
+
+            ${isConfig ? `
+              <div class="modal-footer-bar" style="padding: var(--space-4); padding-bottom: calc(var(--space-4) + var(--safe-bottom, 0px)); border-top: 1px solid var(--color-border); background: var(--bg-surface);">
+                <button type="button" class="btn btn-primary" id="awm-confirm">${editId ? 'Save changes' : 'Add widget'}</button>
+              </div>` : ''}
+          </div>`;
+
+        attachAll();
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      };
+
+      const ctx = {
+        getConfig: () => draft,
+        setConfig: (patch) => { draft = { ...draft, ...patch }; },
+        rerender: () => renderAll()
+      };
+
+      const attachAll = () => {
+        const leftBtn = backdrop.querySelector('#awm-left');
+        if (leftBtn) {
+          leftBtn.onclick = () => {
+            if (step === 'config' && !editId) {
+              step = 'gallery';
+              selectedType = null;
+              renderAll();
+            } else {
+              close();
+            }
+          };
+        }
+
+        backdrop.querySelectorAll('.widget-gallery-card').forEach(card => {
+          card.onclick = () => {
+            const type = card.dataset.widgetType;
+            const def = W.registry[type];
+            if (!def) return;
+
+            if (def.hasConfig) {
+              selectedType = type;
+              draft = { ...(def.defaultConfig || {}) };
+              step = 'config';
+              renderAll();
+              return;
+            }
+            // No config to collect — add it straight away. Close first so the
+            // dashboard re-render happens behind a closing sheet.
+            close();
+            window.Store.dispatch('ADD_HOME_WIDGET', {
+              type,
+              size: (def.sizes && def.sizes[0]) || 'small',
+              config: def.defaultConfig ? { ...def.defaultConfig } : {}
+            });
+          };
+        });
+
+        const configRoot = backdrop.querySelector('#awm-config');
+        if (configRoot && selectedType) {
+          const def = W.registry[selectedType];
+          if (def && def.attachConfig) def.attachConfig(configRoot, ctx);
+        }
+
+        const confirmBtn = backdrop.querySelector('#awm-confirm');
+        if (confirmBtn) {
+          confirmBtn.onclick = () => {
+            const def = W.registry[selectedType];
+            if (!def) return;
+            const config = { ...draft };
+            close();
+            if (editId) {
+              window.Store.dispatch('UPDATE_HOME_WIDGET', { id: editId, config });
+            } else {
+              window.Store.dispatch('ADD_HOME_WIDGET', {
+                type: selectedType,
+                size: (def.sizes && def.sizes[0]) || 'small',
+                config
+              });
+            }
+          };
+        }
+      };
 
       container.appendChild(backdrop);
+      renderAll();
 
       requestAnimationFrame(() => {
         backdrop.classList.add('open');

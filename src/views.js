@@ -628,6 +628,13 @@ window.Views = {
           console.error('DashboardView: FAILED to initialize Chart:', err);
         }
       }
+    },
+
+    // v0.72: main.js calls this on transition to another view. Widget charts are
+    // tracked by widget id (not by canvas), so they must be released explicitly
+    // or they keep detached canvases alive for the rest of the session.
+    destroy() {
+      if (window.Widgets) window.Widgets.destroyCharts();
     }
   },
 

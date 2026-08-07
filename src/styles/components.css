@@ -2161,19 +2161,12 @@ a:focus-visible,
 }
 
 /* Edit mode chrome */
+/* Deliberately static: an iOS-style jiggle keeps every 28px chrome button in
+   perpetual motion, which hurts tap accuracy far more than it communicates
+   "editing". A ring says the same thing and holds still. */
 .widgets-grid.is-editing .widget-card {
-  animation: widget-jiggle 2.4s ease-in-out infinite;
-}
-
-@keyframes widget-jiggle {
-  0%, 100% { transform: rotate(-0.35deg); }
-  50% { transform: rotate(0.35deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .widgets-grid.is-editing .widget-card {
-    animation: none;
-  }
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .widget-card.is-editing {
@@ -2298,4 +2291,172 @@ a:focus-visible,
   font-size: var(--text-xs);
   line-height: 1.35;
   color: var(--text-tertiary);
+}
+
+/* ── Widget bodies: charts, stats, donuts (v0.72 Phase 2) ───────────────── */
+.widget-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 180px;
+}
+
+.widget-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: var(--space-3);
+}
+
+.widget-stat-value {
+  font-family: var(--font-family-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.widget-stat-label {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.widget-minibars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.widget-minibar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 3px;
+}
+
+.widget-minibar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.widget-minibar-value {
+  font-family: var(--font-family-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.widget-minibar-track {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken);
+  overflow: hidden;
+}
+
+.widget-minibar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  min-width: 2px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Donut */
+.widget-donut {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  max-height: 150px;
+  margin: 0 auto;
+}
+
+.widget-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 12%;
+}
+
+.widget-donut-total {
+  font-family: var(--font-family-display);
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.widget-donut-layout {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.widget-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.widget-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.widget-legend-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.widget-legend-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.widget-legend-pct {
+  flex-shrink: 0;
+  font-family: var(--font-family-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Config step inside the add-widget sheet */
+.widget-config-intro {
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-5);
+}
+
+.widget-config-group {
+  margin-bottom: var(--space-5);
+}
+
+.widget-config-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-2);
 }

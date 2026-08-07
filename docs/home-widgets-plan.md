@@ -8,7 +8,7 @@
 ## Phase checklist
 
 - [x] **Phase 1 — Milestone removal + widget framework** (slice, registry, grid, edit mode, add-sheet v1, Latest-transactions widget) — done 2026-08-07; see §8a for what shipped
-- [ ] **Phase 2 — Chart widgets** (Income vs Expenses, Categories donut + config step)
+- [x] **Phase 2 — Chart widgets** (Income vs Expenses, Categories donut + config step) — done 2026-08-07; see §8b
 - [ ] **Phase 3 — Trend widgets + add-flow polish** (Net worth, Personal savings, detail/preview step with size carousel)
 - [ ] **Phase 4 — Upcoming transactions + Budget goals widgets**
 - [ ] **Phase 5 — 50/30/20 budget widget + final polish**
@@ -312,6 +312,61 @@ was done through the live DOM and computed styles instead.
 - E2E: `tests/e2e/home_widgets.spec.js` — add configured widget, reload, persists.
 - **Acceptance:** lint/tests green; preview proof of both widgets both sizes,
   both themes, with data and empty.
+
+### 8b. Phase 2 — as built (2026-08-07, v0.72)
+
+Both widgets shipped in both sizes, plus the config step. Notable decisions and
+two defects caught during verification:
+
+- **Month-to-date clamp (defect, found in browser).** `computeNetFlowData` takes
+  a `clampEnd` and was clamped to today, but `computeCategoryDistribution` goes
+  through `getFilteredTransactions`, which honours the whole calendar month. The
+  donut therefore counted future-dated members of recurring series as already
+  spent, and the two widgets disagreed about the same month ($1,365 vs $1,035 on
+  the test data). Fixed with `Widgets._monthToDateFilters` — a `custom` period
+  from the 1st to today — used by every `getFilteredTransactions`-based widget.
+  **Phases 3–5 must use `_monthToDateFilters`, not `_monthFilters`, for anything
+  built on `getFilteredTransactions`.** Two regression tests pin it, one of which
+  asserts the two widgets report the same figure.
+- **Edit-mode jiggle removed (defect, found by e2e).** Phase 1's iOS-style
+  infinite jiggle made every 28px chrome button perpetually unstable — Playwright
+  could not click them, and the same instability hurts real tap accuracy,
+  especially with motor impairments. Replaced by a static accent ring.
+- **Shared, not duplicated.** `NetFlowChart._computeYScale` and a new
+  `NetFlowChart._themeColors()` were extracted from that component's closure so
+  the widgets reuse the exact axis rounding and theme palette. The donut reuses
+  `CategoryDonutChart._capData` / `._assignColors` (top-5 + Others).
+  `netFlowChartYScale.test.js` asserts on source text, so the extracted body was
+  kept verbatim.
+- **Chart lifecycle.** Chart.js indexes instances *by canvas element*, but the
+  dashboard replaces every canvas on each `innerHTML` render, so `getChart()`
+  can never find the old one. `Widgets._charts` tracks instances **by widget id**;
+  `attachSection` destroys all of them before remounting, and
+  `DashboardView.destroy()` releases them when leaving the dashboard.
+- **Config architecture.** Registry entries own their config UI via
+  `renderConfig(config, state)` / `attachConfig(root, ctx)`; the modal owns the
+  draft, the panel chrome and the confirm button. Shared controls
+  (`_segmented`, `_multiChips`, `attachSharedConfig`) live on `Widgets`.
+  `attachSharedConfig`'s `onChange` hook lets a widget invalidate dependent
+  fields in the same click — `categories` uses it to clear picked category ids
+  when the direction flips, avoiding a double render.
+- **Empty multi-select means "All"**, matching the store's filter convention, so
+  deselecting everything never renders an empty widget.
+- The small `incomeExpense` variant uses CSS bars, not Chart.js: a half-width
+  canvas with axis labels is unreadable at that size.
+
+Files: `src/widgets.js` (2 registry entries, chart lifecycle, config helpers),
+`src/components.js` (`_computeYScale`/`_themeColors` extraction, two-step
+`AddWidgetModal`), `src/views.js` (`DashboardView.destroy`),
+`src/styles/components.css`, `index.html` (components 23 / widgets 3 / views 33),
+`tests/unit/homeWidgetsCharts.test.js` (28 tests),
+`tests/e2e/home_widgets.spec.js` (6 specs).
+
+Verified: 355 unit tests and 16 e2e green, lint 0 errors. In-browser: both
+widgets in both sizes with six months of seeded data, top-5+Others capping,
+gear-to-config round trip, direction flip clearing stale picks, dark and light
+themes (chart tick/grid colours confirmed switching), no console errors in a
+fresh tab, no horizontal overflow.
 
 ### Phase 3 — Trend widgets + add-flow polish: `netWorth`, `savings`
 - Register both types per §4 rows 4–5.

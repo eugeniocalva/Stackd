@@ -97,6 +97,15 @@ try/catch and render a placeholder for unregistered types — keep that containm
 Edit mode (`state.widgetEditMode`) is transient and cleared by `SET_VIEW`.
 The slice is deliberately **not** in the CSV backup (house convention for prefs).
 
+Two rules that are easy to get wrong:
+- **Widgets are month-to-date.** Use `Widgets._monthToDateFilters` for anything
+  built on `getFilteredTransactions` — that helper honours the whole calendar
+  month otherwise, and future-dated recurring members would count as spent.
+  `computeNetFlowData` is the exception: it clamps itself via its `clampEnd` arg.
+- **Chart instances are tracked by widget id** in `Widgets._charts`, because the
+  dashboard replaces every canvas on each render so `Chart.getChart(canvas)`
+  can't find the old instance. Mount via `Widgets._mountChart`, never `new Chart`.
+
 ### Recurring transactions (v0.67 semantics)
 
 - A recurrent series is **fully materialized up-front**: `_processRecurringTransactions` creates every occurrence out to `recurrence.endDate` (capped at 60 months from `startDate`) as a chain. Every member carries `recurrence: {seriesId, interval, frequency, startDate, endDate}`; exactly **one member — the chain tail — additionally holds `recurrence.nextDate`** (the live "generator"). For recurring transfers only the **expense leg** is ever armed.
