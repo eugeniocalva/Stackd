@@ -274,7 +274,16 @@ window.Components = {
       const backdrop = document.getElementById('active-modal');
       if (backdrop) {
         backdrop.classList.remove('open');
-        setTimeout(() => { document.getElementById('modal-container').innerHTML = ''; }, 300);
+        // v0.71: the teardown must only clear ITS OWN modal. A modal opened
+        // during the 300ms exit animation (e.g. one flow handing off to the
+        // next) replaces #active-modal, and the stale timer used to wipe the
+        // container out from under it.
+        setTimeout(() => {
+          const current = document.getElementById('active-modal');
+          if (current && current !== backdrop) return;
+          const container = document.getElementById('modal-container');
+          if (container) container.innerHTML = '';
+        }, 300);
       }
     }
   },

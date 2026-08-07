@@ -1,6 +1,7 @@
 // store.js - Pub/Sub State Manager
 const DEFAULT_CATEGORIES = [
   { id: 'cat_balance', name: 'Adjustment', icon: 'scale', isDefault: true, typeHint: 'both', color: '#64748b' },
+  { id: 'cat_debt', name: 'Loan Payment', icon: 'landmark', isDefault: true, typeHint: 'expense', color: '#6366f1' },
   { id: 'cat_dining', name: 'Dining Out', icon: 'utensils', isDefault: true, typeHint: 'expense', color: '#f59e0b' },
   { id: 'cat_entertainment', name: 'Entertainment', icon: 'clapperboard', isDefault: true, typeHint: 'expense', color: '#8b5cf6' },
   { id: 'cat_freelance', name: 'Freelance', icon: 'laptop', isDefault: true, typeHint: 'income', color: '#6366f1' },
@@ -107,6 +108,10 @@ window.Store = {
     loans: [],
     // v0.71 Phase 3: transient simulator hand-off (form → results); never persisted
     debtSim: null,
+    // v0.71 Phase 4: armed loan→series link {loanId, seriesId}. ADD_TRANSACTION
+    // consumes it when the matching recurring series is actually created, so a
+    // loan is only marked as tracked if the user goes through with the form.
+    pendingLoanLink: null,
     theme: 'system', // 'system', 'light', 'dark'
     activeTheme: 'light', // 'light' or 'dark'
     analyticsBalanceMode: 'today', // v0.64 - 'today' | 'end': hero balance basis when the period extends past today
@@ -177,6 +182,19 @@ window.Store = {
 
     if (accountsChanged) {
       window.StackdDB.save('accounts', this.state.accounts);
+    }
+
+    // v0.71 Phase 4: one-time seed of the 'Loan Payment' category for existing
+    // installs. Flag-guarded so it is never resurrected once the user deletes it.
+    if (!window.StackdDB.load('catDebtSeeded', false)) {
+      if (!this.state.categories.some(c => c.id === 'cat_debt')) {
+        const def = DEFAULT_CATEGORIES.find(c => c.id === 'cat_debt');
+        if (def) {
+          this.state.categories.push({ ...def });
+          window.StackdDB.save('categories', this.state.categories);
+        }
+      }
+      window.StackdDB.save('catDebtSeeded', true);
     }
 
     // v0.71 Phase 2: wrap legacy v1 loan records with a LoanEngine config.
@@ -822,7 +840,10 @@ window.Store = {
         }
         if (this.state.accounts.length === 1 && !this.state.defaultAccountId) {
           this.state.defaultAccountId = newAccount.id;
-          localStorage.setItem('stackd_v1_defaultAccountId', newAccount.id);
+          // v0.71: must go through StackdDB — a raw setItem writes an unquoted
+          // UUID that JSON.parse then rejects on the next load, silently
+          // dropping the default account (and logging an error every boot).
+          window.StackdDB.save('defaultAccountId', newAccount.id);
         }
         changed = true;
         break;
@@ -920,6 +941,19 @@ window.Store = {
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
+
+        // v0.71 Phase 4: the armed loan link fires only for the exact series we
+        // prefilled, so unrelated recurring transactions never touch a loan.
+        const pend = this.state.pendingLoanLink;
+        if (pend && newTransaction.recurrence && newTransaction.recurrence.seriesId === pend.seriesId) {
+          const linkedLoan = this.state.loans.find(l => l.id === pend.loanId);
+          if (linkedLoan) {
+            linkedLoan.linkedSeriesId = pend.seriesId;
+            linkedLoan.updatedAt = new Date().toISOString();
+            window.StackdDB.save('loans', this.state.loans);
+          }
+          this.state.pendingLoanLink = null;
+        }
         changed = true;
         break;
       }
@@ -1570,6 +1604,12 @@ window.Store = {
         changed = true;
         break;
 
+      case 'SET_PENDING_LOAN_LINK':
+        // v0.71 Phase 4: arms {loanId, seriesId} before sending the user to the
+        // prefilled transaction form; consumed by ADD_TRANSACTION on a match.
+        this.state.pendingLoanLink = payload || null;
+        break;
+
       case 'SAVE_EXPANDED_GRAPH_FILTERS':
       case 'UPDATE_EXPANDED_GRAPH_FILTERS': {
         this.state.expandedGraphFilters = {
@@ -1690,6 +1730,10 @@ window.Store = {
 
       case 'DELETE_LOAN': {
         // payload: { id }
+        // v0.71 Phase 4: disarm a pending link aimed at the loan being removed
+        if (this.state.pendingLoanLink && this.state.pendingLoanLink.loanId === payload.id) {
+          this.state.pendingLoanLink = null;
+        }
         this.state.loans = this.state.loans.filter(l => l.id !== payload.id);
         window.StackdDB.save('loans', this.state.loans);
         changed = true;
@@ -2386,24 +2430,85 @@ window.Store = {
   },
 
   /**
-   * Computes the remaining base principal for a loan using a straight-line method.
-   * Deduction is based purely on calendar time vs. start date.
-   * The month is considered elapsed once today's day-of-month >= loan start day-of-month.
-   * (Phase 4 of the debt rebuild replaces this with schedule-derived progress.)
+   * v0.71 Phase 4: schedule-derived loan progress (replaces the old
+   * straight-line computeLoanRemainingBalance, which disagreed with the
+   * interest-bearing payment displayed next to it). Everything comes from
+   * LoanEngine, so principal paid, interest paid and the next instalment are
+   * all consistent with the amortization schedule.
    *
-   * @param {Object} loan - Loan profile from state.loans
-   * @returns {number} Remaining balance (>= 0)
+   * @param {Object} loan - v2 loan record (needs .config)
+   * @param {string} [todayStr] - 'YYYY-MM-DD' override, for tests
+   * @returns {Object|null} progress, or null when the config can't be simulated
    */
-  computeLoanRemainingBalance(loan) {
-    const today = new Date();
-    const start = new Date(loan.startDate + 'T00:00:00');
-    let months = (today.getFullYear() - start.getFullYear()) * 12
-               + (today.getMonth() - start.getMonth());
-    // Only count a month as elapsed once we've passed the day-of-month
-    if (today.getDate() < start.getDate()) months -= 1;
-    months = Math.max(0, Math.min(months, loan.durationMonths));
-    const remaining = loan.amount - (months * (loan.amount / loan.durationMonths));
-    return Math.max(0, remaining);
+  getLoanProgress(loan, todayStr) {
+    if (!loan || !loan.config || !window.LoanEngine) return null;
+    let res;
+    try {
+      res = window.LoanEngine.simulate({ ...loan.config, computeSavings: false });
+    } catch (e) {
+      return null;
+    }
+    const today = todayStr || this._todayYMD();
+    const totalC = res.financedPrincipalC;
+    let paidPrincipalC = 0;
+    let paidInterestC = 0;
+    let paidCount = 0;
+    let nextPayment = null;
+    let nextRegularPayment = null;
+    res.schedule.forEach(row => {
+      if (row.date <= today) {
+        paidPrincipalC += row.principalC + row.extraPrincipalC;
+        paidInterestC += row.interestC;
+        paidCount++;
+        return;
+      }
+      if (!nextPayment) {
+        nextPayment = { date: row.date, amountC: row.paymentC + row.extraPrincipalC };
+      }
+      // index 0 is the interest-only stub, which is NOT representative of the
+      // instalment: a recurring series armed from it would under-charge every
+      // month. Track the next true amortizing row separately.
+      if (!nextRegularPayment && row.index >= 1) {
+        nextRegularPayment = { date: row.date, amountC: row.paymentC + row.extraPrincipalC };
+      }
+    });
+    const remainingC = Math.max(0, totalC - paidPrincipalC);
+    return {
+      totalC,
+      paidPrincipalC,
+      paidInterestC,
+      remainingC,
+      pct: totalC > 0 ? Math.min(100, Math.max(0, paidPrincipalC / totalC * 100)) : 0,
+      paidCount,
+      totalCount: res.installmentCount,
+      nextPayment,
+      nextRegularPayment,
+      initialPaymentC: res.initialPaymentC,
+      lastPaymentDate: res.lastPaymentDate,
+      isPaidOff: remainingC === 0,
+      simulation: res
+    };
+  },
+
+  /**
+   * v0.71 Phase 4: the live transactions of a loan's linked recurring series.
+   * Reads through to the transactions rather than trusting `linkedSeriesId`, so
+   * a series the user deleted stops showing as tracked.
+   *
+   * @param {Object} loan
+   * @returns {Array|null} the series' transactions, or null when not tracked
+   */
+  getLoanLinkedTransactions(loan) {
+    if (!loan || !loan.linkedSeriesId) return null;
+    const txs = this.state.transactions.filter(
+      t => t.recurrence && t.recurrence.seriesId === loan.linkedSeriesId
+    );
+    return txs.length ? txs : null;
+  },
+
+  _todayYMD() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 };
 

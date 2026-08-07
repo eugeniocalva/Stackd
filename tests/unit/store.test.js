@@ -25,6 +25,7 @@ describe('Store Logic', () => {
     
     // Load dependencies in order
     executeFile('db.js');
+    executeFile('loan-engine.js');
     executeFile('store.js');
     
     // Initialize store
@@ -229,58 +230,106 @@ describe('Store Logic', () => {
     expect(JSON.parse(saveCalls[saveCalls.length - 1][1])[0].config).toBeDefined();
   });
 
-  it('should compute remaining loan balance correctly', () => {
-    const loan = {
-      id: 'loan-1',
-      name: 'Test Loan',
-      amount: 12000,
-      tan: 0,
-      durationMonths: 24,
-      startDate: '2026-01-15',
-      endDate: '2028-01-15',
-      monthlyPayment: 500,
-      totalReimbursement: 12000
+  it('should derive loan progress from the amortization schedule', () => {
+    // Calibration loan: 111,000 @ 4.05% / 30y, first payment 2026-09-06
+    const config = {
+      type: 'mortgage', principal: 111000, duration: 30, durationUnit: 'years',
+      annualRate: 4.05, firstPaymentDate: '2026-09-06', amortization: 'french'
     };
+    global.window.Store.dispatch('ADD_LOAN', { name: 'Mutuo', kind: 'active', config });
+    const loan = global.window.Store.getState().loans[0];
 
-    const RealDate = global.Date;
-    
-    // Scenario 1: today is 2026-01-15 (same day as start)
-    global.Date = class extends RealDate {
-      constructor(val) {
-        if (val) return new RealDate(val);
-        return new RealDate('2026-01-15T12:00:00');
+    // Before the first instalment: nothing paid, next payment is row 1
+    const before = global.window.Store.getLoanProgress(loan, '2026-08-01');
+    expect(before.paidCount).toBe(0);
+    expect(before.paidPrincipalC).toBe(0);
+    expect(before.remainingC).toBe(11100000);
+    expect(before.pct).toBe(0);
+    expect(before.nextPayment).toEqual({ date: '2026-09-06', amountC: 53314 });
+    expect(before.totalCount).toBe(360);
+
+    // After exactly 4 instalments: principal paid matches the schedule rows
+    const after4 = global.window.Store.getLoanProgress(loan, '2026-12-06');
+    expect(after4.paidCount).toBe(4);
+    expect(after4.paidPrincipalC).toBe(15851 + 15905 + 15959 + 16013);
+    expect(after4.paidInterestC).toBe(37463 + 37409 + 37355 + 37301);
+    expect(after4.remainingC).toBe(11100000 - after4.paidPrincipalC);
+    expect(after4.nextPayment.date).toBe('2027-01-06');
+    expect(after4.isPaidOff).toBe(false);
+
+    // Past the end: fully paid, no next payment
+    const done = global.window.Store.getLoanProgress(loan, '2060-01-01');
+    expect(done.paidCount).toBe(360);
+    expect(done.remainingC).toBe(0);
+    expect(done.pct).toBe(100);
+    expect(done.nextPayment).toBeNull();
+    expect(done.isPaidOff).toBe(true);
+  });
+
+  it('should return null progress for an unsimulatable loan', () => {
+    expect(global.window.Store.getLoanProgress(null)).toBeNull();
+    expect(global.window.Store.getLoanProgress({ id: 'x', name: 'no config' })).toBeNull();
+    expect(global.window.Store.getLoanProgress({ id: 'x', config: { principal: -5 } })).toBeNull();
+  });
+
+  it('should link a loan to its recurring series only on an exact seriesId match', () => {
+    global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 5000 });
+    const account = global.window.Store.getState().accounts[0];
+    global.window.Store.dispatch('ADD_LOAN', {
+      name: 'Mutuo', kind: 'active',
+      config: {
+        principal: 10000, duration: 24, durationUnit: 'months',
+        annualRate: 4.5, firstPaymentDate: '2026-09-06', amortization: 'french'
       }
-    };
-    expect(global.window.Store.computeLoanRemainingBalance(loan)).toBe(12000);
+    });
+    const loan = global.window.Store.getState().loans[0];
+    expect(loan.linkedSeriesId).toBeNull();
 
-    // Scenario 2: today is 2026-02-14 (less than 1 month elapsed)
-    global.Date = class extends RealDate {
-      constructor(val) {
-        if (val) return new RealDate(val);
-        return new RealDate('2026-02-14T12:00:00');
-      }
-    };
-    expect(global.window.Store.computeLoanRemainingBalance(loan)).toBe(12000);
+    global.window.Store.dispatch('SET_PENDING_LOAN_LINK', { loanId: loan.id, seriesId: 'series-loan-1' });
 
-    // Scenario 3: today is 2026-02-15 (exactly 1 month elapsed)
-    global.Date = class extends RealDate {
-      constructor(val) {
-        if (val) return new RealDate(val);
-        return new RealDate('2026-02-15T12:00:00');
-      }
-    };
-    expect(global.window.Store.computeLoanRemainingBalance(loan)).toBe(11500);
+    // An unrelated recurring transaction must NOT consume the armed link
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 20, accountId: account.id, categoryId: 'cat_groceries',
+      date: '2026-09-01',
+      recurrence: { seriesId: 'other-series', interval: 1, frequency: 'months', endDate: '2027-01-01' }
+    });
+    expect(global.window.Store.getState().loans[0].linkedSeriesId).toBeNull();
+    expect(global.window.Store.getState().pendingLoanLink).not.toBeNull();
 
-    // Scenario 4: today is 2027-01-15 (exactly 12 months elapsed)
-    global.Date = class extends RealDate {
-      constructor(val) {
-        if (val) return new RealDate(val);
-        return new RealDate('2027-01-15T12:00:00');
-      }
-    };
-    expect(global.window.Store.computeLoanRemainingBalance(loan)).toBe(6000);
+    // The armed series links the loan and disarms the pending link
+    global.window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 436.48, accountId: account.id, categoryId: 'cat_debt',
+      date: '2026-09-06',
+      recurrence: { seriesId: 'series-loan-1', interval: 1, frequency: 'months', endDate: '2028-08-06' }
+    });
+    const linked = global.window.Store.getState().loans[0];
+    expect(linked.linkedSeriesId).toBe('series-loan-1');
+    expect(global.window.Store.getState().pendingLoanLink).toBeNull();
 
-    global.Date = RealDate;
+    // getLoanLinkedTransactions reads through to the real transactions
+    expect(global.window.Store.getLoanLinkedTransactions(linked).length).toBeGreaterThan(0);
+    expect(global.window.Store.getLoanLinkedTransactions({ linkedSeriesId: 'ghost' })).toBeNull();
+    expect(global.window.Store.getLoanLinkedTransactions({ linkedSeriesId: null })).toBeNull();
+  });
+
+  it('should seed the Loan Payment category once, without resurrecting it', () => {
+    const cats = global.window.Store.getState().categories;
+    const debtCat = cats.find(c => c.id === 'cat_debt');
+    expect(debtCat).toBeDefined();
+    expect(debtCat.typeHint).toBe('expense');
+    expect(debtCat.name).toBe('Loan Payment');
+
+    // Simulate an install that already ran the seed and then deleted the category
+    global.window.localStorage.getItem = vi.fn((key) => {
+      if (key === 'stackd_v1_catDebtSeeded') return JSON.stringify(true);
+      if (key === 'stackd_v1_categories') return JSON.stringify([{ id: 'cat_other', name: 'Other', icon: 'package', isDefault: true, typeHint: 'both' }]);
+      return null;
+    });
+    global.localStorage = global.window.localStorage;
+    executeFile('db.js');
+    executeFile('store.js');
+    global.window.Store.init();
+    expect(global.window.Store.getState().categories.find(c => c.id === 'cat_debt')).toBeUndefined();
   });
 
   it('should enforce 60-month cap on recurring transaction end date', () => {

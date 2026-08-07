@@ -9,7 +9,7 @@
 - [x] **Phase 1 — Loan engine** (`src/loan-engine.js` + unit tests, no UI) — done 2026-08-07, adversarially verified (see §6.7)
 - [x] **Phase 2 — Store v2 + migration** (config-based loans slice, currency fix) — done 2026-08-07; legacy ADD_LOAN/UPDATE_LOAN payloads still accepted + legacy fields retained until Phase 3
 - [x] **Phase 3 — Simulator UI** (hub, simulator form, results + schedule) — done 2026-08-07. Views: `DebtHubView` (#debt), `DebtSimView` (#debt-sim?type=…|?id=…), `DebtResultsView` (#debt-results[?id=…]) + `_DebtShared` helpers in views.js; form draft lives in `Views._DebtShared.draft` (outside the store, survives re-renders); `SET_DEBT_SIM` hands a fresh config to results. Old DebtView deleted (its legacy store payload path can be stripped in Phase 5).
-- [ ] **Phase 4 — My Loans + integration** (promote flow, recurring-expense offer)
+- [x] **Phase 4 — My Loans + integration** (promote flow, recurring-expense offer) — done 2026-08-07; see §9 for the defects the verification pass caught and how they were fixed
 - [ ] **Phase 5 — Polish** (export/import, dead CSS, e2e refresh, docs)
 
 ---
@@ -398,6 +398,40 @@ like the other DEFAULT_CATEGORIES migrations.
 - Remove dead CSS `components.css:1564-1574`; remove `scratch/` debt leftovers if the
   user agrees; sweep for `--bg-tertiary`.
 - Bump app version in `index.html` `<title>`; final full test run + lint.
+
+## 8b. Phase 4 as built (+ verification fixes)
+
+**Store**: `getLoanProgress(loan, todayStr?)` — schedule-derived `{paidPrincipalC,
+paidInterestC, remainingC, pct, paidCount, totalCount, nextPayment,
+nextRegularPayment, initialPaymentC, lastPaymentDate, isPaidOff, simulation}`;
+`getLoanLinkedTransactions(loan)` reads *through* to live transactions so a
+deleted series un-tracks the loan; `_todayYMD()`. `computeLoanRemainingBalance`
+deleted. New `cat_debt` ("Loan Payment", icon `landmark`) default category with a
+**flag-guarded one-time seed** (`StackdDB` key `catDebtSeeded`) so deleting it
+never resurrects it. `state.pendingLoanLink` + `SET_PENDING_LOAN_LINK`;
+`ADD_TRANSACTION` links the loan only on an exact `seriesId` match;
+`DELETE_LOAN` disarms a pending link.
+
+**Views**: `_DebtShared.progressBar/pctLabel/trackablePayment/startRecurringPrefill/
+offerRecurringExpense`; progress cards on the hub and the loan detail; the offer
+fires after both promote paths via `DebtResultsView._offerAfterPromote`.
+
+### Defects found by the post-implementation verification (all fixed)
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | **The offer modal deleted itself ~240 ms after opening** — `Modal.hide()`'s 300 ms teardown blanked the whole `#modal-container`, killing a modal opened during the previous one's exit animation. Broke *both* promote paths; the e2e only passed by winning the race. | `hide()` now no-ops if `#active-modal` has been replaced (`components.js`). Pinned by `tests/unit/modalHandoff.test.js` + a post-500 ms assertion in the e2e. |
+| 2 | **Finished loans offered tracking and back-dated the whole schedule** into history (fabricated years of expenses, hitting real balances). | `trackablePayment()` gates on a future *regular* instalment; the `firstPaymentDate` fallbacks are gone; the CTA is not rendered when nothing is trackable. |
+| 3 | **Interest-only loans armed the IO stub amount** for every month of the series (≈50 % under-charge), and the "amount varies" caveat was suppressed. | `getLoanProgress` exposes `nextRegularPayment` (first row with `index >= 1`) and the prefill uses it; `firstInstallmentInterestOnly` added to the `varies` check. |
+| 4 | **Loan name broke out of the note's `value="…"` attribute** (`Bob's "Big" Loan` truncated; an `onfocus=` payload became a live attribute). Sink was pre-existing. | New `escapeAttr()` helper applied at the `#tx-comment` sink in `views.js`. |
+| 5 | Progress rounded **99.6 % up to "100 %"** next to a non-zero remaining balance. | `pctLabel()` floors and caps at 99 unless `isPaidOff`. |
+| 6 | The prefill never set `account`, so a whole materialized series landed on the alphabetically-first account. Compounded by `ADD_ACCOUNT` writing `defaultAccountId` with a **raw `localStorage.setItem`**, so it failed `JSON.parse` and logged an error on every boot. | Prefill sets `account: state.defaultAccountId`; `ADD_ACCOUNT` now writes through `StackdDB.save`. |
+| 7 | A stale `_draftTxFormState` (captured when opening the category picker, never consumed if an *existing* category was picked) could repopulate the **next** `#add` visit with a live recurrence `seriesId`, splicing an unrelated transaction into the loan's series. | The picker clears the draft on select; `AddTransactionView.destroy()` clears it when the form is abandoned. |
+
+**Known remaining caveat**: `pendingLoanLink` is in-memory only, so reloading
+while on the prefilled form silently loses the link (the form comes back blank).
+The loan stays recoverable via the CTA, but saving that blank form creates an
+orphan series. Acceptable for now — revisit if it bites.
 
 ## 9. Open decisions
 

@@ -93,6 +93,14 @@ test.describe('Loan simulator E2E flow', () => {
     await expect(page.locator('.debt-sim-item')).toHaveCount(0);
     await expect(page.locator('#debt-loans-empty')).toHaveCount(0);
 
+    // Declining the recurring offer leaves a clean, untracked loan
+    await expect(page.locator('#modal-title')).toHaveText('Track this payment?');
+    await page.click('#modal-cancel-btn');
+    await expectModalClosed(page);
+    await expect(page.locator('.debt-loan-item .debt-tracked-badge')).toHaveCount(0);
+    expect(await page.evaluate(() => window.Store.getState().loans[0].linkedSeriesId)).toBeNull();
+    expect(await page.evaluate(() => window.Store.getState().pendingLoanLink)).toBeNull();
+
     // Delete the loan from its results ⋯ menu
     await page.click('.debt-loan-item');
     await page.waitForSelector('#btn-dres-menu');
@@ -102,6 +110,86 @@ test.describe('Loan simulator E2E flow', () => {
     await page.waitForSelector('#debt-hub');
     await expect(page.locator('.debt-loan-item')).toHaveCount(0);
     await expect(page.locator('#debt-loans-empty')).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('promoting a loan offers a recurring expense that links back to the loan', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+
+    // An account is required before a payment can be logged
+    await page.evaluate(() => {
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 20000 });
+    });
+
+    await goToHub(page);
+    await page.click('.debt-type-tile[data-type="personal"]');
+    await page.waitForSelector('#debt-sim-form');
+    await page.fill('#dsim-principal', '10000');
+    await page.fill('#dsim-duration', '24');
+    await page.selectOption('#dsim-duration-unit', 'months');
+    await page.fill('#dsim-rate', '4.5');
+    await page.fill('#dsim-first-date', '2026-10-01');
+    await page.click('#btn-dsim-calculate');
+
+    // Add straight to My Loans → naming modal → recurring-expense offer
+    await page.waitForSelector('#btn-dres-promote');
+    await page.click('#btn-dres-promote');
+    await page.waitForSelector('#loan-name-input');
+    await page.fill('#loan-name-input', 'Prestito Auto');
+    await page.click('#modal-save-btn');
+
+    // The offer floats above the hub. It opens while the naming modal is still
+    // animating out, so it must survive that modal's 300ms container teardown —
+    // wait past it before asserting, otherwise this passes on a race.
+    await page.waitForSelector('#debt-hub');
+    await expect(page.locator('#modal-title')).toHaveText('Track this payment?');
+    await page.waitForTimeout(500);
+    await expect(page.locator('#modal-title')).toHaveText('Track this payment?');
+    await expect(page.locator('.modal-body')).toContainText('$436.48');
+    await page.click('#modal-save-btn');
+
+    // Lands on a prefilled, recurring New Log form
+    await page.waitForSelector('#tx-amount');
+    await expect(page.locator('#tx-amount')).toHaveValue('436.48');
+    // the prefill targets the default account, not whatever sorts first
+    await expect(page.locator('#tx-account')).toHaveValue(
+      await page.evaluate(() => window.Store.getState().defaultAccountId)
+    );
+    await expect(page.locator('#tx-is-recurrent')).toBeChecked();
+    await expect(page.locator('#tx-recurrence-freq')).toHaveValue('months');
+    await expect(page.locator('#tx-date')).toHaveValue('2026-10-01');
+    await expect(page.locator('#tx-category')).toHaveValue('cat_debt');
+    await expect(page.locator('#tx-comment')).toHaveValue('Prestito Auto — loan payment');
+
+    await page.click('#btn-save-tx');
+    await page.waitForSelector('#transactions-view, .container');
+
+    // The loan is now linked to the created series, and says so
+    const linked = await page.evaluate(() => {
+      const loan = window.Store.getState().loans[0];
+      const txs = window.Store.getLoanLinkedTransactions(loan);
+      return {
+        linkedSeriesId: loan.linkedSeriesId,
+        seriesCount: txs ? txs.length : 0,
+        pending: window.Store.getState().pendingLoanLink
+      };
+    });
+    expect(linked.linkedSeriesId).toBeTruthy();
+    expect(linked.seriesCount).toBeGreaterThan(1); // series materialized
+    expect(linked.pending).toBeNull();
+
+    await page.evaluate(() => { window.location.hash = '#debt'; });
+    await page.waitForSelector('#debt-hub');
+    await expect(page.locator('.debt-loan-item .debt-tracked-badge')).toBeVisible();
+
+    await page.click('.debt-loan-item');
+    await page.waitForSelector('#dres-progress');
+    await expect(page.locator('#dres-tracked')).toContainText('Tracked as a monthly expense');
+    await expect(page.locator('#btn-dres-track')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });

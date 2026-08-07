@@ -1,6 +1,15 @@
 // views.js - Application Views
 
 // --- Generic Helpers ---
+// v0.71: escapes a value destined for a double-quoted HTML attribute. Without
+// it a note like `Bob's "Big" Loan` truncates at the quote and the remainder is
+// parsed as further attributes.
+function escapeAttr(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 function createCategoryOptions(categories, selectedId, includeDefaultOption = true) {
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
@@ -1441,7 +1450,7 @@ window.Views = {
 
             <div class="form-group" style="margin-bottom: 0; position: relative;">
               <label class="form-label" for="tx-comment">Note (Optional)</label>
-              <input type="text" id="tx-comment" class="form-control" placeholder="What was this for?" value="${initialNote}" autocomplete="off">
+              <input type="text" id="tx-comment" class="form-control" placeholder="What was this for?" value="${escapeAttr(initialNote)}" autocomplete="off">
               <div id="tx-comment-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
@@ -1711,6 +1720,12 @@ window.Views = {
             categorySelect.value = catId;
             categorySelect.setAttribute('data-initial', catId);
             previousCategory = catId;
+            // v0.71: picking an existing category dispatches nothing, so no
+            // re-render consumes the draft captured above. Left behind, it
+            // would repopulate the NEXT #add visit — including a live
+            // recurrence seriesId, which would splice an unrelated transaction
+            // into that series. Only the create-category path needs the draft.
+            delete window._draftTxFormState;
           },
           onAddNewCategory: (onCreated) => {
             showNewCategoryModal(onCreated);
@@ -2100,6 +2115,14 @@ window.Views = {
           }
         });
       }
+    },
+
+    destroy() {
+      // v0.71: the draft only exists to survive an in-place re-render (the
+      // add-custom-category round trip). Leaving the form for another view
+      // means it was abandoned — drop it so it can't repopulate a later visit
+      // with stale values, including a live recurrence seriesId.
+      delete window._draftTxFormState;
     }
   }
 };// Extend Views with v0.3 screens
@@ -3783,6 +3806,96 @@ Object.assign(window.Views, {
       };
     },
 
+    // v0.71 Phase 4 ── progress + recurring-expense tracking ─────────────────
+
+    // Never round up to "100%" while money is still owed — the figure sits
+    // right next to a non-zero "remaining" and would read as a bug.
+    pctLabel(progress) {
+      if (!progress) return '0';
+      if (progress.isPaidOff) return '100';
+      return String(Math.min(99, Math.floor(progress.pct)));
+    },
+
+    progressBar(progress) {
+      const pct = progress ? progress.pct : 0;
+      return `
+        <div style="height: 8px; border-radius: 4px; background: var(--bg-surface-sunken); overflow: hidden;">
+          <div style="height: 100%; width: ${pct.toFixed(1)}%; background: var(--color-primary); border-radius: 4px; transition: width 0.3s ease;"></div>
+        </div>`;
+    },
+
+    // Hands the loan's monthly payment to the normal New Log form, prefilled and
+    // armed as a monthly series. The user picks the account and confirms there;
+    // the store links the loan only once that series actually exists.
+    // Only future, genuinely amortizing instalments can be armed: back-dating a
+    // series would fabricate historical expenses, and the interest-only stub
+    // would under-charge every month of the series.
+    trackablePayment(progress) {
+      return progress ? progress.nextRegularPayment : null;
+    },
+
+    startRecurringPrefill(loan) {
+      const progress = window.Store.getLoanProgress(loan);
+      const next = this.trackablePayment(progress);
+      if (!next) return;
+      const seriesId = window.StackdDB.generateId();
+      const state = window.Store.getState();
+      window.Store.dispatch('SET_PENDING_LOAN_LINK', { loanId: loan.id, seriesId });
+      window._draftTxFormState = {
+        type: 'expense',
+        amount: (next.amountC / 100).toFixed(2),
+        account: state.defaultAccountId || '',
+        category: 'cat_debt',
+        date: next.date,
+        note: `${loan.name} — loan payment`,
+        isRecurrent: true,
+        recurrenceInterval: '1',
+        recurrenceFreq: 'months',
+        recurrenceEndDate: progress.lastPaymentDate,
+        recurrenceSeriesId: seriesId
+      };
+      window.Router.navigate('#add');
+    },
+
+    // Offer shown right after a loan lands in My Loans, and from the loan's own
+    // detail screen while it isn't tracked yet.
+    offerRecurringExpense(loan) {
+      const progress = window.Store.getLoanProgress(loan);
+      const next = this.trackablePayment(progress);
+      if (!next) return;
+      const hasAccounts = (window.Store.getState().accounts || []).length > 0;
+
+      // Payments only stay constant for plain French loans; anything that
+      // reprices mid-schedule makes a fixed recurring amount an approximation.
+      const varies = loan.config.amortization === 'italian'
+        || loan.config.firstInstallmentInterestOnly
+        || (loan.config.rateChanges || []).length > 0
+        || (loan.config.earlyRepayments || []).length > 0;
+
+      // The store clamps recurring series to 60 months (_clampRecurrenceEndDate)
+      const monthsLeft = (Number(progress.lastPaymentDate.slice(0, 4)) - Number(next.date.slice(0, 4))) * 12
+        + (Number(progress.lastPaymentDate.slice(5, 7)) - Number(next.date.slice(5, 7)));
+
+      const noteLine = (text) => `<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-top: var(--space-2);">${text}</div>`;
+
+      window.Components.Modal.show({
+        title: 'Track this payment?',
+        content: `
+          <p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0 0 var(--space-3);">
+            Add <strong style="color: var(--text-primary);">${this.fmtC(next.amountC)}</strong> as a monthly expense starting ${this.fmtDate(next.date)}, so ${this.esc(loan.name)} shows up in your history and budgets automatically.
+          </p>
+          ${hasAccounts ? '' : noteLine('You need at least one account before you can log a payment.')}
+          ${varies ? noteLine('This loan\'s instalment changes over time, so the recurring amount is fixed at the next regular payment — edit it later if it moves.') : ''}
+          ${monthsLeft > 60 ? noteLine('Recurring transactions are capped at 5 years, so only the first 60 payments will be created.') : ''}
+        `,
+        saveText: hasAccounts ? 'Add recurring expense' : 'OK',
+        onSave: (close) => {
+          close();
+          if (hasAccounts) this.startRecurringPrefill(loan);
+        }
+      });
+    },
+
     buildConfig(d) {
       const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
       return {
@@ -3843,6 +3956,36 @@ Object.assign(window.Views, {
           </div>`;
       };
 
+      // v0.71 Phase 4: tracked loans get amortized paid/remaining progress
+      const activeCard = (loan) => {
+        const t = S.TYPES[(loan.config && loan.config.type)] || S.TYPES.personal;
+        const p = window.Store.getLoanProgress(loan);
+        if (!p) return loanRow(loan, 'debt-loan-item');
+        const tracked = !!window.Store.getLoanLinkedTransactions(loan);
+        return `
+          <div class="card debt-loan-item" data-id="${loan.id}" role="button" tabindex="0" style="cursor: pointer; margin-bottom: var(--space-3);">
+            <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);">
+              <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${t.icon}"></i></div>
+              <div style="flex: 1; min-width: 0;">
+                <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
+                  ${S.esc(loan.name)}
+                  ${tracked ? `<span class="debt-tracked-badge" title="Tracked as a recurring expense" aria-label="Tracked as a recurring expense" style="display: inline-flex; color: var(--text-tertiary);"><i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i></span>` : ''}
+                </div>
+                <div class="list-item-subtitle">${p.isPaidOff ? 'Paid off' : `${S.fmtC(p.nextPayment ? p.nextPayment.amountC : p.initialPaymentC)} · next ${S.fmtDate(p.nextPayment ? p.nextPayment.date : p.lastPaymentDate)}`}</div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <div style="font-family: var(--font-family-display); font-weight: 700;">${S.pctLabel(p)}%</div>
+                <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${p.paidCount}/${p.totalCount}</div>
+              </div>
+            </div>
+            ${S.progressBar(p)}
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: var(--text-xs); color: var(--text-secondary);">
+              <span>${S.fmtC(p.paidPrincipalC)} paid</span>
+              <span>${S.fmtC(p.remainingC)} remaining</span>
+            </div>
+          </div>`;
+      };
+
       const simsHtml = sims.length ? `
         <div class="section-title" style="margin-top: var(--space-6);">Simulations</div>
         ${sims.map(l => loanRow(l, 'debt-sim-item')).join('')}
@@ -3851,7 +3994,7 @@ Object.assign(window.Views, {
       const activeHtml = `
         <div class="section-title" style="margin-top: var(--space-6);">My Loans</div>
         ${active.length
-          ? active.map(l => loanRow(l, 'debt-loan-item')).join('')
+          ? active.map(l => activeCard(l)).join('')
           : `<div class="card" id="debt-loans-empty" style="text-align: center; padding: var(--space-6) var(--space-4);">
                <div style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto;">No active loans yet. Simulate one above, then add it to My Loans to track it.</div>
              </div>`}
@@ -4192,6 +4335,18 @@ Object.assign(window.Views, {
 
   // ── Results: summary + savings + schedule (#debt-results[?id=…]) ──────────
   DebtResultsView: {
+    // v0.71 Phase 4: the offer floats above the hub the user just landed on.
+    // #modal-container lives outside #router-view, so the pending re-render
+    // can't clobber it; the delay just lets the hub paint first.
+    _offerAfterPromote(loanId) {
+      setTimeout(() => {
+        const loan = (window.Store.getState().loans || []).find(l => l.id === loanId);
+        // offerRecurringExpense itself no-ops when there is nothing trackable
+        // left (finished loans), so this only guards the already-linked case.
+        if (loan && !loan.linkedSeriesId) window.Views._DebtShared.offerRecurringExpense(loan);
+      }, 60);
+    },
+
     _resolve(state) {
       const params = window.Router.getParams();
       const out = { loan: null, config: null, name: null, fromForm: false, editingLoanId: null, res: null, error: null };
@@ -4257,6 +4412,43 @@ Object.assign(window.Views, {
            </div>`
         : '';
 
+      // v0.71 Phase 4: tracked loans show live progress and the recurring link
+      let progressHtml = '';
+      if (r.loan && r.loan.kind === 'active') {
+        const p = window.Store.getLoanProgress(r.loan);
+        if (p) {
+          const tracked = !!window.Store.getLoanLinkedTransactions(r.loan);
+          progressHtml = `
+            <div class="card" id="dres-progress" style="margin-top: var(--space-4);">
+              <div class="section-title" style="margin-bottom: var(--space-3);">Progress</div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2);">
+                <span style="font-family: var(--font-family-display); font-size: var(--text-xl); font-weight: 700;">${S.pctLabel(p)}%</span>
+                <span style="font-size: var(--text-sm); color: var(--text-secondary);">${p.paidCount} of ${p.totalCount} payments</span>
+              </div>
+              ${S.progressBar(p)}
+              <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: var(--text-xs); color: var(--text-secondary);">
+                <span>${S.fmtC(p.paidPrincipalC)} paid</span>
+                <span>${S.fmtC(p.remainingC)} remaining</span>
+              </div>
+              ${p.nextPayment ? `
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--space-3); margin-top: var(--space-3); border-top: 1px solid var(--border-color);">
+                  <span style="font-size: var(--text-sm); color: var(--text-secondary);">Next Payment</span>
+                  <span style="font-family: var(--font-family-display); font-weight: 700;">${S.fmtC(p.nextPayment.amountC)} · ${S.fmtDate(p.nextPayment.date)}</span>
+                </div>` : ''}
+              ${tracked || S.trackablePayment(p) ? `
+                <div style="padding-top: var(--space-3); margin-top: var(--space-3); border-top: 1px solid var(--border-color);">
+                  ${tracked
+                    ? `<div id="dres-tracked" style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary);">
+                         <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                         <span style="flex: 1;">Tracked as a monthly expense</span>
+                         <a href="#transactions" style="color: var(--color-accent); font-weight: 600; text-decoration: underline;">View</a>
+                       </div>`
+                    : `<button class="btn btn-secondary" id="btn-dres-track" style="min-height: 44px; font-size: var(--text-sm);">Track monthly payment</button>`}
+                </div>` : ''}
+            </div>`;
+        }
+      }
+
       return `
         <div id="debt-results-view" class="container animate-fade-in" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
@@ -4284,6 +4476,7 @@ Object.assign(window.Views, {
             ${row('Last Payment', S.fmtDate(res.lastPaymentDate), { last: true })}
           </div>
 
+          ${progressHtml}
           ${savingsHtml}
 
           <div class="card" style="margin-top: var(--space-4);">
@@ -4387,16 +4580,27 @@ Object.assign(window.Views, {
         });
         if (promoteBtn) promoteBtn.addEventListener('click', () => {
           askName('Add to My Loans', currentName, (name) => {
-            if (r.editingLoanId) {
-              window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
-              window.Store.dispatch('PROMOTE_LOAN', { id: r.editingLoanId });
+            let loanId = r.editingLoanId;
+            if (loanId) {
+              window.Store.dispatch('UPDATE_LOAN', { id: loanId, name, config: r.config });
+              window.Store.dispatch('PROMOTE_LOAN', { id: loanId });
             } else {
               window.Store.dispatch('ADD_LOAN', { name, kind: 'active', config: r.config });
+              const added = window.Store.getState().loans;
+              loanId = added[added.length - 1].id;
             }
             S.draft = null;
             window.Router.navigate('#debt');
+            // v0.71 Phase 4: offer the recurring expense over the hub
+            window.Views.DebtResultsView._offerAfterPromote(loanId);
           });
         });
+      }
+
+      // ── tracked-loan actions ──
+      const trackBtn = $('btn-dres-track');
+      if (trackBtn && r.loan) {
+        trackBtn.addEventListener('click', () => S.offerRecurringExpense(r.loan));
       }
 
       // ── saved-record menu (⋯): Edit / Add to My Loans / Delete ──
@@ -4427,6 +4631,7 @@ Object.assign(window.Views, {
                 window.Components.Modal.hide();
                 window.Store.dispatch('PROMOTE_LOAN', { id: r.loan.id });
                 window.Router.navigate('#debt');
+                window.Views.DebtResultsView._offerAfterPromote(r.loan.id);
               } else if (act === 'delete') {
                 window.Components.Modal.show({
                   title: 'Delete this loan?',
