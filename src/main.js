@@ -311,6 +311,14 @@ const runHydration = () => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  // v0.73: Testing aid — ?safetop=59 (before the #hash) forces a fake
+  // status-bar inset so safe-area layouts are verifiable in desktop browsers
+  // and Playwright, where env(safe-area-inset-*) is always 0.
+  const safeTopOverride = new URLSearchParams(window.location.search).get('safetop');
+  if (safeTopOverride && /^\d{1,3}$/.test(safeTopOverride)) {
+    document.documentElement.style.setProperty('--safe-top', safeTopOverride + 'px');
+  }
+
   // Global keyboard accessibility listener (WCAG)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {

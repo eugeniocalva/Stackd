@@ -395,13 +395,15 @@ body.keyboard-active .bottom-nav {
 
 
 
-/* Sticky Page Headers (v0.63)
+/* Sticky Page Headers (v0.63; safe-area model reworked v0.73)
    The bar shares the page background (--bg-header = translucent --bg-base)
    so there is no color band at rest; the backdrop blur keeps titles and
    pill buttons readable once content slides underneath. Depth (hairline +
    shadow) appears only while scrolled, via .is-scrolled toggled on the
    .view-container in main.js — any sticky header added later inherits the
-   behavior for free. */
+   behavior for free. The status-bar inset is owned by #app (global.css),
+   so sticky bars stick to the top of the view area, below the strip —
+   no --safe-top terms or negative-margin compensation in here. */
 .history-header-sticky,
 .header-nav {
   position: sticky;
@@ -410,7 +412,7 @@ body.keyboard-active .bottom-nav {
   background: var(--bg-header);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  padding-top: calc(var(--space-2) + var(--safe-top));
+  padding-top: var(--space-2);
   padding-bottom: var(--space-2);
   padding-left: max(var(--space-4), var(--safe-left));
   padding-right: max(var(--space-4), var(--safe-right));
@@ -420,18 +422,11 @@ body.keyboard-active .bottom-nav {
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-/* A container that opens with a sticky header must hug the top of the
-   screen with no dead strip above the bar. The sticky element itself cannot
-   be pulled up with negative margins — Chromium clamps sticky positions by
-   the margin box, silently neutralizing them — so the wrapper gives up its
-   top padding instead. */
+/* A container that opens with a sticky header hugs the top of the view
+   area with no dead strip above the bar: the wrapper gives up its own top
+   padding (the bar's --space-2 padding provides the breathing room). */
 .view-container > .container:has(> .history-header-sticky) {
   padding-top: 0;
-  margin-top: calc(var(--safe-top) * -1);
-}
-
-.header-nav {
-  margin-top: calc(var(--safe-top) * -1);
 }
 
 /* Inside a sticky bar the header system owns vertical rhythm */
@@ -1119,17 +1114,25 @@ a:focus-visible,
   border-color: var(--color-primary);
 }
 
-/* Modal Headers with Top Buttons */
+/* Modal Headers with Top Buttons.
+   Base = no status-bar inset: most users are bottom sheets whose top edge is
+   mid-screen. Modals whose content is full-screen (height 100%, radius 0) sit
+   under the status bar — position: fixed puts them outside #app's safe-top
+   padding — and must add .modal-top-bar--safe (v0.73). */
 .modal-top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: calc(var(--space-4) + var(--safe-top)) var(--space-5) var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
   background: var(--bg-surface);
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.modal-top-bar--safe {
+  padding-top: calc(var(--space-4) + var(--safe-top));
 }
 
 .modal-btn-top {

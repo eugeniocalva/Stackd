@@ -2733,7 +2733,7 @@ window.Components = {
 
       modalBackdrop.innerHTML = `
         <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
-          <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+          <div class="modal-top-bar modal-top-bar--safe">
             <button class="modal-btn-top modal-btn-close" id="csm-close" aria-label="Close category selection" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
             <h2 id="csm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">Select Category</h2>
             <button class="modal-btn-top" id="csm-add-new" aria-label="Add new category" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--color-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">+</button>
@@ -3329,7 +3329,7 @@ window.Components = {
 
         backdrop.innerHTML = `
           <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(0); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
-            <div class="modal-top-bar" style="border-bottom: 1px solid var(--color-border); background: var(--bg-surface); padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+            <div class="modal-top-bar modal-top-bar--safe">
               <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${canGoBack ? 'Back' : 'Close'}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
               <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${esc(title)}</h2>
               <div style="width: 36px;"></div>
