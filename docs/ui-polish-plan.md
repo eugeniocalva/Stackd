@@ -10,7 +10,7 @@
 
 - [x] **Phase 1 — Safe-area / status-bar hardening** — done 2026-08-10; see §Phase 1 as built
 - [x] **Phase 2 — Widget size consistency** — done 2026-08-10; see §Phase 2 as built
-- [ ] **Phase 3 — Account tile restyle** (Trade-Republic-like proportions, same structure/logic/colors)
+- [x] **Phase 3 — Account tile restyle** — done 2026-08-10; see §Phase 3 as built
 - [ ] **Phase 4 — View transitions & motion polish** (soften the "mechanical" page/state switches)
 
 ---
@@ -209,6 +209,31 @@ square (`:1034–1050`). Rendered in `DashboardView` (`views.js:292–338`).
 3. `.btn-add-wallet-card` gets the same clamp/aspect so the row stays uniform.
 4. Keep: accent bar, `is-default` border + badge, `:active` scale, edit
    trigger hit-target ≥36px.
+
+### Phase 3 as built (2026-08-10, v0.73)
+
+CSS-only, as planned. `.wallet-card` / `.btn-add-wallet-card`:
+`clamp(154px, 42vw, 190px)` wide, `aspect-ratio: 9 / 7` (≈1.29:1) — at
+375px: 158×123 with a 28px peek of the third tile; clamp floor covers 360px
+Androids, cap covers tablets/desktop. Vertical padding tightened to
+`--space-3`; icon box 38→32px; name/balance line-heights tightened to fit the
+shorter box (measured overflow 0 on all cards).
+
+Deviations found by measurement:
+
+- The `.account-edit-trigger`'s 44px `.touch-target` floor was inflating the
+  header row; the hit area is kept at 44px but now bleeds into the card
+  padding via negative margins instead of costing layout height.
+- The DEFAULT badge at bottom-right **visually collided with wide balances —
+  a pre-existing bug** (same math overlaps on the old 160px square). Badge
+  moved to the empty header band (top: 12px, right: 52px, left of the ⋯
+  trigger), `pointer-events: none`, padding tightened so it clears the icon
+  at the clamp floor.
+
+Verified in Chromium at 375×812 (and 937px desktop for the clamp cap) with 4
+accounts incl. long-name and negative-balance cases: dims/ratio exact, zero
+interior overflow, badge overlap gone, 44×44 hit target intact. 433 unit +
+19 e2e green.
 
 ### Verification
 

@@ -894,14 +894,17 @@ a:focus-visible,
   display: none;
 }
 
+/* v0.73 Phase 3: Trade-Republic-like proportions — wider than tall (1.3:1),
+   sized off the viewport so two tiles plus a peek of the third fit a phone
+   width (the peek is the scroll affordance). Structure/colors unchanged. */
 .wallet-card {
-  flex: 0 0 160px;
-  width: 160px;
-  height: 160px;
-  aspect-ratio: 1 / 1;
+  flex: 0 0 clamp(154px, 42vw, 190px);
+  width: clamp(154px, 42vw, 190px);
+  height: auto;
+  aspect-ratio: 9 / 7;
   background: var(--bg-surface);
   border-radius: var(--radius-xl);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -948,8 +951,8 @@ a:focus-visible,
 }
 
 .wallet-card-icon-box {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%; /* Circle — v0.59 */
   background: var(--bg-surface-sunken);
   display: flex;
@@ -977,6 +980,7 @@ a:focus-visible,
 .wallet-card-name {
   font-weight: 700;
   font-size: var(--text-sm);
+  line-height: 1.35;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -987,24 +991,31 @@ a:focus-visible,
   font-family: var(--font-family-display);
   font-size: 1.2rem;
   font-weight: 850;
+  line-height: 1.2;
   color: var(--text-primary);
   margin-top: 1px;
 }
 
 .wallet-card.is-default {
   border-color: var(--color-primary);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
 }
 
+/* Sits in the header band (empty middle, left of the ⋯ trigger) since v0.73:
+   at bottom-right it visually collided with wide balances — a pre-existing
+   overlap the shorter tile made worse. Informational only, so taps fall
+   through to the card. */
 .wallet-card-default-badge {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  top: 12px;
+  right: 52px;
+  pointer-events: none;
+  z-index: 2;
   font-size: 8px;
   font-weight: 900;
   color: var(--text-on-primary);
   background: var(--color-primary);
-  padding: 3px 7px;
+  padding: 3px 5px;
   border-radius: 5px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1014,6 +1025,13 @@ a:focus-visible,
 .account-edit-trigger {
   transition: all 0.2s ease;
   border-radius: 50%;
+}
+
+/* Keep the 44px hit area (.touch-target) but let it bleed into the card
+   padding instead of inflating the header row — the shorter TR-style tile
+   (v0.73 Phase 3) has no vertical room for a 44px layout row. */
+.wallet-card .account-edit-trigger {
+  margin: -4px -6px -4px 0;
 }
 
 .account-edit-trigger:hover {
@@ -1027,10 +1045,10 @@ a:focus-visible,
 }
 
 .btn-add-wallet-card {
-  flex: 0 0 160px;
-  width: 160px;
-  height: 160px;
-  aspect-ratio: 1 / 1;
+  flex: 0 0 clamp(154px, 42vw, 190px);
+  width: clamp(154px, 42vw, 190px);
+  height: auto;
+  aspect-ratio: 9 / 7;
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-xl);
   display: flex;
