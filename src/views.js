@@ -3047,7 +3047,7 @@ Object.assign(window.Views, {
           <div class="section-title">Support</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5);">
             <div class="list-group">
-              <div class="list-item" style="cursor: pointer;" onclick="alert('FAQs coming soon in a future update!')">
+              <div class="list-item" id="btn-open-faq" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open FAQ">
                 <div class="list-item-content"><div class="list-item-title">FAQ</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
@@ -3091,6 +3091,12 @@ Object.assign(window.Views, {
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+      const faqBtn = document.getElementById('btn-open-faq');
+      if (faqBtn) {
+        const openFaq = () => window.Components.FaqModal.show();
+        faqBtn.addEventListener('click', openFaq);
+        faqBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFaq(); } });
+      }
       const exportAccBtn = document.getElementById('btn-export-accounts');
       if (exportAccBtn) {
         exportAccBtn.addEventListener('click', () => window.StackdExport.exportAccounts(state));

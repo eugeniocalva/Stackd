@@ -288,6 +288,78 @@ window.Components = {
     }
   },
 
+  // v0.74: FAQ sheet (Others → Support → FAQ). Static Q&A accordion; reuses
+  // the #active-modal id so Modal.hide() owns the teardown.
+  FaqModal: {
+    FAQS: [
+      {
+        q: 'How do I set up an account?',
+        a: 'Tap the + button in the bottom bar and choose <b>Add Account</b>, or use the Add Account tile at the end of the accounts row on Home. Give it a name, an icon and an opening balance. From then on the balance is always computed from your transactions, so it stays in sync automatically.'
+      },
+      {
+        q: 'How do I add a new transaction?',
+        a: 'Tap the + button and choose <b>Add Log</b>. Pick Expense, Income or Transfer, then enter the amount, date, account and category. You can also add a note and tags, or turn on the repeat option to make it recurring (daily, weekly, monthly…).'
+      },
+      {
+        q: 'How do I edit or delete a transaction?',
+        a: 'Open <b>History</b> (the list icon in the bottom bar) and tap any transaction to open it in the editor. Change what you need and save, or use Delete. If the transaction is part of a recurring series, you will be asked whether the change should apply to only this one, this and future ones, or the whole series.'
+      },
+      {
+        q: 'How do I set up widgets on my Home screen?',
+        a: 'On Home, scroll to the <b>Widgets</b> section. Tap <b>Add</b> to pick a widget from the gallery and choose its size. Tap <b>Edit</b> to reorder, resize, configure or remove widgets, then tap Done when you are happy with the layout.'
+      },
+      {
+        q: 'How do I set up a loan?',
+        a: 'Tap the + button and choose <b>Debt</b>. Pick a loan type to open the simulator, enter the amount, interest rate and duration, and review the full payment schedule. You can keep it as a simulation or track it as an active loan — tracking links it to a recurring expense so your progress updates automatically as payments are logged.'
+      },
+      {
+        q: 'How do I manage categories?',
+        a: 'Go to <b>Others → Categories</b> to see all your categories, or tap the + button and choose <b>Add Category</b> to create one. Tap a category to see its activity, or edit its name, icon and color. Stack\'d ships with a default set you can adapt to your needs.'
+      },
+      {
+        q: 'How do I use tags?',
+        a: 'Tags are free-form labels you type in the <b>Tags</b> field when creating or editing a transaction — autocomplete suggests the ones you already use. Browse them under <b>Others → Tags</b>, or filter History by tag to see everything with that label.'
+      }
+    ],
+    show() {
+      const container = document.getElementById('modal-container');
+      container.innerHTML = `
+        <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header-container">
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">FAQ</h2>
+            </div>
+            <div class="modal-body">
+              ${this.FAQS.map(f => `
+                <details style="border-bottom: 1px solid var(--border-color); padding: var(--space-3) 0;">
+                  <summary style="cursor: pointer; font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); padding: var(--space-2) 0;">${f.q}</summary>
+                  <p style="margin: var(--space-2) 0 var(--space-1); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${f.a}</p>
+                </details>`).join('')}
+            </div>
+            <div style="margin-top: var(--space-6);">
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close FAQ">Close</button>
+            </div>
+          </div>
+        </div>`;
+
+      requestAnimationFrame(() => {
+        const backdrop = document.getElementById('active-modal');
+        if (backdrop) backdrop.classList.add('open');
+      });
+
+      const close = () => window.Components.Modal.hide();
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      if (cancelBtn) cancelBtn.addEventListener('click', close);
+      const backdrop = document.getElementById('active-modal');
+      if (backdrop) {
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) close();
+        });
+      }
+    }
+  },
+
   IconPicker: {
     // v0.66: two disjoint icon sets — accounts get banking/finance icons,
     // categories get spending/lifestyle icons. Every name must exist in
