@@ -9,7 +9,7 @@
 ## Phase checklist
 
 - [x] **Phase 1 — Safe-area / status-bar hardening** — done 2026-08-10; see §Phase 1 as built
-- [ ] **Phase 2 — Widget size consistency** (uniform card heights per size across all 8 widget types)
+- [x] **Phase 2 — Widget size consistency** — done 2026-08-10; see §Phase 2 as built
 - [ ] **Phase 3 — Account tile restyle** (Trade-Republic-like proportions, same structure/logic/colors)
 - [ ] **Phase 4 — View transitions & motion polish** (soften the "mechanical" page/state switches)
 
@@ -149,6 +149,33 @@ iOS-widget model: **fixed height per size**, content adapts to the box.
 
 Per-renderer sweep (all 8 types in `Widgets.registry`) to confirm nothing
 overflows/clips at both sizes with empty, sparse, and dense data.
+
+### Phase 2 as built (2026-08-10, v0.73)
+
+Tokens landed as `--widget-h-small: 190px`, `--widget-h-large: 288px`
+(variables.css). Body is a flex column with `overflow: hidden`; fillers grow
+into it: `.widget-rows` and `.widget-minibars` (`flex: 1` +
+`justify-content: space-evenly`, so 3 rows in a small card and 5 in a large
+one both read as a full box), `.widget-chart-wrap` (fixed 180px removed —
+Chart.js re-measures), `.widget-donut` (aspect-ratio square sized by the
+flexed body as a direct child, or by the 130px grid column inside
+`.widget-donut-layout`). `.widget-chart-wrap--spark`'s fixed 54px is gone —
+the class remains as a marker only.
+
+Two overflow causes surfaced by measurement (not in the original plan):
+
+- **Card titles wrapped to two lines** on small cards (half-column width),
+  eating a row's worth of body — `.widget-card-title` is now single-line
+  ellipsized. Row line-heights tightened (`title 1.3`, `sub 1.2`) so
+  upcoming's 3 dated rows fit the small box.
+- **budgets large now caps at 4 bars** (was 5): in the fixed box, 4 bars plus
+  the "+N more in Goals" line is what fits; `homeWidgetsGoals.test.js`
+  updated to the new contract.
+
+Verified in Chromium 375×812 with all 15 type/size combos seeded with dense
+data: every card exactly 190/288, zero body clipping, all chart canvases
+sized sanely (donut 130², large charts ~228×303), edit mode preserves the
+heights. 433 unit + 19 e2e green. `widgets.js` `?v=` bumped (6→7).
 
 ### Verification
 

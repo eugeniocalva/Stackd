@@ -408,16 +408,18 @@ describe('budgets widget', () => {
     expect(html).toContain('of $100.00 budgeted');
   });
 
-  it('sorts most at-risk first and notes the overflow past 5 bars', () => {
+  it('sorts most at-risk first and notes the overflow past 4 bars', () => {
+    // 4 bars since v0.73 Phase 2: the card height is fixed, and 4 bars plus
+    // the "+N more" line is what fits the box.
     const cats = ['cat_groceries', 'cat_transport', 'cat_dining', 'cat_shopping', 'cat_health', 'cat_utilities'];
     cats.forEach((c, i) => {
       budget(c, 100);
       spend(c, 10 + i * 15, monthDay(0, 5)); // utilities most used
     });
     const { html } = renderOne('budgets', 'large', {});
-    expect(html.match(/class="widget-minibar"/g)).toHaveLength(5);
+    expect(html.match(/class="widget-minibar"/g)).toHaveLength(4);
     expect(html.indexOf('Utilities')).toBeLessThan(html.indexOf('Health'));
-    expect(html).toContain('+1 more in Goals');
+    expect(html).toContain('+2 more in Goals');
   });
 
   it('renders an aggregate donut with the usage percentage when small', () => {

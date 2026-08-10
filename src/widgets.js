@@ -1001,7 +1001,9 @@ window.Widgets = {
         // Per-category bars, BudgetView's exact semantics (views.js renderList):
         // width capped at 100 and forced to 0 for a non-positive limit; isOver
         // computed independently so a negative-limit category shows a 0% RED bar.
-        const bars = rows.slice(0, 5).map(r => {
+        // Capped at 4 since v0.73 Phase 2: the card height is fixed, and 4 bars
+        // plus the "+N more" line is what fits the box.
+        const bars = rows.slice(0, 4).map(r => {
           const pct = r.bdg.finalLimit > 0 ? Math.min((r.bdg.spent / r.bdg.finalLimit) * 100, 100) : 0;
           const isOver = r.bdg.spent > r.bdg.finalLimit;
           const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
@@ -1018,8 +1020,8 @@ window.Widgets = {
             </div>`;
         }).join('');
 
-        const overflow = rows.length > 5
-          ? `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">+${rows.length - 5} more in Goals</span>`
+        const overflow = rows.length > 4
+          ? `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">+${rows.length - 4} more in Goals</span>`
           : '';
 
         return `

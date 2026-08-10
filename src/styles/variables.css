@@ -99,6 +99,12 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Home widget uniform card heights (v0.73 Phase 2): every card of a given
+     size is exactly this tall — content adapts to the box, never the box to
+     the content (the iOS-widget model). */
+  --widget-h-small: 190px;
+  --widget-h-large: 288px;
 }
 
 :root[data-theme="dark"],
