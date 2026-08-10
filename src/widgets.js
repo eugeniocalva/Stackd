@@ -56,12 +56,21 @@ window.Widgets = {
     Object.keys(this._charts).forEach(id => this._destroyChart(id));
   },
 
+  // Set by attachSection for the duration of a same-view remount: charts play
+  // their entry animation on the first mount of a dashboard visit, but a
+  // dashboard re-render (any dispatch while it is open) must not replay it —
+  // with view transitions on top it would read as double motion (v0.73 Phase 4).
+  _suppressChartAnimation: false,
+
   _mountChart(id, canvas, config) {
     if (!canvas || !window.Chart) return null;
     this._destroyChart(id);
     // Belt and braces: if this exact canvas is somehow still registered, clear it.
     const stale = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
     if (stale) stale.destroy();
+    if (this._suppressChartAnimation && config && config.options) {
+      config.options.animation = false;
+    }
     this._charts[id] = new window.Chart(canvas, config);
     return this._charts[id];
   },
@@ -1435,6 +1444,11 @@ window.Widgets = {
 
   // ── section events ──────────────────────────────────────────────────────
   attachSection(root, state) {
+    // Tracked charts existing here means the dashboard was already mounted —
+    // this attach is a same-view re-render, so entry animations are replays
+    // and get suppressed. A fresh visit starts with an empty registry
+    // (DashboardView.destroy cleared it) and keeps its entry animation.
+    const isRemount = Object.keys(this._charts).length > 0;
     // The section just re-rendered, so every tracked chart now points at a
     // detached canvas. Drop them all before remounting.
     this.destroyCharts();
@@ -1499,6 +1513,7 @@ window.Widgets = {
     });
 
     // Per-instance attach (chart mounts, navigation) — errors stay contained.
+    this._suppressChartAnimation = isRemount;
     (state.homeWidgets || []).forEach(instance => {
       const def = this.registry[instance.type];
       if (!def || !def.attach) return;
@@ -1510,5 +1525,9 @@ window.Widgets = {
         console.error(`[widgets] attach failed for "${instance.type}"`, err);
       }
     });
+
+    // Mounts above ran synchronously; the preview stage (add-widget sheet)
+    // mounts through the same _mountChart and must keep its animation.
+    this._suppressChartAnimation = false;
   }
 };

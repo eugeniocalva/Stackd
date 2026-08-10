@@ -92,7 +92,7 @@
   border-radius: var(--radius-md); /* Softer corners */
   font-weight: 600;
   font-size: var(--text-base);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-spring);
   width: 100%;
   border: none;
   cursor: pointer;
@@ -278,7 +278,7 @@ input[type="time"]::-webkit-datetime-edit-fields-wrapper {
   padding: 0 var(--space-4);
   z-index: var(--z-nav);
   pointer-events: none; /* Let clicks pass through to content behind gaps */
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+  transition: transform 0.4s var(--ease-spring), opacity 0.3s;
 }
 
 .bottom-nav > * {
@@ -341,7 +341,7 @@ body.keyboard-active .bottom-nav {
   border-radius: var(--radius-full);
   opacity: 0;
   transform: scaleX(0);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s var(--ease-spring);
 }
 
 .nav-item.active .nav-item-indicator {
@@ -363,7 +363,7 @@ body.keyboard-active .bottom-nav {
   justify-content: center;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
   border: 1px solid var(--glass-border);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s var(--ease-spring);
   flex-shrink: 0;
 }
 
@@ -380,7 +380,7 @@ body.keyboard-active .bottom-nav {
 
 /* Action Menu Items */
 .menu-action-item {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-spring);
 }
 
 .menu-action-item:active {
@@ -607,7 +607,7 @@ body.keyboard-active .bottom-nav {
   position: relative;
   z-index: 2;
   margin-bottom: 0 !important;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s var(--ease-spring);
   will-change: transform;
   background-color: var(--bg-surface); /* Ensure background covers actions behind it */
 }
@@ -721,7 +721,7 @@ body.keyboard-active .bottom-nav {
   max-height: calc(90vh - var(--safe-top));
   overflow-y: auto;
   transform: translateY(100%);
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.5s var(--ease-spring);
   box-shadow: 0 -20px 60px var(--color-overlay);
   max-height: 92vh;
 }
@@ -1461,7 +1461,7 @@ a:focus-visible,
   font-weight: 700;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-spring);
 }
 
 .chart-toggle-btn.active {
@@ -1523,7 +1523,7 @@ a:focus-visible,
   display: flex;
   flex-direction: column;
   padding-bottom: var(--safe-bottom);
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s var(--ease-spring);
   will-change: transform;
 }
 
@@ -1547,7 +1547,7 @@ a:focus-visible,
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.4s var(--ease-spring) forwards;
 }
 
 .animate-spin {
@@ -1573,8 +1573,8 @@ a:focus-visible,
 .debt-type-tile,
 .debt-loan-item,
 .debt-sim-item {
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.2s var(--ease-spring),
+              box-shadow 0.2s var(--ease-spring);
 }
 .debt-type-tile:active,
 .debt-loan-item:active,
@@ -1904,7 +1904,7 @@ a:focus-visible,
   align-items: center;
   justify-content: space-between;
   z-index: 200;
-  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUp 0.25s var(--ease-spring);
 }
 
 .contextual-header-bar {
@@ -2412,7 +2412,7 @@ a:focus-visible,
   border-radius: var(--radius-full);
   background: currentColor;
   min-width: 2px;
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.4s var(--ease-spring);
 }
 
 /* Donut. As a direct body child (small cards) it is a filler: height comes

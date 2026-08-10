@@ -374,10 +374,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: true });
   }
 
+  // v0.73 Phase 4: navigation animates (crossfade + rise), same-view
+  // re-renders stay instant, reduced motion disables everything. The
+  // .view-enter class is the non-View-Transitions fallback path.
+  const reducedMotionQuery = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches: false };
+  if (routerView) {
+    routerView.addEventListener('animationend', (e) => {
+      if (e.animationName === 'vt-view-in') routerView.classList.remove('view-enter');
+    });
+  }
+
   // 4. Main render loop (reactive to state changes)
   window.Store.subscribe((state) => {
     if (!routerView) return;
-    
+
     // Choose appropriate view based on state.activeView
     let viewModule;
     switch(state.activeView) {
@@ -431,32 +443,58 @@ document.addEventListener('DOMContentLoaded', () => {
         viewModule = window.Views.DashboardView;
     }
     
+    // v0.73 Phase 4: a navigation is a change of view MODULE. Same-module
+    // dispatches (typing, filters, param changes) must never animate.
+    const isNavigation = !!window._currentActiveView && window._currentActiveView !== viewModule;
+
     // Safely execute destroy on active view if it exists and we are transitioning to a different view
-    if (window._currentActiveView && window._currentActiveView !== viewModule && window._currentActiveView.destroy) {
+    if (isNavigation && window._currentActiveView.destroy) {
       window._currentActiveView.destroy();
     }
 
-    if (viewModule && viewModule.render) {
-      routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
-      routerView.innerHTML = viewModule.render(state);
-      if (viewModule.attachEvents) {
-        viewModule.attachEvents(routerView, state);
+    const renderView = () => {
+      if (viewModule && viewModule.render) {
+        routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
+        routerView.innerHTML = viewModule.render(state);
+        if (viewModule.attachEvents) {
+          viewModule.attachEvents(routerView, state);
+        }
+        window._currentActiveView = viewModule;
       }
-      window._currentActiveView = viewModule;
-    }
-    
-    if (navContainer && window.Components.BottomNav) {
-      window.Components.BottomNav.updateActiveState(navContainer, state.activeView);
-    }
 
-    // Trigger Icon Hydration
-    if (window.StackdHydrateIcons) {
-      window.StackdHydrateIcons();
-    }
+      if (navContainer && window.Components.BottomNav) {
+        window.Components.BottomNav.updateActiveState(navContainer, state.activeView);
+      }
 
-    // v0.63: Collapse overflowing inline tag pills into a "+N" counter
-    if (window.Components && window.Components.TransactionItem && window.Components.TransactionItem.applyTagOverflow) {
-      window.Components.TransactionItem.applyTagOverflow(routerView);
+      // Trigger Icon Hydration
+      if (window.StackdHydrateIcons) {
+        window.StackdHydrateIcons();
+      }
+
+      // v0.63: Collapse overflowing inline tag pills into a "+N" counter
+      if (window.Components && window.Components.TransactionItem && window.Components.TransactionItem.applyTagOverflow) {
+        window.Components.TransactionItem.applyTagOverflow(routerView);
+      }
+    };
+
+    if (isNavigation && !reducedMotionQuery.matches && typeof document.startViewTransition === 'function') {
+      // The browser snapshots the outgoing view now and crossfades to the
+      // new one once renderView has swapped the DOM (styles in global.css).
+      // An aborted transition (hidden document, rapid double navigation)
+      // still runs renderView but rejects its promises — that is fine and
+      // must not surface as an unhandled rejection.
+      const transition = document.startViewTransition(renderView);
+      ['ready', 'finished', 'updateCallbackDone'].forEach(p => {
+        if (transition && transition[p] && transition[p].catch) transition[p].catch(() => {});
+      });
+    } else if (isNavigation && !reducedMotionQuery.matches) {
+      // Fallback: no crossfade, but the incoming view still eases in.
+      renderView();
+      routerView.classList.remove('view-enter');
+      void routerView.offsetWidth; // restart the one-shot animation
+      routerView.classList.add('view-enter');
+    } else {
+      renderView();
     }
   });
 

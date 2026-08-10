@@ -105,6 +105,13 @@
      the content (the iOS-widget model). */
   --widget-h-small: 190px;
   --widget-h-large: 288px;
+
+  /* Motion vocabulary (v0.73 Phase 4): one family of durations/curves for
+     view navigation, sheets and micro-interactions. --ease-spring is the
+     app's signature curve (used by sheets since v0.6x, now tokenised). */
+  --dur-quick: 150ms;
+  --dur-view: 250ms;
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root[data-theme="dark"],

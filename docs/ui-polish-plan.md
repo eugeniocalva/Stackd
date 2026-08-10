@@ -11,7 +11,7 @@
 - [x] **Phase 1 — Safe-area / status-bar hardening** — done 2026-08-10; see §Phase 1 as built
 - [x] **Phase 2 — Widget size consistency** — done 2026-08-10; see §Phase 2 as built
 - [x] **Phase 3 — Account tile restyle** — done 2026-08-10; see §Phase 3 as built
-- [ ] **Phase 4 — View transitions & motion polish** (soften the "mechanical" page/state switches)
+- [x] **Phase 4 — View transitions & motion polish** — done 2026-08-10; see §Phase 4 as built
 
 ---
 
@@ -284,6 +284,38 @@ motion at all.
 - **Touch feedback stays instant** (<100ms): existing `:active` scales are kept
   and extended to widget cards and pills; scroll reset on navigation stays
   instant (never animated).
+
+### Phase 4 as built (2026-08-10, v0.73)
+
+Shipped as designed; direction-aware slides were deliberately left out (the
+uniform crossfade + 12px rise already kills the mechanical feel, and forward/
+back classification would mean bolting a history stack onto the hash router).
+
+- `main.js`: render loop split into a `renderView()` closure (innerHTML swap,
+  attachEvents, bottom-nav state, icon hydration, tag overflow). Navigation =
+  view MODULE change (`window._currentActiveView !== viewModule`); only then
+  does it animate — via `document.startViewTransition(renderView)` when
+  available, else `renderView()` + a one-shot `.view-enter` class removed on
+  `animationend`. Reduced motion (JS matchMedia + CSS media query) disables
+  both. Aborted transitions (hidden document, rapid double-nav) still render
+  but reject their promises — caught and ignored, or they spam the console.
+- `global.css`: `.view-container` owns `view-transition-name: view` (out
+  fades `--dur-quick`, in fades + rises 12px over `--dur-view`); the bottom
+  nav gets its own name so it stays put while its active pill crossfades; the
+  root group's animation is disabled.
+- `variables.css`: motion tokens `--dur-quick: 150ms`, `--dur-view: 250ms`,
+  `--ease-spring: cubic-bezier(0.16, 1, 0.3, 1)`; all 14 hardcoded copies of
+  that curve in components.css now use the token.
+- `widgets.js`: `attachSection` flags remounts (tracked charts existed before
+  `destroyCharts`) and `_mountChart` sets `animation: false` for them — chart
+  entry animations play once per dashboard visit, never on re-renders. The
+  add-widget preview keeps its animation (flag reset after the attach loop).
+- Verified in Chromium: `startViewTransition` fires exactly once per
+  navigation and zero times across same-view dispatches; charts report
+  animation on at fresh visit / off after re-render (all 8); fallback path
+  applies `.view-enter` + `vt-view-in` when the API is nulled; zero unhandled
+  rejections across rapid double-navs. 433 unit + 19 e2e green (no
+  Playwright flake from the animations). `?v=`: main.js 17→20, widgets 7→8.
 
 ### Verification
 

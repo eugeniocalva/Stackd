@@ -94,3 +94,52 @@ p {
 .has-smooth-scroll {
   scroll-behavior: smooth !important;
 }
+
+/* ── View navigation transitions (v0.73 Phase 4) ──────────────────────────
+   main.js animates ONLY navigation (activeView changes) — same-view
+   re-renders (typing, filters, chart toggles) swap instantly. Two paths:
+
+   1. View Transitions API (WebView/Chrome ≥111, Safari ≥18): the outgoing
+      view fades, the incoming one fades in and rises. The router view owns
+      the animation via its view-transition-name; the bottom nav gets its own
+      name so it stays put (its group only crossfades the active pill), and
+      the root group is disabled so nothing else moves.
+   2. Fallback: main.js puts a one-shot .view-enter on the router view after
+      the swap and removes it on animationend.
+
+   Both live under prefers-reduced-motion: no-preference; main.js also skips
+   both paths entirely when reduce is set. */
+@media (prefers-reduced-motion: no-preference) {
+  .view-container {
+    view-transition-name: view;
+  }
+
+  .bottom-nav {
+    view-transition-name: bottom-nav;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  ::view-transition-old(view) {
+    animation: vt-view-out var(--dur-quick) ease both;
+  }
+
+  ::view-transition-new(view) {
+    animation: vt-view-in var(--dur-view) var(--ease-spring) both;
+  }
+
+  .view-container.view-enter {
+    animation: vt-view-in var(--dur-view) var(--ease-spring);
+  }
+}
+
+@keyframes vt-view-out {
+  to { opacity: 0; }
+}
+
+@keyframes vt-view-in {
+  from { opacity: 0; transform: translateY(12px); }
+}
