@@ -412,6 +412,11 @@ body.keyboard-active .bottom-nav {
   background: var(--bg-header);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  /* Own compositor layer: without it Android WebView re-rasterizes the
+     blurred bar mid-scroll and it visibly flickers (v0.77). Safe here —
+     nothing inside the bar is position:fixed, so the containing-block
+     side effect of the transform has nothing to capture. */
+  transform: translateZ(0);
   padding-top: var(--space-2);
   padding-bottom: var(--space-2);
   padding-left: max(var(--space-4), var(--safe-left));
@@ -1541,9 +1546,14 @@ a:focus-visible,
   margin: 0 auto;
 }
 
+/* Opacity-only on purpose (v0.77): the old translateY variant left a filled
+   transform on the animated element, and a transformed ancestor demotes any
+   position:sticky descendant to main-thread positioning — the header then
+   lags the scroll and content flashes above it. Never add transform back
+   here; view navigation motion is owned by the v0.73 view transitions. */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .animate-fade-in {

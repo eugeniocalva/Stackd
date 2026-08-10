@@ -187,7 +187,7 @@ window.Views = {
             </div>` : '';
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
             <div class="page-header">
@@ -365,7 +365,7 @@ window.Views = {
       const intervalLabel = selectedInterval.charAt(0).toUpperCase() + selectedInterval.slice(1);
 
       return `
-        <div class="container animate-fade-in" style="padding-top: var(--space-8); padding-bottom: 100px;">
+        <div class="container" style="padding-top: var(--space-8); padding-bottom: 100px;">
           <div style="margin-bottom: var(--space-8);">
             <p class="section-title">Total Balance</p>
             <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
@@ -844,7 +844,7 @@ window.Views = {
         : '';
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 120px;">
+        <div class="container" style="padding-bottom: 120px;">
           <!-- FIXED STICKY HEADER -->
           <div class="history-header-sticky" id="history-sticky-header">
             ${headerContentHtml}
@@ -1242,7 +1242,7 @@ window.Views = {
     render(state) {
       if (state.accounts.length === 0) {
         return `
-          <div class="container animate-fade-in" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+          <div class="container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
             <div style="font-size: 3rem; margin-bottom: 16px;">🏦</div>
             <h2 style="margin-bottom: 8px;">Create an Account First</h2>
             <p class="text-secondary" style="margin-bottom: 24px;">You need an account to log a transaction.</p>
@@ -1256,7 +1256,7 @@ window.Views = {
       const txToEdit = editId ? state.transactions.find(t => t.id === editId) : null;
       
       if (editId && !txToEdit) {
-        return `<div class="container animate-fade-in" style="padding-top: 40px; text-align: center;"><p>Transaction not found.</p><a href="#transactions" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">Go Back</a></div>`;
+        return `<div class="container" style="padding-top: 40px; text-align: center;"><p>Transaction not found.</p><a href="#transactions" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">Go Back</a></div>`;
       }
       
       const isEdit = !!txToEdit;
@@ -1351,7 +1351,7 @@ window.Views = {
       const disableToggles = ''; // Allow switching even in edit mode now that save logic is improved
       
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${isEdit ? 'Edit Log' : 'New Log'}</h1>
             <a href="#${isEdit ? 'transactions' : 'dashboard'}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
@@ -2137,7 +2137,7 @@ Object.assign(window.Views, {
       const both = state.categories.filter(c => c.typeHint === 'both').sort((a, b) => window.Store.compareAlpha(a, b));
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <div class="page-header">
             <h1 class="page-header-title">Categories</h1>
             <button class="btn btn-primary" id="btn-create-category" aria-label="New category"
@@ -2185,7 +2185,7 @@ Object.assign(window.Views, {
 
       if (!category) {
         return `
-          <div class="container animate-fade-in" style="padding-top: 40px; text-align: center;">
+          <div class="container" style="padding-top: 40px; text-align: center;">
             <p class="text-secondary">Category not found.</p>
             <a href="#categories" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">Go Back</a>
           </div>
@@ -2210,7 +2210,7 @@ Object.assign(window.Views, {
       listHtml += '</div>';
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <a href="#categories" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Categories"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Categories</a>
           
           <div style="margin-bottom: var(--space-6);">
@@ -2257,7 +2257,7 @@ Object.assign(window.Views, {
       const txCount = isEdit ? state.transactions.filter(t => t.categoryId === catId).length : 0;
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
             <a href="#categories" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
@@ -2480,7 +2480,7 @@ Object.assign(window.Views, {
       const overspent = totalSpent > totalAllocated && totalAllocated > 0;
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
             <div class="page-header">
@@ -2820,7 +2820,7 @@ Object.assign(window.Views, {
       }
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">Tags</h1>
             <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
@@ -2848,7 +2848,7 @@ Object.assign(window.Views, {
 
       if (!targetTag) {
         return `
-          <div class="container animate-fade-in" style="padding-top: 40px; text-align: center;">
+          <div class="container" style="padding-top: 40px; text-align: center;">
             <p class="text-secondary">Tag not found.</p>
             <a href="#tags" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">Go Back</a>
           </div>
@@ -2874,7 +2874,7 @@ Object.assign(window.Views, {
       contentHtml += '</div>';
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <a href="#tags" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Tags"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Tags</a>
           
           <div style="margin-bottom: var(--space-6);">
@@ -2909,7 +2909,7 @@ Object.assign(window.Views, {
   OthersView: {
     render(state) {
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div class="container" style="padding-bottom: 100px;">
           <h1 class="header-title" style="margin-top: var(--space-4); margin-bottom: var(--space-8);">Others</h1>
 
           <div class="section-title">Manage</div>
@@ -3381,7 +3381,7 @@ Object.assign(window.Views, {
       const isDefault = state.defaultAccountId === accountId;
 
       return `
-        <div class="container animate-fade-in" style="padding-bottom: 160px;">
+        <div class="container" style="padding-bottom: 160px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
             <a href="#dashboard" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
@@ -3997,7 +3997,7 @@ Object.assign(window.Views, {
       `;
 
       return `
-        <div id="debt-hub" class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div id="debt-hub" class="container" style="padding-bottom: 100px;">
           <a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Dashboard"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Dashboard</a>
           <h1 class="page-header-title" style="margin-bottom: var(--space-1);">Loans</h1>
           <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">Simulate loans and track the ones you have</div>
@@ -4038,7 +4038,7 @@ Object.assign(window.Views, {
       const title = d.editingLoanId ? 'Edit Simulation' : S.TYPES[d.type].label;
 
       return `
-        <div id="debt-sim-form" class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
             <a href="#debt" id="dsim-close" aria-label="Close simulator" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
@@ -4367,7 +4367,7 @@ Object.assign(window.Views, {
       if (!r.config || r.error) {
         const msg = r.error ? 'This simulation could not be computed: ' + S.esc(r.error.message) : 'Nothing to show here.';
         return `
-          <div id="debt-results-view" class="container animate-fade-in">
+          <div id="debt-results-view" class="container">
             <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4); margin-top: var(--space-8);">
               <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${msg}</div>
               <a href="#debt" class="btn btn-primary" style="text-decoration: none;">Back to Loans</a>
@@ -4446,7 +4446,7 @@ Object.assign(window.Views, {
       }
 
       return `
-        <div id="debt-results-view" class="container animate-fade-in" style="padding-bottom: 100px;">
+        <div id="debt-results-view" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : t.label}</h1>
             <div style="display: flex; gap: var(--space-2);">
