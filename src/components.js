@@ -583,6 +583,82 @@ window.Components = {
     }
   },
 
+  // v0.76: Terms & Conditions sheet (Others → Support → Terms and Conditions).
+  // Two parts — Terms of Use and Privacy Policy — written for the app's
+  // local-only storage model (no servers, no data collection), with the
+  // GDPR data-subject rights mapped to in-app features. Static trusted
+  // content; reuses the #active-modal id so Modal.hide() owns the teardown.
+  TermsModal: {
+    UPDATED: 'August 10, 2026',
+
+    show() {
+      const clause = (title, body) => `
+        <div style="margin-bottom: var(--space-4);">
+          <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 2px;">${title}</div>
+          <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">${body}</div>
+        </div>`;
+      const part = (title) => `<div class="section-title" style="margin: var(--space-5) 0 var(--space-3);">${title}</div>`;
+
+      const container = document.getElementById('modal-container');
+      container.innerHTML = `
+        <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div class="modal-content" style="display: flex; flex-direction: column; height: calc(90vh - var(--safe-top));">
+            <div class="modal-handle"></div>
+            <div class="modal-header-container">
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">Terms &amp; Conditions</h2>
+            </div>
+            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); flex-shrink: 0;">Last updated: ${this.UPDATED}</div>
+            <div class="modal-body">
+              <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">
+                Stack'd is a privacy-first personal finance tracker. Everything you record stays on your device —
+                the app has no servers, no user accounts and no data collection. These conditions are in two parts:
+                the <b>Terms of Use</b>, which govern your use of the app, and the <b>Privacy Policy</b>, which
+                explains how your data is (and is not) handled.
+              </div>
+
+              ${part('Part 1 — Terms of Use')}
+              ${clause('1. Acceptance', `By installing or using Stack'd you agree to these Terms of Use. If you do not agree, please do not use the app.`)}
+              ${clause('2. License', `You are granted a personal, non-transferable, non-exclusive license to use Stack'd for your own personal, non-commercial finance tracking.`)}
+              ${clause('3. Not financial advice', `Stack'd is an organizational tool. Balances, projections, budgets and loan simulations are informational estimates only and may differ from the figures of your bank or lender. Nothing in the app constitutes financial, investment, tax or legal advice — always verify important figures with your financial institution or a qualified advisor before acting on them.`)}
+              ${clause('4. Your data, your responsibility', `All data lives only on this device. You are responsible for keeping backups — use the CSV export in Others &amp; Settings. Uninstalling the app, clearing your browser's site data, or using Factory Reset permanently deletes all data, and no one (including the developer) can recover it.`)}
+              ${clause('5. No warranty', `Stack'd is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo;, without warranties of any kind, express or implied, including accuracy of calculations, fitness for a particular purpose, or uninterrupted availability.`)}
+              ${clause('6. Limitation of liability', `To the maximum extent permitted by applicable law, the developer shall not be liable for any loss or damage — including financial loss or loss of data — arising from your use of, or inability to use, the app.`)}
+              ${clause('7. Changes to these terms', `These terms may be updated together with app updates. The &ldquo;Last updated&rdquo; date above reflects the current version; continued use of the app after an update constitutes acceptance of the revised terms.`)}
+
+              ${part('Part 2 — Privacy Policy')}
+              ${clause('1. The short version', `Stack'd does not collect, transmit, sell or share any personal data. There is nothing to opt out of, because nothing ever leaves your device.`)}
+              ${clause('2. What is stored, and where', `Your accounts, transactions, budgets, loans, tags and settings are stored exclusively in your device's local storage. They are never sent to a server — the app works fully offline and has no backend.`)}
+              ${clause('3. What the app does not do', `No user accounts or registration. No cloud sync. No analytics or usage tracking. No advertising or ad identifiers. No third-party data sharing. No cookies beyond the local storage the app needs to function.`)}
+              ${clause('4. GDPR position', `Under the EU General Data Protection Regulation (Regulation (EU) 2016/679), the developer does not process your personal data: all processing happens locally, under your sole control, on your own device. For the data you record in Stack'd, no controller&ndash;processor relationship with the developer arises, no data is transferred (within or outside the EU/EEA), and no consent banner is required because there is nothing to consent to.`)}
+              ${clause('5. Your rights, built in', `The GDPR data-subject rights are satisfied directly in the app: <b>access &amp; portability</b> (Art. 15 &amp; 20) — export everything as CSV from Others &amp; Settings; <b>rectification</b> (Art. 16) — edit any record at any time; <b>erasure</b> (Art. 17) — delete individual records or erase everything with Factory Reset. No request to the developer is needed for any of these.`)}
+              ${clause('6. Security', `Because your data lives on your device, it is exactly as secure as the device itself. We recommend protecting your device with a screen lock, keeping its system updated, and storing CSV backups in a safe place. Anyone with unrestricted access to your unlocked device can view your data.`)}
+              ${clause('7. Children', `Stack'd collects no data from anyone, including children. The app has no age-gated features and no way to identify its users.`)}
+              ${clause('8. Contact', `If you email feedback to hi@stackd.com, your email address and message are used only to respond to you and are never added to any marketing list. Data-protection questions can be sent to the same address.`)}
+              ${clause('9. Changes to this policy', `If a future version of the app ever changes how data is handled (for example, an optional cloud backup), this policy will be updated first and the change will be clearly announced in the app before anything leaves your device.`)}
+            </div>
+            <div style="margin-top: var(--space-4); flex-shrink: 0;">
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close terms and conditions">Close</button>
+            </div>
+          </div>
+        </div>`;
+
+      requestAnimationFrame(() => {
+        const backdrop = document.getElementById('active-modal');
+        if (backdrop) backdrop.classList.add('open');
+      });
+
+      const close = () => window.Components.Modal.hide();
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      if (cancelBtn) cancelBtn.addEventListener('click', close);
+      const backdrop = document.getElementById('active-modal');
+      if (backdrop) {
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) close();
+        });
+      }
+    }
+  },
+
   IconPicker: {
     // v0.66: two disjoint icon sets — accounts get banking/finance icons,
     // categories get spending/lifestyle icons. Every name must exist in

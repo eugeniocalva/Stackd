@@ -3055,10 +3055,6 @@ Object.assign(window.Views, {
                 <div class="list-item-content"><div class="list-item-title">User Manual</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" style="cursor: pointer;" onclick="alert('Tutorials coming soon!')">
-                <div class="list-item-content"><div class="list-item-title">Tutorials</div></div>
-                <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
-              </div>
               <div class="list-item" style="cursor: pointer;" onclick="alert('Thank you for trying Stackd! Send feedback to hi@stackd.com')">
                 <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">Send a Feedback</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
@@ -3067,7 +3063,7 @@ Object.assign(window.Views, {
                 <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">Rate the App</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" style="cursor: pointer; border-bottom: none; padding-bottom: 0;" onclick="alert('Terms & Conditions document coming soon.')">
+              <div class="list-item" id="btn-open-terms" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open terms and conditions">
                 <div class="list-item-content"><div class="list-item-title">Terms and Conditions</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
@@ -3102,6 +3098,12 @@ Object.assign(window.Views, {
         const openManual = () => window.Components.ManualModal.show();
         manualBtn.addEventListener('click', openManual);
         manualBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openManual(); } });
+      }
+      const termsBtn = document.getElementById('btn-open-terms');
+      if (termsBtn) {
+        const openTerms = () => window.Components.TermsModal.show();
+        termsBtn.addEventListener('click', openTerms);
+        termsBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTerms(); } });
       }
       const exportAccBtn = document.getElementById('btn-export-accounts');
       if (exportAccBtn) {
