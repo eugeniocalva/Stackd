@@ -1072,17 +1072,15 @@ a:focus-visible,
   transform: scale(0.98);
 }
 
-/* Advanced Scrollable Filter Bar (v0.55) */
+/* Advanced Scrollable Filter Bar (v0.55; chromeless since v0.78)
+   The pill row sits directly on the sticky header's frosted background,
+   matching the Budget month switcher — no surface band, hairline, or own
+   sticky positioning of its own (all leftovers from when the bar itself
+   was the sticky element, and the source of the stray white strip).
+   Full-bleed margins let the pills scroll edge-to-edge. */
 .filter-bar-wrapper {
   margin: 0 calc(var(--space-4) * -1);
-  padding: 0 var(--space-4) var(--space-4);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-4);
 }
 
 .filter-bar-scrollable {
@@ -1175,17 +1173,6 @@ a:focus-visible,
 /* Calendar Grid */
 .calendar-container {
   padding: var(--space-4);
-}
-
-.filter-bar-wrapper {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--color-border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  margin-bottom: var(--space-4);
 }
 
 .calendar-nav-header {
