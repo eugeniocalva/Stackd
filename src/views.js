@@ -3051,8 +3051,8 @@ Object.assign(window.Views, {
                 <div class="list-item-content"><div class="list-item-title">FAQ</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" style="cursor: pointer;" onclick="alert('Instructions Manual coming soon!')">
-                <div class="list-item-content"><div class="list-item-title">Instructions Manual</div></div>
+              <div class="list-item" id="btn-open-manual" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open user manual">
+                <div class="list-item-content"><div class="list-item-title">User Manual</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
               <div class="list-item" style="cursor: pointer;" onclick="alert('Tutorials coming soon!')">
@@ -3096,6 +3096,12 @@ Object.assign(window.Views, {
         const openFaq = () => window.Components.FaqModal.show();
         faqBtn.addEventListener('click', openFaq);
         faqBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFaq(); } });
+      }
+      const manualBtn = document.getElementById('btn-open-manual');
+      if (manualBtn) {
+        const openManual = () => window.Components.ManualModal.show();
+        manualBtn.addEventListener('click', openManual);
+        manualBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openManual(); } });
       }
       const exportAccBtn = document.getElementById('btn-export-accounts');
       if (exportAccBtn) {

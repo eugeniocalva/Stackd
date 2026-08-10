@@ -360,6 +360,229 @@ window.Components = {
     }
   },
 
+  // v0.75: User Manual sheet (Others → Support → User Manual). Every user
+  // interaction, grouped by screen, with live search + match highlighting.
+  // Items are PLAIN TEXT (no HTML) so search/highlight can escape safely.
+  // Reuses the #active-modal id so Modal.hide() owns the teardown.
+  ManualModal: {
+    SECTIONS: [
+      {
+        title: 'Getting around',
+        items: [
+          { h: 'Bottom bar', d: 'Four tabs: Home, History, Goals and Analytics. Tap the tab you are already on to jump back to the top (in History, back to today).' },
+          { h: 'The + button', d: 'Opens the quick actions menu: Add Log, Add Account, Debt, Add Category, and Others & Settings.' },
+          { h: 'Settings', d: 'All settings live under the + button → Others & Settings, not in the bottom bar.' }
+        ]
+      },
+      {
+        title: 'Home',
+        items: [
+          { h: 'Total balance', d: 'Your total across all wallets, with two deltas vs the start of the month: as of today and projected end of month.' },
+          { h: 'Balance chart', d: 'Tap the chart to expand it. In the expanded view, tap Filter to switch Weekly / Monthly / Quarter and choose which accounts and categories are plotted. Save View keeps those filters on the Home chart; Reset View restores the default.' },
+          { h: 'Wallet cards', d: 'Tap a wallet to open History filtered to that account. Tap the ⋯ button on a card to edit the account. The last tile, Add Wallet, creates a new account.' }
+        ]
+      },
+      {
+        title: 'Accounts (wallets)',
+        items: [
+          { h: 'Create an account', d: 'Tap + → Add Account, the Add Wallet tile on Home, or Others → Accounts → Create New Account.' },
+          { h: 'Account fields', d: 'Name, type (Bank, Debit card, Cash, Savings, Credit card, Investment, Wallet, Account), icon, color, opening balance with Positive / Negative sign and date, and a Set as Default Wallet toggle. Choosing Credit card automatically flips a new account to negative.' },
+          { h: 'Balances', d: 'Balances are always computed from your transactions, so they stay in sync automatically.' },
+          { h: 'Edit or delete', d: 'Open the account via the ⋯ on its wallet card or Others → Accounts. Deleting an account permanently deletes all of its transactions.' }
+        ]
+      },
+      {
+        title: 'Adding transactions',
+        items: [
+          { h: 'New log', d: 'Tap + → Add Log. Pick Expense, Income or Transfer, then enter the amount, account, category and date.' },
+          { h: 'Category picker', d: 'Tapping the category field opens the Select Category sheet. Use + Add custom to create a new category on the spot — your form is kept while you do.' },
+          { h: 'Transfers', d: 'Transfers move money between two of your accounts: pick From and To. They have no category and do not count as income or spending.' },
+          { h: 'Tags', d: 'Type in the Tags field and press Enter, comma or space to add a chip. Autocomplete suggests tags you already use.' },
+          { h: 'Notes and time', d: 'The note field suggests notes you have used before. A time field appears if you enable transaction time input in Others.' },
+          { h: 'Recurring', d: 'Turn on the Recurrent toggle, tap the "Repeats every…" line to choose the interval (every 1–30 days, weeks, months or years) and set an End Date. All future occurrences are created ahead automatically.' }
+        ]
+      },
+      {
+        title: 'Editing transactions',
+        items: [
+          { h: 'Edit', d: 'Tap any transaction — in History, a category or tag page, or a widget — to open it in the editor.' },
+          { h: 'Recurring scope', d: 'When you save or delete a recurring item you choose the scope: only this transaction, this and future transactions, or all transactions in the series.' },
+          { h: 'Delete', d: 'Use the Delete button in the editor, or swipe the row left in History.' }
+        ]
+      },
+      {
+        title: 'History',
+        items: [
+          { h: 'Swipe actions', d: 'Swipe a row left for Edit and Delete. Swipe right to toggle its Paid state — unpaid rows show a marker on their left edge.' },
+          { h: 'Bulk selection', d: 'Long-press a row (or tap Select) to enter selection mode, then tap rows to select them. Use Select All / Deselect All and Delete (N) to remove many at once.' },
+          { h: 'Periods', d: 'Use the Day / Week / Month / Year pills and the ‹ › arrows to move through periods. Today scrolls the list back to today.' },
+          { h: 'Custom range', d: 'The calendar pill opens a custom range picker with presets: Last 7 / 30 / 90 Days, 6 Months, 1 Year and All Time.' },
+          { h: 'Filter & sort', d: 'The sliders pill filters by transaction type, wallet and category, and switches Newest First / Oldest First. The clear pill resets every filter.' },
+          { h: 'Summary card', d: 'Shows the Start balance, End balance and Net Change for the selected period.' }
+        ]
+      },
+      {
+        title: 'Goals (budget)',
+        items: [
+          { h: 'Monthly limits', d: 'Goals are monthly spending (or income) limits per category. Switch between Expenses and Income, and change month with the ‹ › arrows or by tapping the month name.' },
+          { h: 'Set a limit', d: 'Tap any category to set its Monthly Limit, a Start Month and an optional End Month.' },
+          { h: 'Rollover', d: 'The Cumulative Rollover toggle carries unused budget into the next month; overspending deducts from it.' },
+          { h: 'Progress', d: 'The donut shows Allocated, Total Spent and Remaining. Category bars turn amber at 75% and red at 90% or when over budget. Remove Budget Limit clears a limit.' }
+        ]
+      },
+      {
+        title: 'Analytics',
+        items: [
+          { h: 'Filters', d: 'Analytics uses the same filter bar as History: periods, custom ranges, and type / wallet / category filters.' },
+          { h: 'Net balance', d: 'The hero card shows the period’s net balance and the change vs the previous period. When the period includes the future, a Today / end-of-period toggle switches between actuals and a projection that includes upcoming recurring items.' },
+          { h: 'Net flow chart', d: 'Bars show income minus expenses per bucket. Tap a bar to open exactly those transactions in History.' },
+          { h: 'Distribution', d: 'The donut breaks the period down by category, with an Expenses / Income toggle. Tap a legend row to open that category in History.' }
+        ]
+      },
+      {
+        title: 'Loans (debt)',
+        items: [
+          { h: 'Open', d: 'Tap + → Debt to reach the Loans hub.' },
+          { h: 'Simulate', d: 'Pick Mortgage, Personal Loan or Installment Plan, then enter the amount (mortgages also take a Down Payment), duration, annual rate and first payment date, and tap Calculate.' },
+          { h: 'Advanced options', d: 'The Details section adds constant vs declining payments, an interest-only first installment, future rate changes, early repayments (reducing the payment or the duration), and extra costs such as insurance.' },
+          { h: 'Results', d: 'See the monthly payment, total interest, totals and the full payment schedule in Brief or Detailed form.' },
+          { h: 'Save or track', d: 'Save Simulation keeps it for later; Add to My Loans turns it into a real loan with paid / remaining progress.' },
+          { h: 'Track the payment', d: 'Tracking adds the installment as a monthly recurring expense (category Loan Payment), so progress and the next payment update automatically as payments are logged.' },
+          { h: 'Manage', d: 'Tap a saved simulation or loan to reopen it, then use the ⋯ menu to Edit, Add to My Loans, or Delete.' }
+        ]
+      },
+      {
+        title: 'Categories',
+        items: [
+          { h: 'Manage', d: 'Others → Categories lists them grouped by Income, Expense and All Types. Create one with + → Add Category, the + button on the Categories screen, or + Add custom inside the transaction form.' },
+          { h: 'Category fields', d: 'Name, type (Expense, Income or Both) and icon.' },
+          { h: 'Detail and edit', d: 'Tap a category to see all its transactions; tap its ⋮ button to edit it.' },
+          { h: 'Deleting', d: 'A category that still has transactions cannot be deleted.' }
+        ]
+      },
+      {
+        title: 'Tags',
+        items: [
+          { h: 'Add tags', d: 'Tags are free-form labels typed in the transaction form. They are created on the fly — no setup needed.' },
+          { h: 'Browse', d: 'Others → Tags lists every tag in use; tap one to see its transactions.' },
+          { h: 'Lifecycle', d: 'A tag disappears automatically once no transaction uses it anymore.' }
+        ]
+      },
+      {
+        title: 'Home widgets',
+        items: [
+          { h: 'Add a widget', d: 'On Home, tap Add in the Widgets section, pick from the gallery, preview it with your real data, choose Small or Wide, and configure it if it has options.' },
+          { h: 'Widget types', d: 'Latest transactions, Income vs Expenses, Categories, Net worth, Personal savings, Upcoming transactions, Budget goals, and the 50/30/20 budget.' },
+          { h: 'Edit mode', d: 'Tap Edit to rearrange: remove with the − button, reorder with the up / down arrows, resize with the Small / Wide pill, configure with the gear, then tap Done.' },
+          { h: 'Shortcuts', d: 'Outside edit mode, tapping a widget jumps to its related page — History, Goals or Analytics.' },
+          { h: 'Options', d: 'Most widgets can be limited to specific accounts; Categories and Budget goals can pick categories; Upcoming has a 7 / 30 / 60 day horizon; the 50/30/20 widget takes a planned income, a custom split and your Needs categories.' }
+        ]
+      },
+      {
+        title: 'Others & settings',
+        items: [
+          { h: 'Manage', d: 'Shortcuts to your Accounts, Categories and Tags.' },
+          { h: 'Region', d: 'Choose the currency (USD, EUR, JPY, GBP, CNY) and language.' },
+          { h: 'Preferences', d: 'History sort order (newest or oldest first), the transaction time input toggle, and the theme: Light, Dark or System Default.' },
+          { h: 'Export', d: 'Export Accounts, Categories, Transactions and Loans as CSV files for any spreadsheet app.' },
+          { h: 'Import', d: 'Import CSV accepts files with the columns Date, Amount, Type, Account, Category, Note. Missing accounts and categories are created automatically, and a loans export is recognised on its own.' },
+          { h: 'Factory reset', d: 'The Danger Zone erases every account, budget and transaction permanently. This cannot be undone.' },
+          { h: 'Privacy', d: 'All data lives only on this device — there are no accounts, no cloud and no tracking.' }
+        ]
+      }
+    ],
+
+    show() {
+      const container = document.getElementById('modal-container');
+      container.innerHTML = `
+        <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div class="modal-content" style="display: flex; flex-direction: column; height: calc(90vh - var(--safe-top));">
+            <div class="modal-handle"></div>
+            <div class="modal-header-container">
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">User Manual</h2>
+            </div>
+            <input type="search" id="manual-search" class="form-control" placeholder="Search the manual..." autocomplete="off"
+                   aria-label="Search the manual" style="margin-bottom: var(--space-4); flex-shrink: 0;">
+            <div class="modal-body" id="manual-body">${this._renderBody('')}</div>
+            <div style="margin-top: var(--space-4); flex-shrink: 0;">
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close user manual">Close</button>
+            </div>
+          </div>
+        </div>`;
+
+      requestAnimationFrame(() => {
+        const backdrop = document.getElementById('active-modal');
+        if (backdrop) backdrop.classList.add('open');
+      });
+
+      const close = () => window.Components.Modal.hide();
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      if (cancelBtn) cancelBtn.addEventListener('click', close);
+      const backdrop = document.getElementById('active-modal');
+      if (backdrop) {
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) close();
+        });
+      }
+
+      const search = document.getElementById('manual-search');
+      const body = document.getElementById('manual-body');
+      if (search && body) {
+        let timer = null;
+        search.addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { body.innerHTML = this._renderBody(search.value); }, 150);
+        });
+      }
+    },
+
+    _esc(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
+
+    // Escape segment-by-segment around the raw-text matches, so a query
+    // containing &, < or " still matches and highlights correctly.
+    _highlight(text, q) {
+      if (!q) return this._esc(text);
+      const lower = text.toLowerCase();
+      let out = '';
+      let i = 0;
+      let idx = lower.indexOf(q, i);
+      while (idx !== -1) {
+        out += this._esc(text.slice(i, idx))
+          + `<mark style="background: var(--color-accent); color: white; border-radius: 3px; padding: 0 2px;">${this._esc(text.slice(idx, idx + q.length))}</mark>`;
+        i = idx + q.length;
+        idx = lower.indexOf(q, i);
+      }
+      return out + this._esc(text.slice(i));
+    },
+
+    _renderBody(query) {
+      const q = String(query || '').trim().toLowerCase();
+      const sectionsHtml = this.SECTIONS.map(section => {
+        const titleMatch = section.title.toLowerCase().includes(q);
+        const items = (q && !titleMatch)
+          ? section.items.filter(it => (it.h + ' ' + it.d).toLowerCase().includes(q))
+          : section.items;
+        if (q && !titleMatch && items.length === 0) return '';
+        return `
+          <div class="manual-section" style="margin-bottom: var(--space-6);">
+            <div class="section-title" style="margin-bottom: var(--space-2);">${this._highlight(section.title, q)}</div>
+            ${items.map(it => `
+              <div style="padding: var(--space-2) 0; border-bottom: 1px solid var(--border-color);">
+                <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 2px;">${this._highlight(it.h, q)}</div>
+                <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">${this._highlight(it.d, q)}</div>
+              </div>`).join('')}
+          </div>`;
+      }).filter(Boolean);
+
+      if (sectionsHtml.length === 0) {
+        return `<div style="text-align: center; color: var(--text-tertiary); padding: var(--space-8) 0; font-size: var(--text-sm);">No results for &ldquo;${this._esc(query.trim())}&rdquo;</div>`;
+      }
+      return sectionsHtml.join('');
+    }
+  },
+
   IconPicker: {
     // v0.66: two disjoint icon sets — accounts get banking/finance icons,
     // categories get spending/lifestyle icons. Every name must exist in
