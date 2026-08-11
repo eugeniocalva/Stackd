@@ -147,8 +147,9 @@ describe('incomeExpense widget', () => {
     expect(html).toContain(`id="widget-canvas-${instance.id}"`);
   });
 
-  it('excludes future-dated (scheduled) transactions from the current month', () => {
-    // clampEnd = today, so a scheduled row later this month must not count.
+  it('includes future-dated (scheduled) transactions in the current month (v0.82 EOM)', () => {
+    // v0.82: the clampEnd was dropped ON PURPOSE — this widget now answers
+    // "how does this month end up", so scheduled rows later this month count.
     // The clock is frozen mid-month, so +3d is always still inside the month.
     const future = dateOffset(3);
     expect(future.slice(0, 7)).toBe(todayStr().slice(0, 7));
@@ -157,8 +158,8 @@ describe('incomeExpense widget', () => {
       { type: 'expense', amount: 11, date: thisMonth(2) }
     ]);
     const { html } = renderOne('incomeExpense', 'small', {});
-    expect(html).toContain('$11.00');
-    expect(html).not.toContain('777');
+    expect(html).toContain('$788.00');
+    expect(html).toContain('incl. scheduled');
   });
 
   it('honours the account filter', () => {
@@ -281,16 +282,19 @@ describe('categories widget', () => {
     expect(html).not.toContain('430');
   });
 
-  it('agrees with the incomeExpense widget about this month', () => {
+  it('deliberately DISAGREES with the incomeExpense widget for the current month (v0.82)', () => {
+    // Pinning the intended divergence: categories stays month-to-date (money
+    // already spent), incomeExpense is whole-month/EOM (incl. scheduled rows).
+    // Do not "re-fix" this back to agreement — see home-widgets-plan.md §8b.
     seed([
       { amount: 100, date: thisMonth(2), categoryId: 'cat_groceries' },
       { amount: 330, date: dateOffset(3), categoryId: 'cat_rent' }
     ]);
     const donut = renderOne('categories', 'small', {}).html;
     const bars = renderOne('incomeExpense', 'small', {}).html;
-    // Both report the same month-to-date expense figure.
-    expect(donut).toContain('$100.00');
-    expect(bars).toContain('$100.00');
+    expect(donut).toContain('$100.00');   // MTD: scheduled 330 not spent yet
+    expect(bars).toContain('$430.00');    // EOM: 100 + scheduled 330
+    expect(bars).toContain('incl. scheduled');
   });
 
   it('builds a doughnut chart', () => {

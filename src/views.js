@@ -40,6 +40,7 @@ function captureDraftTxFormState(container) {
   const categorySelect = root.querySelector('#tx-category');
   const dateInput = root.querySelector('#tx-date');
   const noteInput = root.querySelector('#tx-comment');
+  const togglePaid = root.querySelector('#tx-is-paid');
   const toggleRecurrent = root.querySelector('#tx-is-recurrent');
   const endDateInput = root.querySelector('#tx-recurrence-end-date');
   const intervalInput = root.querySelector('#tx-recurrence-interval');
@@ -57,6 +58,7 @@ function captureDraftTxFormState(container) {
       date: dateInput ? dateInput.value : '',
       note: noteInput ? noteInput.value : '',
       tags: tagChips,
+      isPaid: togglePaid ? togglePaid.checked : true,
       isRecurrent: toggleRecurrent ? toggleRecurrent.checked : false,
       recurrenceEndDate: endDateInput ? endDateInput.value : '',
       recurrenceInterval: intervalInput ? intervalInput.value : '1',
@@ -1292,13 +1294,16 @@ window.Views = {
       let initialCategory = window._pendingCategorySelection || '';
       let initialToAccount = '';
       let initialIsRecurrent = false;
+      // v0.82: paid by default — absence of isPaid means paid app-wide.
+      let initialIsPaid = true;
       let initialRecurrenceEndDate = '';
       let initialRecurrenceInterval = '1';
       let initialRecurrenceFreq = 'months';
       let initialRecurrenceSeriesId = '';
-      
+
       if (txToEdit) {
         initialAmount = Math.abs(txToEdit.amount);
+        initialIsPaid = txToEdit.isPaid !== false;
         initialDate = txToEdit.date;
         initialTime = txToEdit.time ? txToEdit.time.substring(0, 5) : initialTime;
         initialNote = txToEdit.comment || txToEdit.note || '';
@@ -1354,6 +1359,7 @@ window.Views = {
         if (draft.transferTo) initialToAccount = draft.transferTo;
         if (draft.category) initialCategory = draft.category;
         if (draft.isRecurrent !== undefined) initialIsRecurrent = draft.isRecurrent;
+        if (draft.isPaid !== undefined) initialIsPaid = draft.isPaid;
         if (draft.recurrenceEndDate !== undefined) initialRecurrenceEndDate = draft.recurrenceEndDate;
         if (draft.recurrenceInterval !== undefined) initialRecurrenceInterval = draft.recurrenceInterval;
         if (draft.recurrenceFreq !== undefined) initialRecurrenceFreq = draft.recurrenceFreq;
@@ -1444,6 +1450,19 @@ window.Views = {
               <div id="tx-comment-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
+            <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-paid">
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div style="flex: 1;">
+                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">Paid</strong>
+                  <span id="tx-paid-text" style="font-size: var(--text-sm); color: var(--text-secondary);">${initialIsPaid ? 'Counted in balances' : 'Excluded until marked paid'}</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tx-is-paid" ${initialIsPaid ? 'checked' : ''}>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
             <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-recurring">
               <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="flex: 1;">
@@ -1492,6 +1511,15 @@ window.Views = {
       const groupCategory = document.getElementById('group-category');
       const groupTransferTo = document.getElementById('group-transfer-to');
       const labelAccount = document.getElementById('label-account');
+      // v0.82: live subtitle for the Paid toggle
+      const paidToggleEl = document.getElementById('tx-is-paid');
+      if (paidToggleEl) {
+        paidToggleEl.addEventListener('change', () => {
+          const txt = document.getElementById('tx-paid-text');
+          if (txt) txt.textContent = paidToggleEl.checked ? 'Counted in balances' : 'Excluded until marked paid';
+        });
+      }
+
       const btnSave = document.getElementById('btn-save-tx');
       const btnDelete = document.getElementById('btn-delete-tx');
       const btnAddCategory = document.getElementById('btn-add-category');
@@ -1934,6 +1962,17 @@ window.Views = {
         const dateChanged = !!(txToEditCurrent && date !== txToEditCurrent.date);
         const recurrenceRemoved = !!(seriesId && !recurrenceData);
 
+        // v0.82: Paid toggle. Lean payload semantics — absence of isPaid on a
+        // record means paid, so: unchecked → false; checked → true only when
+        // flipping a currently-unpaid record back (UPDATE's merge deletes
+        // undefined-valued keys, leaving untouched records untouched);
+        // otherwise omitted. Transfer legs share one paid state, so checking
+        // the tapped leg is enough.
+        const paidToggle = document.getElementById('tx-is-paid');
+        const paidChecked = paidToggle ? paidToggle.checked : true;
+        const wasUnpaid = !!(txToEditCurrent && txToEditCurrent.isPaid === false);
+        const isPaidPayload = paidChecked ? (wasUnpaid ? true : undefined) : false;
+
         // Build the actual dispatch logic as a callable function
         const doDispatch = (scope) => {
           // scope: 'only' | 'future' | 'all'
@@ -1957,6 +1996,7 @@ window.Views = {
                   note: comment,
                   recurrence: recurrenceData,
                   tags: currentTags,
+                  isPaid: isPaidPayload,
                   updateFuture: scope === 'future',
                   updateAll: scope === 'all'
                 });
@@ -1991,7 +2031,8 @@ window.Views = {
                   time: customTime,
                   note: comment,
                   recurrence: transferRecurrence,
-                  tags: currentTags
+                  tags: currentTags,
+                  ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
                 });
               }
             } else {
@@ -2003,7 +2044,8 @@ window.Views = {
                 time: customTime,
                 note: comment,
                 recurrence: recurrenceData,
-                tags: currentTags
+                tags: currentTags,
+                ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
               });
             }
           } else if (isEditSave) {
@@ -2023,6 +2065,8 @@ window.Views = {
               comment: comment,
               recurrence: recurrenceData,
               tags: currentTags,
+              // undefined = leave the record's paid state alone (v0.67 merge)
+              isPaid: isPaidPayload,
               updateFuture: scope === 'future',
               updateAll: scope === 'all'
             });
@@ -2036,7 +2080,8 @@ window.Views = {
               time: customTime,
               comment: comment,
               recurrence: recurrenceData,
-              tags: currentTags
+              tags: currentTags,
+              ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
             });
           }
 

@@ -232,13 +232,21 @@ describe('savings widget', () => {
     expect(colors[colors.length - 2]).toContain('16, 185, 129');  // last month: saved
   });
 
-  it('agrees with the incomeExpense widget about this month', () => {
+  it('agrees with incomeExpense on past-only months, diverges on scheduled rows (v0.82)', () => {
     seed([
       { type: 'income', categoryId: 'cat_salary', amount: 2000, date: monthDay(0, 1) },
       { type: 'expense', amount: 800, date: monthDay(0, 2) }
     ]);
+    // With only past-dated rows the two still report the same net.
     expect(renderOne('savings', 'small', {}).html).toContain('$1,200.00');
     expect(renderOne('incomeExpense', 'small', {}).html).toContain('$1,200.00');
+
+    // v0.82: a scheduled row later this month splits them by design —
+    // savings stays month-to-date (money actually put aside so far), while
+    // incomeExpense is whole-month/EOM (how the month ends up).
+    seed([{ type: 'expense', amount: 300, date: monthDay(0, 25) }]);
+    expect(renderOne('savings', 'small', {}).html).toContain('$1,200.00');
+    expect(renderOne('incomeExpense', 'small', {}).html).toContain('$900.00');
   });
 });
 

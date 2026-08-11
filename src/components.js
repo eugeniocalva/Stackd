@@ -475,7 +475,7 @@ window.Components = {
           { h: 'Widget types', d: 'Latest transactions, Income vs Expenses, Categories, Net worth, Personal savings, Upcoming transactions, Budget goals, and the 50/30/20 budget.' },
           { h: 'Edit mode', d: 'Tap Edit to rearrange: remove with the − button, reorder with the up / down arrows, resize with the Small / Wide pill, configure with the gear, then tap Done.' },
           { h: 'Shortcuts', d: 'Outside edit mode, tapping a widget jumps to its related page — History, Goals or Analytics.' },
-          { h: 'Options', d: 'Most widgets can be limited to specific accounts; Categories and Budget goals can pick categories; Upcoming has a 7 / 30 / 60 day horizon; the 50/30/20 widget takes a planned income, a custom split and your Needs categories.' }
+          { h: 'Options', d: 'Most widgets can be limited to specific accounts; Categories and Budget goals can pick categories; Upcoming has a 7 / 30 / 60 day horizon; the 50/30/20 widget takes a planned monthly income and a custom split, and simply shows how that income divides.' }
         ]
       },
       {
@@ -876,15 +876,9 @@ window.Components = {
       const selectedClass = isSelected ? 'list-item-selected' : '';
       const selectedBgStyle = isSelected ? 'background-color: var(--bg-surface-sunken); border-width: 2px; border-style: solid;' : '';
 
-      const isPaid = transaction.isPaid === true;
+      // v0.82: paid is the default and shows NOTHING (the green chip is gone);
+      // the amber left-edge bar is the single indicator, only when unpaid.
       const isUnpaid = transaction.isPaid === false;
-
-      const paidBadgeHtml = isPaid ? `
-        <span class="paid-badge">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>Paid</span>
-        </span>
-      ` : '';
 
       const unpaidBarHtml = isUnpaid ? `<div class="unpaid-edge-bar"></div>` : '';
 
@@ -901,7 +895,6 @@ window.Components = {
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
               <span>${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</span>
-              ${paidBadgeHtml}
             </div>
             <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
@@ -928,12 +921,10 @@ window.Components = {
           </div>`;
       }
 
-      const paidBtnClass = isPaid ? 'is-paid' : (isUnpaid ? 'is-unpaid' : '');
-
       return `
         <div class="swipe-container" data-id="${transaction.id}">
           <div class="swipe-actions left">
-            <button class="swipe-action-btn paid ${paidBtnClass}" data-id="${transaction.id}" aria-label="${isPaid ? 'Mark as unpaid' : 'Mark as paid'}">
+            <button class="swipe-action-btn paid ${isUnpaid ? 'is-unpaid' : ''}" data-id="${transaction.id}" aria-label="${isUnpaid ? 'Mark as paid' : 'Mark as unpaid'}">
               <i data-lucide="check" style="width: 20px; height: 20px;"></i>
             </button>
           </div>

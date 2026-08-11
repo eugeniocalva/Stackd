@@ -603,6 +603,12 @@ window.Store = {
                 nextDate: nextNextD
              }
           };
+          // v0.82: never inherit the seed's paid state. An unpaid seed would
+          // otherwise stamp isPaid:false on the whole materialized chain and
+          // silently blank the Upcoming widget, computeUpcomingImpact and the
+          // EOM forecast (all skip isPaid === false). Members are marked
+          // unpaid per-occurrence, by hand.
+          delete generatedTx.isPaid;
 
           // If transfer, handle ref regenerations
           if (generatedTx.transferRef) {
@@ -625,6 +631,7 @@ window.Store = {
                    tags: (cp.recurrence && cp.recurrence.propagateTags === false) ? [] : (cp.tags ? [...cp.tags] : []),
                    recurrence: cpRecurrence
                 };
+                delete cpGen.isPaid; // v0.82: same rule as generatedTx above
                 this.state.transactions.push(cpGen);
                 // Strip the old counterpart's own nextDate (if it had one) so it
                 // can never act as a second generator for the same pair.
@@ -1231,7 +1238,11 @@ window.Store = {
           transferRef: transferRef,
           tags: tagsArray,
           recurrence: expenseRecurrence,
-          createdAt: createdAtIso
+          createdAt: createdAtIso,
+          // v0.82: the form's Paid toggle. Lean storage — the key exists only
+          // when unpaid; both legs always share one paid state (the
+          // TOGGLE_TRANSACTION_PAID mirror invariant).
+          ...(payload.isPaid === false ? { isPaid: false } : {})
         });
 
         // Income side (To)
@@ -1247,7 +1258,8 @@ window.Store = {
           transferRef: transferRef,
           tags: tagsArray,
           recurrence: incomeRecurrence,
-          createdAt: createdAtIso
+          createdAt: createdAtIso,
+          ...(payload.isPaid === false ? { isPaid: false } : {})
         });
 
         this._sortTransactions();
@@ -1318,6 +1330,12 @@ window.Store = {
               if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            }
+           // v0.82: paid state, mirrored on both legs. Canonical storage:
+           // unpaid = false, paid = key deleted.
+           if (payload.isPaid !== undefined) {
+              if (payload.isPaid === false) item.isPaid = false;
+              else delete item.isPaid;
+           }
            const idx = this.state.transactions.findIndex(t => t.id === item.id);
            this.state.transactions[idx] = { ...item };
         });
@@ -1337,6 +1355,11 @@ window.Store = {
               if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
               if (payload.note !== undefined) t.comment = payload.note;
               if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
+              // v0.82: paid propagates with future/all like other non-date fields
+              if (payload.isPaid !== undefined) {
+                 if (payload.isPaid === false) t.isPaid = false;
+                 else delete t.isPaid;
+              }
               if (t.type === 'expense' && payload.expenseAccountId !== undefined) t.accountId = payload.expenseAccountId;
               if (t.type === 'income' && payload.incomeAccountId !== undefined) t.accountId = payload.incomeAccountId;
               if (recurrenceRemoved) {
@@ -1473,14 +1496,24 @@ window.Store = {
         const tx = this.state.transactions.find(t => t.id === payload.id);
         if (!tx) break;
 
-        const newPaidState = payload.isPaid !== undefined ? !!payload.isPaid : !tx.isPaid;
-        tx.isPaid = newPaidState;
+        // v0.82: two-state toggle. Absence of isPaid means paid (the app-wide
+        // convention every consumer, export and import are built on), so
+        // marking paid DELETES the key rather than storing true — the old
+        // three-state flip (undefined→true→false→…) could never return to the
+        // canonical absent form. An explicit payload.isPaid still wins.
+        const makeUnpaid = payload.isPaid !== undefined
+          ? payload.isPaid === false
+          : tx.isPaid !== false;
+
+        const apply = (t) => {
+          if (makeUnpaid) t.isPaid = false;
+          else delete t.isPaid;
+        };
+        apply(tx);
 
         if (tx.transferRef) {
           this.state.transactions.forEach(t => {
-            if (t.transferRef === tx.transferRef) {
-              t.isPaid = newPaidState;
-            }
+            if (t.transferRef === tx.transferRef) apply(t);
           });
         }
 

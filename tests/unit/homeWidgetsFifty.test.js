@@ -1,6 +1,8 @@
-// v0.72 Phase 5 — the 50/30/20 budget widget (docs/home-widgets-plan.md §5.3):
-// needs/wants partition by config, planned-vs-actual income basis, savings as
-// actual money left, and the fallback when the split doesn't total 100.
+// v0.82 rework (docs/refactor-plan.md P4.2): the 50/30/20 widget is a STATIC
+// planned-income splitter — no actuals tracking, no Needs-category partition.
+// It renders the user-entered planned monthly income divided into three
+// amounts, and an empty state until that income is set (no silent fallback to
+// actual income). The original v0.72 actuals semantics are intentionally gone.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -25,11 +27,6 @@ const pad = (n) => String(n).padStart(2, '0');
 const thisMonth = (day) => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(day)}`;
-};
-const dateOffset = (days) => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 let uuid = 0;
@@ -82,7 +79,7 @@ const renderOne = (config) => {
   return { instance, html: W().registry.fiftyThirtyTwenty.render(instance, Store().getState()) };
 };
 
-describe('50/30/20 widget', () => {
+describe('50/30/20 widget (v0.82 static splitter)', () => {
   beforeEach(boot);
 
   it('is large-only and configurable', () => {
@@ -91,115 +88,89 @@ describe('50/30/20 widget', () => {
     expect(def.hasConfig).toBe(true);
   });
 
-  it('shows an empty state without any income basis', () => {
+  it('shows the setup empty state until a planned income is set', () => {
     const { html } = renderOne({});
-    expect(html).toContain('Add income this month');
+    expect(html).toContain('Set your planned monthly income');
   });
 
-  it('partitions spending: Needs categories vs everything else as Wants', () => {
-    seed([
-      { type: 'income', categoryId: 'cat_salary', amount: 2000, date: thisMonth(1) },
-      { categoryId: 'cat_rent', amount: 600, date: thisMonth(2) },       // needs
-      { categoryId: 'cat_groceries', amount: 200, date: thisMonth(3) },  // needs
-      { categoryId: 'cat_dining', amount: 150, date: thisMonth(4) }      // unassigned → wants
-    ]);
-    const { html } = renderOne({ needsCategoryIds: ['cat_rent', 'cat_groceries'] });
-    // Needs 800/1000, Wants 150/600, Savings actual 2000-950=1050 / 400
-    expect(html).toContain('$800.00 / $1,000.00');
-    expect(html).toContain('$150.00 / $600.00');
-    expect(html).toContain('$1,050.00 / $400.00');
-  });
-
-  it('sizes targets from planned income but keeps savings as ACTUAL money left', () => {
-    seed([
-      { type: 'income', categoryId: 'cat_salary', amount: 1200, date: thisMonth(1) },
-      { amount: 300, date: thisMonth(2) }
-    ]);
-    const { html } = renderOne({ plannedIncome: 3000, needsCategoryIds: ['cat_groceries'] });
-    expect(html).toContain('of $3,000.00 planned income');
-    expect(html).toContain('$300.00 / $1,500.00');   // needs vs 50% of planned
-    // savings actual = 1200 - 300 = 900, target = 20% of planned = 600
-    expect(html).toContain('$900.00 / $600.00');
-  });
-
-  it('falls back to actual income when no planned income is set', () => {
+  it('never falls back to actual income — the split must be stable', () => {
+    // Even with real income this month, no plannedIncome = empty state.
     seed([{ type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) }]);
     const { html } = renderOne({});
-    expect(html).toContain('of $1,000.00 actual income');
-    expect(html).toContain('$0.00 / $500.00'); // needs target = 50% of 1000
+    expect(html).toContain('Set your planned monthly income');
+    expect(html).not.toContain('$1,000.00');
+    expect(html).not.toContain('actual income');
   });
 
-  it('marks an over-cap Needs bar red and an on-target Savings bar green', () => {
-    seed([
-      { type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) },
-      { categoryId: 'cat_rent', amount: 700, date: thisMonth(2) }  // needs cap = 500 → over
-    ]);
-    const { html } = renderOne({ needsCategoryIds: ['cat_rent'] });
-    expect(html).toContain('var(--color-expense)');       // over-cap needs
-    // savings actual 300 >= target 200 → green
-    expect(html).toContain('var(--color-income)');
+  it('splits the planned income into the three amounts', () => {
+    const { html } = renderOne({ plannedIncome: 2000 });
+    expect(html).toContain('$2,000.00');
+    expect(html).toContain('planned monthly income');
+    expect(html).toContain('Needs 50%');
+    expect(html).toContain('$1,000.00');
+    expect(html).toContain('Wants 30%');
+    expect(html).toContain('$600.00');
+    expect(html).toContain('Savings 20%');
+    expect(html).toContain('$400.00');
   });
 
-  it('shows negative savings red and clamps its bar at zero width', () => {
+  it('renders neutral fills whose width is the percentage itself', () => {
+    const { html } = renderOne({ plannedIncome: 2000 });
+    expect(html).toContain('width: 50%');
+    expect(html).toContain('width: 30%');
+    expect(html).toContain('width: 20%');
+    expect(html).toContain('var(--color-primary)');
+    // No over/under states any more — nothing can be red or amber.
+    expect(html).not.toContain('var(--color-expense)');
+    expect(html).not.toContain('#f59e0b');
+  });
+
+  it('ignores transactions entirely — spending never changes the amounts', () => {
     seed([
-      { type: 'income', categoryId: 'cat_salary', amount: 100, date: thisMonth(1) },
-      { amount: 400, date: thisMonth(2) }
+      { type: 'income', categoryId: 'cat_salary', amount: 5000, date: thisMonth(1) },
+      { categoryId: 'cat_rent', amount: 4999, date: thisMonth(2) }
     ]);
-    const { html } = renderOne({});
-    expect(html).toContain('-$300.00 / $20.00');
-    expect(html).toContain('width: 0%');
-    expect(html).not.toContain('width: -');
+    const { html } = renderOne({ plannedIncome: 2000 });
+    expect(html).not.toContain('4,999');
+    expect(html).not.toContain('5,000');
+    expect(html).not.toContain('saved so far');
+    expect(html).toContain('$1,000.00');
+  });
+
+  it('accepts a custom split that totals 100', () => {
+    const { html } = renderOne({ plannedIncome: 1000, pctNeeds: 60, pctWants: 20, pctSavings: 20 });
+    expect(html).not.toContain('fix the split');
+    expect(html).toContain('Needs 60%');
+    expect(html).toContain('$600.00');
   });
 
   it('falls back to 50/30/20 when the split does not total 100, and says so', () => {
-    seed([{ type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) }]);
-    const { html } = renderOne({ pctNeeds: 70, pctWants: 40, pctSavings: 20 }); // 130
+    const { html } = renderOne({ plannedIncome: 1000, pctNeeds: 70, pctWants: 40, pctSavings: 20 }); // 130
     expect(html).toContain('using 50/30/20 (fix the split)');
-    expect(html).toContain('$0.00 / $500.00'); // needs target from the fallback 50%
+    expect(html).toContain('$500.00'); // needs amount from the fallback 50%
   });
 
-  it('accepts a custom split that does total 100', () => {
-    seed([{ type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) }]);
-    const { html } = renderOne({ pctNeeds: 60, pctWants: 20, pctSavings: 20 });
-    expect(html).not.toContain('fix the split');
-    expect(html).toContain('Needs 60%');
-    expect(html).toContain('$0.00 / $600.00');
-  });
-
-  it('is month-to-date: scheduled future rows do not count as spent', () => {
-    seed([
-      { type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) },
-      { amount: 100, date: thisMonth(2) },
-      { amount: 777, date: dateOffset(3) }   // later this month, not yet spent
-    ]);
-    const { html } = renderOne({});
-    expect(html).not.toContain('777');
-    // savings = 1000 - 100, unaffected by the scheduled row
-    expect(html).toContain('$900.00');
-  });
-
-  it('hints at picking Needs categories until some are assigned', () => {
-    seed([{ type: 'income', categoryId: 'cat_salary', amount: 1000, date: thisMonth(1) }]);
-    expect(renderOne({}).html).toContain('pick your Needs categories');
-    expect(renderOne({ needsCategoryIds: ['cat_rent'] }).html).not.toContain('pick your Needs categories');
+  it('ignores stray needsCategoryIds keys from pre-v0.82 persisted configs', () => {
+    const { html } = renderOne({ plannedIncome: 2000, needsCategoryIds: ['cat_rent', 'cat_groceries'] });
+    expect(html).toContain('$1,000.00');
+    expect(html).not.toContain('pick your Needs categories');
   });
 
   describe('config panel', () => {
-    it('renders income, split inputs, a sum hint and All-less category chips', () => {
+    it('renders income and split inputs with a sum hint — no category chips', () => {
       const html = W().registry.fiftyThirtyTwenty.renderConfig(
-        { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20, needsCategoryIds: [] },
+        { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20 },
         Store().getState());
       expect(html).toContain('data-fifty-income');
       expect(html.match(/data-fifty-pct/g)).toHaveLength(3);
       expect(html).toContain('fifty-sum-hint');
-      expect(html).toContain('data-config-multi="needsCategoryIds"');
-      // Empty needsCategoryIds means "none assigned", never "all" — no All chip.
-      expect(html).not.toContain('__all__');
-      expect(html).not.toContain('data-config-multi="accountIds"');
+      // v0.82: the Needs-categories picker is gone with the actuals tracking.
+      expect(html).not.toContain('data-config-multi="needsCategoryIds"');
+      expect(html).not.toContain('Needs categories');
     });
 
     it('parses inputs into numbers without rerendering (focus preservation)', () => {
-      let draft = { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20, needsCategoryIds: [] };
+      let draft = { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20 };
       let rerenders = 0;
       const ctx = {
         getConfig: () => draft,
@@ -225,7 +196,7 @@ describe('50/30/20 widget', () => {
 
       incomeEl.value = '';
       listeners.income();
-      expect(draft.plannedIncome).toBeNull();   // empty = auto
+      expect(draft.plannedIncome).toBeNull();   // empty = unset (empty state)
 
       needsEl.value = '55';
       listeners.pctNeeds();

@@ -572,15 +572,13 @@ body.keyboard-active .bottom-nav {
   color: var(--color-expense);
 }
 
+/* v0.82: two-state paid. Paid is the default and shows nothing (the green
+   .paid-badge chip and .is-paid button state are gone); the amber edge bar is
+   the single unpaid indicator. */
 .swipe-action-btn.paid {
   background: var(--color-income-bg);
   color: var(--color-income);
   border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.swipe-action-btn.paid.is-paid {
-  background: var(--color-income);
-  color: #ffffff;
 }
 
 .swipe-action-btn.paid.is-unpaid {
@@ -599,18 +597,6 @@ body.keyboard-active .bottom-nav {
   border-top-left-radius: var(--radius-md, 8px);
   border-bottom-left-radius: var(--radius-md, 8px);
   z-index: 3;
-}
-
-.paid-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--color-income-val, #10b981);
-  background: var(--color-income-bg, rgba(16, 185, 129, 0.1));
-  padding: 2px 7px;
-  border-radius: 10px;
 }
 
 .swipe-content {

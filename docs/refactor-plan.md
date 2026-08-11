@@ -18,7 +18,16 @@ values-night/styles.xml); icon hydration made idempotent, 800/2000ms passes
 dropped; splash dismissal readiness-gated (fonts.ready ≤1.5s + transitionend)
 with hidden-tab and boot-failure fallbacks. Built file has ZERO external
 requests. dist + android assets rebuilt/synced (device was running v0.60!).
-P4+ pending.
+P4 shipped (v0.82): incomeExpense whole-month/EOM ("incl. scheduled" label,
+divergence from MTD widgets pinned by rewritten tests + §8b amendment);
+fiftyThirtyTwenty reworked into a static planned-income splitter (empty state
+when unset, needsCategoryIds dropped, homeWidgetsFifty.test.js rewritten);
+Paid end-to-end — form toggle (default on, lean storage: isPaid key exists
+only when false), two-state TOGGLE_TRANSACTION_PAID (paid = key deleted),
+ADD/UPDATE_TRANSFER stamp/mirror both legs + future/all propagation,
+_processRecurringTransactions strips isPaid from generated members, green
+chip removed (amber edge bar is the sole unpaid indicator).
+P5+ pending.
 
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.

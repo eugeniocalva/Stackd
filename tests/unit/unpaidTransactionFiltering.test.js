@@ -143,4 +143,87 @@ describe('Unpaid Transaction Data Logic & Filtering Unit Tests', () => {
     // When paid: balance becomes 2000 - 450 = 1550
     expect(global.window.Store.getAccountBalance('acc_unpaid_3')).toBe(1550);
   });
+
+  // ── v0.82 (docs/refactor-plan.md P4.3): Paid on transfers + recurrence ──
+
+  it('ADD_TRANSFER stamps isPaid:false on BOTH legs; omitting it keeps both paid', () => {
+    const S = global.window.Store;
+    S.dispatch('ADD_ACCOUNT', { id: 'acc_from', name: 'From', openingBalance: 1000, openingDate: '2025-01-01' });
+    S.dispatch('ADD_ACCOUNT', { id: 'acc_to', name: 'To', openingBalance: 0, openingDate: '2025-01-01' });
+
+    S.dispatch('ADD_TRANSFER', {
+      amount: 100, expenseAccountId: 'acc_from', incomeAccountId: 'acc_to',
+      date: '2026-08-05', note: 'unpaid move', isPaid: false
+    });
+    const unpaidLegs = S.getState().transactions.filter(t => t.comment === 'unpaid move');
+    expect(unpaidLegs).toHaveLength(2);
+    unpaidLegs.forEach(l => expect(l.isPaid).toBe(false));
+    // An unpaid transfer moves no money yet.
+    expect(S.getAccountBalance('acc_from')).toBe(1000);
+    expect(S.getAccountBalance('acc_to')).toBe(0);
+
+    S.dispatch('ADD_TRANSFER', {
+      amount: 50, expenseAccountId: 'acc_from', incomeAccountId: 'acc_to',
+      date: '2026-08-06', note: 'paid move'
+    });
+    const paidLegs = S.getState().transactions.filter(t => t.comment === 'paid move');
+    expect(paidLegs).toHaveLength(2);
+    paidLegs.forEach(l => expect('isPaid' in l).toBe(false)); // lean: key absent
+    expect(S.getAccountBalance('acc_from')).toBe(950);
+    expect(S.getAccountBalance('acc_to')).toBe(50);
+  });
+
+  it('UPDATE_TRANSFER mirrors isPaid on both legs and deletes the key when repaid', () => {
+    const S = global.window.Store;
+    S.dispatch('ADD_ACCOUNT', { id: 'acc_u1', name: 'U1', openingBalance: 500, openingDate: '2025-01-01' });
+    S.dispatch('ADD_ACCOUNT', { id: 'acc_u2', name: 'U2', openingBalance: 0, openingDate: '2025-01-01' });
+    S.dispatch('ADD_TRANSFER', {
+      amount: 200, expenseAccountId: 'acc_u1', incomeAccountId: 'acc_u2',
+      date: '2026-08-07', note: 'pair'
+    });
+    const ref = S.getState().transactions.find(t => t.comment === 'pair').transferRef;
+
+    S.dispatch('UPDATE_TRANSFER', { transferRef: ref, isPaid: false });
+    let legs = S.getState().transactions.filter(t => t.transferRef === ref);
+    legs.forEach(l => expect(l.isPaid).toBe(false));
+    expect(S.getAccountBalance('acc_u1')).toBe(500);
+
+    S.dispatch('UPDATE_TRANSFER', { transferRef: ref, isPaid: true });
+    legs = S.getState().transactions.filter(t => t.transferRef === ref);
+    legs.forEach(l => expect('isPaid' in l).toBe(false)); // canonical absent form
+    expect(S.getAccountBalance('acc_u1')).toBe(300);
+  });
+
+  it('generated recurring members never inherit the seed paid state', () => {
+    const S = global.window.Store;
+    S.dispatch('ADD_ACCOUNT', { id: 'acc_rec', name: 'Rec', openingBalance: 1000, openingDate: '2025-01-01' });
+    S.dispatch('ADD_TRANSACTION', {
+      id: 'tx_seed_unpaid',
+      type: 'expense',
+      amount: 30,
+      accountId: 'acc_rec',
+      date: '2026-08-01',
+      isPaid: false,
+      recurrence: {
+        seriesId: 'series_paid_strip',
+        interval: 1,
+        frequency: 'months',
+        endDate: '2026-11-01',
+        nextDate: '2026-09-01'
+      }
+    });
+
+    const members = S.getState().transactions
+      .filter(t => t.recurrence && t.recurrence.seriesId === 'series_paid_strip');
+    expect(members.length).toBeGreaterThan(1); // seed + materialized future chain
+
+    const seed = members.find(t => t.id === 'tx_seed_unpaid');
+    expect(seed.isPaid).toBe(false); // the seed keeps the user's choice
+
+    // Every generated member is flag-absent (implicitly paid) so the Upcoming
+    // widget, computeUpcomingImpact and the EOM forecast keep counting them.
+    members.filter(t => t.id !== 'tx_seed_unpaid').forEach(m => {
+      expect('isPaid' in m).toBe(false);
+    });
+  });
 });

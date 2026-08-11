@@ -261,12 +261,16 @@ window.Widgets = {
       hasConfig: true,
       defaultConfig: { accountIds: [] },
 
-      // Last 12 monthly buckets, clamped to today so the current month does not
-      // include already-materialised future occurrences of recurring series.
+      // Last 12 monthly buckets, WHOLE calendar months (v0.82): the current
+      // month deliberately includes already-materialised future occurrences of
+      // recurring series, so the widget answers "how does this month end up",
+      // not "where am I so far". This intentionally diverges from the
+      // month-to-date widgets (categories, savings, fiftyThirtyTwenty) — see
+      // docs/home-widgets-plan.md §8b.
       _buckets(instance) {
         const W = window.Widgets;
         const filters = W._monthFilters(W._cfg(instance));
-        return window.Store.computeNetFlowData(filters, W._todayStr()) || [];
+        return window.Store.computeNetFlowData(filters) || [];
       },
 
       render(instance) {
@@ -289,7 +293,7 @@ window.Widgets = {
           return `
             <div class="widget-stat">
               <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net))}</span>
-              <span class="widget-stat-label">net · ${W._esc(cur.label)}</span>
+              <span class="widget-stat-label">net · ${W._esc(cur.label)} · incl. scheduled</span>
             </div>
             <div class="widget-minibars">
               ${bar('In', cur.income, 'text-income')}
@@ -661,8 +665,10 @@ window.Widgets = {
       hasConfig: true,
       defaultConfig: { accountIds: [] },
 
-      // Net saved per month = income - expenses. Same buckets the incomeExpense
-      // widget uses, so the two can never disagree about a month.
+      // Net saved per month = income - expenses, month-to-date (clamped to
+      // today). v0.82: this DELIBERATELY diverges from the incomeExpense
+      // widget, which now shows whole-month (EOM) figures including scheduled
+      // occurrences — savings reports what was actually put aside so far.
       _buckets(instance) {
         const W = window.Widgets;
         const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance)), W._todayStr()) || [];
@@ -1115,115 +1121,81 @@ window.Widgets = {
 
     fiftyThirtyTwenty: {
       title: '50/30/20 budget',
-      description: 'Split your income into needs, wants and savings — and see how this month measures up.',
+      description: 'Split your planned monthly income into needs, wants and savings.',
       icon: 'scale',
       sizes: ['large'],
       hasConfig: true,
-      // needsCategoryIds semantics differ from every other multi-select:
-      // empty means "nothing assigned to Needs" (all spending counts as Wants),
-      // NOT "all" — so its config chips deliberately have no All option.
-      defaultConfig: { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20, needsCategoryIds: [] },
+      // v0.82 rework: a pure visual guide. The widget splits the user-entered
+      // planned income into three amounts — NO actuals tracking and NO Needs
+      // category classification. The old version mixed three bases in one card
+      // (with the default empty Needs set every expense landed in Wants, next
+      // to an actual-savings figure measured against planned income) and read
+      // as nonsense. Stray needsCategoryIds keys in persisted configs are
+      // ignored by _cfg's merge; no migration needed.
+      defaultConfig: { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20 },
 
       _pcts(cfg) {
         const ps = [cfg.pctNeeds, cfg.pctWants, cfg.pctSavings];
         const valid = ps.every(p => typeof p === 'number' && isFinite(p) && p >= 0)
           && Math.round(ps[0] + ps[1] + ps[2]) === 100;
-        // An incomplete split renders nonsense targets; fall back to the
+        // An incomplete split renders nonsense amounts; fall back to the
         // classic rule rather than guessing what the user meant.
         return valid
           ? { needs: cfg.pctNeeds, wants: cfg.pctWants, savings: cfg.pctSavings, fallback: false }
           : { needs: 50, wants: 30, savings: 20, fallback: true };
       },
 
-      _data(instance, state) {
+      // Deliberately requires a planned income: falling back to actual income
+      // would quietly reintroduce a monthly-shifting number into a widget
+      // whose whole point is now stability.
+      _data(instance) {
         const W = window.Widgets;
         const cfg = W._cfg(instance);
+        const hasIncome = typeof cfg.plannedIncome === 'number'
+          && isFinite(cfg.plannedIncome) && cfg.plannedIncome > 0;
+        if (!hasIncome) return null;
         const pcts = this._pcts(cfg);
-
-        // Month-to-date, like categories/incomeExpense — future materialised
-        // occurrences are not money already spent.
-        const filters = W._monthToDateFilters({});
-        const summary = window.Store.computeAnalyticalSummary(filters);
-        const dist = window.Store.computeCategoryDistribution(filters, 'expense');
-
-        const needsSet = new Set(cfg.needsCategoryIds || []);
-        const needsSpent = dist.filter(d => needsSet.has(d.id)).reduce((s, d) => s + d.amount, 0);
-        const wantsSpent = summary.expense - needsSpent;
-
-        const usingPlanned = typeof cfg.plannedIncome === 'number' && isFinite(cfg.plannedIncome) && cfg.plannedIncome > 0;
-        const base = usingPlanned ? cfg.plannedIncome : summary.income;
-
+        const base = cfg.plannedIncome;
         return {
           base,
-          usingPlanned,
           pcts,
-          needsSpent,
-          wantsSpent,
-          // Actual savings is real money left over — always actual income
-          // minus expenses, even when targets are sized off planned income.
-          savingsActual: summary.income - summary.expense,
           targets: {
             needs: base * pcts.needs / 100,
             wants: base * pcts.wants / 100,
             savings: base * pcts.savings / 100
-          },
-          hasNeedsSplit: needsSet.size > 0
+          }
         };
       },
 
-      render(instance, state) {
+      render(instance) {
         const W = window.Widgets;
-        const d = this._data(instance, state);
-        if (d.base <= 0) {
-          return W._emptyState('Add income this month — or set a planned income in the widget settings');
-        }
+        const d = this._data(instance);
+        if (!d) return W._emptyState('Set your planned monthly income in the widget settings');
 
         const fmt = (v) => window.Store.formatCurrency(v);
-
-        // Needs/Wants are caps (over = red); Savings is a floor (under = amber,
-        // negative = red). Fill widths cap at 100 like the budget bars.
-        const capBar = (label, pct, spent, target) => {
-          const width = target > 0 ? Math.min((spent / target) * 100, 100) : 0;
-          const isOver = spent > target;
-          return `
-            <div class="widget-minibar">
-              <div class="widget-minibar-head">
-                <span class="widget-minibar-label">${W._esc(label)} ${pct}%</span>
-                <span class="widget-minibar-value" style="color: ${isOver ? 'var(--color-expense)' : 'var(--text-secondary)'};">${W._esc(fmt(spent))} / ${W._esc(fmt(target))}</span>
-              </div>
-              <div class="widget-minibar-track">
-                <div class="widget-minibar-fill" style="width: ${width}%; color: ${isOver ? 'var(--color-expense)' : 'var(--color-primary)'};"></div>
-              </div>
-            </div>`;
-        };
-
-        const savingsWidth = d.targets.savings > 0
-          ? Math.max(0, Math.min((d.savingsActual / d.targets.savings) * 100, 100))
-          : 0;
-        const savingsColor = d.savingsActual < 0 ? 'var(--color-expense)'
-          : d.savingsActual >= d.targets.savings ? 'var(--color-income)' : '#f59e0b';
-        const savingsBar = `
+        // Static rows: fill width IS the percentage, one neutral color — there
+        // is nothing to be over or under any more.
+        const row = (label, pct, amount) => `
           <div class="widget-minibar">
             <div class="widget-minibar-head">
-              <span class="widget-minibar-label">Savings ${d.pcts.savings}%</span>
-              <span class="widget-minibar-value" style="color: ${savingsColor};">${W._esc(fmt(d.savingsActual))} / ${W._esc(fmt(d.targets.savings))}</span>
+              <span class="widget-minibar-label">${W._esc(label)} ${pct}%</span>
+              <span class="widget-minibar-value">${W._esc(fmt(amount))}</span>
             </div>
             <div class="widget-minibar-track">
-              <div class="widget-minibar-fill" style="width: ${savingsWidth}%; color: ${savingsColor};"></div>
+              <div class="widget-minibar-fill" style="width: ${pct}%; color: var(--color-primary);"></div>
             </div>
           </div>`;
 
         return `
           <div class="widget-stat">
-            <span class="widget-stat-value ${d.savingsActual >= 0 ? 'text-income' : 'text-expense'}">${W._esc(fmt(d.savingsActual))}</span>
-            <span class="widget-stat-label">saved so far · of ${W._esc(fmt(d.base))} ${d.usingPlanned ? 'planned' : 'actual'} income${d.pcts.fallback ? ' · using 50/30/20 (fix the split)' : ''}</span>
+            <span class="widget-stat-value">${W._esc(fmt(d.base))}</span>
+            <span class="widget-stat-label">planned monthly income${d.pcts.fallback ? ' · using 50/30/20 (fix the split)' : ''}</span>
           </div>
           <div class="widget-minibars">
-            ${capBar('Needs', d.pcts.needs, d.needsSpent, d.targets.needs)}
-            ${capBar('Wants', d.pcts.wants, d.wantsSpent, d.targets.wants)}
-            ${savingsBar}
-          </div>
-          ${d.hasNeedsSplit ? '' : `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">Tip: pick your Needs categories in the widget settings</span>`}`;
+            ${row('Needs', d.pcts.needs, d.targets.needs)}
+            ${row('Wants', d.pcts.wants, d.targets.wants)}
+            ${row('Savings', d.pcts.savings, d.targets.savings)}
+          </div>`;
       },
 
       attach(instance, card) {
@@ -1233,10 +1205,8 @@ window.Widgets = {
         });
       },
 
-      renderConfig(config, state) {
+      renderConfig(config) {
         const W = window.Widgets;
-        const expenseCats = (state.categories || [])
-          .filter(c => c.id !== 'cat_balance' && (c.typeHint === 'expense' || c.typeHint === 'both'));
         const sum = (config.pctNeeds || 0) + (config.pctWants || 0) + (config.pctSavings || 0);
 
         const pctInput = (key, label, value) => `
@@ -1246,36 +1216,24 @@ window.Widgets = {
                    id="fifty-${key}" data-fifty-pct="${key}" value="${W._esc(value)}">
           </div>`;
 
-        // No All chip: empty = "no Needs assigned", not "all categories".
-        const needsChips = `<div class="multi-select-row">
-          ${expenseCats.map(c => {
-            const on = (config.needsCategoryIds || []).includes(c.id);
-            return `<button type="button" class="multi-select-chip ${on ? 'active' : ''}"
-                    data-config-multi="needsCategoryIds" data-config-value="${W._esc(c.id)}"
-                    aria-pressed="${on}">${W._esc(c.name)}</button>`;
-          }).join('')}
-        </div>`;
-
         return [
           W._configSection('Planned monthly income', `
             <input type="number" inputmode="decimal" min="0" step="0.01" class="form-control"
                    data-fifty-income value="${config.plannedIncome == null ? '' : W._esc(config.plannedIncome)}"
-                   placeholder="Auto — this month's actual income" aria-label="Planned monthly income">`),
+                   placeholder="e.g. 2000" aria-label="Planned monthly income">`),
           W._configSection('Split', `
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2);">
               ${pctInput('pctNeeds', 'Needs %', config.pctNeeds)}
               ${pctInput('pctWants', 'Wants %', config.pctWants)}
               ${pctInput('pctSavings', 'Savings %', config.pctSavings)}
             </div>
-            <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${sum === 100 ? 'display: none;' : ''}">Currently ${sum}% — the split must total 100%</p>`),
-          W._configSection('Needs categories (the rest counts as Wants)', needsChips)
+            <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${sum === 100 ? 'display: none;' : ''}">Currently ${sum}% — the split must total 100%</p>`)
         ].join('');
       },
 
       attachConfig(root, ctx) {
-        // Chips share the standard wiring; the number inputs update the draft
-        // WITHOUT rerendering — a rerender on every keystroke would replace the
-        // input mid-typing and drop focus.
+        // The number inputs update the draft WITHOUT rerendering — a rerender
+        // on every keystroke would replace the input mid-typing and drop focus.
         window.Widgets.attachSharedConfig(root, ctx);
 
         const incomeInput = root.querySelector('[data-fifty-income]');

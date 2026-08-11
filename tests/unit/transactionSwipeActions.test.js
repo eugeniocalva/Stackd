@@ -43,7 +43,10 @@ describe('Transaction Swipe Actions Unit Tests', () => {
     global.window.Store.init();
   });
 
-  it('toggles transaction paid status with TOGGLE_TRANSACTION_PAID action', () => {
+  // v0.82: two-state toggle. Absence of isPaid means paid (the app-wide
+  // convention), so marking paid DELETES the key instead of storing true —
+  // the cycle is absent (paid) → false (unpaid) → absent (paid) → …
+  it('toggles paid ↔ unpaid, deleting the key when marking paid', () => {
     global.window.Store.dispatch('ADD_TRANSACTION', {
       id: 'tx_paid_test',
       type: 'expense',
@@ -52,22 +55,30 @@ describe('Transaction Swipe Actions Unit Tests', () => {
       date: '2026-08-01'
     });
 
-    // Initially unpaid
-    let state = global.window.Store.getState();
-    let tx = state.transactions.find(t => t.id === 'tx_paid_test');
-    expect(tx.isPaid).toBeFalsy();
+    // New records carry no flag — implicitly paid.
+    let tx = global.window.Store.getState().transactions.find(t => t.id === 'tx_paid_test');
+    expect('isPaid' in tx).toBe(false);
 
-    // Toggle paid -> true
+    // Toggle → unpaid
     global.window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: 'tx_paid_test' });
-    state = global.window.Store.getState();
-    tx = state.transactions.find(t => t.id === 'tx_paid_test');
-    expect(tx.isPaid).toBe(true);
-
-    // Toggle paid -> false
-    global.window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: 'tx_paid_test' });
-    state = global.window.Store.getState();
-    tx = state.transactions.find(t => t.id === 'tx_paid_test');
+    tx = global.window.Store.getState().transactions.find(t => t.id === 'tx_paid_test');
     expect(tx.isPaid).toBe(false);
+
+    // Toggle back → paid = key removed, back to the canonical absent form
+    global.window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: 'tx_paid_test' });
+    tx = global.window.Store.getState().transactions.find(t => t.id === 'tx_paid_test');
+    expect('isPaid' in tx).toBe(false);
+
+    // Legacy records with a stored true normalize on the next unpaid toggle
+    tx.isPaid = true;
+    global.window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: 'tx_paid_test' });
+    tx = global.window.Store.getState().transactions.find(t => t.id === 'tx_paid_test');
+    expect(tx.isPaid).toBe(false);
+
+    // Explicit payload still wins
+    global.window.Store.dispatch('TOGGLE_TRANSACTION_PAID', { id: 'tx_paid_test', isPaid: true });
+    tx = global.window.Store.getState().transactions.find(t => t.id === 'tx_paid_test');
+    expect('isPaid' in tx).toBe(false);
   });
 
   it('renders swipe left (Edit/Delete) and swipe right (Paid) containers when allowSwipeReveal is true', () => {
@@ -82,7 +93,7 @@ describe('Transaction Swipe Actions Unit Tests', () => {
     expect(html).toContain('swipe-action-btn paid');
     expect(html).toContain('swipe-action-btn edit');
     expect(html).toContain('swipe-action-btn delete');
-    expect(html).toContain('paid-badge');
-    expect(html).toContain('Paid</span>');
+    // v0.82: no chip for paid rows — paid is the silent default.
+    expect(html).not.toContain('paid-badge');
   });
 });

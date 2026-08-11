@@ -329,6 +329,14 @@ two defects caught during verification:
   **Phases 3–5 must use `_monthToDateFilters`, not `_monthFilters`, for anything
   built on `getFilteredTransactions`.** Two regression tests pin it, one of which
   asserts the two widgets report the same figure.
+  - **v0.82 amendment (docs/refactor-plan.md P4): `incomeExpense` is now
+    deliberately WHOLE-month (EOM)** — its `_buckets` dropped the `clampEnd`
+    so the current month includes materialised future occurrences ("how does
+    this month end up"). Every other widget stays month-to-date, so
+    `incomeExpense` now intentionally disagrees with `categories`/`savings`
+    for the current month; the small card labels it "incl. scheduled". Do NOT
+    "re-fix" this back to MTD — the divergence is the requested behavior, and
+    the regression tests were rewritten to pin it.
 - **Edit-mode jiggle removed (defect, found by e2e).** Phase 1's iOS-style
   infinite jiggle made every 28px chrome button perpetually unstable — Playwright
   could not click them, and the same instability hurts real tap accuracy,

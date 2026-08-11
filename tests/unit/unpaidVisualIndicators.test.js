@@ -52,16 +52,25 @@ describe('Unpaid Visual Indicators Unit Tests', () => {
     expect(html).toContain('class="unpaid-edge-bar"');
     expect(html).toContain('swipe-action-btn paid is-unpaid');
     expect(html).not.toContain('paid-badge');
+    expect(html).toContain('aria-label="Mark as paid"');
   });
 
-  it('renders green paid badge (.paid-badge) and green swipe button (.is-paid) when isPaid === true', () => {
-    const tx = { id: 'tx_paid_vis', accountId: 'acc_1', amount: 50, type: 'expense', date: '2026-08-01', isPaid: true };
-    const html = global.window.Components.TransactionItem.render(tx, null, null, {
-      allowSwipeReveal: true
-    });
-
-    expect(html).not.toContain('class="unpaid-edge-bar"');
-    expect(html).toContain('swipe-action-btn paid is-paid');
-    expect(html).toContain('class="paid-badge"');
+  // v0.82: paid is the default and shows NOTHING — the green chip and the
+  // .is-paid button state are gone. A stored isPaid:true renders exactly like
+  // an absent flag.
+  it('renders no indicator at all when paid (isPaid true or absent)', () => {
+    for (const tx of [
+      { id: 'tx_paid_vis', accountId: 'acc_1', amount: 50, type: 'expense', date: '2026-08-01', isPaid: true },
+      { id: 'tx_default_vis', accountId: 'acc_1', amount: 50, type: 'expense', date: '2026-08-01' }
+    ]) {
+      const html = global.window.Components.TransactionItem.render(tx, null, null, {
+        allowSwipeReveal: true
+      });
+      expect(html).not.toContain('class="unpaid-edge-bar"');
+      expect(html).not.toContain('paid-badge');
+      expect(html).not.toContain('is-paid');
+      expect(html).not.toContain('is-unpaid');
+      expect(html).toContain('aria-label="Mark as unpaid"');
+    }
   });
 });
