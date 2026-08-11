@@ -1,8 +1,13 @@
 /* Typography & Spacing layout helpers */
 .container {
+  /* Single source of truth for the page gutter: full-bleed children mirror
+     these to keep their bleed/inset equal to the container padding under any
+     safe-area geometry (v0.79). */
+  --container-pad-left: max(var(--space-4), var(--safe-left));
+  --container-pad-right: max(var(--space-4), var(--safe-right));
   padding: var(--space-4);
-  padding-left: max(var(--space-4), var(--safe-left));
-  padding-right: max(var(--space-4), var(--safe-right));
+  padding-left: var(--container-pad-left);
+  padding-right: var(--container-pad-right);
   max-width: 600px;
   margin: 0 auto;
   width: 100%;
@@ -880,15 +885,22 @@ a:focus-visible,
   justify-content: center;
 }
 
-/* Wallets Horizontal Scrolling (v0.53) */
+/* Wallets Horizontal Scrolling (v0.53)
+   v0.79: bleed/inset mirror the .container gutter vars, and the snapport gets
+   the same inset via scroll-padding — a scroll container's own padding does NOT
+   inset the snapport, so without scroll-padding the first card's snap position
+   is flush against the physical screen edge. */
 .wallets-scroll-wrapper {
   display: flex;
   gap: var(--space-4);
   overflow-x: auto !important;
-  padding: var(--space-2) var(--space-1) var(--space-6);
-  margin: 0 calc(var(--space-4) * -1);
-  padding-left: var(--space-4);
-  padding-right: var(--space-4);
+  padding: var(--space-2) 0 var(--space-6);
+  margin-inline: calc(-1 * var(--container-pad-left, var(--space-4)))
+    calc(-1 * var(--container-pad-right, var(--space-4)));
+  padding-left: var(--container-pad-left, var(--space-4));
+  padding-right: var(--container-pad-right, var(--space-4));
+  scroll-padding-left: var(--container-pad-left, var(--space-4));
+  scroll-padding-right: var(--container-pad-right, var(--space-4));
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y !important;
@@ -2423,6 +2435,10 @@ a:focus-visible,
   flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
+  /* v0.79: cap the height-driven square at the body width too — in narrow
+     columns (add-widget preview, ≤372px phones) the 130px donut otherwise
+     overflows and gets clipped by the card's overflow:hidden. */
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -2549,7 +2565,9 @@ a:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  /* v0.79: wide gap so the enlarged invisible hit halos below can't overlap
+     and make the wrong dot win the tap. */
+  gap: var(--space-6);
   margin-top: var(--space-5);
 }
 
@@ -2561,7 +2579,19 @@ a:focus-visible,
   border-radius: var(--radius-full);
   background: var(--color-border);
   cursor: pointer;
+  position: relative;
+  touch-action: manipulation;
   transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+/* v0.79: 8px dots are unhittable on a phone (app convention is 48px targets).
+   The pseudo-element extends the hit area to 40px tall / 32px wide without
+   changing the visual; horizontally the halos meet exactly at the midpoint of
+   the 24px gap so neighbouring dots never steal each other's taps. */
+.widget-size-dot::after {
+  content: '';
+  position: absolute;
+  inset: -16px -12px;
 }
 
 .widget-size-dot.is-active {

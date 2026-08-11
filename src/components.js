@@ -3770,6 +3770,38 @@ window.Components = {
           };
         });
 
+        // v0.79: swiping the preview flips between sizes. The preview grid
+        // itself is pointer-events:none (it is a picture), so the gesture is
+        // read on its wrapper — the deepest hit-testable ancestor. Handlers
+        // die with each renderAll() innerHTML rebuild, so no cleanup needed.
+        const previewWrap = backdrop.querySelector('#awm-preview');
+        if (previewWrap && selectedType) {
+          const sizes = (W.registry[selectedType] && W.registry[selectedType].sizes) || [];
+          if (sizes.length > 1) {
+            let swipeStartX = 0;
+            let swipeStartY = 0;
+            previewWrap.addEventListener('touchstart', (e) => {
+              swipeStartX = e.touches[0].clientX;
+              swipeStartY = e.touches[0].clientY;
+            }, { passive: true });
+            previewWrap.addEventListener('touchend', (e) => {
+              const t = e.changedTouches && e.changedTouches[0];
+              if (!t) return;
+              const dx = t.clientX - swipeStartX;
+              const dy = t.clientY - swipeStartY;
+              // Ignore taps and mostly-vertical drags — the modal body scrolls.
+              if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+              const idx = sizes.indexOf(selectedSize);
+              const next = dx < 0
+                ? Math.min(idx + 1, sizes.length - 1)
+                : Math.max(idx - 1, 0);
+              if (next === idx) return;
+              selectedSize = sizes[next];
+              renderAll();
+            }, { passive: true });
+          }
+        }
+
         const configRoot = backdrop.querySelector('#awm-config');
         if (configRoot && selectedType) {
           const def = W.registry[selectedType];

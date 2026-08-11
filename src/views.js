@@ -396,7 +396,7 @@ window.Views = {
             </div>
           ` : ''}
 
-          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: -var(--space-4); margin-right: -var(--space-4); cursor: pointer;" title="Click to view expanded graph" role="button" aria-label="Expand balance graph">
+          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: calc(-1 * var(--container-pad-left, var(--space-4))); margin-right: calc(-1 * var(--container-pad-right, var(--space-4))); cursor: pointer;" title="Click to view expanded graph" role="button" aria-label="Expand balance graph">
             <canvas id="balanceChart"></canvas>
           </div>
           
@@ -3006,7 +3006,7 @@ Object.assign(window.Views, {
 
           <div class="section-title">Appearance</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; row-gap: var(--space-2);">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="sun-moon"></i></div>
                 <div>
@@ -3015,9 +3015,9 @@ Object.assign(window.Views, {
                 </div>
               </div>
               <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-theme-mode">
-                <button id="btn-theme-light" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">Light Mode</button>
-                <button id="btn-theme-dark" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">Dark Mode</button>
-                <button id="btn-theme-system" class="btn" style="padding: 4px 10px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">System Default</button>
+                <button id="btn-theme-light" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">Light</button>
+                <button id="btn-theme-dark" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">Dark</button>
+                <button id="btn-theme-system" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">System</button>
               </div>
             </div>
           </div>
@@ -3156,7 +3156,7 @@ Object.assign(window.Views, {
         const openCurrencyPicker = () => {
           const current = window.Store.getState().currency || 'USD';
           const optionsHtml = CURRENCIES.map(c => `
-            <div class="currency-opt list-item" data-code="${c.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
+            <div class="currency-opt list-item" data-code="${c.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px var(--space-4); border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
               <span style="font-size: 1.4rem; width: 32px; text-align: center; font-family: var(--font-family-display); flex-shrink: 0;">${c.symbol}</span>
               <span style="flex: 1; font-weight: ${c.code === current ? '700' : '400'}; color: ${c.code === current ? 'var(--text-primary)' : 'var(--text-secondary)'}">${c.label}</span>
               ${c.code === current ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}
@@ -3190,7 +3190,7 @@ Object.assign(window.Views, {
         const openLanguagePicker = () => {
           const current = window.Store.getState().language || 'en';
           const optionsHtml = LANGUAGES.map(l => `
-            <div class="language-opt list-item" data-code="${l.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
+            <div class="language-opt list-item" data-code="${l.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px var(--space-4); border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
               <span style="font-size: 1.4rem; width: 32px; text-align: center; flex-shrink: 0; display: flex; align-items: center; justify-content: center;"><i data-lucide="globe" style="width: 24px; height: 24px;"></i></span>
               <span style="flex: 1; font-weight: ${l.code === current ? '700' : '400'}; color: ${l.code === current ? 'var(--text-primary)' : 'var(--text-secondary)'}">${l.label}</span>
               ${l.code === current ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}

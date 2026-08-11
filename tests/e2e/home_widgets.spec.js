@@ -138,6 +138,49 @@ test.describe('Home dashboard widgets', () => {
     await expect(page.locator('#widgets-grid .widget-card--large')).toHaveCount(1);
   });
 
+  test.describe('size swipe (v0.79)', () => {
+    // Touch/TouchEvent constructors only exist in a touch-enabled context.
+    test.use({ hasTouch: true });
+
+    const swipePreview = (page, dx, dy = 0) => page.evaluate(([deltaX, deltaY]) => {
+      const wrap = document.querySelector('#awm-preview');
+      const mk = (type, x, y) => {
+        const touch = new Touch({ identifier: 1, target: wrap, clientX: x, clientY: y });
+        return new TouchEvent(type, {
+          touches: type === 'touchend' ? [] : [touch],
+          changedTouches: [touch],
+          bubbles: true
+        });
+      };
+      wrap.dispatchEvent(mk('touchstart', 200, 300));
+      wrap.dispatchEvent(mk('touchend', 200 + deltaX, 300 + deltaY));
+    }, [dx, dy]);
+
+    test('swiping the preview flips between sizes', async ({ page }) => {
+      await bootstrap(page);
+      await scrollToWidgets(page);
+
+      await page.click('#btn-widgets-add-empty');
+      await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
+      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+
+      // Left swipe → next size (wide). The preview is rebuilt each time, so
+      // the helper re-queries #awm-preview per gesture.
+      await swipePreview(page, -80);
+      await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+      await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(1);
+
+      // Right swipe → back to small.
+      await swipePreview(page, 80);
+      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+      await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(0);
+
+      // Mostly-vertical drags are ignored — the modal body owns scrolling.
+      await swipePreview(page, -50, 160);
+      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+    });
+  });
+
   test('walks the config step when adding a configurable widget', async ({ page }) => {
     await bootstrap(page);
     await scrollToWidgets(page);
