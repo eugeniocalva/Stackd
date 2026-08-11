@@ -5,6 +5,11 @@ Grounded in a 10-agent code recon; every claim below carries file:line evidence.
 Each phase is one release (one `<title>` version bump). Bugs first, then features,
 i18n last so every new string (insights, paid, drilldown) is born translatable.
 
+**Status**: P1 shipped (v0.79, commit a33d9b7). P2 shipped (v0.80) including the
+1.4 bottom-bar removal, plus a bonus root fix: router.js's delayed same-view
+scroll timers are now cancelled by newer navigations (a stale boot timer could
+kill the History entry scroll). P3+ pending.
+
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.
   CSS files carry no `?v=` — pure-CSS fixes need no bump (index.html:14-17).

@@ -68,19 +68,30 @@ window.Router = {
     // v0.36: State-Aware Scroll Integration
     const oldView = window.Store.getState() ? window.Store.getState().activeView : null;
     window.Store.dispatch('SET_VIEW', viewId);
-    
+
     // Reset scroll position based on whether the view actually changed
     if (window.ScrollUtils) {
+      // v0.80: a pending same-view scroll timer from an EARLIER route change
+      // must never fire after a newer navigation — the stale 400ms timer raced
+      // the History entry scroll and yanked the fresh view back to the top.
+      if (this._pendingScrollTimer) {
+        clearTimeout(this._pendingScrollTimer);
+        this._pendingScrollTimer = null;
+      }
       if (oldView === viewId) {
         if (viewId === 'transactions') {
           // Reset shadow state and scroll back to today/relevant date
           // Added delay to ensure view.attachEvents has run (which is in a requestAnimationFrame)
-          setTimeout(() => {
+          this._pendingScrollTimer = setTimeout(() => {
+            this._pendingScrollTimer = null;
             window.dispatchEvent(new CustomEvent('scroll-history-to-today'));
           }, 100);
         } else {
           // v0.36 - Increased delay to 400ms for mid-range mobile hardware (Redmi Note 7)
-          setTimeout(() => window.ScrollUtils.universalSmoothScrollToTop(), 400);
+          this._pendingScrollTimer = setTimeout(() => {
+            this._pendingScrollTimer = null;
+            window.ScrollUtils.universalSmoothScrollToTop();
+          }, 400);
         }
       } else {
         // We are switching to a new tab. Reset scroll position instantly

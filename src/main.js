@@ -452,12 +452,25 @@ document.addEventListener('DOMContentLoaded', () => {
       window._currentActiveView.destroy();
     }
 
+    // v0.80: entering a view = this module was not the one rendered before
+    // (covers both navigation and the very first boot render, where
+    // _currentActiveView is still unset and isNavigation is false).
+    const isEntry = window._currentActiveView !== viewModule;
+
     const renderView = () => {
       if (viewModule && viewModule.render) {
+        // v0.80: a same-view re-render (filters, selection mode, toggles) must
+        // never lose the user's place. The innerHTML swap can clamp scrollTop
+        // while the fresh content lays out, so capture and restore explicitly.
+        const preservedScrollTop = isEntry ? null : routerView.scrollTop;
         routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
         routerView.innerHTML = viewModule.render(state);
         if (viewModule.attachEvents) {
-          viewModule.attachEvents(routerView, state);
+          viewModule.attachEvents(routerView, state, isEntry);
+        }
+        if (preservedScrollTop !== null) {
+          // The browser clamps to the new scrollHeight if content shrank.
+          routerView.scrollTop = preservedScrollTop;
         }
         window._currentActiveView = viewModule;
       }

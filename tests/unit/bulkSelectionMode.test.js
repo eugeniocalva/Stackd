@@ -162,8 +162,10 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
     expect(html).toContain('1 Selected');
     expect(html).toContain('selection-count-label');
     expect(html).toContain('btn-cancel-selection');
-    expect(html).toContain('bulk-selection-bar');
-    expect(html).toContain('btn-bulk-delete');
+    expect(html).toContain('btn-bulk-delete-header');
+    // v0.80: the duplicate floating bottom bar is gone — top bar is the only one.
+    expect(html).not.toContain('bulk-selection-bar');
+    expect(html).not.toContain('btn-cancel-selection-bottom');
   });
 
   it('formats 2-digit selection count (25 Selected) with white-space: nowrap to prevent text wrapping', () => {

@@ -260,6 +260,21 @@ window.Views = {
       });
 
       window.StackdHydrateIcons();
+    },
+
+    // v0.80: the bar chart and donut are tracked on their components; release
+    // them when leaving Analytics so no detached-canvas instance lingers.
+    destroy() {
+      const nf = window.Components && window.Components.NetFlowChart;
+      if (nf && nf._chartInstance) {
+        try { nf._chartInstance.destroy(); } catch (e) { /* already gone */ }
+        nf._chartInstance = null;
+      }
+      const donut = window.Components && window.Components.CategoryDonutChart;
+      if (donut && donut._chartInstance) {
+        try { donut._chartInstance.destroy(); } catch (e) { /* already gone */ }
+        donut._chartInstance = null;
+      }
     }
   },
 
@@ -531,7 +546,16 @@ window.Views = {
             });
           });
 
-          new window.Chart(ctx, {
+          // v0.80: destroy the previous instance first. Every dispatch re-renders
+          // the view and replaces this canvas; a bare `new Chart` leaked one
+          // instance (pinned to its detached canvas) into Chart.instances per
+          // dispatch, which exhausted the Android WebView canvas memory budget
+          // and made freshly-mounted widget canvases paint blank.
+          if (this._balanceChart) {
+            try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
+            this._balanceChart = null;
+          }
+          this._balanceChart = new window.Chart(ctx, {
             type: 'line',
             data: { datasets },
             options: {
@@ -601,8 +625,13 @@ window.Views = {
     // v0.72: main.js calls this on transition to another view. Widget charts are
     // tracked by widget id (not by canvas), so they must be released explicitly
     // or they keep detached canvases alive for the rest of the session.
+    // v0.80: the balance line chart rides the same rule.
     destroy() {
       if (window.Widgets) window.Widgets.destroyCharts();
+      if (this._balanceChart) {
+        try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
+        this._balanceChart = null;
+      }
     }
   },
 
@@ -823,26 +852,6 @@ window.Views = {
             </div>
           `;
 
-      const bulkActionBarHtml = isSelectionMode
-        ? `
-            <div class="bulk-selection-bar" id="bulk-action-bar">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <button id="btn-cancel-selection-bottom" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
-                  Cancel
-                </button>
-                <span class="selection-count-label" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; flex-shrink: 0;">
-                  ${selectedCount} Selected
-                </span>
-              </div>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <button id="btn-bulk-delete" class="btn-selection-action btn-selection-delete" ${selectedCount === 0 ? 'disabled' : ''}>
-                  Delete ${selectedCount > 0 ? `(${selectedCount})` : ''}
-                </button>
-              </div>
-            </div>
-          `
-        : '';
-
       return `
         <div class="container" style="padding-bottom: 120px;">
           <!-- FIXED STICKY HEADER -->
@@ -856,13 +865,11 @@ window.Views = {
           <div style="margin-top: var(--space-4);">
             ${txListHtml}
           </div>
-
-          ${bulkActionBarHtml}
         </div>
       `;
     },
 
-    attachEvents(container, state) {
+    attachEvents(container, state, isEntry) {
       window.StackdHydrateIcons();
 
       window.Components.AdvancedFilterBar.attachEvents(container, 'history', state);
@@ -880,9 +887,6 @@ window.Views = {
 
       const btnCancelSelection = container.querySelector('#btn-cancel-selection');
       if (btnCancelSelection) btnCancelSelection.addEventListener('click', handleCancelSelection);
-
-      const btnCancelSelectionBottom = container.querySelector('#btn-cancel-selection-bottom');
-      if (btnCancelSelectionBottom) btnCancelSelectionBottom.addEventListener('click', handleCancelSelection);
 
       const btnToggleSelectAll = container.querySelector('#btn-toggle-select-all');
       if (btnToggleSelectAll) {
@@ -966,9 +970,6 @@ window.Views = {
           }, 10);
         }
       };
-
-      const btnBulkDelete = container.querySelector('#btn-bulk-delete');
-      if (btnBulkDelete) btnBulkDelete.addEventListener('click', handleBulkDelete);
 
       const btnBulkDeleteHeader = container.querySelector('#btn-bulk-delete-header');
       if (btnBulkDeleteHeader) btnBulkDeleteHeader.addEventListener('click', handleBulkDelete);
@@ -1202,11 +1203,28 @@ window.Views = {
         });
       });
 
-      this.scrollToToday(container);
+      // v0.80: re-tapping the History nav item while already on History fires
+      // this router event (it previously had no listener — dead code); it is
+      // now the explicit "take me back to today" gesture alongside the pill.
+      if (container._historyReTapHandler) {
+        window.removeEventListener('scroll-history-to-today', container._historyReTapHandler);
+      }
+      container._historyReTapHandler = () => this.scrollToToday(container);
+      window.addEventListener('scroll-history-to-today', container._historyReTapHandler);
+
+      // v0.80: scroll to today only when ENTERING History. On same-view
+      // re-renders (selection mode, checkbox taps, paid/filter toggles) the
+      // unconditional call yanked the list back to today and lost the user's
+      // place — main.js now preserves scrollTop across those renders instead.
+      if (isEntry !== false) this.scrollToToday(container);
     },
 
     scrollToToday(container) {
-      const today = new Date().toISOString().split('T')[0];
+      // v0.80: local-time date parts — render() groups days in local time, and
+      // the old toISOString() (UTC) targeted the wrong day near midnight.
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
       const dateGroups = Array.from(container.querySelectorAll('.date-group-container[id^="tx-"]'));
       const targetGroup = dateGroups.find(g => g.id === `tx-${today}`) || 
                           dateGroups.filter(g => g.id < `tx-${today}`).sort((a,b) => b.id.localeCompare(a.id))[0];
@@ -2754,7 +2772,14 @@ Object.assign(window.Views, {
           // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
           const GAP = 3;
           const isDark = state.activeTheme === 'dark';
-          new window.Chart(ctx, {
+          // v0.80: tracked + destroy-before-create — a bare `new Chart` here
+          // leaked one instance per dispatch while on #budget (see the
+          // dashboard balance chart note for the failure mode).
+          if (this._budgetChart) {
+            try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
+            this._budgetChart = null;
+          }
+          this._budgetChart = new window.Chart(ctx, {
             type: 'doughnut',
             data: {
               labels: ['Spent', 'Remaining'],
@@ -2787,6 +2812,14 @@ Object.assign(window.Views, {
             window.Store.emit();
           });
         });
+      }
+    },
+
+    // v0.80: release the doughnut on view exit (same rule as DashboardView).
+    destroy() {
+      if (this._budgetChart) {
+        try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
+        this._budgetChart = null;
       }
     }
   },

@@ -181,6 +181,32 @@ test.describe('Home dashboard widgets', () => {
     });
   });
 
+  test('edit-mode dispatches do not leak Chart.js instances (v0.80)', async ({ page }) => {
+    await bootstrap(page);
+    await page.evaluate(() => {
+      window.Store.dispatch('ADD_HOME_WIDGET', { type: 'categories', size: 'small', config: {} });
+      window.Store.dispatch('ADD_HOME_WIDGET', { type: 'netWorth', size: 'small', config: {} });
+    });
+
+    const instanceCount = () => page.evaluate(() => Object.keys(window.Chart.instances).length);
+    const baseline = await instanceCount();
+    expect(baseline).toBeGreaterThan(0); // balance chart + widget charts
+
+    // Every dispatch wholesale re-renders the dashboard and replaces every
+    // canvas. Pre-v0.80 the balance chart leaked exactly +1 instance per
+    // dispatch (pinned to its detached canvas), which starved the WebView's
+    // canvas memory and blanked widget charts in edit mode.
+    for (let i = 0; i < 6; i++) {
+      await page.evaluate(() => window.Store.dispatch('TOGGLE_WIDGET_EDIT_MODE'));
+    }
+    expect(await instanceCount()).toBe(baseline);
+
+    // Leaving the dashboard releases everything — no detached-canvas stragglers.
+    await page.evaluate(() => window.Router.navigate('#settings'));
+    await page.waitForFunction(() => window.Store.getState().activeView === 'settings');
+    expect(await instanceCount()).toBe(0);
+  });
+
   test('walks the config step when adding a configurable widget', async ({ page }) => {
     await bootstrap(page);
     await scrollToWidgets(page);

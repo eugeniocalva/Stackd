@@ -2242,8 +2242,15 @@ window.Components = {
       const colors = data.map(d => d.net >= 0 ? '#10b981' : '#ef4444'); 
       const bgColors = data.map(d => d.net >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)');
 
-      // Destroy any existing Chart.js instance on this canvas to prevent the
-      // 'Canvas is already in use' error when navigating back to the Analytics view.
+      // v0.80: track the instance on the component. The old getChart(canvas)
+      // guard could never find the previous chart — every re-render replaces
+      // the canvas element, so lookups by the fresh canvas always miss and one
+      // instance (pinned to its detached canvas) leaked per re-render.
+      if (this._chartInstance) {
+        try { this._chartInstance.destroy(); } catch (e) { /* already gone */ }
+        this._chartInstance = null;
+      }
+      // Belt-and-braces for any externally-created chart on this same canvas.
       const existingNetFlowChart = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
       if (existingNetFlowChart) existingNetFlowChart.destroy();
 
@@ -2251,7 +2258,7 @@ window.Components = {
       const yScale = this._computeYScale(values);
       const { tooltipBg, tooltipTitle, tooltipBody, tooltipBorder, gridColor, tickColor } = this._themeColors();
 
-      new window.Chart(canvas, {
+      this._chartInstance = new window.Chart(canvas, {
         type: 'bar',
         data: {
           labels: labels,
