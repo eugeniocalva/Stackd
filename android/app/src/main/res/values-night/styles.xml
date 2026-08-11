@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- v0.81: dark-system devices get a dark native splash (mirrors the web
+         splash dark variant, #0b0f19 = --bg-base dark) instead of a white
+         flash before a dark app. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:windowBackground">#0b0f19</item>
+        <item name="windowSplashScreenBackground">#0b0f19</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_stackd</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

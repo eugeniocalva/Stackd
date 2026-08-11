@@ -244,14 +244,26 @@ const EMOJI_MAP = {
 };
 
 window.StackdHydrateIcons = () => {
+  // v0.81: idempotent hydration. lucide's createIcons keeps data-lucide on the
+  // <svg> it generates, so earlier passes re-matched their own output and
+  // rebuilt every icon in the DOM on each call (full-DOM churn that collided
+  // with the splash fade). Generated svgs are now skipped, and when lucide is
+  // available the emergency injection is skipped too — createIcons replaces
+  // the whole element anyway, so injecting first was double work.
+  const lucideReady = window.lucide && typeof window.lucide.createIcons === 'function';
+  let pending = false;
   document.querySelectorAll('[data-lucide]').forEach(el => {
+    if (el.tagName.toLowerCase() === 'svg') return; // already lucide output
+    pending = true;
     let name = el.getAttribute('data-lucide');
-    
+
     // Translate emoji value to lucide name if found
     if (EMOJI_MAP[name]) {
       name = EMOJI_MAP[name];
       el.setAttribute('data-lucide', name);
     }
+
+    if (lucideReady) return; // createIcons below handles it wholesale
 
     // Forced injection from local dictionary
     if (EMERGENCY_ICONS[name]) {
@@ -295,19 +307,21 @@ window.StackdHydrateIcons = () => {
     }
   });
 
-  // Priority 2: Also try Lucide library if loaded (Inlined in index.html)
-  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+  // Priority 2: the Lucide library replaces every remaining un-hydrated
+  // [data-lucide] element (local snapshot, loaded via <script defer>).
+  if (lucideReady && pending) {
     window.lucide.createIcons();
   }
 };
 
-// Continuous hydration loop for dynamic views
+// Boot hydration. v0.81: two quick catch-up passes only — the 800ms pass used
+// to land exactly on the splash fade (mid-fade jank) and 2000ms churned the
+// visible app; with hydration idempotent and render paths hydrating
+// synchronously, late passes are unnecessary.
 const runHydration = () => {
   window.StackdHydrateIcons();
   setTimeout(window.StackdHydrateIcons, 50);
   setTimeout(window.StackdHydrateIcons, 250);
-  setTimeout(window.StackdHydrateIcons, 800);
-  setTimeout(window.StackdHydrateIcons, 2000);
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -524,27 +538,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Start initial hydration
   runHydration();
-  
+
   // Initial render (force trigger the subscription)
   window.Store.emit();
 
-  // Dismiss splash screen after first render
-  setTimeout(() => {
-    const splash = document.getElementById('splash-screen');
-    if (splash) {
-      splash.classList.add('fade-out');
-      setTimeout(() => {
-        splash.remove();
+  // ── Splash dismissal (v0.81) ────────────────────────────────────────────
+  // Readiness-gated instead of blind timers: the first render just happened
+  // synchronously (emit above), so we wait only for the fonts (≤1.5s cap),
+  // keep a short minimum so a fast boot doesn't strobe, then fade and remove
+  // on transitionend. On native the web splash never painted (.native-boot);
+  // the HELD native splash is hidden here instead — the plugin keeps it up
+  // (launchAutoHide:false) until the app is actually ready, which closes the
+  // blank-white gap between the system splash and the first web paint.
 
-        // ── First-Launch / Post-Reset Region Setup Modal ──────────────────────
-        // Show once: on first ever launch, and again after a Factory Reset
-        // (RESET_APP clears the 'stackd_v1_setup_done' flag).
-        if (!localStorage.getItem('stackd_v1_setup_done')) {
-          _showRegionSetupModal();
-        }
-      }, 500);
+  // ── First-Launch / Post-Reset Region Setup Modal ──────────────────────
+  // Show once: on first ever launch, and again after a Factory Reset
+  // (RESET_APP clears the 'stackd_v1_setup_done' flag).
+  const _finishBoot = () => {
+    if (!localStorage.getItem('stackd_v1_setup_done')) {
+      _showRegionSetupModal();
     }
-  }, 800);
+  };
+
+  const _dismissSplash = () => {
+    const isNative = window.Capacitor &&
+      typeof window.Capacitor.isNativePlatform === 'function' &&
+      window.Capacitor.isNativePlatform();
+
+    if (isNative) {
+      const sp = window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen;
+      if (sp && sp.hide) {
+        try { sp.hide({ fadeOutDuration: 300 }); } catch (e) { /* head safety timer covers us */ }
+      }
+      const splash = document.getElementById('splash-screen');
+      if (splash) splash.remove(); // never painted (.native-boot); drop the node
+      setTimeout(_finishBoot, 350);
+      return;
+    }
+
+    const splash = document.getElementById('splash-screen');
+    if (!splash) { _finishBoot(); return; }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      splash.remove();
+      _finishBoot();
+    };
+    splash.addEventListener('transitionend', finish, { once: true });
+    setTimeout(finish, 800); // safety: transitionend is swallowed in hidden tabs
+    splash.classList.add('fade-out');
+  };
+
+  const _bootReadyAt = Date.now();
+  const _fontsReady = (document.fonts && document.fonts.ready)
+    ? document.fonts.ready
+    : Promise.resolve();
+  Promise.race([_fontsReady, new Promise(r => setTimeout(r, 1500))]).then(() => {
+    const minHold = Math.max(0, 400 - (Date.now() - _bootReadyAt));
+    setTimeout(() => {
+      // rAF syncs the fade with a painted frame, but it never fires in
+      // hidden/uncomposited tabs — the timer keeps dismissal from stalling.
+      let started = false;
+      const go = () => { if (started) return; started = true; _dismissSplash(); };
+      requestAnimationFrame(go);
+      setTimeout(go, 600);
+    }, minHold);
+  });
 });
 
 // ── First-Launch Region Setup Modal ─────────────────────────────────────────

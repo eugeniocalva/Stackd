@@ -141,9 +141,36 @@ window.StackdExport = {
     this._download('stackd_transactions.csv', [headers, ...rows].join('\n'));
   },
 
+  // v0.81: jspdf/autotable are no longer loaded in <head> (they were two
+  // parser-blocking CDN requests paid on every boot, and nothing in the UI
+  // currently calls this). They load on demand the first time a PDF export
+  // runs; the cached promise makes repeat calls free.
+  _pdfLibsPromise: null,
+  _ensurePdfLibs() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+    if (this._pdfLibsPromise) return this._pdfLibsPromise;
+    const load = (src) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+    this._pdfLibsPromise = load('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+      .then(() => load('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js'))
+      .catch((err) => {
+        this._pdfLibsPromise = null; // allow a retry once back online
+        throw err;
+      });
+    return this._pdfLibsPromise;
+  },
+
   exportTransactionsPDF(state, options = {}) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
-      alert("PDF library not loaded. Please check your internet connection.");
+      this._ensurePdfLibs().then(
+        () => this.exportTransactionsPDF(state, options),
+        () => alert('PDF export needs an internet connection to fetch the PDF library. Please try again once online.')
+      );
       return;
     }
 

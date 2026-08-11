@@ -3,14 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Stack'd v0.80</title>
+    <title>Stack'd v0.81</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://unpkg.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // v0.81 pre-paint boot script — must run before the stylesheets parse.
+      // 1) Applies the persisted theme synchronously so dark-theme users never
+      //    get a white first paint (Store.applyTheme confirms it at boot).
+      //    StackdDB JSON-stringifies values, hence the JSON.parse.
+      // 2) Flags native runs (html.native-boot) so the WEB splash never paints
+      //    there — the native splash is held by @capacitor/splash-screen until
+      //    main.js reports the app ready (launchAutoHide: false).
+      // 3) Safety net: if boot JS ever fails before main.js can hide the held
+      //    native splash, force-hide it so the app cannot hang on the logo.
+      (function () {
+        try {
+          var pref = null;
+          try { pref = JSON.parse(localStorage.getItem('stackd_v1_theme')); } catch (e) { /* unreadable */ }
+          var dark = pref === 'dark' || ((pref === null || pref === 'system') &&
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            document.documentElement.classList.add('dark');
+          }
+          if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' &&
+              window.Capacitor.isNativePlatform()) {
+            document.documentElement.classList.add('native-boot');
+          }
+          setTimeout(function () {
+            try {
+              var sp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen;
+              if (sp && sp.hide) sp.hide();
+            } catch (e) { /* nothing to hide */ }
+          }, 8000);
+        } catch (e) { /* never block boot */ }
+      })();
+    </script>
+    <link rel="stylesheet" href="src/styles/fonts.css" />
     <link rel="stylesheet" href="src/styles/reset.css" />
     <link rel="stylesheet" href="src/styles/variables.css" />
     <link rel="stylesheet" href="src/styles/global.css" />
@@ -46,13 +76,21 @@
         color: #111111;
         letter-spacing: -0.02em;
       }
+      /* v0.81: theme-aware splash — dark users used to get a white splash
+         snapping to a dark app at fade end. invert(1) flips the monochrome
+         logo; the wordmark recolors explicitly. */
+      :root[data-theme="dark"] #splash-screen { background: #0b0f19; }
+      :root[data-theme="dark"] #splash-title { color: #f8fafc; }
+      :root[data-theme="dark"] #splash-logo { filter: invert(1); }
+      /* v0.81: on native the held NATIVE splash is the only splash — the web
+         one never paints (single continuous splash, no logo jump). */
+      html.native-boot #splash-screen { display: none; }
     </style>
-    <script src="https://unpkg.com/lucide@0.400.0"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-
-
-
+    <!-- v0.81: lucide is served from the local snapshot (same 0.400.0 the
+         EMERGENCY_ICONS fallback tracks) and jspdf/autotable are lazy-loaded
+         by export.js on first PDF export — the three parser-blocking CDN
+         requests that delayed first paint on device are gone. -->
+    <script defer src="src/libs/lucide.min.js"></script>
     <script defer src="src/libs/chart.js"></script>
   </head>
   <body>
@@ -96,8 +134,8 @@
     <script defer src="src/widgets.js?v=8"></script>
     <script defer src="src/views.js?v=41"></script>
     <script defer src="src/router.js?v=15"></script>
-    <script defer src="src/export.js?v=15"></script>
+    <script defer src="src/export.js?v=16"></script>
     <script defer src="src/import.js?v=15"></script>
-    <script defer src="src/main.js?v=21"></script>
+    <script defer src="src/main.js?v=22"></script>
   </body>
 </html>

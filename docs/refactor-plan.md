@@ -5,10 +5,20 @@ Grounded in a 10-agent code recon; every claim below carries file:line evidence.
 Each phase is one release (one `<title>` version bump). Bugs first, then features,
 i18n last so every new string (insights, paid, drilldown) is born translatable.
 
-**Status**: P1 shipped (v0.79, commit a33d9b7). P2 shipped (v0.80) including the
-1.4 bottom-bar removal, plus a bonus root fix: router.js's delayed same-view
-scroll timers are now cancelled by newer navigations (a stale boot timer could
-kill the History entry scroll). P3+ pending.
+**Status**: P1 shipped (v0.79, commit a33d9b7). P2 shipped (v0.80, commit
+c42bb91) including the 1.4 bottom-bar removal, plus a bonus root fix:
+router.js's delayed same-view scroll timers are now cancelled by newer
+navigations. P3 shipped (v0.81): @capacitor/splash-screen@6.0.4 holds the
+native splash until main.js reports ready (web splash suppressed on native via
+html.native-boot); fonts self-hosted as variable woff2 (src/fonts/, latin +
+latin-ext for P8); lucide served from the local 0.400.0 snapshot; jspdf CDN
+scripts removed from head (lazy-loaded by the currently-uncalled PDF export);
+pre-paint theme script in <head> + dark splash variants (web CSS +
+values-night/styles.xml); icon hydration made idempotent, 800/2000ms passes
+dropped; splash dismissal readiness-gated (fonts.ready ≤1.5s + transitionend)
+with hidden-tab and boot-failure fallbacks. Built file has ZERO external
+requests. dist + android assets rebuilt/synced (device was running v0.60!).
+P4+ pending.
 
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.
