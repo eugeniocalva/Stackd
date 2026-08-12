@@ -48,7 +48,23 @@ hidden on empty installs, cards tap through to #analytics. An adversarial
 also counts scheduled rows (no month-boundary flicker), exact break-even
 returns null, concentration requires ≥2 FUNDED accounts, and .insight-value
 tone colors use the AA -text tokens (flat .text-income is 3.8:1 on light).
-P7+ pending.
+P7 shipped (v0.85): real tag filtering (`tags: []` in both filter slices +
+an additive, guarded clause in getFilteredTransactions with the
+`'__untagged__'` sentinel) and `Store.computeCategoryTagBreakdown`. The
+analytics donut legend became an accordion: a category row expands its tag
+rows (name, count, amount) + a No-tag bucket + an "All N transactions" row;
+each navigates to History filtered by category (+ tag). Expansion is
+component-local (`CategoryDonutChart._expandedCatId`) — NO dispatch, so the
+donut never replays its 700ms entry animation for a disclosure toggle, and
+attachEvents restores the open row after any re-render. Settings → Tags now
+opens the same History destination over an all-time custom period (with
+per-tag counts), so TagDetailView + its route were removed as superseded.
+History shows a tap-to-clear tag chip; FilterModal's Show All resets tags and
+lists active tag chips for removal. Dead `activeTagFilter`/`SET_TAG_FILTER`
+removed. NOTE: the grid `0fr→1fr` reveal resolves to zero height inside the
+flex legend — the panel uses display + a fade/slide instead (no max-height
+cap, so a category with many tags can't clip).
+P8 pending.
 
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.

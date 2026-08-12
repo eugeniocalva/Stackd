@@ -60,7 +60,8 @@ window.Store = {
       type: 'month', // 'today', 'week', 'month', 'year'
       value: '' // 'YYYY-MM-DD' anchor
     },
-    activeTagFilter: '', // Will hold selected tag
+    // v0.85: the half-built activeTagFilter/SET_TAG_FILTER pair was removed —
+    // real tag filtering now lives in historyFilters.tags (getFilteredTransactions).
     language: 'en',
     historySortOrder: 'desc', // 'asc' or 'desc'
     defaultAccountId: '', // v0.53
@@ -76,6 +77,9 @@ window.Store = {
       types: [],
       accounts: [],
       categories: [],
+      // v0.85: tag filter. Empty = match all; '__untagged__' is the sentinel
+      // for transactions carrying no tags (see getFilteredTransactions).
+      tags: [],
       sortOrder: 'asc'  // Default: Oldest First
     },
     analyticsFilters: {
@@ -83,6 +87,7 @@ window.Store = {
       types: [],
       accounts: [],
       categories: [],
+      tags: [],
       sortOrder: 'desc'
     },
     expandedGraphFilters: {
@@ -752,7 +757,11 @@ window.Store = {
   getFilteredTransactions(pageKey, overrideFilters = null) {
     const filters = overrideFilters || (pageKey === 'history' ? this.state.historyFilters : this.state.analyticsFilters);
     const { period, types, accounts, categories, sortOrder } = filters;
-    
+    // v0.85: additive and guarded — older/persisted filter objects predate the
+    // key, so a missing tags array must mean "match everything", never
+    // "match nothing" (this function feeds History, Analytics and widgets).
+    const tagFilter = Array.isArray(filters.tags) ? filters.tags : [];
+
     return this.state.transactions.filter(tx => {
       if (this._isTxBeforeOpeningDate(tx)) return false;
 
@@ -766,10 +775,14 @@ window.Store = {
       const matchPeriod = this.isDateInPeriod(tx.date, period);
       const matchType = types.length === 0 || types.includes(tx.type);
       const matchAccount = accounts.length === 0 || accounts.includes(tx.accountId);
-      const matchCategory = categories.length === 0 || 
+      const matchCategory = categories.length === 0 ||
                             categories.includes(tx.categoryId) ||
                             (categories.includes('uncategorized') && !tx.categoryId);
-      return matchPeriod && matchType && matchAccount && matchCategory;
+      const txTags = Array.isArray(tx.tags) ? tx.tags : [];
+      const matchTag = tagFilter.length === 0 ||
+                       txTags.some(t => tagFilter.includes(t)) ||
+                       (tagFilter.includes('__untagged__') && txTags.length === 0);
+      return matchPeriod && matchType && matchAccount && matchCategory && matchTag;
     }).sort((a, b) => {
       const dir = sortOrder === 'asc' ? 1 : -1;
       const tsA = this._getTransactionTimestamp(a);
@@ -2015,11 +2028,6 @@ window.Store = {
         changed = true;
         break;
 
-      case 'SET_TAG_FILTER':
-        this.state.activeTagFilter = payload || '';
-        changed = true;
-        break;
-
       case 'SET_HISTORY_SORT_ORDER': {
         this.state.historySortOrder = payload;
         window.StackdDB.save('historySortOrder', this.state.historySortOrder);
@@ -2540,6 +2548,66 @@ window.Store = {
       ...item,
       percentage: total > 0 ? (item.amount / total) * 100 : 0
     })).sort((a, b) => b.amount - a.amount);
+  },
+
+  /**
+   * v0.85 (docs/refactor-plan.md P7): per-tag breakdown WITHIN one category,
+   * for the analytics donut's drilldown accordion. Sibling of
+   * computeCategoryDistribution — deliberately a separate getter, because that
+   * one's output shape is consumed by widgets, _capData and existing tests.
+   *
+   * Reuses getFilteredTransactions('analytics', filters) so the analytics
+   * exclusions (unpaid, transfer legs, cat_balance, non-income/expense) come
+   * for free, and honours the same effectiveFilters the category rows use.
+   *
+   * NOTE: a transaction carrying several tags counts once per tag, so the tag
+   * amounts can legitimately sum to more than the category total; percentages
+   * are of the category total. Untagged transactions form their own bucket
+   * (single-counted) and are returned last under the '__untagged__' sentinel.
+   */
+  computeCategoryTagBreakdown(filters, distributionType, categoryId) {
+    const transactions = this.getFilteredTransactions('analytics', filters);
+    const typed = transactions.filter(tx => {
+      if (distributionType === 'income') return this._isPositiveTx(tx);
+      return tx.type === 'expense';
+    });
+    const inCategory = typed.filter(tx => (tx.categoryId || 'uncategorized') === categoryId);
+
+    const total = inCategory.reduce((sum, tx) => sum + tx.amount, 0);
+    const byTag = {};
+    let untaggedAmount = 0;
+    let untaggedCount = 0;
+
+    inCategory.forEach(tx => {
+      const tags = (Array.isArray(tx.tags) ? tx.tags : []).filter(Boolean);
+      if (tags.length === 0) {
+        untaggedAmount += tx.amount;
+        untaggedCount += 1;
+        return;
+      }
+      tags.forEach(tag => {
+        if (!byTag[tag]) byTag[tag] = { tag, amount: 0, count: 0, isUntagged: false };
+        byTag[tag].amount += tx.amount;
+        byTag[tag].count += 1;
+      });
+    });
+
+    const pct = (amount) => (total > 0 ? (amount / total) * 100 : 0);
+    const rows = Object.values(byTag)
+      .sort((a, b) => b.amount - a.amount || a.tag.localeCompare(b.tag))
+      .map(r => ({ ...r, percentage: pct(r.amount) }));
+
+    if (untaggedCount > 0) {
+      rows.push({
+        tag: '__untagged__',
+        amount: untaggedAmount,
+        count: untaggedCount,
+        percentage: pct(untaggedAmount),
+        isUntagged: true
+      });
+    }
+
+    return { total, count: inCategory.length, rows };
   },
 
   getMaxTransactionDate() {

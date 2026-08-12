@@ -1433,6 +1433,119 @@ a:focus-visible,
   color: var(--text-primary);
 }
 
+/* ── Category → tag drilldown accordion (v0.85) ──────────────────────────
+   Tapping a category row reveals its per-tag breakdown. The panel animates
+   with grid-template-rows 0fr→1fr so it works with content of any height and
+   needs no measured max-height. */
+.donut-legend-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.donut-legend-caret {
+  color: var(--text-tertiary);
+  margin-left: 8px;
+  transition: transform var(--dur-quick) var(--ease-spring);
+}
+
+.donut-legend-group.is-expanded .donut-legend-caret {
+  transform: rotate(90deg);
+}
+
+.donut-legend-group.is-expanded .donut-legend-item {
+  background: var(--bg-surface-sunken);
+}
+
+/* Reveal by display + a short fade/slide rather than an animated height: the
+   panel is a flex item, where the grid 0fr→1fr trick resolves to zero, and a
+   max-height cap would clip a category with many tags. */
+.donut-tag-panel {
+  display: none;
+}
+
+.donut-legend-group.is-expanded .donut-tag-panel {
+  display: block;
+  animation: donutTagPanelIn var(--dur-view) var(--ease-spring);
+}
+
+@keyframes donutTagPanelIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.donut-tag-list {
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--space-8);
+}
+
+.donut-tag-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 4px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.donut-tag-row:last-child {
+  border-bottom: none;
+}
+
+.donut-tag-row:active {
+  background: var(--bg-surface-sunken);
+}
+
+.donut-tag-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.donut-tag-name.is-untagged {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.donut-tag-count {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.donut-tag-amount {
+  flex-shrink: 0;
+  font-family: var(--font-family-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.donut-tag-row--all .donut-tag-name {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donut-legend-caret {
+    transition: none;
+  }
+  .donut-legend-group.is-expanded .donut-tag-panel {
+    animation: none;
+  }
+}
+
 /* Chart Toggle Group */
 .chart-toggle-group {
   display: flex;

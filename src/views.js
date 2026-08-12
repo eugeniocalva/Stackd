@@ -814,13 +814,19 @@ window.Views = {
         });
       }
 
-      const activeAccount = state.accounts.find(a => a.id === state.activeAccountFilter);
-      const accountLabel = activeAccount ? activeAccount.name : 'All Accounts';
-      const tagLabel = state.activeTagFilter ? `#${state.activeTagFilter}` : 'All Tags';
-
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
       const accountFilterIndicatorHtml = hasAccountFilter
         ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
+        : '';
+
+      // v0.85: a tag filter usually arrives from a drilldown, so say so — an
+      // invisible filter reads as "my transactions disappeared". Tap to clear.
+      const activeTags = Array.isArray(filters.tags) ? filters.tags : [];
+      const tagFilterIndicatorHtml = activeTags.length
+        ? `<div id="history-tag-filter-chip" role="button" tabindex="0" title="Tap to clear the tag filter"
+                style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface-sunken); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
+             ${activeTags.map(t => t === '__untagged__' ? 'No tag' : '#' + escapeAttr(t)).join(', ')} <span aria-hidden="true">✕</span>
+           </div>`
         : '';
 
       const sortLabel = isAsc ? 'Oldest First' : 'Newest First';
@@ -854,6 +860,7 @@ window.Views = {
                 </button>
                 <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
                 ${accountFilterIndicatorHtml}
+                ${tagFilterIndicatorHtml}
                 ${sortIndicatorHtml}
               </div>
             </div>
@@ -880,6 +887,14 @@ window.Views = {
       window.StackdHydrateIcons();
 
       window.Components.AdvancedFilterBar.attachEvents(container, 'history', state);
+
+      // v0.85: the tag-filter chip clears the drilled-in tag in place.
+      const tagChip = container.querySelector('#history-tag-filter-chip');
+      if (tagChip) {
+        tagChip.addEventListener('click', () => {
+          window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { tags: [] } });
+        });
+      }
 
       const btnStartSelectionMode = container.querySelector('#btn-start-selection-mode');
       if (btnStartSelectionMode) {
@@ -2880,16 +2895,24 @@ Object.assign(window.Views, {
   TagsView: {
     render(state) {
       const tags = window.Store.getAllUniqueTags();
+      // v0.85: tags now open History filtered by that tag (all time), the same
+      // destination the analytics category→tag drilldown uses — one way to
+      // read a tag's transactions instead of a second, weaker list view.
+      const counts = {};
+      state.transactions.forEach(tx => {
+        (Array.isArray(tx.tags) ? tx.tags : []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+      });
       let listHtml = tags.map(t => `
-        <a href="#tag-detail?tag=${encodeURIComponent(t)}" class="list-item touch-target" style="display: flex; align-items: center; justify-content: space-between; text-decoration: none;">
+        <div class="list-item touch-target" data-tag-open="${escapeAttr(t)}" role="button" tabindex="0" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
           <div style="display: flex; align-items: center; gap: var(--space-3);">
             <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;"><i data-lucide="hash"></i></div>
             <div>
-              <div class="list-item-title">#${t}</div>
+              <div class="list-item-title">#${escapeAttr(t)}</div>
+              <div class="list-item-subtitle">${counts[t] || 0} transaction${(counts[t] || 0) === 1 ? '' : 's'}</div>
             </div>
           </div>
           <div style="color: var(--text-tertiary);">›</div>
-        </a>
+        </div>
       `).join('');
 
       if (tags.length === 0) {
@@ -2917,74 +2940,40 @@ Object.assign(window.Views, {
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
-      // Handled by standard hyperlinks
+      container.querySelectorAll('[data-tag-open]').forEach(row => {
+        row.addEventListener('click', () => {
+          const tag = row.dataset.tagOpen;
+          if (!tag) return;
+          // Span every transaction: a tag list is an all-time index, so the
+          // History period must not hide older matches behind "This Month".
+          const dates = state.transactions.map(t => t.date).filter(Boolean).sort();
+          const pad = (n) => String(n).padStart(2, '0');
+          const now = new Date();
+          const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+          const start = dates.length ? dates[0] : todayStr;
+          const last = dates.length ? dates[dates.length - 1] : todayStr;
+          const end = last > todayStr ? last : todayStr;
+
+          const hFilters = window.Store.state.historyFilters;
+          hFilters.period = { type: 'custom', value: '', start, end };
+          hFilters.categories = [];
+          hFilters.types = [];
+          hFilters.accounts = [];
+          hFilters.tags = [tag];
+          window.Store.emit();
+          window.Router.navigate('#transactions');
+        });
+      });
     }
   },
 
   // -------------------------
   // TAG DETAIL VIEW
   // -------------------------
-  TagDetailView: {
-    render(state) {
-      const params = window.Router ? window.Router.getParams() : {};
-      const targetTag = params.tag ? decodeURIComponent(params.tag) : '';
-
-      if (!targetTag) {
-        return `
-          <div class="container" style="padding-top: 40px; text-align: center;">
-            <p class="text-secondary">Tag not found.</p>
-            <a href="#tags" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">Go Back</a>
-          </div>
-        `;
-      }
-
-      const taggedTx = state.transactions.filter(tx => Array.isArray(tx.tags) && tx.tags.includes(targetTag));
-
-      let contentHtml = '<div class="list-group">';
-      if (taggedTx.length === 0) {
-        contentHtml += `
-          <div style="text-align: center; padding: 40px 20px;">
-            <p class="text-secondary" style="margin-bottom: 0;">No transactions found for #${targetTag}.</p>
-          </div>
-        `;
-      } else {
-        taggedTx.forEach(tx => {
-          const category = state.categories.find(c => c.id === tx.categoryId);
-          const account = state.accounts.find(a => a.id === tx.accountId);
-          contentHtml += window.Components.TransactionItem.render(tx, category, account, '');
-        });
-      }
-      contentHtml += '</div>';
-
-      return `
-        <div class="container" style="padding-bottom: 100px;">
-          <a href="#tags" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Tags"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Tags</a>
-          
-          <div style="margin-bottom: var(--space-6);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h1 class="header-title" style="margin: 0;">#${targetTag}</h1>
-            </div>
-            <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
-              ${taggedTx.length} transaction${taggedTx.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-          
-          ${contentHtml}
-        </div>
-      `;
-    },
-    attachEvents(container, state) {
-      window.StackdHydrateIcons();
-      container.querySelectorAll('.list-item[data-id]').forEach(item => {
-        item.addEventListener('click', () => {
-          const txId = item.dataset.id;
-          if (txId) {
-            window.Router.navigate('#edit?id=' + txId);
-          }
-        });
-      });
-    }
-  },
+  // v0.85: TagDetailView was removed — Settings → Tags now opens History
+  // filtered by the tag (all time), the same destination as the analytics
+  // category→tag drilldown, with day grouping, swipe actions and selection
+  // that the standalone list never had.
 
   // -------------------------
   // OTHERS VIEW (formerly Settings)

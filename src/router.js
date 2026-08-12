@@ -12,7 +12,6 @@ window.Router = {
     '#analytics': 'analytics',
     '#edit-account': 'edit-account',
     '#tags': 'tags',
-    '#tag-detail': 'tag-detail',
     '#category-detail': 'category-detail',
     '#edit-category': 'edit-category',
     '#debt': 'debt',

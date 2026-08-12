@@ -1299,6 +1299,9 @@ window.Components = {
       const filters = pageKey === 'history' ? window.Store.state.historyFilters : window.Store.state.analyticsFilters;
       const accounts = window.Store.state.accounts;
       const categories = window.Store.state.categories;
+      const esc = (v) => String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
       let currentFilters = JSON.parse(JSON.stringify(filters));
 
@@ -1350,6 +1353,17 @@ window.Components = {
                   </button>
                 `).join('')}
               </div>
+
+              ${(currentFilters.tags && currentFilters.tags.length) ? `
+                <div class="filter-group-title">Tags</div>
+                <div class="multi-select-row">
+                  ${currentFilters.tags.map(tag => `
+                    <button class="multi-select-chip active" data-tag="${esc(tag)}" aria-label="Remove tag filter">
+                      ${tag === '__untagged__' ? 'No tag' : '#' + esc(tag)} ✕
+                    </button>
+                  `).join('')}
+                </div>
+              ` : ''}
             </div>
           </div>
         `;
@@ -1364,8 +1378,19 @@ window.Components = {
           currentFilters.types = [];
           currentFilters.accounts = [];
           currentFilters.categories = [];
+          currentFilters.tags = []; // v0.85: a drilled-in tag filter must clear too
           renderContent();
         };
+
+        // Tag chips are removal-only: they appear when a drilldown deep-links
+        // a tag, so the filter is visible and dismissible rather than sticky.
+        div.querySelectorAll('.multi-select-chip[data-tag]').forEach(btn => {
+          btn.onclick = () => {
+            const val = btn.dataset.tag;
+            currentFilters.tags = (currentFilters.tags || []).filter(v => v !== val);
+            renderContent();
+          };
+        });
 
         div.querySelectorAll('.multi-select-chip[data-sort]').forEach(btn => {
           btn.onclick = () => { currentFilters.sortOrder = btn.dataset.sort; renderContent(); };
@@ -2361,6 +2386,19 @@ window.Components = {
   CategoryDonutChart: {
     _chartInstance: null,
     _currentType: 'expense',
+    // v0.85: which category's tag breakdown is open. Kept on the singleton
+    // (like _currentType) rather than in the store: expanding must NOT
+    // dispatch — a dispatch re-renders the whole view and replays the donut's
+    // 700ms entry animation for a pure disclosure toggle. Because render()
+    // emits the panels and attachEvents restores this id, an unrelated
+    // re-render (cross-tab sync, filter change) reproduces the open state.
+    _expandedCatId: null,
+
+    _esc(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
 
     _CATEGORY_COLORS: {
       'cat_dining': { color: '#f59e0b', hover: '#d97706' },        // Amber
@@ -2470,18 +2508,32 @@ window.Components = {
               </div>
             </div>
             <div class="donut-legend">
-              ${data.map(item => `
-                <div class="donut-legend-item touch-target" data-cat-id="${item.id}" style="cursor: pointer; padding: 8px 4px; border-radius: var(--radius-md); transition: background 0.2s; align-items: center;">
-                  <div class="donut-legend-color" style="background: ${item._color}; opacity: ${item.isOthers ? '0.6' : '1'}; height: 32px;"></div>
-                  <div class="list-item-icon" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${item.icon}" style="width: 18px; height: 18px;"></i></div>
-                  <div class="donut-legend-info" style="margin-left: 4px;">
-                    <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${item.name}</span>
-                    <span class="donut-legend-pct">${item.percentage.toFixed(1)}%</span>
-                  </div>
-                  <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${window.Store.formatCurrency(item.amount)}</div>
-                  <div style="color: var(--text-tertiary); margin-left: 8px;">›</div>
-                </div>
-              `).join('')}
+              ${data.map(item => {
+                const esc = (v) => this._esc(v);
+                // v0.85: every real category is an accordion — tapping it
+                // reveals its per-tag breakdown (filled lazily in
+                // attachEvents). 'Others' aggregates categories 6+, so it has
+                // no single tag breakdown and stays inert, as before.
+                const row = `
+                  <div class="donut-legend-item touch-target" data-cat-id="${esc(item.id)}"
+                       ${item.isOthers ? '' : 'role="button" tabindex="0" aria-expanded="false"'}
+                       style="cursor: ${item.isOthers ? 'default' : 'pointer'}; padding: 8px 4px; border-radius: var(--radius-md); transition: background 0.2s; align-items: center;">
+                    <div class="donut-legend-color" style="background: ${item._color}; opacity: ${item.isOthers ? '0.6' : '1'}; height: 32px;"></div>
+                    <div class="list-item-icon" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
+                    <div class="donut-legend-info" style="margin-left: 4px;">
+                      <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(item.name)}</span>
+                      <span class="donut-legend-pct">${item.percentage.toFixed(1)}%</span>
+                    </div>
+                    <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(window.Store.formatCurrency(item.amount))}</div>
+                    ${item.isOthers ? '<div style="width: 8px; margin-left: 8px;"></div>' : '<div class="donut-legend-caret" aria-hidden="true">›</div>'}
+                  </div>`;
+                if (item.isOthers) return row;
+                return `
+                  <div class="donut-legend-group" data-cat-group="${esc(item.id)}">
+                    ${row}
+                    <div class="donut-tag-panel" data-tag-panel="${esc(item.id)}"></div>
+                  </div>`;
+              }).join('')}
             </div>
           </div>
         `;
@@ -2509,6 +2561,9 @@ window.Components = {
       
       const updateChart = (type) => {
         this._currentType = type;
+        // v0.85: an expense category's tag breakdown means nothing under the
+        // income lens — collapse rather than restore something stale.
+        this._expandedCatId = null;
         const newData = window.Store.computeCategoryDistribution(filters, type);
         
         const card = container.querySelector('.donut-chart-layout') || container.querySelector('[style*="height: 200px"]');
@@ -2529,27 +2584,93 @@ window.Components = {
         });
       });
 
+      // ── v0.85: category → tag drilldown ────────────────────────────────
+      // Hand off to History exactly the way the category tap always did
+      // (copy the analytics period/accounts, pin the category and type), plus
+      // the chosen tag. Passing null tags = the whole category.
+      const openInHistory = (catId, tag) => {
+        const aFilters = window.Store.state.analyticsFilters;
+        const hFilters = window.Store.state.historyFilters;
+
+        hFilters.period = { ...aFilters.period };
+        hFilters.accounts = [...aFilters.accounts];
+        hFilters.categories = [catId];
+        hFilters.types = [this._currentType];
+        hFilters.tags = tag ? [tag] : [];
+
+        window.Store.emit();
+        if (window.Router) window.Router.navigate('#transactions');
+      };
+
+      const panelFor = (catId) => {
+        let found = null;
+        container.querySelectorAll('.donut-tag-panel').forEach(p => {
+          if (p.dataset.tagPanel === catId) found = p;
+        });
+        return found;
+      };
+
+      const fillPanel = (catId, panel) => {
+        const esc = (v) => this._esc(v);
+        const breakdown = window.Store.computeCategoryTagBreakdown(filters, this._currentType, catId);
+        const rows = breakdown.rows.map(r => `
+          <div class="donut-tag-row touch-target" data-tag-row="${esc(r.tag)}" role="button" tabindex="0">
+            <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${r.isUntagged ? 'No tag' : '#' + esc(r.tag)}</span>
+            <span class="donut-tag-count">${r.count}</span>
+            <span class="donut-tag-amount">${esc(window.Store.formatCurrency(r.amount))}</span>
+          </div>`).join('');
+        // Always offer the whole category too — the pre-v0.85 behaviour, and
+        // the only route to a category whose rows are all tagged differently.
+        panel.innerHTML = `
+          <div class="donut-tag-list">
+            ${rows}
+            <div class="donut-tag-row donut-tag-row--all touch-target" data-tag-row="__all__" role="button" tabindex="0">
+              <span class="donut-tag-name">All ${breakdown.count} transaction${breakdown.count === 1 ? '' : 's'}</span>
+              <span class="donut-tag-amount">${esc(window.Store.formatCurrency(breakdown.total))}</span>
+            </div>
+          </div>`;
+        panel.querySelectorAll('.donut-tag-row').forEach(row => {
+          row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tag = row.dataset.tagRow;
+            openInHistory(catId, tag === '__all__' ? null : tag);
+          });
+        });
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      };
+
+      const setExpanded = (catId, expanded) => {
+        const panel = panelFor(catId);
+        if (!panel) return;
+        const group = panel.closest('.donut-legend-group');
+        const header = group ? group.querySelector('.donut-legend-item') : null;
+        if (expanded) fillPanel(catId, panel);
+        else panel.innerHTML = '';
+        if (group) group.classList.toggle('is-expanded', expanded);
+        if (header) header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      };
+
       const legendItems = container.querySelectorAll('.donut-legend-item');
       legendItems.forEach(item => {
+        const catId = item.dataset.catId;
+        if (catId === '__others__') return; // aggregate row: nothing to drill into
         item.addEventListener('click', () => {
-          const catId = item.dataset.catId;
-          if (catId === '__others__') return; // Do not filter directly on others
-
-          const aFilters = window.Store.state.analyticsFilters;
-          const hFilters = window.Store.state.historyFilters;
-          
-          hFilters.period = { ...aFilters.period };
-          hFilters.accounts = [...aFilters.accounts];
-          hFilters.categories = [catId];
-          hFilters.types = [this._currentType];
-          
-          window.Store.emit();
-          if (window.Router) {
-            window.Router.navigate('#transactions');
-          }
+          const isOpen = this._expandedCatId === catId;
+          if (this._expandedCatId) setExpanded(this._expandedCatId, false);
+          this._expandedCatId = isOpen ? null : catId;
+          if (this._expandedCatId) setExpanded(this._expandedCatId, true);
         });
       });
-      
+
+      // Restore the open accordion after any re-render (this runs on every
+      // attachEvents, including the type toggle's local re-render below).
+      if (this._expandedCatId && panelFor(this._expandedCatId)) {
+        setExpanded(this._expandedCatId, true);
+      } else if (this._expandedCatId) {
+        this._expandedCatId = null; // that category left the top-5
+      }
+
+
       if (window.StackdHydrateIcons) window.StackdHydrateIcons();
 
       if (!canvas || !window.Chart) return;

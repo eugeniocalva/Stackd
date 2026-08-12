@@ -435,9 +435,6 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'tags':
         viewModule = window.Views.TagsView;
         break;
-      case 'tag-detail':
-        viewModule = window.Views.TagDetailView;
-        break;
       case 'category-detail':
         viewModule = window.Views.CategoryDetailView;
         break;
