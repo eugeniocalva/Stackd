@@ -43,46 +43,46 @@ window.Components = {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             <a href="#add" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
               <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="edit-3"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Log</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">${window.I18n.t('nav.addLog')}</span>
             </a>
             <a href="#edit-account" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
               <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="landmark"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Account</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">${window.I18n.t('nav.addAccount')}</span>
             </a>
             <a href="#debt" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
               <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="percent"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Debt</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">${window.I18n.t('nav.debt')}</span>
             </a>
             <a href="#edit-category" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); transition: transform 0.2s ease;">
               <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--bg-surface-dim); color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="tag"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">Add Category</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">${window.I18n.t('nav.addCategory')}</span>
             </a>
             <a href="#settings" class="menu-action-item" style="text-decoration: none; background: var(--bg-surface-sunken); padding: var(--space-4) var(--space-2); border-radius: 20px; grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: var(--space-3); transition: transform 0.2s ease;">
               <div style="width: 32px; height: 32px; border-radius: 10px; background: var(--bg-surface-dim); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></div>
-              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Others &amp; Settings</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">${window.I18n.t('nav.othersSettings')}</span>
             </a>
           </div>
         </div>
 
         <div class="nav-pill">
-          <a href="#dashboard" class="nav-item touch-target" data-view="dashboard" aria-label="Dashboard">
+          <a href="#dashboard" class="nav-item touch-target" data-view="dashboard" aria-label="${window.I18n.t('nav.dashboard')}">
             <div class="nav-icon"><i data-lucide="home"></i></div>
             <div class="nav-item-indicator"></div>
           </a>
-          <a href="#transactions" class="nav-item touch-target" data-view="transactions" aria-label="History">
+          <a href="#transactions" class="nav-item touch-target" data-view="transactions" aria-label="${window.I18n.t('nav.history')}">
             <div class="nav-icon"><i data-lucide="list"></i></div>
             <div class="nav-item-indicator"></div>
           </a>
-          <a href="#budget" class="nav-item touch-target" data-view="budget" aria-label="Goals">
+          <a href="#budget" class="nav-item touch-target" data-view="budget" aria-label="${window.I18n.t('nav.goals')}">
             <div class="nav-icon"><i data-lucide="target"></i></div>
             <div class="nav-item-indicator"></div>
           </a>
-          <a href="#analytics" class="nav-item touch-target" data-view="analytics" aria-label="Analytics">
+          <a href="#analytics" class="nav-item touch-target" data-view="analytics" aria-label="${window.I18n.t('nav.analytics')}">
             <div class="nav-icon"><i data-lucide="pie-chart"></i></div>
             <div class="nav-item-indicator"></div>
           </a>
         </div>
-        <button id="nav-fab-toggle" class="nav-fab touch-target" aria-label="Toggle Actions" aria-expanded="false" style="border: none; cursor: pointer;">
+        <button id="nav-fab-toggle" class="nav-fab touch-target" aria-label="${window.I18n.t('nav.toggleActions')}" aria-expanded="false" style="border: none; cursor: pointer;">
           <i data-lucide="plus" style="width: 28px; height: 28px;"></i>
         </button>
       `;
@@ -160,15 +160,20 @@ window.Components = {
         }
       };
 
-      container.addEventListener('click', (e) => {
+      // v0.88 P8c: attachEvents re-runs on language change (main.js re-renders
+      // the nav); the container-level listener survives innerHTML swaps, so it
+      // must replace itself instead of stacking a duplicate.
+      if (container._navClickHandler) container.removeEventListener('click', container._navClickHandler);
+      container._navClickHandler = (e) => {
         const navItem = e.target.closest('.nav-item');
         if (navItem) handleTabAction(e, navItem);
-        
+
         // Close menu if clicking menu items
         if (e.target.closest('.menu-action-item')) {
           this.closeMenu(container);
         }
-      });
+      };
+      container.addEventListener('click', container._navClickHandler);
     }
   },
 
@@ -894,13 +899,13 @@ window.Components = {
         <div class="list-item-content">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
-              <span>${category ? category.name : (transaction.transferRef ? 'Transfer' : 'Unknown')}</span>
+              <span>${category ? category.name : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.unknown'))}</span>
             </div>
             <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px;">
             <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
-              <div class="list-item-subtitle" style="flex-shrink: 0;">${accountData ? accountData.name : 'Account'}</div>
+              <div class="list-item-subtitle" style="flex-shrink: 0;">${accountData ? accountData.name : window.I18n.t('common.account')}</div>
               ${transaction.tags && transaction.tags.length > 0 ? `
               <div class="tx-tags-inline" style="display: flex; align-items: center; gap: 4px; overflow: hidden; min-width: 0; flex: 1;">
                 ${transaction.tags.map(tag => `
@@ -916,7 +921,7 @@ window.Components = {
       // v0.62: Complete branch isolation
       if (!allowSwipe || isSelectionMode) {
         return `
-          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="Transaction of ${formattedAmount}">
+          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
             ${innerContent}
           </div>`;
       }
@@ -924,19 +929,19 @@ window.Components = {
       return `
         <div class="swipe-container" data-id="${transaction.id}">
           <div class="swipe-actions left">
-            <button class="swipe-action-btn paid ${isUnpaid ? 'is-unpaid' : ''}" data-id="${transaction.id}" aria-label="${isUnpaid ? 'Mark as paid' : 'Mark as unpaid'}">
+            <button class="swipe-action-btn paid ${isUnpaid ? 'is-unpaid' : ''}" data-id="${transaction.id}" aria-label="${isUnpaid ? window.I18n.t('tx.markPaid') : window.I18n.t('tx.markUnpaid')}">
               <i data-lucide="check" style="width: 20px; height: 20px;"></i>
             </button>
           </div>
           <div class="swipe-actions right">
-            <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="Edit transaction">
+            <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.editAria')}">
               <i data-lucide="edit-2" style="width: 20px; height: 20px;"></i>
             </button>
-            <button class="swipe-action-btn delete" data-id="${transaction.id}" aria-label="Delete transaction">
+            <button class="swipe-action-btn delete" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.deleteAria')}">
               <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
             </button>
           </div>
-          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="Transaction of ${formattedAmount}">
+          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
             ${innerContent}
           </div>
         </div>`;
@@ -966,10 +971,10 @@ window.Components = {
     render(pageKey, filters) {
       const { type, value } = filters.period;
       const types = [
-        { id: 'today', label: 'Day' },
-        { id: 'week', label: 'Week' },
-        { id: 'month', label: 'Month' },
-        { id: 'year', label: 'Year' }
+        { id: 'today', label: window.I18n.t('filter.day') },
+        { id: 'week', label: window.I18n.t('filter.week') },
+        { id: 'month', label: window.I18n.t('filter.month') },
+        { id: 'year', label: window.I18n.t('filter.year') }
       ];
       
       const hasCustomRange = type === 'custom';
@@ -991,13 +996,13 @@ window.Components = {
         <div class="filter-bar-wrapper">
           <div class="filter-bar-scrollable">
             <!-- Navigation controls -->
-            <button class="filter-pill filter-pill-icon" id="btn-prev-${pageKey}" data-page="${pageKey}" ${hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="Previous period">
+            <button class="filter-pill filter-pill-icon" id="btn-prev-${pageKey}" data-page="${pageKey}" ${hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="${window.I18n.t('filter.prevPeriod')}">
               <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
             </button>
             <button class="filter-pill" id="btn-today-${pageKey}" data-page="${pageKey}" ${hasCustomRange && pageKey !== 'history' ? 'disabled style="opacity:0.3"' : ''}>
-              Today
+              ${window.I18n.t('filter.today')}
             </button>
-            <button class="filter-pill filter-pill-icon" id="btn-next-${pageKey}" data-page="${pageKey}" ${isFuture || hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="Next period">
+            <button class="filter-pill filter-pill-icon" id="btn-next-${pageKey}" data-page="${pageKey}" ${isFuture || hasCustomRange ? 'disabled style="opacity:0.3"' : ''} aria-label="${window.I18n.t('filter.nextPeriod')}">
               <i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i>
             </button>
 
@@ -1005,7 +1010,7 @@ window.Components = {
 
             <button class="filter-pill filter-pill-icon ${hasAnyFilter ? 'active' : ''}" 
                     id="btn-clear-${pageKey}" data-page="${pageKey}" 
-                    aria-label="Clear all filters" title="Clear all filters"
+                    aria-label="${window.I18n.t('filter.clearAll')}" title="${window.I18n.t('filter.clearAll')}"
                     ${!hasAnyFilter ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>
               <i data-lucide="filter-x" style="width: 18px; height: 18px;"></i>
             </button>
@@ -1018,12 +1023,12 @@ window.Components = {
             `).join('')}
             
             <button class="filter-pill filter-pill-icon ${hasCustomRange ? 'active' : ''}" 
-                    id="btn-calendar-${pageKey}" data-page="${pageKey}" aria-label="Calendar range">
+                    id="btn-calendar-${pageKey}" data-page="${pageKey}" aria-label="${window.I18n.t('filter.calendarRange')}">
               <i data-lucide="calendar" style="width: 18px; height: 18px;"></i>
             </button>
             
             <button class="filter-pill filter-pill-icon ${hasActiveCategoryAccountFilters ? 'active' : ''}" 
-                    id="btn-filter-${pageKey}" data-page="${pageKey}" aria-label="Filter and Sort">
+                    id="btn-filter-${pageKey}" data-page="${pageKey}" aria-label="${window.I18n.t('filter.filterAndSort')}">
               <i data-lucide="sliders-horizontal" style="width: 18px; height: 18px;"></i>
             </button>
           </div>

@@ -47,6 +47,8 @@ const bootStore = (opts = {}) => {
 
   // Same order as index.html; widgets.js sits after store.js.
   executeFile('db.js');
+  executeFile('i18n.js');
+  executeFile('i18n/en.js');
   executeFile('loan-engine.js');
   executeFile('store.js');
   executeFile('widgets.js');
@@ -87,6 +89,8 @@ describe('Home widgets — store slice', () => {
       };
       global.localStorage = carried;
       executeFile('db.js');
+      executeFile('i18n.js');
+      executeFile('i18n/en.js');
       executeFile('loan-engine.js');
       executeFile('store.js');
       executeFile('widgets.js');
@@ -140,6 +144,8 @@ describe('Home widgets — store slice', () => {
     carried.forEach((v, k) => global.window.localStorage.setItem(k, v));
     global.localStorage = global.window.localStorage;
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('loan-engine.js');
     executeFile('store.js');
     global.window.Store.init();

@@ -25,6 +25,8 @@ describe('Tag Input Formatting', () => {
     window.StackdHydrateIcons = vi.fn();
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
 

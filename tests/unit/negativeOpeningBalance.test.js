@@ -43,6 +43,8 @@ describe('Negative Opening Balance Support', () => {
       Views: {}
     };
 
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('views.js');
   });
 

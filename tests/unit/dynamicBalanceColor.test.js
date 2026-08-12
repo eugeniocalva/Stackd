@@ -51,6 +51,8 @@ describe('Dynamic Balance Color Formatting', () => {
     };
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
     executeFile('views.js');

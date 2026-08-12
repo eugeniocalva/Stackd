@@ -66,6 +66,8 @@ describe('Theme State Management & Detection', () => {
 
     // Load dependencies in order
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
 
     // Initialize store

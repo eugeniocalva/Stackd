@@ -70,6 +70,8 @@ describe('Recurring transaction editing (v0.67)', () => {
     };
     global.localStorage = global.window.localStorage;
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
     Store = global.window.Store;

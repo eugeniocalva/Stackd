@@ -36,6 +36,8 @@ describe('Debt views (hub / simulator / results)', () => {
     global.localStorage = global.window.localStorage;
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('loan-engine.js');
     executeFile('store.js');
     executeFile('components.js');

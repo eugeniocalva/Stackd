@@ -18,7 +18,7 @@ function createCategoryOptions(categories, selectedId, includeDefaultOption = tr
     ).join('');
 
   if (includeDefaultOption) {
-    options = `<option value="" ${!selectedId ? 'selected' : ''}>No category selected</option>` + options;
+    options = `<option value="" ${!selectedId ? 'selected' : ''}>${window.I18n.t('form.noCategorySelected')}</option>` + options;
   }
   return options;
 }
@@ -169,7 +169,7 @@ window.Views = {
 
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
       const accountFilterIndicatorHtml = hasAccountFilter
-        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
+        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
         : '';
 
       // v0.64 - Projection caveat + Today/period-end toggle
@@ -324,19 +324,19 @@ window.Views = {
                 return `
                   <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${acc.color};">
                     <div class="wallet-card-accent-bar"></div>
-                    ${isDefault ? '<div class="wallet-card-default-badge">DEFAULT</div>' : ''}
+                    ${isDefault ? `<div class="wallet-card-default-badge">${window.I18n.t('dash.defaultBadge')}</div>` : ''}
                     
                     <div class="wallet-card-header">
                       <div class="wallet-card-icon-box" style="color: ${acc.color};">
                         <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
                       </div>
-                      <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; opacity: 0.8;" aria-label="Edit account">
+                      <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; opacity: 0.8;" aria-label="${window.I18n.t('common.editAccount')}">
                         <i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i>
                       </div>
                     </div>
 
                     <div class="wallet-card-info">
-                      <div class="wallet-card-type">${acc.type || 'Account'}</div>
+                      <div class="wallet-card-type">${acc.type || window.I18n.t('common.account')}</div>
                       <div class="wallet-card-name">${acc.name}</div>
                       <div class="wallet-card-balance ${balClass}" style="color: ${balColor};">${formattedBal}</div>
                     </div>
@@ -346,7 +346,7 @@ window.Views = {
           })()}
           <div class="btn-add-wallet-card touch-target" id="btn-dashboard-add-wallet">
             <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
-            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase;">Add Wallet</span>
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase;">${window.I18n.t('dash.addWallet')}</span>
           </div>
         </div>
       `;
@@ -367,7 +367,7 @@ window.Views = {
         const signedAbs = absVal > 0 ? `+${formattedAbs}` : formattedAbs;
         const signedPct = pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
 
-        return { abs: signedAbs, pct: `${signedPct} vs. start of mo.`, color };
+        return { abs: signedAbs, pct: window.I18n.t('dash.vsStartOfMonth', { pct: signedPct }), color };
       };
       
       const todayVar = _fmtVariation(forecast.todayAbsDiff, forecast.todayVariation);
@@ -379,24 +379,24 @@ window.Views = {
       const hasCustomFilters = selectedInterval !== 'monthly' ||
         (savedFilters.accounts && savedFilters.accounts.length > 0 && savedFilters.accounts.length < state.accounts.length) ||
         (savedFilters.categories && savedFilters.categories.length > 0);
-      const intervalLabel = selectedInterval.charAt(0).toUpperCase() + selectedInterval.slice(1);
+      const intervalLabel = window.I18n.t('dash.interval.' + selectedInterval);
 
       return `
         <div class="container" style="padding-top: var(--space-8); padding-bottom: 100px;">
           <div style="margin-bottom: var(--space-8);">
-            <p class="section-title">Total Balance</p>
+            <p class="section-title">${window.I18n.t('dash.totalBalance')}</p>
             <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
             <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
               <div style="display: flex; flex-direction: column; gap: 1px;">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
                 ${todayVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.pct}</span>` : ''}
-                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">as of today</span>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">${window.I18n.t('dash.asOfToday')}</span>
               </div>
               <div style="width: 1px; align-self: stretch; background: var(--color-border); flex-shrink: 0;"></div>
               <div style="display: flex; flex-direction: column; gap: 1px;">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.abs}</span>
                 ${eomVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.pct}</span>` : ''}
-                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">projected EOM</span>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">${window.I18n.t('dash.projectedEom')}</span>
               </div>
             </div>
           </div>
@@ -404,22 +404,22 @@ window.Views = {
           ${hasCustomFilters ? `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
               <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">
-                Filtered View (${intervalLabel})
+                ${window.I18n.t('dash.filteredView', { interval: intervalLabel })}
               </span>
-              <button id="btn-reset-graph-filters" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-expense, #ef4444); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px;" aria-label="Reset graph filters to default">
+              <button id="btn-reset-graph-filters" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-expense, #ef4444); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px;" aria-label="${window.I18n.t('dash.resetViewAria')}">
                 <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
-                <span>Reset View</span>
+                <span>${window.I18n.t('dash.resetView')}</span>
               </button>
             </div>
           ` : ''}
 
-          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: calc(-1 * var(--container-pad-left, var(--space-4))); margin-right: calc(-1 * var(--container-pad-right, var(--space-4))); cursor: pointer;" title="Click to view expanded graph" role="button" aria-label="Expand balance graph">
+          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: calc(-1 * var(--container-pad-left, var(--space-4))); margin-right: calc(-1 * var(--container-pad-right, var(--space-4))); cursor: pointer;" title="${window.I18n.t('dash.expandGraphTitle')}" role="button" aria-label="${window.I18n.t('dash.expandGraphAria')}">
             <canvas id="balanceChart"></canvas>
           </div>
           
           <div style="margin-top: var(--space-8);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
-              <p class="section-title" style="margin-bottom: 0;">Wallets</p>
+              <p class="section-title" style="margin-bottom: 0;">${window.I18n.t('dash.wallets')}</p>
             </div>
             ${walletsHtml}
           </div>
@@ -519,7 +519,7 @@ window.Views = {
           const mainFillColor = isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(95, 94, 94, 0.05)';
 
           const datasets = [{
-            label: 'Total Balance',
+            label: window.I18n.t('dash.totalBalance'),
             data: mainPoints,
             borderColor: mainLineColor,
             backgroundColor: mainFillColor,
@@ -730,19 +730,19 @@ window.Views = {
 
             <!-- Start Balance -->
             <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
-              <div style="${summaryLabelStyle}">Start</div>
+              <div style="${summaryLabelStyle}">${window.I18n.t('history.start')}</div>
               <div style="${summaryValueStyle} color: ${startBalColor};">${startStr}</div>
             </div>
 
             <!-- End Balance -->
             <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
-              <div style="${summaryLabelStyle}">End</div>
+              <div style="${summaryLabelStyle}">${window.I18n.t('history.end')}</div>
               <div style="${summaryValueStyle} color: ${endBalColor};">${endStr}</div>
             </div>
 
             <!-- Net Change -->
             <div style="${summaryCellStyle} background: var(--bg-surface-sunken);">
-              <div style="${summaryLabelStyle}">Net Change</div>
+              <div style="${summaryLabelStyle}">${window.I18n.t('history.netChange')}</div>
               <div style="${summaryValueStyle} color: ${netChangeColor};">${netStr}</div>
             </div>
 
@@ -756,7 +756,7 @@ window.Views = {
         txListHtml += `
           <div style="text-align: center; padding: 60px 20px;">
             <div style="font-size: 3rem; margin-bottom: 16px; opacity: 0.5;">📅</div>
-            <p style="color: var(--text-secondary); font-weight: 500;">No transactions for this period.</p>
+            <p style="color: var(--text-secondary); font-weight: 500;">${window.I18n.t('history.emptyPeriod')}</p>
           </div>
         `;
       } else {
@@ -807,7 +807,7 @@ window.Views = {
                 }).join('')}
               </div>
               <div class="day-summary-footer" style="color: ${sumColor};">
-                sum: ${formattedSum}
+                ${window.I18n.t('history.daySum', { amount: formattedSum })}
               </div>
             </div>
           `;
@@ -816,47 +816,47 @@ window.Views = {
 
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
       const accountFilterIndicatorHtml = hasAccountFilter
-        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="Only ${filters.accounts.length} of ${state.accounts.length} accounts included">Partial accounts shown</div>`
+        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
         : '';
 
       // v0.85: a tag filter usually arrives from a drilldown, so say so — an
       // invisible filter reads as "my transactions disappeared". Tap to clear.
       const activeTags = Array.isArray(filters.tags) ? filters.tags : [];
       const tagFilterIndicatorHtml = activeTags.length
-        ? `<div id="history-tag-filter-chip" role="button" tabindex="0" title="Tap to clear the tag filter"
+        ? `<div id="history-tag-filter-chip" role="button" tabindex="0" title="${window.I18n.t('history.clearTagTitle')}"
                 style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface-sunken); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
-             ${activeTags.map(t => t === '__untagged__' ? 'No tag' : '#' + escapeAttr(t)).join(', ')} <span aria-hidden="true">✕</span>
+             ${activeTags.map(t => t === '__untagged__' ? window.I18n.t('history.noTag') : '#' + escapeAttr(t)).join(', ')} <span aria-hidden="true">✕</span>
            </div>`
         : '';
 
-      const sortLabel = isAsc ? 'Oldest First' : 'Newest First';
-      const sortIndicatorHtml = `<div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); opacity: 0.85; text-align: right; margin-top: 2px;">Sorted: ${sortLabel}</div>`;
+      const sortLabel = isAsc ? window.I18n.t('history.oldestFirst') : window.I18n.t('history.newestFirst');
+      const sortIndicatorHtml = `<div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); opacity: 0.85; text-align: right; margin-top: 2px;">${window.I18n.t('history.sortedBy', { order: sortLabel })}</div>`;
 
       const headerContentHtml = isSelectionMode
         ? `
             <div class="page-header contextual-header-bar" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06); width: 100%; box-sizing: border-box; overflow: hidden; gap: 6px;">
-              <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="Cancel selection">
-                Cancel
+              <button id="btn-cancel-selection" class="btn-selection-action" style="background: var(--bg-surface-sunken); border-color: var(--color-border);" aria-label="${window.I18n.t('history.cancelSelectionAria')}">
+                ${window.I18n.t('common.cancel')}
               </button>
               <div class="selection-count-label" style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; flex-shrink: 0;">
-                ${selectedCount} Selected
+                ${window.I18n.t('history.selectedCount', { count: selectedCount })}
               </div>
               <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0; min-width: 0;">
                 <button id="btn-toggle-select-all" class="btn-selection-action">
-                  ${allVisibleSelected ? 'Deselect All' : 'Select All'}
+                  ${allVisibleSelected ? window.I18n.t('history.deselectAll') : window.I18n.t('history.selectAll')}
                 </button>
                 <button id="btn-bulk-delete-header" class="btn-selection-action btn-selection-delete" ${selectedCount === 0 ? 'disabled' : ''}>
-                  Delete ${selectedCount > 0 ? `(${selectedCount})` : ''}
+                  ${selectedCount > 0 ? window.I18n.t('history.deleteWithCount', { count: selectedCount }) : window.I18n.t('common.delete')}
                 </button>
               </div>
             </div>
           `
         : `
             <div class="page-header">
-              <h1 class="page-header-title">History</h1>
+              <h1 class="page-header-title">${window.I18n.t('history.title')}</h1>
               <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                <button id="btn-start-selection-mode" class="btn-selection-action" aria-label="Enter bulk selection mode">
-                  Select
+                <button id="btn-start-selection-mode" class="btn-selection-action" aria-label="${window.I18n.t('history.selectAria')}">
+                  ${window.I18n.t('history.select')}
                 </button>
                 <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
                 ${accountFilterIndicatorHtml}
@@ -934,13 +934,11 @@ window.Views = {
 
         if (!hasRecurring) {
           const count = selectedIds.length;
-          const label = count === 1 ? 'this transaction' : `these ${count} transactions`;
-          const titleText = count === 1 ? 'Delete Transaction?' : `Delete these ${count} transactions?`;
 
           window.Components.Modal.show({
-            title: titleText,
-            content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">Are you sure you want to delete ${label}? <strong>This action cannot be undone.</strong></p>`,
-            saveText: 'Cancel',
+            title: window.I18n.t('history.bulkDelete.title', { count }),
+            content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">${window.I18n.t('history.bulkDelete.confirm', { count })} <strong>${window.I18n.t('common.cannotUndo')}</strong></p>`,
+            saveText: window.I18n.t('common.cancel'),
             showDelete: true,
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
@@ -952,23 +950,23 @@ window.Views = {
             const btnModalSave = document.getElementById('modal-save-btn');
             const btnModalDelete = document.getElementById('modal-delete-btn');
             if (btnModalSave) btnModalSave.className = 'btn btn-secondary';
-            if (btnModalDelete) btnModalDelete.innerHTML = `Delete ${count === 1 ? 'Transaction' : `${count} Transactions`}`;
+            if (btnModalDelete) btnModalDelete.innerHTML = window.I18n.t('history.bulkDelete.button', { count });
           }, 10);
         } else {
           window.Components.Modal.show({
-            title: 'Recurring Items Detected',
+            title: window.I18n.t('history.bulkRecurring.title'),
             content: `
-              <p style="margin-bottom: 16px; color: var(--text-secondary);">Some of the selected transactions belong to a recurring series. How would you like to proceed?</p>
+              <p style="margin-bottom: 16px; color: var(--text-secondary);">${window.I18n.t('history.bulkRecurring.body')}</p>
               <div style="display: flex; flex-direction: column; gap: 10px;">
                 <button id="btn-delete-only-selected" class="btn btn-secondary" style="width: 100%; text-align: left; justify-content: flex-start; padding: 12px 16px; font-weight: 600;">
-                  📌 Delete ONLY selected (${selectedIds.length} items)
+                  📌 ${window.I18n.t('history.bulkRecurring.onlySelected', { count: selectedIds.length })}
                 </button>
                 <button id="btn-delete-selected-future" class="btn" style="width: 100%; text-align: left; justify-content: flex-start; padding: 12px 16px; font-weight: 600; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">
-                  🔄 Delete selected AND all linked future transactions
+                  🔄 ${window.I18n.t('history.bulkRecurring.withFuture')}
                 </button>
               </div>
             `,
-            saveText: 'Cancel',
+            saveText: window.I18n.t('common.cancel'),
             showDelete: false,
             onSave: (closeModal) => closeModal()
           });
@@ -1033,9 +1031,9 @@ window.Views = {
 
           if (txToDelete.recurrence && txToDelete.recurrence.seriesId) {
             window.Components.Modal.show({
-              title: 'Delete Recurring Item',
-              content: '<p style="color: var(--text-secondary); margin-bottom: 12px;">This item is part of a recurring series. How would you like to proceed?</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 Delete ONLY this item</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 Delete this and all FUTURE items</button></div>',
-              saveText: 'Cancel',
+              title: window.I18n.t('history.recurringDelete.title'),
+              content: `<p style="color: var(--text-secondary); margin-bottom: 12px;">${window.I18n.t('history.recurringDelete.body')}</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 ${window.I18n.t('history.recurringDelete.onlyThis')}</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 ${window.I18n.t('history.recurringDelete.withFuture')}</button></div>`,
+              saveText: window.I18n.t('common.cancel'),
               showDelete: false,
               onSave: (closeModal) => closeModal()
             });
@@ -1057,9 +1055,9 @@ window.Views = {
             }, 10);
           } else {
             window.Components.Modal.show({
-              title: 'Delete Transaction',
-              content: '<p style="color: var(--text-secondary);">Are you sure you want to delete this transaction? <strong>This action cannot be undone.</strong></p>',
-              saveText: 'Cancel',
+              title: window.I18n.t('history.deleteOne.title'),
+              content: `<p style="color: var(--text-secondary);">${window.I18n.t('history.bulkDelete.confirm', { count: 1 })} <strong>${window.I18n.t('common.cannotUndo')}</strong></p>`,
+              saveText: window.I18n.t('common.cancel'),
               showDelete: true,
               onSave: (closeModal) => closeModal(),
               onDelete: (closeModal) => {
@@ -1284,9 +1282,9 @@ window.Views = {
         return `
           <div class="container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
             <div style="font-size: 3rem; margin-bottom: 16px;">🏦</div>
-            <h2 style="margin-bottom: 8px;">Create an Account First</h2>
-            <p class="text-secondary" style="margin-bottom: 24px;">You need an account to log a transaction.</p>
-            <a href="#accounts" class="btn btn-primary" style="width: auto;">Go to Accounts</a>
+            <h2 style="margin-bottom: 8px;">${window.I18n.t('form.needAccountTitle')}</h2>
+            <p class="text-secondary" style="margin-bottom: 24px;">${window.I18n.t('form.needAccountBody')}</p>
+            <a href="#accounts" class="btn btn-primary" style="width: auto;">${window.I18n.t('form.goToAccounts')}</a>
           </div>
         `;
       }
@@ -1296,7 +1294,7 @@ window.Views = {
       const txToEdit = editId ? state.transactions.find(t => t.id === editId) : null;
       
       if (editId && !txToEdit) {
-        return `<div class="container" style="padding-top: 40px; text-align: center;"><p>Transaction not found.</p><a href="#transactions" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">Go Back</a></div>`;
+        return `<div class="container" style="padding-top: 40px; text-align: center;"><p>${window.I18n.t('form.txNotFound')}</p><a href="#transactions" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">${window.I18n.t('common.goBack')}</a></div>`;
       }
       
       const isEdit = !!txToEdit;
@@ -1397,15 +1395,15 @@ window.Views = {
       return `
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
-            <h1 class="header-title" style="margin: 0;">${isEdit ? 'Edit Log' : 'New Log'}</h1>
+            <h1 class="header-title" style="margin: 0;">${isEdit ? window.I18n.t('form.editLog') : window.I18n.t('form.newLog')}</h1>
             <a href="#${isEdit ? 'transactions' : 'dashboard'}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
           </div>
           
           <!-- Type Toggle -->
           <div style="display: flex; background: var(--bg-surface); border-radius: var(--radius-sm); padding: 4px; margin-bottom: var(--space-8); ${disableToggles}">
-            <button id="toggle-expense" class="btn ${initialType === 'expense' ? 'btn-danger' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'expense' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'expense' ? '' : 'transparent'};">Expense</button>
-            <button id="toggle-income" class="btn ${initialType === 'income' ? 'btn-income' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'income' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'income' ? '' : 'transparent'};">Income</button>
-            <button id="toggle-transfer" class="btn ${initialType === 'transfer' ? 'btn-primary' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'transfer' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'transfer' ? '' : 'transparent'};">Transfer</button>
+            <button id="toggle-expense" class="btn ${initialType === 'expense' ? 'btn-danger' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'expense' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'expense' ? '' : 'transparent'};">${window.I18n.t('form.expense')}</button>
+            <button id="toggle-income" class="btn ${initialType === 'income' ? 'btn-income' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'income' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'income' ? '' : 'transparent'};">${window.I18n.t('form.income')}</button>
+            <button id="toggle-transfer" class="btn ${initialType === 'transfer' ? 'btn-primary' : ''}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; color: ${initialType === 'transfer' ? '' : 'var(--text-secondary)'}; background: ${initialType === 'transfer' ? '' : 'transparent'};">${window.I18n.t('common.transfer')}</button>
           </div>
           
           <input type="hidden" id="tx-type" value="${initialType}">
@@ -1415,20 +1413,20 @@ window.Views = {
           <!-- Large Amount Input -->
           <div class="amount-input-group">
             <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
-            <label for="tx-amount" class="sr-only">Amount</label>
+            <label for="tx-amount" class="sr-only">${window.I18n.t('form.amount')}</label>
             <input type="number" id="tx-amount" class="amount-input ${initialType === 'expense' ? 'text-expense' : (initialType === 'income' ? 'text-income' : 'text-transfer')}" placeholder="0.00" step="0.01" inputmode="decimal" value="${initialAmount}" style="width: auto; max-width: 200px;">
           </div>
           
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group" id="group-account">
-              <label class="form-label" id="label-account" for="tx-account">${initialType === 'transfer' ? 'From Account' : 'Account'}</label>
+              <label class="form-label" id="label-account" for="tx-account">${initialType === 'transfer' ? window.I18n.t('form.fromAccount') : window.I18n.t('common.account')}</label>
               <select id="tx-account" class="form-control" style="appearance: none;">
                 ${createAccountOptions(state.accounts, initialAccount)}
               </select>
             </div>
             
             <div class="form-group" id="group-transfer-to" style="display: ${initialType === 'transfer' ? 'block' : 'none'};">
-              <label class="form-label" for="tx-transfer-to">To Account</label>
+              <label class="form-label" for="tx-transfer-to">${window.I18n.t('form.toAccount')}</label>
               <select id="tx-transfer-to" class="form-control" style="appearance: none;">
                 ${createAccountOptions(state.accounts, initialToAccount)}
               </select>
@@ -1436,8 +1434,8 @@ window.Views = {
             
             <div class="form-group" id="group-category" style="display: ${initialType === 'transfer' ? 'none' : 'block'};">
               <div class="form-label" style="display:flex; justify-content: space-between;">
-                <label for="tx-category">Category</label>
-                <button id="btn-add-category" class="btn-text" style="color: var(--color-accent); cursor: pointer; border: none; background: transparent; font-weight: 600; font-size: inherit; padding: 0;">+ Add custom</button>
+                <label for="tx-category">${window.I18n.t('form.category')}</label>
+                <button id="btn-add-category" class="btn-text" style="color: var(--color-accent); cursor: pointer; border: none; background: transparent; font-weight: 600; font-size: inherit; padding: 0;">${window.I18n.t('form.addCustom')}</button>
               </div>
               <select id="tx-category" class="form-control" style="appearance: none;" data-initial="${initialCategory}">
                 <!-- Will be populated via JS based on type -->
@@ -1445,36 +1443,36 @@ window.Views = {
             </div>
             
             <div class="form-group">
-              <label class="form-label" for="tx-date">Date</label>
+              <label class="form-label" for="tx-date">${window.I18n.t('form.date')}</label>
               <input type="date" id="tx-date" class="form-control" value="${initialDate}">
             </div>
             ${state.enableTimeInput ? `
             <div class="form-group" id="group-time">
-              <label class="form-label" for="tx-time">Time</label>
+              <label class="form-label" for="tx-time">${window.I18n.t('form.time')}</label>
               <input type="time" id="tx-time" class="form-control" value="${initialTime}">
             </div>
             ` : ''}
             
             <div class="form-group" style="position: relative;">
-              <label class="form-label" for="tx-tags-input">Tags</label>
+              <label class="form-label" for="tx-tags-input">${window.I18n.t('form.tags')}</label>
               <div id="tx-tags-container" class="form-control" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; min-height: 44px; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-md); width: 100%; max-width: 100%; box-sizing: border-box;">
-                ${initialTags.map(t => `<span class="tag-chip" data-tag="${t}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${t} <button style="cursor: pointer; color: var(--text-tertiary); background: transparent; border: none; padding: 0 4px;" class="remove-tag" aria-label="Remove tag ${t}">x</button></span>`).join('')}
-                <input type="text" id="tx-tags-input" placeholder="Add a tag..." autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
+                ${initialTags.map(t => `<span class="tag-chip" data-tag="${t}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${t} <button style="cursor: pointer; color: var(--text-tertiary); background: transparent; border: none; padding: 0 4px;" class="remove-tag" aria-label="${window.I18n.t('form.removeTag', { tag: t })}">x</button></span>`).join('')}
+                <input type="text" id="tx-tags-input" placeholder="${window.I18n.t('form.addTagPlaceholder')}" autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
               </div>
               <div id="tx-tags-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
             <div class="form-group" style="margin-bottom: 0; position: relative;">
-              <label class="form-label" for="tx-comment">Note (Optional)</label>
-              <input type="text" id="tx-comment" class="form-control" placeholder="What was this for?" value="${escapeAttr(initialNote)}" autocomplete="off">
+              <label class="form-label" for="tx-comment">${window.I18n.t('form.noteOptional')}</label>
+              <input type="text" id="tx-comment" class="form-control" placeholder="${window.I18n.t('form.notePlaceholder')}" value="${escapeAttr(initialNote)}" autocomplete="off">
               <div id="tx-comment-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
             <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-paid">
               <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="flex: 1;">
-                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">Paid</strong>
-                  <span id="tx-paid-text" style="font-size: var(--text-sm); color: var(--text-secondary);">${initialIsPaid ? 'Counted in balances' : 'Excluded until marked paid'}</span>
+                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">${window.I18n.t('form.paid')}</strong>
+                  <span id="tx-paid-text" style="font-size: var(--text-sm); color: var(--text-secondary);">${initialIsPaid ? window.I18n.t('form.paidOn') : window.I18n.t('form.paidOff')}</span>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tx-is-paid" ${initialIsPaid ? 'checked' : ''}>
@@ -1486,8 +1484,8 @@ window.Views = {
             <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-recurring">
               <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="flex: 1;">
-                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">Recurrent</strong>
-                  <span id="tx-recurrent-text" style="font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;">Disabled</span>
+                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">${window.I18n.t('form.recurrent')}</strong>
+                  <span id="tx-recurrent-text" style="font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;">${window.I18n.t('form.recurrentDisabled')}</span>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tx-is-recurrent" ${initialIsRecurrent ? 'checked' : ''}>
@@ -1495,7 +1493,7 @@ window.Views = {
                 </label>
               </div>
               <div id="tx-recurrence-end-group" style="display: none; border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 4px;">
-                <label class="form-label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px;">End Date</label>
+                <label class="form-label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px;">${window.I18n.t('form.endDate')}</label>
                 <input type="date" id="tx-recurrence-end-date" class="form-control" value="${initialRecurrenceEndDate}">
               </div>
               <input type="hidden" id="tx-recurrence-interval" value="${initialRecurrenceInterval}">
@@ -1504,10 +1502,10 @@ window.Views = {
             </div>
           </div>
           
-          <button id="btn-save-tx" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">${isEdit ? 'Update Transaction' : 'Save Transaction'}</button>
-          
+          <button id="btn-save-tx" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">${isEdit ? window.I18n.t('form.updateTx') : window.I18n.t('form.saveTx')}</button>
+
           ${isEdit ? `
-            <button id="btn-delete-tx" class="btn" style="width: 100%; padding: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border-radius: var(--radius-lg); font-weight: 600;">Delete Transaction</button>
+            <button id="btn-delete-tx" class="btn" style="width: 100%; padding: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border-radius: var(--radius-lg); font-weight: 600;">${window.I18n.t('form.deleteTx')}</button>
           ` : ''}
         </div>
       `;
@@ -1536,7 +1534,7 @@ window.Views = {
       if (paidToggleEl) {
         paidToggleEl.addEventListener('change', () => {
           const txt = document.getElementById('tx-paid-text');
-          if (txt) txt.textContent = paidToggleEl.checked ? 'Counted in balances' : 'Excluded until marked paid';
+          if (txt) txt.textContent = paidToggleEl.checked ? window.I18n.t('form.paidOn') : window.I18n.t('form.paidOff');
         });
       }
 
@@ -1574,7 +1572,7 @@ window.Views = {
           amountInput.className = 'amount-input text-expense';
           groupCategory.style.display = 'block';
           groupTransferTo.style.display = 'none';
-          labelAccount.textContent = 'Account';
+          labelAccount.textContent = window.I18n.t('common.account');
         } else if (type === 'income') {
           btnIncome.className = 'btn btn-income';
           btnIncome.style.color = '';
@@ -1582,7 +1580,7 @@ window.Views = {
           amountInput.className = 'amount-input text-income';
           groupCategory.style.display = 'block';
           groupTransferTo.style.display = 'none';
-          labelAccount.textContent = 'Account';
+          labelAccount.textContent = window.I18n.t('common.account');
         } else if (type === 'transfer') {
           btnTransfer.className = 'btn btn-primary';
           btnTransfer.style.color = '';
@@ -1590,7 +1588,7 @@ window.Views = {
           amountInput.className = 'amount-input text-transfer';
           groupCategory.style.display = 'none';
           groupTransferTo.style.display = 'block';
-          labelAccount.textContent = 'From Account';
+          labelAccount.textContent = window.I18n.t('form.fromAccount');
         }
         
         updateCategories();
@@ -1618,7 +1616,9 @@ window.Views = {
         if (toggleRecurrent && toggleRecurrent.checked) {
           const vInt = intervalInput.value;
           const vFreq = freqInput.value;
-          recurrentText.textContent = `Repeats every ${vInt} ${vFreq}`;
+          // Whole-sentence key per frequency: word order and gender agreement
+          // differ per language ("toutes les 2 semaines" vs "tous les 2 mois").
+          recurrentText.textContent = window.I18n.t('form.repeatsEvery.' + vFreq, { count: parseInt(vInt) || 1 });
           recurrentText.style.color = 'var(--text-primary)';
           recurrentText.style.fontWeight = '600';
           recurrentText.style.background = 'var(--bg-surface-sunken)';
@@ -1635,7 +1635,7 @@ window.Views = {
             }
           }
         } else if (recurrentText) {
-          recurrentText.textContent = 'Disabled';
+          recurrentText.textContent = window.I18n.t('form.recurrentDisabled');
           recurrentText.style.color = 'var(--text-secondary)';
           recurrentText.style.fontWeight = 'normal';
           recurrentText.style.background = 'transparent';
@@ -1673,21 +1673,21 @@ window.Views = {
         captureDraftTxFormState(container);
         let selectedIcon = 'pin';
         window.Components.Modal.show({
-          title: 'New Category',
+          title: window.I18n.t('form.newCategory'),
           content: `
             <div class="form-group">
-              <label class="form-label">Category Name</label>
-              <input type="text" id="new-cat-name" class="form-control" placeholder="e.g. Subscriptions">
+              <label class="form-label">${window.I18n.t('form.categoryName')}</label>
+              <input type="text" id="new-cat-name" class="form-control" placeholder="${window.I18n.t('form.categoryNamePlaceholder')}">
             </div>
             <div class="form-group">
-              <label class="form-label">Icon</label>
+              <label class="form-label">${window.I18n.t('form.icon')}</label>
               <div id="new-cat-icon-selector" class="touch-target" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-surface-sunken); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <span id="selected-icon-display" style="color: var(--color-primary); display: flex; align-items: center; justify-content: center;"><i data-lucide="${selectedIcon}"></i></span>
-                <span style="color: var(--text-tertiary); font-size: 0.8rem;">Change Icon</span>
+                <span style="color: var(--text-tertiary); font-size: 0.8rem;">${window.I18n.t('form.changeIcon')}</span>
               </div>
             </div>
           `,
-          saveText: 'Create Category',
+          saveText: window.I18n.t('form.createCategory'),
           onSave: (closeModal) => {
             const name = document.getElementById('new-cat-name').value.trim();
             if (name) {
@@ -1966,7 +1966,7 @@ window.Views = {
 
         // v0.67: validate the recurrence window before anything dispatches
         if (recurrenceData && recurrenceData.endDate && recurrenceData.endDate < date) {
-          alert("The recurrence end date can't be before the transaction date.");
+          alert(window.I18n.t('form.recurrenceEndBeforeDate'));
           return;
         }
 
@@ -1998,7 +1998,7 @@ window.Views = {
           // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
             if (accountId === toAccountId) {
-              alert("Cannot transfer to the same account.");
+              alert(window.I18n.t('form.sameAccountTransfer'));
               return;
             }
 
@@ -2157,9 +2157,9 @@ window.Views = {
             });
           } else {
             window.Components.Modal.show({
-              title: 'Delete Transaction?',
-              content: '<p>Do you want to delete this transaction? This action cannot be undone.</p>',
-              saveText: 'Keep',
+              title: window.I18n.t('history.bulkDelete.title', { count: 1 }),
+              content: `<p>${window.I18n.t('form.deleteConfirmBody')}</p>`,
+              saveText: window.I18n.t('form.keep'),
               showDelete: true,
               onSave: (closeModal) => closeModal(),
               onDelete: (closeModal) => {

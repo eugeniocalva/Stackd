@@ -38,6 +38,8 @@ describe('Dynamic Numeric Tile Sizing (v0.61)', () => {
     };
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
     executeFile('views.js');

@@ -486,6 +486,15 @@ document.addEventListener('DOMContentLoaded', () => {
         window._currentActiveView = viewModule;
       }
 
+      // v0.88 P8c: the nav is mounted once, outside the wholesale view render,
+      // so a language change must rebuild it explicitly or its labels keep the
+      // boot-time language.
+      if (navContainer && window.Components.BottomNav && navContainer._lang !== state.language) {
+        navContainer.innerHTML = window.Components.BottomNav.render();
+        window.Components.BottomNav.attachEvents(navContainer);
+        navContainer._lang = state.language;
+      }
+
       if (navContainer && window.Components.BottomNav) {
         window.Components.BottomNav.updateActiveState(navContainer, state.activeView);
       }

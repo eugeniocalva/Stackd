@@ -52,6 +52,8 @@ describe('ExpandedGraphModal Unit Tests', () => {
     global.requestAnimationFrame = (cb) => cb();
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
     executeFile('views.js');

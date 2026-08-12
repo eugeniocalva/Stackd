@@ -27,6 +27,8 @@ describe('computeBalanceForecast with accounts opened in different months', () =
     global.localStorage = global.window.localStorage;
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
 

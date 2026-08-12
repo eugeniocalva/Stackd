@@ -28,6 +28,8 @@ describe('Datetime Sorting Algorithm', () => {
 
     // Load dependencies in order
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
 
     global.window.Store.init();

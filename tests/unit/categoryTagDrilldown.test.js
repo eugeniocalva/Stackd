@@ -35,6 +35,8 @@ const boot = () => {
   global.window.localStorage.setItem('stackd_v1_homeWidgets', '[]');
 
   executeFile('db.js');
+  executeFile('i18n.js');
+  executeFile('i18n/en.js');
   executeFile('loan-engine.js');
   executeFile('store.js');
   global.window.Store.init();

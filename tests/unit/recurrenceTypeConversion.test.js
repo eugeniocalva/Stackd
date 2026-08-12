@@ -28,6 +28,8 @@ describe('Recurring series type conversions', () => {
     };
     global.localStorage = global.window.localStorage;
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
     Store = global.window.Store;

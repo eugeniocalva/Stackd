@@ -27,6 +27,8 @@ describe('HistoryView Daily Summary String', () => {
     };
     
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('views.js');
 

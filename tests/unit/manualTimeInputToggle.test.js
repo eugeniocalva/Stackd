@@ -26,7 +26,8 @@ describe('Manual Time Input Toggle', () => {
     
     // Load dependencies in order
     executeFile('db.js');
-    executeFile('i18n.js'); // v0.86 P8a: OthersView renders the language subtitle from I18n.LANGUAGES
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
     executeFile('views.js');

@@ -25,6 +25,8 @@ describe('Store Logic', () => {
     
     // Load dependencies in order
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('loan-engine.js');
     executeFile('store.js');
     
@@ -205,6 +207,8 @@ describe('Store Logic', () => {
     );
     global.localStorage = global.window.localStorage;
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
 
@@ -327,6 +331,8 @@ describe('Store Logic', () => {
     });
     global.localStorage = global.window.localStorage;
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
     expect(global.window.Store.getState().categories.find(c => c.id === 'cat_debt')).toBeUndefined();

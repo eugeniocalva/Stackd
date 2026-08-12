@@ -34,6 +34,8 @@ describe('Opening Balance Numeric Input & Decimal Shift', () => {
       Views: {}
     };
 
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('views.js');
   });
 

@@ -31,6 +31,8 @@ describe('Today Navigation in History View', () => {
     global.requestAnimationFrame = (cb) => cb();
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
     executeFile('views.js');

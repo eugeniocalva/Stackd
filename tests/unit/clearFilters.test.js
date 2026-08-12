@@ -22,6 +22,8 @@ describe('CLEAR_ALL_FILTERS Action', () => {
     global.localStorage = global.window.localStorage;
     
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     
     vi.useFakeTimers();

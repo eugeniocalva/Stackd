@@ -20,6 +20,8 @@ describe('Modal handoff', () => {
     document.body.innerHTML = '<div id="modal-container"></div>';
     global.window.localStorage = { getItem: vi.fn(), setItem: vi.fn() };
     global.window.StackdHydrateIcons = vi.fn();
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('components.js');
   });
 

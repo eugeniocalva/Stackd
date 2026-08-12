@@ -25,6 +25,8 @@ describe('Background Timestamp Logging', () => {
     
     // Load dependencies in order
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     
     // Mock system time to a fixed timestamp: 14:32:05

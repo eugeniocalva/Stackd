@@ -29,6 +29,8 @@ describe('Multi-Period Filtering Integration', () => {
     
     // Load dependencies
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     
     // Mock system time to Wednesday, April 15, 2026 BEFORE store init

@@ -80,6 +80,8 @@ describe('CategorySelectionModal', () => {
     global.document = global.window.document;
 
     executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
     executeFile('store.js');
     executeFile('components.js');
 
