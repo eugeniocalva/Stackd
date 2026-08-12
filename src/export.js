@@ -186,7 +186,7 @@ window.StackdExport = {
     // Metadata
     doc.setFontSize(10);
     doc.setTextColor(100);
-    const now = new Date().toLocaleString();
+    const now = new Date().toLocaleString(window.Store.getLocale());
     doc.text(`Generated on: ${now}`, 14, 28);
 
     const periodText = (options.period && options.period.start && options.period.end) 

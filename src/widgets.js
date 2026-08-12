@@ -227,7 +227,7 @@ window.Widgets = {
           const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
           const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount));
           const title = cat ? cat.name : (tx.transferRef ? 'Transfer' : 'Unknown');
-          const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
 
           return `
             <div class="widget-row" data-tx-id="${W._esc(tx.id)}">
@@ -386,7 +386,7 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                  callback: (val) => `${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
                 }
               }
             }
@@ -762,7 +762,7 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
                 }
               }
             }
@@ -872,7 +872,7 @@ window.Widgets = {
         const debtCat = (state.categories || []).find(c => c.id === 'cat_debt');
 
         const rowsHtml = merged.slice(0, limit).map(row => {
-          const dateLabel = new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const dateLabel = new Date(`${row.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
           let icon, title, amountHtml, sub;
 
           if (row.isLoan) {

@@ -712,7 +712,7 @@ window.Store = {
     
     if (type === 'custom') {
       if (!start || !end) return 'Custom Range';
-      const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' });
       return `${fmt(start)} - ${fmt(end)}`;
     }
 
@@ -730,15 +730,15 @@ window.Store = {
         if (bounds.start === todayStr) return 'Today';
         const yest = new Date(today); yest.setDate(yest.getDate() - 1);
         if (bounds.start === yest.toISOString().split('T')[0]) return 'Yesterday';
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        return d.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
       
       case 'week':
         if (today >= startDt && today <= endDt) return 'This Week';
-        return `${startDt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${endDt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        return `${startDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })} – ${endDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })}`;
  
       case 'month':
         if (today.getFullYear() === d.getFullYear() && today.getMonth() === d.getMonth()) return 'This Month';
-        return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+        return d.toLocaleDateString(this.getLocale(), { month: 'long', year: 'numeric' });
  
       case 'year':
         if (today.getFullYear() === d.getFullYear()) return 'This Year';
@@ -2059,6 +2059,13 @@ window.Store = {
 
 
 
+  // v0.87 P8b: single choke point for every date/number formatting locale.
+  // Follows the app language (user decision 2026-08-12); guarded so unit test
+  // chains that load store.js without i18n.js keep today's en-US behavior.
+  getLocale() {
+    return window.I18n ? window.I18n.locale() : 'en-US';
+  },
+
   // Currency helpers
   getCurrencySymbol() {
     const symbols = { USD: '$', EUR: '\u20ac', JPY: '\u00a5', GBP: '\u00a3', CNY: '\u00a5' };
@@ -2072,9 +2079,9 @@ window.Store = {
     let formatted;
     if (this.state.currency === 'JPY' || this.state.currency === 'CNY') {
       // No decimal places for Yen / Renminbi
-      formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(abs);
+      formatted = new Intl.NumberFormat(this.getLocale(), { maximumFractionDigits: 0 }).format(abs);
     } else {
-      formatted = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(abs);
+      formatted = new Intl.NumberFormat(this.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(abs);
     }
     return `${isNeg ? '-' : ''}${symbol}${formatted}`;
   },
@@ -2149,7 +2156,7 @@ window.Store = {
       const monthLabels = [];
       for (let m = 11; m >= 0; m--) {
         const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
-        monthLabels.push(d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+        monthLabels.push(d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' }));
       }
 
       const points = [];
@@ -2159,7 +2166,7 @@ window.Store = {
         const d = new Date(now);
         d.setDate(d.getDate() - (i * 7));
         const cutoffStr = fmt(d);
-        const fullLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const fullLabel = d.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' });
         const balance = this.getBalanceAtDate(cutoffStr > todayStr ? todayStr : cutoffStr, accIds, catIds);
         points.push({ x, y: balance, label: fullLabel, fullLabel, balance });
       }
@@ -2193,7 +2200,7 @@ window.Store = {
       const months = [];
       for (let i = 11; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const lbl = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        const lbl = d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' });
         monthLabels.push(lbl);
         months.push({
           year: d.getFullYear(),
@@ -2279,7 +2286,7 @@ window.Store = {
       months.push({
         year: d.getFullYear(),
         month: d.getMonth(),
-        label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+        label: d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' })
       });
     }
     return months.map(m => {
@@ -2318,7 +2325,7 @@ window.Store = {
       const d = new Date(parseInt(year), parseInt(month) - 1, 1);
       return {
         value: val, // 'YYYY-MM'
-        label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) // 'March 2026'
+        label: d.toLocaleDateString(this.getLocale(), { month: 'long', year: 'numeric' }) // 'March 2026'
       };
     });
   },
@@ -2423,7 +2430,7 @@ window.Store = {
         d.setDate(anchorDt.getDate() - i);
         const dStr = d.toISOString().split('T')[0];
         buckets.push({
-          label: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+          label: d.toLocaleDateString(this.getLocale(), { weekday: 'short', day: 'numeric' }),
           start: dStr,
           end: dStr
         });
@@ -2443,7 +2450,7 @@ window.Store = {
         
         const fmt = (dt) => dt.toISOString().split('T')[0];
         buckets.push({
-          label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          label: start.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' }),
           start: fmt(start),
           end: fmt(end)
         });
@@ -2455,7 +2462,7 @@ window.Store = {
         const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         const fmt = (dt) => dt.toISOString().split('T')[0];
         buckets.push({
-          label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          label: d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' }),
           start: fmt(d),
           end: fmt(last)
         });

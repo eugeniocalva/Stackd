@@ -818,7 +818,7 @@ window.Components = {
 
   AccountCard: {
     render(account, balance) {
-      const formattedBalance = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(balance);
+      const formattedBalance = window.Store.formatCurrency(balance); // v0.87 P8b: was pinned en-US/USD
       return `
         <div class="card card-elevated account-card touch-target" data-id="${account.id}" style="cursor: pointer; padding: var(--space-5); width: 100%; justify-content: space-between;" tabindex="0" role="button" aria-label="View account ${account.name}">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -862,7 +862,7 @@ window.Components = {
       }
 
       const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount));
-      const dateStr = new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const dateStr = new Date(transaction.date).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
       
       const isSelectionMode = options && options.isSelectionMode === true;
       const isSelected = options && options.isSelected === true;
@@ -1150,7 +1150,7 @@ window.Components = {
         const s = new Date(currentStart);
         const e = new Date(currentEnd);
         const diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
-        const fmt = (d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const fmt = (d) => new Date(d).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
         summary.innerHTML = `${fmt(currentStart)} - ${fmt(currentEnd)} <span style="color: var(--color-primary); margin-left: 8px;">(${diff} days)</span>`;
       };
 
@@ -2372,7 +2372,7 @@ window.Components = {
                 callback: (val) => {
                   const symbol = window.Store.getCurrencySymbol();
                   const sign = val < 0 ? '-' : '';
-                  const formattedAbs = Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                  const formattedAbs = Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 });
                   return `${sign}${symbol}${formattedAbs}`;
                 }
               }

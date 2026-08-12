@@ -128,8 +128,7 @@ window.Insights = {
         // Exact break-even carries no signal — treat like the other rules'
         // insufficient-data case rather than calling $0.00 "put aside".
         if (amt === 0) return null;
-        // en-US month name, matching the app's other pinned labels (i18n: P8).
-        const month = new Date().toLocaleDateString('en-US', { month: 'long' });
+        const month = new Date().toLocaleDateString(window.Store.getLocale(), { month: 'long' }); // v0.87 P8b
         return {
           stringId: amt >= 0 ? 'onTrackSave' : 'shortfall',
           icon: amt >= 0 ? 'trending-up' : 'trending-down',

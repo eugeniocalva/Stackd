@@ -173,7 +173,7 @@ window.Views = {
         : '';
 
       // v0.64 - Projection caveat + Today/period-end toggle
-      const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
       const upcomingNetStr = `${upcoming.net >= 0 ? '+' : '-'}${window.Store.formatCurrency(Math.abs(upcoming.net))}`;
       const upcomingNoteHtml = (upcoming.count > 0 && rangeEnd > todayStr) ? `
             <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: var(--space-4);">
@@ -770,8 +770,8 @@ window.Views = {
 
         sortedDates.forEach(date => {
           const dayTxs = groups[date];
-          const displayDate = new Date(date + 'T00:00:00').toLocaleDateString(undefined, { 
-            weekday: 'short', month: 'short', day: 'numeric' 
+          const displayDate = new Date(date + 'T00:00:00').toLocaleDateString(window.Store.getLocale(), {
+            weekday: 'short', month: 'short', day: 'numeric'
           });
 
           const daySum = dayTxs.reduce((sum, tx) => {
@@ -2474,7 +2474,7 @@ Object.assign(window.Views, {
       
       const [yearStr, monthStr] = selectedMonth.split('-');
       const d = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
-      const currMonthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const currMonthLabel = d.toLocaleDateString(window.Store.getLocale(), { month: 'long', year: 'numeric' });
 
       const hasPrevMonth = true;
       const hasNextMonth = true;
