@@ -2179,7 +2179,9 @@ window.Components = {
         tooltipBody: isDark ? '#f8fafc' : '#334155',
         tooltipBorder: isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0',
         gridColor: isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.6)',
-        tickColor: '#94a3b8'
+        // v0.83: was '#94a3b8' for BOTH themes — 2.56:1 on light cards, well
+        // under WCAG AA. The ExpandedGraphModal already used this exact pair.
+        tickColor: isDark ? '#94a3b8' : '#64748b'
       };
     },
 

@@ -2077,7 +2077,7 @@ a:focus-visible,
   padding: var(--space-2);
   text-align: center;
   font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  color: var(--text-secondary); /* v0.83: tertiary fails 4.5:1 on dark cards */
 }
 
 /* Widget rows (list-style widget bodies). The list fills the body and
@@ -2134,10 +2134,13 @@ a:focus-visible,
   text-overflow: ellipsis;
 }
 
+/* v0.83 accessibility pass: 12px floor on widget-card text (0.75rem @16px
+   root) and --text-secondary instead of tertiary on sublabels — tertiary is
+   3.5:1 on dark cards, under the WCAG AA 4.5:1 minimum. */
 .widget-row-sub {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   line-height: 1.2;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2343,8 +2346,9 @@ a:focus-visible,
 }
 
 .widget-stat-label {
-  font-size: 0.68rem;
-  color: var(--text-tertiary);
+  font-size: 0.75rem; /* v0.83: was 0.68rem (10.9px) — under the 12px floor */
+  line-height: 1.25;  /* v0.83: captions wrap tighter inside fixed-height cards */
+  color: var(--text-secondary);
   font-weight: 600;
 }
 
@@ -2366,16 +2370,16 @@ a:focus-visible,
 }
 
 .widget-minibar-label {
-  font-size: 0.68rem;
+  font-size: 0.75rem; /* v0.83: was 0.68rem — uppercase+letterspaced made it worse */
   font-weight: 700;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .widget-minibar-value {
   font-family: var(--font-family-display);
-  font-size: 0.78rem;
+  font-size: 0.8rem; /* v0.83: parity with .widget-row-value */
   font-weight: 700;
 }
 
@@ -2465,7 +2469,7 @@ a:focus-visible,
 .widget-legend-name {
   flex: 1;
   min-width: 0;
-  font-size: 0.72rem;
+  font-size: 0.75rem; /* v0.83: 12px floor */
   font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -2476,7 +2480,7 @@ a:focus-visible,
 .widget-legend-pct {
   flex-shrink: 0;
   font-family: var(--font-family-display);
-  font-size: 0.72rem;
+  font-size: 0.75rem; /* v0.83: 12px floor */
   font-weight: 700;
   color: var(--text-primary);
 }

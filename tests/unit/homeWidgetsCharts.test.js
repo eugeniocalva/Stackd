@@ -159,7 +159,7 @@ describe('incomeExpense widget', () => {
     ]);
     const { html } = renderOne('incomeExpense', 'small', {});
     expect(html).toContain('$788.00');
-    expect(html).toContain('incl. scheduled');
+    expect(html).toContain('· EOM');
   });
 
   it('honours the account filter', () => {
@@ -294,7 +294,7 @@ describe('categories widget', () => {
     const bars = renderOne('incomeExpense', 'small', {}).html;
     expect(donut).toContain('$100.00');   // MTD: scheduled 330 not spent yet
     expect(bars).toContain('$430.00');    // EOM: 100 + scheduled 330
-    expect(bars).toContain('incl. scheduled');
+    expect(bars).toContain('· EOM');
   });
 
   it('builds a doughnut chart', () => {

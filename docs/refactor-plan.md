@@ -27,7 +27,17 @@ only when false), two-state TOGGLE_TRANSACTION_PAID (paid = key deleted),
 ADD/UPDATE_TRANSFER stamp/mirror both legs + future/all propagation,
 _processRecurringTransactions strips isPaid from generated members, green
 chip removed (amber edge bar is the sole unpaid indicator).
-P5+ pending.
+P5 shipped (v0.83): 12px floor on widget-card text (stat/minibar labels,
+row-sub, legend name/pct, minibar value 0.8rem, caption line-height 1.25);
+canvas fonts legend 11 / ticks 10; contrast — card sublabels + empty states
+tertiary→secondary, budgets pct text uses --color-expense-val /
+--color-warning-text tokens (amber literal gone), NetFlowChart tickColor
+theme-aware (#64748b light / #94a3b8 dark). Note: `.text-expense` already
+resolved to the AA-passing --color-expense-val via components.css winning the
+cascade over global.css — no scoped override was needed. Small incomeExpense
+hint shortened to "· EOM" so the caption stays one line (zero clipping
+verified across all 11 widget type/size combos in both themes).
+P6+ pending.
 
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.

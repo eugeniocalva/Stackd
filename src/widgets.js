@@ -293,7 +293,7 @@ window.Widgets = {
           return `
             <div class="widget-stat">
               <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net))}</span>
-              <span class="widget-stat-label">net · ${W._esc(cur.label)} · incl. scheduled</span>
+              <span class="widget-stat-label">net · ${W._esc(cur.label)} · EOM</span>
             </div>
             <div class="widget-minibars">
               ${bar('In', cur.income, 'text-income')}
@@ -357,7 +357,7 @@ window.Widgets = {
                 position: 'bottom',
                 labels: {
                   boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle',
-                  color: theme.tickColor, font: { size: 10, family: 'Manrope', weight: '700' }
+                  color: theme.tickColor, font: { size: 11, family: 'Manrope', weight: '700' }
                 }
               },
               tooltip: {
@@ -376,7 +376,7 @@ window.Widgets = {
             scales: {
               x: {
                 grid: { display: false },
-                ticks: { color: theme.tickColor, font: { size: 9, family: 'Manrope', weight: '700' } }
+                ticks: { color: theme.tickColor, font: { size: 10, family: 'Manrope', weight: '700' } }
               },
               y: {
                 min: 0,
@@ -385,7 +385,7 @@ window.Widgets = {
                 ticks: {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
-                  font: { size: 9, family: 'Manrope', weight: '600' },
+                  font: { size: 10, family: 'Manrope', weight: '600' },
                   callback: (val) => `${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                 }
               }
@@ -639,7 +639,7 @@ window.Widgets = {
               x: {
                 display: isLarge,
                 grid: { display: false },
-                ticks: { color: theme.tickColor, font: { size: 9, family: 'Manrope', weight: '700' } }
+                ticks: { color: theme.tickColor, font: { size: 10, family: 'Manrope', weight: '700' } }
               },
               y: { display: false }
             }
@@ -751,7 +751,7 @@ window.Widgets = {
               x: {
                 display: isLarge,
                 grid: { display: false },
-                ticks: { color: theme.tickColor, font: { size: 9, family: 'Manrope', weight: '700' } }
+                ticks: { color: theme.tickColor, font: { size: 10, family: 'Manrope', weight: '700' } }
               },
               y: {
                 display: isLarge,
@@ -761,7 +761,7 @@ window.Widgets = {
                 ticks: {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
-                  font: { size: 9, family: 'Manrope', weight: '600' },
+                  font: { size: 10, family: 'Manrope', weight: '600' },
                   callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                 }
               }
@@ -1021,8 +1021,11 @@ window.Widgets = {
         const bars = rows.slice(0, 4).map(r => {
           const pct = r.bdg.finalLimit > 0 ? Math.min((r.bdg.spent / r.bdg.finalLimit) * 100, 100) : 0;
           const isOver = r.bdg.spent > r.bdg.finalLimit;
+          // v0.83: bar fills keep the vivid --color-expense (graphics, not
+          // text); the pct TEXT uses the AA-contrast pair — the raw red fails
+          // 4.5:1 on light cards and the amber literal failed both themes.
           const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
-          const pctColor = isOver || pct >= 90 ? 'var(--color-expense)' : pct >= 75 ? '#f59e0b' : 'var(--text-secondary)';
+          const pctColor = isOver || pct >= 90 ? 'var(--color-expense-val)' : pct >= 75 ? 'var(--color-warning-text)' : 'var(--text-secondary)';
           return `
             <div class="widget-minibar">
               <div class="widget-minibar-head">
