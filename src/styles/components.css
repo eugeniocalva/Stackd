@@ -1968,6 +1968,85 @@ a:focus-visible,
 
 
 /* ── Home dashboard widgets (v0.72, docs/home-widgets-plan.md §6.1) ──────── */
+/* ── Smart Insights section (v0.84) ──────────────────────────────────────
+   Up to three compact rule-based cards between the Wallets rail and the
+   widget area. Deliberately NOT the fixed-height widget card family — these
+   are single-line-ish rows that grow with their text. */
+.insights-section {
+  margin-top: var(--space-8);
+}
+
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.insight-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: transform var(--dur-quick) var(--ease-spring);
+}
+
+.insight-card:active {
+  transform: scale(0.99);
+}
+
+.insight-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--bg-surface-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.insight-icon svg,
+.insight-icon [data-lucide] {
+  width: 16px;
+  height: 16px;
+}
+
+.insight-value {
+  flex-shrink: 0;
+  font-family: var(--font-family-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary); /* neutral tone; the pairs below override */
+}
+
+/* Tone colors use the AA -text tokens: the flat .text-income class resolves
+   to --color-income-val (#059669), which is only 3.8:1 on light cards —
+   under the 4.5:1 minimum at this 15px size. Scoped here so the shared
+   classes stay untouched elsewhere. */
+.insight-value.text-income {
+  color: var(--color-income-text) !important;
+}
+
+.insight-value.text-expense {
+  color: var(--color-expense-text) !important;
+}
+
+.insight-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem; /* 12px floor, matching the v0.83 widget pass */
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.insight-text strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .widgets-section {
   margin-top: var(--space-8);
   margin-bottom: var(--space-8);

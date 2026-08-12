@@ -37,7 +37,18 @@ resolved to the AA-passing --color-expense-val via components.css winning the
 cascade over global.css — no scoped override was needed. Small incomeExpense
 hint shortened to "· EOM" so the caption stays one line (zero clipping
 verified across all 11 widget type/size combos in both themes).
-P6+ pending.
+P6 shipped (v0.84): src/insights.js (window.Insights, loaded between
+widgets.js and views.js) — four on-device rules (account concentration ≥60%
+with a "nicely spread" variant below, top MTD spending category ≥40% adds
+trim advice, EOM month outlook via computeBalanceForecast incl. scheduled,
+income-source mix ≥50%), top-3 by priority, per-rule try/catch, sentences in
+one STRINGS table with the color-coded value separate (P8 i18n seam), section
+hidden on empty installs, cards tap through to #analytics. An adversarial
+3-lens review (10 agents) confirmed and led to fixes for: outlook gate now
+also counts scheduled rows (no month-boundary flicker), exact break-even
+returns null, concentration requires ≥2 FUNDED accounts, and .insight-value
+tone colors use the AA -text tokens (flat .text-income is 3.8:1 on light).
+P7+ pending.
 
 House rules that apply to every phase:
 - Any `src/*.js` edit bumps its `?v=` in `index.html`; co-dependent files bump together.

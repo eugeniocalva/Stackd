@@ -424,12 +424,17 @@ window.Views = {
             ${walletsHtml}
           </div>
 
+          ${window.Insights ? window.Insights.renderSection(state) : ''}
+
           ${window.Widgets ? window.Widgets.renderSection(state) : ''}
         </div>
       `;
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+
+      // v0.84: smart insights section (between the Wallets rail and widgets)
+      if (window.Insights) window.Insights.attachSection(container, state);
 
       // v0.72: home widget area (replaced the static Financial Milestone card)
       if (window.Widgets) window.Widgets.attachSection(container, state);
