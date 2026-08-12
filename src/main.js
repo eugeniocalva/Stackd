@@ -616,9 +616,7 @@ function _showRegionSetupModal() {
     { code: 'GBP', symbol: '£', label: 'GBP — Pound Sterling' },
     { code: 'CNY', symbol: '¥', label: 'CNY — Renminbi'       },
   ];
-  const LANGUAGES = [
-    { code: 'en', label: 'English' },
-  ];
+  const LANGUAGES = window.I18n.LANGUAGES; // v0.86 P8a: en/fr/it/es/pt
 
   // Defaults: EUR + English
   let selectedCurrency = 'EUR';
@@ -645,14 +643,6 @@ function _showRegionSetupModal() {
       </div>
     `).join('');
 
-    const comingSoon = title === 'Language' ? `
-      <div style="display:flex;align-items:center;gap:16px;padding:14px 0;
-                  opacity:0.4;pointer-events:none;user-select:none;">
-        <span style="flex:1;color:var(--text-secondary);font-style:italic;font-size:var(--text-sm);">
-          🌐&nbsp; More languages coming soon…
-        </span>
-      </div>` : '';
-
     // Append to body so it layers above modal-container's z-index
     const sheet = document.createElement('div');
     sheet.className = 'modal-backdrop';
@@ -666,7 +656,6 @@ function _showRegionSetupModal() {
         </div>
         <div class="modal-body" style="padding-top:var(--space-2);">
           ${optionsHtml}
-          ${comingSoon}
         </div>
       </div>
     `;

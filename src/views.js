@@ -3038,7 +3038,7 @@ Object.assign(window.Views, {
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="globe"></i></div>
                 <div>
                   <div class="list-item-title">Language</div>
-                  <div class="list-item-subtitle" id="current-language-display">${state.language === 'en' ? 'English' : 'English'}</div>
+                  <div class="list-item-subtitle" id="current-language-display">${(window.I18n.LANGUAGES.find(l => l.code === state.language) || { label: 'English' }).label}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
@@ -3256,9 +3256,7 @@ Object.assign(window.Views, {
       // Language picker
       const btnLanguage = document.getElementById('btn-open-language');
       if (btnLanguage) {
-        const LANGUAGES = [
-          { code: 'en', label: 'English' },
-        ];
+        const LANGUAGES = window.I18n.LANGUAGES; // v0.86 P8a: en/fr/it/es/pt
         const openLanguagePicker = () => {
           const current = window.Store.getState().language || 'en';
           const optionsHtml = LANGUAGES.map(l => `

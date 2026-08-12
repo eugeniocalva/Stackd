@@ -174,10 +174,14 @@ and check on device.
 - Prefer whole sentences with placeholders over concatenated fragments —
   word order differs across all four target languages.
 
-## Open decisions for the user
+## Open decisions — RESOLVED (user, 2026-08-12, P8a session)
 
-1. **Support prose** (P8f): English-first *(recommended)* or full translation?
-2. **Number formatting** (P8b): follow the app language *(recommended)* or
-   keep US formatting everywhere regardless of language?
-3. **Default category names** (P8e): display-translate the seeded defaults
-   *(recommended)* or leave them as stored?
+1. **Support prose** (P8f): **full translation**. FAQ/Manual/Terms are
+   translated into all four languages (~250–300 entries each);
+   `ManualModal`'s search must search the *localized* corpus.
+2. **Number formatting** (P8b): **follow the app language**. Dates, numbers,
+   and currency all use `I18n.locale()`; CSV headers stay English.
+3. **Default category names** (P8e): **leave as stored**. Category names
+   always render exactly as stored — no display-time translation, defaults
+   stay English in every language. (P8e shrinks to widgets/insights/period
+   labels only.)

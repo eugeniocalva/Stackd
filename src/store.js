@@ -144,6 +144,9 @@ window.Store = {
     this.state.loans = window.StackdDB.load('loans', []);
     this.state.currency = window.StackdDB.load('currency', 'USD');
     this.state.language = window.StackdDB.load('language', 'en');
+    // v0.86 P8a: keep the i18n engine in sync with the persisted language.
+    // Guarded because a few unit test chains load store.js without i18n.js.
+    if (window.I18n) window.I18n.setLang(this.state.language);
     this.state.historySortOrder = window.StackdDB.load('historySortOrder', 'desc');
     this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', '');
     this.state.theme = window.StackdDB.load('theme', 'system');
@@ -385,6 +388,7 @@ window.Store = {
         if (e.key === 'stackd_v1_budgets') { this.state.budgets = window.StackdDB.load('budgets', []); changed = true; }
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
+        if (e.key === 'stackd_v1_language') { this.state.language = window.StackdDB.load('language', 'en'); if (window.I18n) window.I18n.setLang(this.state.language); changed = true; } // v0.86 P8a
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_theme') {
@@ -1906,6 +1910,9 @@ window.Store = {
       case 'SET_LANGUAGE': {
         this.state.language = payload;
         window.StackdDB.save('language', payload);
+        // v0.86 P8a: the emit() below re-renders the active view wholesale,
+        // so flipping I18n.lang here is all live language switching needs.
+        if (window.I18n) window.I18n.setLang(payload);
         changed = true;
         break;
       }
