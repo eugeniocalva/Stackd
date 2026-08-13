@@ -57,13 +57,76 @@ test.describe('i18n core chrome (Italian)', () => {
     await page.click('#btn-cancel-selection');
   });
 
+  // P8d (v0.89): the remaining views + shared modals.
+  test('settings, categories, tags, goals and debt render in Italian', async ({ page }) => {
+    await page.click('#nav-fab-toggle');
+    await page.click('a[href="#settings"]');
+    await expect(page.locator('h1.header-title')).toHaveText('Altro');
+    // Currency names are localized; the ISO code is not. USD is the store default.
+    await expect(page.locator('#current-currency-display')).toHaveText('USD — Dollaro statunitense');
+    await expect(page.locator('#label-theme-mode')).toHaveText('Preferenza tema');
+    await expect(page.locator('text=Zona pericolosa')).toBeVisible();
+
+    // Account types are a closed enum: the label is localized, the stored
+    // value stays English.
+    await page.click('#nav-fab-toggle');
+    await page.click('a[href="#edit-account"]');
+    await expect(page.locator('h1.header-title')).toHaveText('Nuovo conto');
+    await expect(page.locator('#edit-acc-type option[value="Credit card"]')).toHaveText('Carta di credito');
+    await expect(page.locator('label[for="edit-acc-balance"]')).toHaveText('Saldo iniziale');
+
+    // Categories
+    await page.goto('/#categories');
+    await expect(page.locator('.page-header-title')).toHaveText('Categorie');
+    await expect(page.locator('text=Tutti i tipi')).toBeVisible();
+
+    // Tags (empty state)
+    await page.goto('/#tags');
+    await expect(page.locator('text=Nessun tag per ora')).toBeVisible();
+
+    // Goals / Budget
+    await page.click('a[href="#budget"]');
+    await expect(page.locator('.page-header-title')).toHaveText('Budget');
+    await expect(page.locator('text=Totale speso')).toBeVisible();
+
+    // Debt hub + simulator
+    await page.goto('/#debt');
+    await expect(page.locator('.page-header-title')).toHaveText('Prestiti');
+    await expect(page.locator('.debt-type-tile:has-text("Mutuo")')).toBeVisible();
+    await page.click('.debt-type-tile[data-type="mortgage"]');
+    await expect(page.locator('h1.header-title')).toHaveText('Mutuo');
+    await expect(page.locator('#btn-dsim-calculate')).toHaveText('Calcola');
+  });
+
+  test('the filter modal and custom range use localized month names', async ({ page }) => {
+    await page.click('a[href="#transactions"]');
+    await page.click('#btn-filter-history');
+    await expect(page.locator('text=Filtra e ordina')).toBeVisible();
+    await expect(page.locator('text=Tipo di movimento')).toBeVisible();
+    await page.click('#afm-close');
+
+    // Calendar month names come from Intl, not the dictionary.
+    await page.click('#btn-calendar-history');
+    await expect(page.locator('text=Intervallo personalizzato')).toBeVisible();
+    await expect(page.locator('text=Scorciatoie')).toBeVisible();
+    await expect(page.locator('.multi-select-chip:has-text("Ultimi 7 giorni")')).toBeVisible();
+    const navTitle = await page.locator('.calendar-nav-title').first().textContent();
+    const expected = new Date().toLocaleDateString('it-IT', { month: 'long' });
+    expect(navTitle.toLowerCase()).toContain(expected.toLowerCase());
+  });
+
   test('switching language in Settings re-renders live', async ({ page }) => {
     await page.click('#nav-fab-toggle');
     await page.click('a[href="#settings"]');
     await expect(page.locator('#current-language-display')).toHaveText('Italiano');
 
     await page.click('#btn-open-language');
-    await page.click('.language-opt[data-code="fr"]');
+    // The picker attaches its row listeners on a 50ms timer after the modal
+    // paints, so a click that lands earlier is silently dropped.
+    const frOption = page.locator('.language-opt[data-code="fr"]');
+    await expect(frOption).toBeVisible();
+    await page.waitForTimeout(150);
+    await frOption.click();
 
     // The dispatch re-renders Settings wholesale; the subtitle now shows French
     await expect(page.locator('#current-language-display')).toHaveText('Français');

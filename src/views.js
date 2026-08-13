@@ -143,7 +143,7 @@ window.Views = {
       const bgColor = isPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
       const textColor = isPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
       
-      const deltaLabel = `vs last ${activePeriod.type === 'custom' ? 'period' : (activePeriod.type === 'today' ? 'day' : activePeriod.type)}${clampToToday ? ' to date' : ''}`;
+      const deltaLabel = window.I18n.t(`analytics.${clampToToday ? 'vsLastToDate' : 'vsLast'}.${activePeriod.type}`);
 
       const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom');
@@ -178,12 +178,12 @@ window.Views = {
       const upcomingNoteHtml = (upcoming.count > 0 && rangeEnd > todayStr) ? `
             <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: var(--space-4);">
               <i data-lucide="clock" style="width: 13px; height: 13px; flex-shrink: 0;"></i>
-              <span>${balanceMode === 'end' ? 'Includes' : 'Excludes'} ${upcoming.count} upcoming transaction${upcoming.count === 1 ? '' : 's'} (${upcomingNetStr})</span>
+              <span>${window.I18n.t(balanceMode === 'end' ? 'analytics.upcomingIncluded' : 'analytics.upcomingExcluded', { count: upcoming.count, net: upcomingNetStr })}</span>
             </div>` : '';
       const balanceModeToggleHtml = straddlesToday ? `
             <div style="display: flex; justify-content: center; margin-bottom: var(--space-4);">
               <div class="chart-toggle-group" id="balance-mode-toggle">
-                <button class="chart-toggle-btn ${balanceMode === 'today' ? 'active' : ''}" data-mode="today">Today</button>
+                <button class="chart-toggle-btn ${balanceMode === 'today' ? 'active' : ''}" data-mode="today">${window.I18n.t('filter.today')}</button>
                 <button class="chart-toggle-btn ${balanceMode === 'end' ? 'active' : ''}" data-mode="end">${endShortLabel}</button>
               </div>
             </div>` : '';
@@ -193,7 +193,7 @@ window.Views = {
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
             <div class="page-header">
-              <h1 class="page-header-title">Analytics</h1>
+              <h1 class="page-header-title">${window.I18n.t('nav.analytics')}</h1>
               <div style="text-align: right;">
                 <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
                 ${accountFilterIndicatorHtml}
@@ -208,7 +208,7 @@ window.Views = {
             <!-- DECORATIVE BACKGROUND GRADIENT -->
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
             
-            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">${isProjected ? `Projected Balance · ${endShortLabel}` : (clampToToday ? 'Total Net Balance · Today' : 'Total Net Balance')}</p>
+            <p class="section-title" style="margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; opacity: 0.8;">${isProjected ? window.I18n.t('analytics.projectedBalance', { date: endShortLabel }) : (clampToToday ? window.I18n.t('analytics.totalNetBalanceToday') : window.I18n.t('analytics.totalNetBalance'))}</p>
             <h2 style="font-family: var(--font-family-display); font-size: ${heroFontSize}; font-weight: 800; margin-bottom: ${upcomingNoteHtml ? 'var(--space-2)' : 'var(--space-4)'}; color: var(--text-primary); letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums;">
               ${balanceStr}
             </h2>
@@ -223,11 +223,11 @@ window.Views = {
             ${balanceModeToggleHtml}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg); min-width: 0;">
-                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Net Change</span>
+                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">${window.I18n.t('history.netChange')}</span>
                 <span style="${statValueStyle} color: ${color};">${deltaStr}</span>
               </div>
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-4); background: var(--bg-surface-sunken); border-radius: var(--radius-lg); min-width: 0;">
-                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">Previous</span>
+                <span class="text-secondary" style="font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; opacity: 0.7;">${window.I18n.t('analytics.previous')}</span>
                 <span style="${statValueStyle} color: var(--text-primary);">${prevStr}</span>
               </div>
             </div>
@@ -336,7 +336,7 @@ window.Views = {
                     </div>
 
                     <div class="wallet-card-info">
-                      <div class="wallet-card-type">${acc.type || window.I18n.t('common.account')}</div>
+                      <div class="wallet-card-type">${window.Store.accountTypeLabel(acc.type)}</div>
                       <div class="wallet-card-name">${acc.name}</div>
                       <div class="wallet-card-balance ${balClass}" style="color: ${balColor};">${formattedBal}</div>
                     </div>
@@ -2202,11 +2202,11 @@ Object.assign(window.Views, {
                       <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                       <div style="flex-grow: 1;">
                         <div class="list-item-title" style="margin-bottom: 2px;">${cat.name}</div>
-                        <div class="list-item-subtitle">${txCount} transaction${txCount !== 1 ? 's' : ''}</div>
+                        <div class="list-item-subtitle">${window.I18n.t('cat.txCount', { count: txCount })}</div>
                       </div>
                       <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
                     </div>
-                    <button class="btn-edit-category" data-id="${cat.id}" style="background: transparent; border: none; padding: 0 var(--space-5); color: var(--text-tertiary); font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--border-color); margin: 8px 0;" aria-label="Edit category settings">
+                    <button class="btn-edit-category" data-id="${cat.id}" style="background: transparent; border: none; padding: 0 var(--space-5); color: var(--text-tertiary); font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--border-color); margin: 8px 0;" aria-label="${window.I18n.t('cat.editSettingsAria')}">
                       ⋮
                     </button>
                   </div>`;
@@ -2222,14 +2222,14 @@ Object.assign(window.Views, {
       return `
         <div class="container" style="padding-bottom: 100px;">
           <div class="page-header">
-            <h1 class="page-header-title">Categories</h1>
-            <button class="btn btn-primary" id="btn-create-category" aria-label="New category"
+            <h1 class="page-header-title">${window.I18n.t('others.categories')}</h1>
+            <button class="btn btn-primary" id="btn-create-category" aria-label="${window.I18n.t('cat.newAria')}"
               style="width: 36px; height: 36px; min-width: 36px; padding: 0; border-radius: 14px; font-size: 1.4rem; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">+</button>
           </div>
-          ${renderGroup('Income', income)}
-          ${renderGroup('Expense', expense)}
-          ${renderGroup('All Types', both)}
-          ${state.categories.length === 0 ? '<p class="text-secondary" style="text-align: center; padding: 40px 0;">No categories yet.</p>' : ''}
+          ${renderGroup(window.I18n.t('form.income'), income)}
+          ${renderGroup(window.I18n.t('form.expense'), expense)}
+          ${renderGroup(window.I18n.t('cat.allTypes'), both)}
+          ${state.categories.length === 0 ? `<p class="text-secondary" style="text-align: center; padding: 40px 0;">${window.I18n.t('cat.empty')}</p>` : ''}
         </div>`;
     },
 
@@ -2269,8 +2269,8 @@ Object.assign(window.Views, {
       if (!category) {
         return `
           <div class="container" style="padding-top: 40px; text-align: center;">
-            <p class="text-secondary">Category not found.</p>
-            <a href="#categories" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">Go Back</a>
+            <p class="text-secondary">${window.I18n.t('cat.notFound')}</p>
+            <a href="#categories" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">${window.I18n.t('common.goBack')}</a>
           </div>
         `;
       }
@@ -2281,7 +2281,7 @@ Object.assign(window.Views, {
       if (txs.length === 0) {
         listHtml += `
           <div style="text-align: center; padding: 40px 20px;">
-            <p class="text-secondary">No transactions in this category yet.</p>
+            <p class="text-secondary">${window.I18n.t('cat.noTx')}</p>
           </div>
         `;
       } else {
@@ -2294,7 +2294,7 @@ Object.assign(window.Views, {
 
       return `
         <div class="container" style="padding-bottom: 100px;">
-          <a href="#categories" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Categories"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Categories</a>
+          <a href="#categories" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${window.I18n.t('cat.backAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${window.I18n.t('others.categories')}</a>
           
           <div style="margin-bottom: var(--space-6);">
             <div style="display: flex; align-items: center; gap: var(--space-3);">
@@ -2302,7 +2302,7 @@ Object.assign(window.Views, {
               <h1 class="header-title" style="margin: 0;">${category.name}</h1>
             </div>
             <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-1); margin-left: 60px;">
-              ${txs.length} transaction${txs.length !== 1 ? 's' : ''}
+              ${window.I18n.t('cat.txCount', { count: txs.length })}
             </div>
           </div>
           
@@ -2333,7 +2333,7 @@ Object.assign(window.Views, {
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
       
-      const title = isEdit ? 'Edit Category' : 'New Category';
+      const title = isEdit ? window.I18n.t('cat.editTitle') : window.I18n.t('form.newCategory');
       const name = cat ? cat.name : '';
       const icon = cat ? cat.icon : 'pin';
       const type = cat ? cat.typeHint : 'expense';
@@ -2348,39 +2348,39 @@ Object.assign(window.Views, {
 
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group">
-              <label class="form-label" for="edit-cat-name">Category Name</label>
-              <input type="text" id="edit-cat-name" class="form-control" value="${name}" placeholder="e.g. Shopping, Rent..." autocomplete="off">
+              <label class="form-label" for="edit-cat-name">${window.I18n.t('form.categoryName')}</label>
+              <input type="text" id="edit-cat-name" class="form-control" value="${name}" placeholder="${window.I18n.t('cat.namePlaceholder')}" autocomplete="off">
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="edit-cat-type">Type</label>
+              <label class="form-label" for="edit-cat-type">${window.I18n.t('account.type')}</label>
               <select id="edit-cat-type" class="form-control" style="appearance: none;">
-                <option value="expense" ${type==='expense'?'selected':''}>Expense</option>
-                <option value="income" ${type==='income'?'selected':''}>Income</option>
-                <option value="both" ${type==='both'?'selected':''}>Both</option>
+                <option value="expense" ${type==='expense'?'selected':''}>${window.I18n.t('form.expense')}</option>
+                <option value="income" ${type==='income'?'selected':''}>${window.I18n.t('form.income')}</option>
+                <option value="both" ${type==='both'?'selected':''}>${window.I18n.t('cat.both')}</option>
               </select>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
-              <div class="form-label" id="label-cat-icon">Icon</div>
-              <div id="icon-trigger-field" tabindex="0" role="button" aria-labelledby="label-cat-icon" aria-label="Current icon: ${icon}. Tap to change icon" style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-surface);border-radius:12px;cursor:pointer;transition:background 0.2s;">
+              <div class="form-label" id="label-cat-icon">${window.I18n.t('form.icon')}</div>
+              <div id="icon-trigger-field" tabindex="0" role="button" aria-labelledby="label-cat-icon" aria-label="${window.I18n.t('cat.currentIconAria', { icon })}" style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-surface);border-radius:12px;cursor:pointer;transition:background 0.2s;">
                 <div id="current-icon-display" style="width:64px;height:64px;border-radius:20px;background:var(--bg-surface-elevated);display:flex;align-items:center;justify-content:center;color:var(--color-primary);box-shadow:0 4px 12px rgba(45,51,56,0.08);flex-shrink:0;" aria-hidden="true"><i data-lucide="${icon}" style="width: 32px; height: 32px;"></i></div>
                 <div style="flex:1;">
-                  <div style="font-weight:700;color:var(--text-primary);font-size:1rem;">Tap to change icon</div>
-                  <div style="font-size:0.75rem;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Opens picker</div>
+                  <div style="font-weight:700;color:var(--text-primary);font-size:1rem;">${window.I18n.t('cat.tapToChangeIcon')}</div>
+                  <div style="font-size:0.75rem;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">${window.I18n.t('cat.opensPicker')}</div>
                 </div>
                 <div style="color:var(--text-tertiary);font-size:1rem;" aria-hidden="true">›</div>
               </div>
             </div>
           </div>
 
-          <button id="btn-save-category" class="btn btn-primary" style="width: 100%;">${isEdit ? 'Save Changes' : 'Create Category'}</button>
-          
+          <button id="btn-save-category" class="btn btn-primary" style="width: 100%;">${isEdit ? window.I18n.t('account.saveChanges') : window.I18n.t('form.createCategory')}</button>
+
           ${isEdit ? `
             <button id="btn-delete-category" class="btn" style="width: 100%; margin-top: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border: none;" ${txCount > 0 ? 'disabled' : ''}>
-              Delete Category
+              ${window.I18n.t('cat.deleteCategory')}
             </button>
-            ${txCount > 0 ? `<p style="font-size: 0.8rem; color: var(--text-tertiary); text-align: center; margin-top: 8px;">* Cannot delete category with active transactions</p>` : ''}
+            ${txCount > 0 ? `<p style="font-size: 0.8rem; color: var(--text-tertiary); text-align: center; margin-top: 8px;">${window.I18n.t('cat.cannotDelete')}</p>` : ''}
           ` : ''}
         </div>
       `;
@@ -2439,9 +2439,9 @@ Object.assign(window.Views, {
       if (deleteCatBtn) {
         deleteCatBtn.addEventListener('click', () => {
           window.Components.Modal.show({
-            title: 'Delete Category?',
-            content: '<p>Are you sure you want to delete this category? This action cannot be undone.</p>',
-            saveText: 'Keep',
+            title: window.I18n.t('cat.deleteTitle'),
+            content: `<p>${window.I18n.t('cat.deleteConfirm')}</p>`,
+            saveText: window.I18n.t('form.keep'),
             showDelete: true,
             onSave: (close) => close(),
             onDelete: (close) => {
@@ -2516,20 +2516,20 @@ Object.assign(window.Views, {
         if (hasBudget && bdg.carryover !== 0) {
           const sign = bdg.carryover > 0 ? '+' : '';
           const cf = window.Store.formatCurrency(Math.abs(bdg.carryover));
-          carryOverBadge = `<span style="font-size: 0.7rem; padding: 2px 6px; background: var(--bg-surface-sunken); border-radius: 12px; margin-left: 6px; color: var(--text-secondary);">${sign}${cf} rollover</span>`;
+          carryOverBadge = `<span style="font-size: 0.7rem; padding: 2px 6px; background: var(--bg-surface-sunken); border-radius: 12px; margin-left: 6px; color: var(--text-secondary);">${window.I18n.t('budget.rolloverBadge', { amount: sign + cf })}</span>`;
         }
 
         if (hasBudget) {
           const limitFormatted = window.Store.formatCurrency(bdg.finalLimit);
           const spentFormatted = window.Store.formatCurrency(bdg.spent);
           return `
-            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="Edit budget for ${cat.name}">
+            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.editForAria', { name: cat.name })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${cat.name}${carryOverBadge}</div>
-                    <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">of ${limitFormatted}</span></div>
+                    <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span></div>
                   </div>
                 </div>
                 <div style="font-size: 0.8rem; font-weight: 700; color: ${pctColor};">${pct.toFixed(0)}%</div>
@@ -2541,16 +2541,16 @@ Object.assign(window.Views, {
           `;
         } else {
           return `
-            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="Set budget for ${cat.name}">
+            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.setForAria', { name: cat.name })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${cat.name}</div>
-                    <div class="list-item-subtitle" style="color: var(--text-tertiary);">No limit set — tap to configure</div>
+                    <div class="list-item-subtitle" style="color: var(--text-tertiary);">${window.I18n.t('budget.noLimit')}</div>
                   </div>
                 </div>
-                <div style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">+ Set</div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">${window.I18n.t('budget.setBtn')}</div>
               </div>
               <div style="width: 100%; height: 8px; background: var(--bg-surface-sunken); border-radius: 4px; overflow: hidden; margin-top: 4px;">
                 <div style="height: 100%; width: 0%; border-radius: 4px;"></div>
@@ -2567,20 +2567,20 @@ Object.assign(window.Views, {
           <!-- STICKY HEADER -->
           <div class="history-header-sticky">
             <div class="page-header">
-              <h1 class="page-header-title">Budget</h1>
+              <h1 class="page-header-title">${window.I18n.t('budget.title')}</h1>
             </div>
 
             <!-- Month Switcher (Modern Pill Style) -->
             <div style="display: flex; justify-content: center; align-items: center; background: var(--bg-surface-sunken); padding: 4px; border-radius: 24px; margin: 0 auto; width: fit-content; gap: 4px; border: 1px solid var(--border-color);">
-              <button id="bdg-prev-month" class="btn-month-pill-arrow" ${!hasPrevMonth ? 'disabled' : ''} aria-label="Previous month">
+              <button id="bdg-prev-month" class="btn-month-pill-arrow" ${!hasPrevMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.prevMonth')}">
                 <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
               </button>
 
-              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="Current budget month: ${currMonthLabel}. Tap to change." style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
+              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="${window.I18n.t('budget.currentMonthAria', { month: currMonthLabel })}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
                 ${currMonthLabel}
               </div>
 
-              <button id="bdg-next-month" class="btn-month-pill-arrow" ${!hasNextMonth ? 'disabled' : ''} aria-label="Next month">
+              <button id="bdg-next-month" class="btn-month-pill-arrow" ${!hasNextMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.nextMonth')}">
                 <i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i>
               </button>
             </div>
@@ -2591,17 +2591,17 @@ Object.assign(window.Views, {
             <div style="position: relative; width: 180px; height: 180px; margin: 0 auto; margin-bottom: var(--space-5);">
               <canvas id="budgetChart"></canvas>
               <div class="donut-chart-center">
-                <div class="donut-total-label">${overspent ? 'Overspent' : 'Allocated'}</div>
+                <div class="donut-total-label">${overspent ? window.I18n.t('budget.overspent') : window.I18n.t('budget.allocated')}</div>
                 <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(totalAllocated)}</div>
               </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
               <div style="text-align: left;">
-                <span style="color: var(--text-secondary);">Total Spent</span><br>
+                <span style="color: var(--text-secondary);">${window.I18n.t('budget.totalSpent')}</span><br>
                 <strong>${window.Store.formatCurrency(totalSpent)}</strong>
               </div>
               <div style="text-align: right;">
-                <span style="color: var(--text-secondary);">Remaining</span><br>
+                <span style="color: var(--text-secondary);">${window.I18n.t('budget.remaining')}</span><br>
                 <strong style="color: ${totalAllocated - totalSpent >= 0 ? 'var(--color-income-val)' : 'var(--color-expense-val)'};">${window.Store.formatCurrency(totalAllocated - totalSpent)}</strong>
               </div>
             </div>
@@ -2609,13 +2609,13 @@ Object.assign(window.Views, {
 
           <!-- Type Toggle -->
           <div style="display: flex; background: var(--bg-surface); border-radius: var(--radius-sm); padding: 4px; margin-bottom: var(--space-4);">
-            <button id="bdg-toggle-expense" class="${this.currentBudgetFilter === 'expense' ? 'btn btn-danger' : 'btn'}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; ${this.currentBudgetFilter !== 'expense' ? 'color: var(--text-secondary); background: transparent;' : ''}">Expenses</button>
-            <button id="bdg-toggle-income" class="${this.currentBudgetFilter === 'income' ? 'btn btn-income' : 'btn'}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; ${this.currentBudgetFilter !== 'income' ? 'color: var(--text-secondary); background: transparent;' : ''}">Income</button>
+            <button id="bdg-toggle-expense" class="${this.currentBudgetFilter === 'expense' ? 'btn btn-danger' : 'btn'}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; ${this.currentBudgetFilter !== 'expense' ? 'color: var(--text-secondary); background: transparent;' : ''}">${window.I18n.t('charts.expenses')}</button>
+            <button id="bdg-toggle-income" class="${this.currentBudgetFilter === 'income' ? 'btn btn-income' : 'btn'}" style="flex: 1; border-radius: var(--radius-sm); padding: 8px 4px; font-size: 13px; ${this.currentBudgetFilter !== 'income' ? 'color: var(--text-secondary); background: transparent;' : ''}">${window.I18n.t('form.income')}</button>
           </div>
 
           <!-- Category List -->
           <div class="list-group">
-            ${categoryCards.length > 0 ? categoryCards : '<p class="text-secondary text-center" style="padding: 20px;">No categories in this view.</p>'}
+            ${categoryCards.length > 0 ? categoryCards : `<p class="text-secondary text-center" style="padding: 20px;">${window.I18n.t('budget.noCategories')}</p>`}
           </div>
         </div>
       `;
@@ -2641,7 +2641,7 @@ Object.assign(window.Views, {
 
           <div class="container" style="padding-top: var(--space-6); padding-bottom: 100px;">
             <div class="form-group">
-              <label class="form-label" for="bdg-amount">Monthly Limit</label>
+              <label class="form-label" for="bdg-amount">${window.I18n.t('budget.monthlyLimit')}</label>
               <div style="position: relative;">
                 <span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1.5rem; pointer-events: none;" aria-hidden="true">${currSym}</span>
                 <input type="number" id="bdg-amount" class="form-control" placeholder="0.00" value="${budget.amount || ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;" step="0.01" inputmode="decimal">
@@ -2650,19 +2650,19 @@ Object.assign(window.Views, {
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
               <div class="form-group">
-                <label class="form-label" for="bdg-start">Start Month</label>
-                <input type="text" id="bdg-start" class="form-control" value="${budget.startDate || ''}" readonly placeholder="Select month" style="cursor: pointer; background: var(--bg-surface-sunken);">
+                <label class="form-label" for="bdg-start">${window.I18n.t('budget.startMonth')}</label>
+                <input type="text" id="bdg-start" class="form-control" value="${budget.startDate || ''}" readonly placeholder="${window.I18n.t('budget.selectMonth')}" style="cursor: pointer; background: var(--bg-surface-sunken);">
               </div>
               <div class="form-group">
-                <label class="form-label" for="bdg-end">End Month <span style="font-weight: normal; color: var(--text-tertiary);">(Optional)</span></label>
-                <input type="text" id="bdg-end" class="form-control" value="${budget.endDate || ''}" readonly placeholder="No end date" style="cursor: pointer; background: var(--bg-surface-sunken);">
+                <label class="form-label" for="bdg-end">${window.I18n.t('budget.endMonth')} <span style="font-weight: normal; color: var(--text-tertiary);">${window.I18n.t('common.optional')}</span></label>
+                <input type="text" id="bdg-end" class="form-control" value="${budget.endDate || ''}" readonly placeholder="${window.I18n.t('budget.noEndDate')}" style="cursor: pointer; background: var(--bg-surface-sunken);">
               </div>
             </div>
 
             <div class="card card-elevated" style="margin-top: var(--space-6); padding: var(--space-4); display: flex; align-items: center; justify-content: space-between;">
               <div>
-                <strong style="display: block; margin-bottom: 4px;">Cumulative Rollover</strong>
-                <span style="font-size: var(--text-sm); color: var(--text-secondary);">Unused budget carries over to next month. Overspending deducts from next month.</span>
+                <strong style="display: block; margin-bottom: 4px;">${window.I18n.t('budget.cumulativeRollover')}</strong>
+                <span style="font-size: var(--text-sm); color: var(--text-secondary);">${window.I18n.t('budget.cumulativeRolloverDesc')}</span>
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="bdg-cumulative" ${budget.isCumulative ? 'checked' : ''}>
@@ -2671,7 +2671,7 @@ Object.assign(window.Views, {
             </div>
 
             ${budget.amount ? `
-            <button id="btn-bdg-delete" class="btn" style="width: 100%; margin-top: var(--space-6); color: var(--color-expense); background: var(--color-expense-bg); border: none;">Remove Budget Limit</button>
+            <button id="btn-bdg-delete" class="btn" style="width: 100%; margin-top: var(--space-6); color: var(--color-expense); background: var(--color-expense-bg); border: none;">${window.I18n.t('budget.removeLimit')}</button>
             ` : ''}
 
             <style>
@@ -2908,7 +2908,7 @@ Object.assign(window.Views, {
             <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;"><i data-lucide="hash"></i></div>
             <div>
               <div class="list-item-title">#${escapeAttr(t)}</div>
-              <div class="list-item-subtitle">${counts[t] || 0} transaction${(counts[t] || 0) === 1 ? '' : 's'}</div>
+              <div class="list-item-subtitle">${window.I18n.t('cat.txCount', { count: counts[t] || 0 })}</div>
             </div>
           </div>
           <div style="color: var(--text-tertiary);">›</div>
@@ -2919,8 +2919,8 @@ Object.assign(window.Views, {
         listHtml = `
           <div style="text-align: center; padding: 40px 20px;">
             <div style="font-size: 3rem; margin-bottom: 16px;">🏷️</div>
-            <h3 style="margin-bottom: 8px;">No tags yet</h3>
-            <p class="text-secondary" style="margin-bottom: 0;">Add tags to your transactions to easily organize them.</p>
+            <h3 style="margin-bottom: 8px;">${window.I18n.t('tags.emptyTitle')}</h3>
+            <p class="text-secondary" style="margin-bottom: 0;">${window.I18n.t('tags.emptyBody')}</p>
           </div>
         `;
       }
@@ -2928,7 +2928,7 @@ Object.assign(window.Views, {
       return `
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
-            <h1 class="header-title" style="margin: 0;">Tags</h1>
+            <h1 class="header-title" style="margin: 0;">${window.I18n.t('form.tags')}</h1>
             <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
           </div>
           
@@ -2982,16 +2982,16 @@ Object.assign(window.Views, {
     render(state) {
       return `
         <div class="container" style="padding-bottom: 100px;">
-          <h1 class="header-title" style="margin-top: var(--space-4); margin-bottom: var(--space-8);">Others</h1>
+          <h1 class="header-title" style="margin-top: var(--space-4); margin-bottom: var(--space-8);">${window.I18n.t('others.title')}</h1>
 
-          <div class="section-title">Manage</div>
+          <div class="section-title">${window.I18n.t('others.manage')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
-            <div id="btn-manage-accounts" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="Manage your accounts">
+            <div id="btn-manage-accounts" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.manageAccountsAria')}">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="landmark"></i></div>
                 <div>
-                  <div class="list-item-title">Accounts</div>
-                  <div class="list-item-subtitle">${state.accounts.length} account${state.accounts.length !== 1 ? 's' : ''}</div>
+                  <div class="list-item-title">${window.I18n.t('others.accounts')}</div>
+                  <div class="list-item-subtitle">${window.I18n.t('others.accountCount', { count: state.accounts.length })}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
@@ -3001,8 +3001,8 @@ Object.assign(window.Views, {
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="tag"></i></div>
                 <div>
-                  <div class="list-item-title">Categories</div>
-                  <div class="list-item-subtitle">${state.categories.length} categories</div>
+                  <div class="list-item-title">${window.I18n.t('others.categories')}</div>
+                  <div class="list-item-subtitle">${window.I18n.t('others.categoryCount', { count: state.categories.length })}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
@@ -3012,32 +3012,32 @@ Object.assign(window.Views, {
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="hash"></i></div>
                 <div>
-                  <div class="list-item-title">Tags</div>
-                  <div class="list-item-subtitle">${window.Store.getAllUniqueTags().length} tag${window.Store.getAllUniqueTags().length !== 1 ? 's' : ''}</div>
+                  <div class="list-item-title">${window.I18n.t('form.tags')}</div>
+                  <div class="list-item-subtitle">${window.I18n.t('others.tagCount', { count: window.Store.getAllUniqueTags().length })}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </a>
           </div>
 
-          <div class="section-title">Region Setting</div>
+          <div class="section-title">${window.I18n.t('others.regionSetting')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
-            <div id="btn-open-currency" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="Choose currency">
+            <div id="btn-open-currency" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.chooseCurrencyAria')}">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="coins"></i></div>
                 <div>
-                  <div class="list-item-title">Currency</div>
-                  <div class="list-item-subtitle" id="current-currency-display">${['USD','EUR','JPY','GBP','CNY'].map(c => { const names = { USD:'USD — US Dollar', EUR:'EUR — Euro', JPY:'JPY — Japanese Yen', GBP:'GBP — Pound Sterling', CNY:'CNY — Renminbi' }; return c === state.currency ? names[c] : null; }).filter(Boolean)[0] || 'USD — US Dollar'}</div>
+                  <div class="list-item-title">${window.I18n.t('others.currency')}</div>
+                  <div class="list-item-subtitle" id="current-currency-display">${window.I18n.t('currency.' + (['USD','EUR','JPY','GBP','CNY'].includes(state.currency) ? state.currency : 'USD'))}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
             </div>
             
-            <div id="btn-open-language" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="Choose language">
+            <div id="btn-open-language" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.chooseLanguageAria')}">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="globe"></i></div>
                 <div>
-                  <div class="list-item-title">Language</div>
+                  <div class="list-item-title">${window.I18n.t('others.language')}</div>
                   <div class="list-item-subtitle" id="current-language-display">${(window.I18n.LANGUAGES.find(l => l.code === state.language) || { label: 'English' }).label}</div>
                 </div>
               </div>
@@ -3045,14 +3045,14 @@ Object.assign(window.Views, {
             </div>
           </div>
 
-          <div class="section-title">Data Visualization</div>
+          <div class="section-title">${window.I18n.t('others.dataVisualization')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4);">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="arrow-up-down"></i></div>
                 <div>
-                  <div class="list-item-title" id="label-sort-order">History Sort Order</div>
-                  <div class="list-item-subtitle">Direction of transactions list</div>
+                  <div class="list-item-title" id="label-sort-order">${window.I18n.t('others.sortOrder')}</div>
+                  <div class="list-item-subtitle">${window.I18n.t('others.sortOrderDesc')}</div>
                 </div>
               </div>
               <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-sort-order">
@@ -3065,8 +3065,8 @@ Object.assign(window.Views, {
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="clock"></i></div>
                 <div>
-                  <div class="list-item-title" id="label-enable-time-input">Enable transaction time input</div>
-                  <div class="list-item-subtitle">Show manual time field when creating transactions</div>
+                  <div class="list-item-title" id="label-enable-time-input">${window.I18n.t('others.enableTimeInput')}</div>
+                  <div class="list-item-subtitle">${window.I18n.t('others.enableTimeInputDesc')}</div>
                 </div>
               </div>
               <label class="toggle-switch">
@@ -3076,80 +3076,80 @@ Object.assign(window.Views, {
             </div>
           </div>
 
-          <div class="section-title">Appearance</div>
+          <div class="section-title">${window.I18n.t('others.appearance')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; row-gap: var(--space-2);">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="sun-moon"></i></div>
                 <div>
-                  <div class="list-item-title" id="label-theme-mode">Theme Preference</div>
-                  <div class="list-item-subtitle" id="current-theme-subtitle">${state.theme === 'light' ? 'Light Mode active' : (state.theme === 'dark' ? 'Dark Mode active' : `System Default (${state.activeTheme === 'dark' ? 'Dark' : 'Light'})`)}</div>
+                  <div class="list-item-title" id="label-theme-mode">${window.I18n.t('others.themePreference')}</div>
+                  <div class="list-item-subtitle" id="current-theme-subtitle">${state.theme === 'light' ? window.I18n.t('others.themeLightActive') : (state.theme === 'dark' ? window.I18n.t('others.themeDarkActive') : window.I18n.t('others.themeSystemActive', { mode: window.I18n.t(state.activeTheme === 'dark' ? 'others.themeDark' : 'others.themeLight') }))}</div>
                 </div>
               </div>
               <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-theme-mode">
-                <button id="btn-theme-light" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">Light</button>
-                <button id="btn-theme-dark" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">Dark</button>
-                <button id="btn-theme-system" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">System</button>
+                <button id="btn-theme-light" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">${window.I18n.t('others.themeLight')}</button>
+                <button id="btn-theme-dark" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">${window.I18n.t('others.themeDark')}</button>
+                <button id="btn-theme-system" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">${window.I18n.t('others.themeSystem')}</button>
               </div>
             </div>
           </div>
 
-          <div class="section-title">Data Export</div>
+          <div class="section-title">${window.I18n.t('others.dataExport')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
-              Export your data as CSV files to use in Google Sheets, Excel, or any spreadsheet app.
+              ${window.I18n.t('others.exportDesc')}
             </p>
             <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-              <button class="btn btn-secondary" id="btn-export-accounts">Export Accounts</button>
-              <button class="btn btn-secondary" id="btn-export-categories">Export Categories</button>
-              <button class="btn btn-secondary" id="btn-export-transactions">Export Transactions</button>
-              <button class="btn btn-secondary" id="btn-export-loans">Export Loans</button>
+              <button class="btn btn-secondary" id="btn-export-accounts">${window.I18n.t('others.exportAccounts')}</button>
+              <button class="btn btn-secondary" id="btn-export-categories">${window.I18n.t('others.exportCategories')}</button>
+              <button class="btn btn-secondary" id="btn-export-transactions">${window.I18n.t('others.exportTransactions')}</button>
+              <button class="btn btn-secondary" id="btn-export-loans">${window.I18n.t('others.exportLoans')}</button>
             </div>
           </div>
-          
-          <div class="section-title">Data Import</div>
+
+          <div class="section-title">${window.I18n.t('others.dataImport')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
-              Import historical records from other apps or bank CSV statements. File must include columns: <b>Date, Amount, Type, Account, Category, Note</b>. A loans export is recognised automatically.
+              ${window.I18n.t('others.importDesc', { columns: '<b>Date, Amount, Type, Account, Category, Note</b>' })}
             </p>
             <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
-            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">Import CSV</button>
+            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${window.I18n.t('others.importCsv')}</button>
           </div>
-          
-          <div class="section-title">Support</div>
+
+          <div class="section-title">${window.I18n.t('others.support')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5);">
             <div class="list-group">
-              <div class="list-item" id="btn-open-faq" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open FAQ">
-                <div class="list-item-content"><div class="list-item-title">FAQ</div></div>
+              <div class="list-item" id="btn-open-faq" style="cursor: pointer;" tabindex="0" role="button" aria-label="${window.I18n.t('others.openFaqAria')}">
+                <div class="list-item-content"><div class="list-item-title">${window.I18n.t('others.faq')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" id="btn-open-manual" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open user manual">
-                <div class="list-item-content"><div class="list-item-title">User Manual</div></div>
+              <div class="list-item" id="btn-open-manual" style="cursor: pointer;" tabindex="0" role="button" aria-label="${window.I18n.t('others.openManualAria')}">
+                <div class="list-item-content"><div class="list-item-title">${window.I18n.t('others.userManual')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" style="cursor: pointer;" onclick="alert('Thank you for trying Stackd! Send feedback to hi@stackd.com')">
-                <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">Send a Feedback</div></div>
+              <div class="list-item" id="btn-send-feedback" style="cursor: pointer;" tabindex="0" role="button">
+                <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">${window.I18n.t('others.sendFeedback')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" style="cursor: pointer;" onclick="alert('App Store rating flow coming soon.')">
-                <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">Rate the App</div></div>
+              <div class="list-item" id="btn-rate-app" style="cursor: pointer;" tabindex="0" role="button">
+                <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">${window.I18n.t('others.rateApp')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
-              <div class="list-item" id="btn-open-terms" style="cursor: pointer;" tabindex="0" role="button" aria-label="Open terms and conditions">
-                <div class="list-item-content"><div class="list-item-title">Terms and Conditions</div></div>
+              <div class="list-item" id="btn-open-terms" style="cursor: pointer;" tabindex="0" role="button" aria-label="${window.I18n.t('others.openTermsAria')}">
+                <div class="list-item-content"><div class="list-item-title">${window.I18n.t('others.terms')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
             </div>
           </div>
           
-          <div class="section-title" style="color: var(--color-expense);">Danger Zone</div>
+          <div class="section-title" style="color: var(--color-expense);">${window.I18n.t('others.dangerZone')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-8); padding: var(--space-4) var(--space-5); border: 1px solid rgba(239, 68, 68, 0.3);">
             <div id="btn-factory-reset" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0; background: var(--color-expense-bg); color: var(--color-expense);"><i data-lucide="alert-triangle"></i></div>
                 <div>
-                  <div class="list-item-title" style="color: var(--color-expense); font-weight: 600;">Factory Reset</div>
-                  <div class="list-item-subtitle text-secondary">Erase all data and start fresh</div>
+                  <div class="list-item-title" style="color: var(--color-expense); font-weight: 600;">${window.I18n.t('others.factoryReset')}</div>
+                  <div class="list-item-subtitle text-secondary">${window.I18n.t('others.factoryResetDesc')}</div>
                 </div>
               </div>
             </div>
@@ -3176,6 +3176,17 @@ Object.assign(window.Views, {
         const openTerms = () => window.Components.TermsModal.show();
         termsBtn.addEventListener('click', openTerms);
         termsBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTerms(); } });
+      }
+      // v0.89 P8d: these two were inline onclick="alert('…')" with the message
+      // baked into the attribute, which no amount of escaping makes safe to
+      // interpolate a translation into. Wired here instead.
+      const feedbackBtn = document.getElementById('btn-send-feedback');
+      if (feedbackBtn) {
+        feedbackBtn.addEventListener('click', () => alert(window.I18n.t('others.feedbackAlert')));
+      }
+      const rateBtn = document.getElementById('btn-rate-app');
+      if (rateBtn) {
+        rateBtn.addEventListener('click', () => alert(window.I18n.t('others.rateAlert')));
       }
       const exportAccBtn = document.getElementById('btn-export-accounts');
       if (exportAccBtn) {
@@ -3219,11 +3230,11 @@ Object.assign(window.Views, {
       const btnCurrency = document.getElementById('btn-open-currency');
       if (btnCurrency) {
         const CURRENCIES = [
-          { code: 'USD', symbol: '$', label: 'USD — US Dollar' },
-          { code: 'EUR', symbol: '\u20ac', label: 'EUR — Euro' },
-          { code: 'JPY', symbol: '\u00a5', label: 'JPY — Japanese Yen' },
-          { code: 'GBP', symbol: '\u00a3', label: 'GBP — Pound Sterling' },
-          { code: 'CNY', symbol: '\u00a5', label: 'CNY — Chinese Renminbi' },
+          { code: 'USD', symbol: '$', label: window.I18n.t('currency.USD') },
+          { code: 'EUR', symbol: '\u20ac', label: window.I18n.t('currency.EUR') },
+          { code: 'JPY', symbol: '\u00a5', label: window.I18n.t('currency.JPY') },
+          { code: 'GBP', symbol: '\u00a3', label: window.I18n.t('currency.GBP') },
+          { code: 'CNY', symbol: '\u00a5', label: window.I18n.t('currency.CNY') },
         ];
         const openCurrencyPicker = () => {
           const current = window.Store.getState().currency || 'USD';
@@ -3235,9 +3246,9 @@ Object.assign(window.Views, {
             </div>
           `).join('');
           window.Components.Modal.show({
-            title: 'Choose Currency',
+            title: window.I18n.t('others.chooseCurrency'),
             content: `<div>${optionsHtml}</div>`,
-            saveText: 'Done',
+            saveText: window.I18n.t('common.done'),
             onSave: (close) => close()
           });
           setTimeout(() => {
@@ -3267,9 +3278,9 @@ Object.assign(window.Views, {
             </div>
           `).join('');
           window.Components.Modal.show({
-            title: 'Choose Language',
+            title: window.I18n.t('others.chooseLanguage'),
             content: `<div>${optionsHtml}</div>`,
-            saveText: 'Done',
+            saveText: window.I18n.t('common.done'),
             onSave: (close) => close()
           });
           setTimeout(() => {
@@ -3312,7 +3323,7 @@ Object.assign(window.Views, {
           const file = e.target.files[0];
           if (!file) return;
           
-          btnImport.textContent = "Importing...";
+          btnImport.textContent = window.I18n.t('others.importing');
           btnImport.disabled = true;
           
           if (window.StackdImport) {
@@ -3322,27 +3333,31 @@ Object.assign(window.Views, {
               // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
               // rows) used to vanish silently — report them.
               let message = result.kind === 'loans'
-                ? `Success! Imported ${result.importedCount} loan(s).`
-                : `Success! Imported ${result.importedCount} transactions.\nCreated ${result.newAccounts} missing accounts, and ${result.newCategories} missing categories automatically.`;
+                ? window.I18n.t('others.importedLoans', { count: result.importedCount })
+                : window.I18n.t('others.importedTransactions', {
+                    count: result.importedCount,
+                    accounts: result.newAccounts,
+                    categories: result.newCategories
+                  });
               if (result.skippedCount) {
                 const reasons = Object.keys(result.skipped)
                   .map(r => `• ${result.skipped[r]} — ${r}`)
                   .join('\n');
-                message += `\n\nSkipped ${result.skippedCount} row(s):\n${reasons}`;
+                message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
               }
               alert(message);
-              btnImport.textContent = "Import CSV";
+              btnImport.textContent = window.I18n.t('others.importCsv');
               btnImport.disabled = false;
               fileInput.value = ''; // reset
             }, (err) => {
-              alert(`Import failed: ${err.message}`);
-              btnImport.textContent = "Import CSV";
+              alert(window.I18n.t('others.importFailed', { message: err.message }));
+              btnImport.textContent = window.I18n.t('others.importCsv');
               btnImport.disabled = false;
               fileInput.value = ''; // reset
             });
           } else {
-            alert("Import module not loaded.");
-            btnImport.textContent = "Import CSV";
+            alert(window.I18n.t('others.importModuleMissing'));
+            btnImport.textContent = window.I18n.t('others.importCsv');
             btnImport.disabled = false;
           }
         });
@@ -3355,7 +3370,7 @@ Object.assign(window.Views, {
           let accountsListHtml = [...state.accounts]
             .sort((a, b) => window.Store.compareAlpha(a, b))
             .map(acc => `
-              <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="Edit account ${acc.name}">
+              <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.editAccountAria', { name: acc.name })}">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <div style="width: 12px; height: 12px; border-radius: 4px; background-color: ${acc.color}; flex-shrink: 0;"></div>
                   <strong>${acc.name}</strong>
@@ -3364,17 +3379,17 @@ Object.assign(window.Views, {
               </div>
             `).join('');
 
-          if (state.accounts.length === 0) accountsListHtml = '<p class="text-secondary text-center">No accounts yet.</p>';
+          if (state.accounts.length === 0) accountsListHtml = `<p class="text-secondary text-center">${window.I18n.t('others.noAccounts')}</p>`;
 
           window.Components.Modal.show({
-            title: 'Accounts',
+            title: window.I18n.t('others.accounts'),
             content: `
               <div class="list-group" style="margin-bottom: 24px;">
                 ${accountsListHtml}
               </div>
-              <button id="modal-btn-new-account" class="btn btn-primary" style="width: 100%;">+ Create New Account</button>
+              <button id="modal-btn-new-account" class="btn btn-primary" style="width: 100%;">${window.I18n.t('others.createNewAccount')}</button>
             `,
-            saveText: 'Done',
+            saveText: window.I18n.t('common.done'),
             onSave: (closeModal) => closeModal()
           });
 
@@ -3404,9 +3419,9 @@ Object.assign(window.Views, {
       if (btnReset) {
         btnReset.addEventListener('click', () => {
           window.Components.Modal.show({
-            title: 'Factory Reset?',
-            content: '<p style="color: var(--color-expense); font-weight: 500;">WARNING: This will permanently delete ALL your accounts, budgets, and transactions across the application. This cannot be undone.</p>',
-            saveText: 'Keep Data',
+            title: window.I18n.t('others.factoryResetTitle'),
+            content: `<p style="color: var(--color-expense); font-weight: 500;">${window.I18n.t('others.factoryResetWarning')}</p>`,
+            saveText: window.I18n.t('others.keepData'),
             showDelete: true,
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
@@ -3442,7 +3457,7 @@ Object.assign(window.Views, {
       const currSym = window.Store.getCurrencySymbol();
       const txCount = account ? state.transactions.filter(t => t.accountId === account.id).length : 0;
 
-      const title = isEdit ? 'Edit Account' : 'New Account';
+      const title = isEdit ? window.I18n.t('account.editTitle') : window.I18n.t('account.newTitle');
       const nameValue = account ? account.name : '';
       const iconValue = account ? account.icon : 'wallet';
       const typeValue = account ? account.type : 'Account';
@@ -3459,26 +3474,19 @@ Object.assign(window.Views, {
 
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group">
-              <label class="form-label" for="edit-acc-name">Account Name</label>
-              <input type="text" id="edit-acc-name" class="form-control" value="${nameValue}" placeholder="e.g. Wallet, Savings..." autocomplete="off">
+              <label class="form-label" for="edit-acc-name">${window.I18n.t('account.name')}</label>
+              <input type="text" id="edit-acc-name" class="form-control" value="${nameValue}" placeholder="${window.I18n.t('account.namePlaceholder')}" autocomplete="off">
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">Type</label>
+                <label class="form-label">${window.I18n.t('account.type')}</label>
                 <select id="edit-acc-type" class="form-control">
-                  <option value="Bank" ${typeValue === 'Bank' ? 'selected' : ''}>Bank</option>
-                  <option value="Debit card" ${typeValue === 'Debit card' ? 'selected' : ''}>Debit card</option>
-                  <option value="Cash" ${typeValue === 'Cash' ? 'selected' : ''}>Cash</option>
-                  <option value="Savings" ${typeValue === 'Savings' ? 'selected' : ''}>Savings</option>
-                  <option value="Credit card" ${typeValue === 'Credit card' ? 'selected' : ''}>Credit card</option>
-                  <option value="Investment" ${typeValue === 'Investment' ? 'selected' : ''}>Investment</option>
-                  <option value="Wallet" ${typeValue === 'Wallet' ? 'selected' : ''}>Wallet</option>
-                  <option value="Account" ${typeValue === 'Account' ? 'selected' : ''}>Account</option>
+                  ${window.Store.ACCOUNT_TYPES.map(v => `<option value="${v}" ${typeValue === v ? 'selected' : ''}>${window.Store.accountTypeLabel(v)}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">Icon</label>
+                <label class="form-label">${window.I18n.t('form.icon')}</label>
                 <div id="acc-icon-trigger" class="touch-target" style="width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; min-height: var(--target-size);">
                   <i id="acc-icon-preview" data-lucide="${iconValue}"></i>
                 </div>
@@ -3486,12 +3494,12 @@ Object.assign(window.Views, {
             </div>
 
             <div class="form-group" style="margin-bottom: var(--space-5);">
-              <label class="form-label">Account Color</label>
-              <div id="acc-color-picker" style="display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0;" role="radiogroup" aria-label="Account Color">
+              <label class="form-label">${window.I18n.t('account.color')}</label>
+              <div id="acc-color-picker" style="display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0;" role="radiogroup" aria-label="${window.I18n.t('account.color')}">
                 ${(window.Store.ACCOUNT_COLORS || []).map(c => {
                   const isSelected = c.toLowerCase() === (colorValue || '').toLowerCase();
                   return `
-                    <button type="button" class="color-swatch-btn ${isSelected ? 'active' : ''}" data-color="${c}" aria-label="Select color ${c}" style="width: 34px; height: 34px; border-radius: 50%; background-color: ${c}; border: ${isSelected ? '3px solid var(--color-primary)' : '2px solid transparent'}; cursor: pointer; transition: transform 0.2s, border-color 0.2s; transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'}; box-shadow: 0 2px 6px rgba(0,0,0,0.15);" role="radio" aria-checked="${isSelected}"></button>
+                    <button type="button" class="color-swatch-btn ${isSelected ? 'active' : ''}" data-color="${c}" aria-label="${window.I18n.t('account.selectColorAria', { color: c })}" style="width: 34px; height: 34px; border-radius: 50%; background-color: ${c}; border: ${isSelected ? '3px solid var(--color-primary)' : '2px solid transparent'}; cursor: pointer; transition: transform 0.2s, border-color 0.2s; transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'}; box-shadow: 0 2px 6px rgba(0,0,0,0.15);" role="radio" aria-checked="${isSelected}"></button>
                   `;
                 }).join('')}
               </div>
@@ -3499,28 +3507,28 @@ Object.assign(window.Views, {
 
             <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <label class="form-label" for="edit-acc-balance" style="margin-bottom: 0;">Opening Balance</label>
-                <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 14px; padding: 2px;" role="group" aria-label="Balance sign">
-                  <button type="button" id="btn-ob-pos" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${!isNegativeOb ? 'background: var(--color-primary); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!isNegativeOb}">Positive</button>
-                  <button type="button" id="btn-ob-neg" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${isNegativeOb ? 'background: var(--color-expense); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${isNegativeOb}">Negative</button>
+                <label class="form-label" for="edit-acc-balance" style="margin-bottom: 0;">${window.I18n.t('account.openingBalance')}</label>
+                <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 14px; padding: 2px;" role="group" aria-label="${window.I18n.t('account.balanceSignAria')}">
+                  <button type="button" id="btn-ob-pos" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${!isNegativeOb ? 'background: var(--color-primary); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!isNegativeOb}">${window.I18n.t('account.positive')}</button>
+                  <button type="button" id="btn-ob-neg" class="btn" style="padding: 2px 10px; font-size: 11px; min-height: 0; height: 24px; border-radius: 12px; font-weight: 600; ${isNegativeOb ? 'background: var(--color-expense); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${isNegativeOb}">${window.I18n.t('account.negative')}</button>
                 </div>
               </div>
               <div style="position: relative;">
                 <span id="ob-sign-symbol" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: ${isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)'}; font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${isNegativeOb ? '-' : ''}${currSym}</span>
                 <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(2)}" placeholder="0.00" inputmode="numeric" style="padding-left: ${isNegativeOb ? '38px' : '30px'}; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
               </div>
-              <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">Use negative for credit cards, loans, or existing debts.</p>
+              <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.negativeHint')}</p>
             </div>
 
             <div class="form-group" style="margin-bottom: var(--space-5);">
-              <label class="form-label" for="edit-acc-date">Opening Balance Date</label>
+              <label class="form-label" for="edit-acc-date">${window.I18n.t('account.openingBalanceDate')}</label>
               <input type="date" id="edit-acc-date" class="form-control" value="${currentObDate}">
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-2);">
               <div style="flex: 1;">
-                <label class="form-label" style="margin-bottom: 0; cursor: pointer;" for="edit-acc-default">Set as Default Wallet</label>
-                <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 2px 0 0 4px;">Primary account for dashboard overview.</p>
+                <label class="form-label" style="margin-bottom: 0; cursor: pointer;" for="edit-acc-default">${window.I18n.t('account.setDefault')}</label>
+                <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 2px 0 0 4px;">${window.I18n.t('account.setDefaultHint')}</p>
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="edit-acc-default" ${isDefault ? 'checked' : ''}>
@@ -3538,13 +3546,13 @@ Object.assign(window.Views, {
             </style>
           </div>
 
-          <button id="btn-edit-acc-save" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">${isEdit ? 'Save Changes' : 'Create Account'}</button>
+          <button id="btn-edit-acc-save" class="btn btn-primary" style="width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); margin-bottom: 8px;">${isEdit ? window.I18n.t('account.saveChanges') : window.I18n.t('account.createAccount')}</button>
 
           ${isEdit ? `
-          <button id="btn-edit-acc-delete" class="btn" style="width: 100%; padding: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border-radius: var(--radius-lg); font-weight: 600;">Delete Account</button>
+          <button id="btn-edit-acc-delete" class="btn" style="width: 100%; padding: var(--space-4); color: var(--color-expense); background: var(--color-expense-bg); border-radius: var(--radius-lg); font-weight: 600;">${window.I18n.t('account.deleteAccount')}</button>
           ` : ''}
 
-          <p class="text-secondary" style="text-align: center; font-size: var(--text-sm); margin-top: var(--space-4);">${isEdit ? `${txCount} transaction${txCount !== 1 ? 's' : ''} associated with this account.` : 'Enter the balance at the time of creation.'}</p>
+          <p class="text-secondary" style="text-align: center; font-size: var(--text-sm); margin-top: var(--space-4);">${isEdit ? window.I18n.t('account.txAssociated', { count: txCount }) : window.I18n.t('account.enterOpeningHint')}</p>
         </div>
       `;
     },
@@ -3761,9 +3769,9 @@ Object.assign(window.Views, {
       if (btnDelete && account) {
         btnDelete.addEventListener('click', () => {
           window.Components.Modal.show({
-            title: 'Delete Account?',
-            content: `<p>Are you sure you want to delete "${account.name}"? <strong>All associated transactions will be permanently deleted.</strong></p>`,
-            saveText: 'Cancel',
+            title: window.I18n.t('account.deleteTitle'),
+            content: `<p>${window.I18n.t('account.deleteConfirm', { name: account.name })} <strong>${window.I18n.t('account.deleteWarning')}</strong></p>`,
+            saveText: window.I18n.t('common.cancel'),
             showDelete: true,
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
@@ -3776,7 +3784,7 @@ Object.assign(window.Views, {
             const btnModalSave = document.getElementById('modal-save-btn');
             const btnModalDelete = document.getElementById('modal-delete-btn');
             if (btnModalSave) btnModalSave.className = 'btn btn-secondary';
-            if (btnModalDelete) btnModalDelete.innerHTML = 'Yes, Delete Everything';
+            if (btnModalDelete) btnModalDelete.innerHTML = window.I18n.t('account.deleteEverything');
           }, 10);
         });
       }
@@ -3787,10 +3795,12 @@ Object.assign(window.Views, {
   // docs/debt-rebuild-plan.md §3 (nav conventions) + §8 Phase 3. All money
   // formatting goes through Store.formatCurrency; all math through LoanEngine.
   _DebtShared: {
+    // v0.89 P8d: label holds an i18n KEY (resolved via I18n.t at render time so
+    // live language switches reach these), never display text.
     TYPES: {
-      mortgage: { label: 'Mortgage', icon: 'building-2' },
-      personal: { label: 'Personal Loan', icon: 'wallet' },
-      installment: { label: 'Installment Plan', icon: 'percent' }
+      mortgage: { label: 'debt.type.mortgage', icon: 'building-2' },
+      personal: { label: 'debt.type.personal', icon: 'wallet' },
+      installment: { label: 'debt.type.installment', icon: 'percent' }
     },
 
     // Working copy of the simulator form; lives outside the store so wholesale
@@ -3813,8 +3823,8 @@ Object.assign(window.Views, {
     },
 
     durationLabel(config) {
-      const unit = config.durationUnit === 'months' ? 'month' : 'year';
-      return `${config.duration} ${unit}${config.duration === 1 ? '' : 's'}`;
+      const key = config.durationUnit === 'months' ? 'debt.duration.months' : 'debt.duration.years';
+      return window.I18n.t(key, { count: config.duration });
     },
 
     summary(config) {
@@ -3913,7 +3923,7 @@ Object.assign(window.Views, {
         account: state.defaultAccountId || '',
         category: 'cat_debt',
         date: next.date,
-        note: `${loan.name} — loan payment`,
+        note: window.I18n.t('debt.paymentNote', { name: loan.name }),
         isRecurrent: true,
         recurrenceInterval: '1',
         recurrenceFreq: 'months',
@@ -3945,16 +3955,20 @@ Object.assign(window.Views, {
       const noteLine = (text) => `<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-top: var(--space-2);">${text}</div>`;
 
       window.Components.Modal.show({
-        title: 'Track this payment?',
+        title: window.I18n.t('debt.track.title'),
         content: `
           <p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0 0 var(--space-3);">
-            Add <strong style="color: var(--text-primary);">${this.fmtC(next.amountC)}</strong> as a monthly expense starting ${this.fmtDate(next.date)}, so ${this.esc(loan.name)} shows up in your history and budgets automatically.
+            ${window.I18n.t('debt.track.body', {
+              amount: `<strong style="color: var(--text-primary);">${this.fmtC(next.amountC)}</strong>`,
+              date: this.fmtDate(next.date),
+              name: this.esc(loan.name)
+            })}
           </p>
-          ${hasAccounts ? '' : noteLine('You need at least one account before you can log a payment.')}
-          ${varies ? noteLine('This loan\'s instalment changes over time, so the recurring amount is fixed at the next regular payment — edit it later if it moves.') : ''}
-          ${monthsLeft > 60 ? noteLine('Recurring transactions are capped at 5 years, so only the first 60 payments will be created.') : ''}
+          ${hasAccounts ? '' : noteLine(window.I18n.t('debt.track.needAccount'))}
+          ${varies ? noteLine(window.I18n.t('debt.track.varies')) : ''}
+          ${monthsLeft > 60 ? noteLine(window.I18n.t('debt.track.capped')) : ''}
         `,
-        saveText: hasAccounts ? 'Add recurring expense' : 'OK',
+        saveText: hasAccounts ? window.I18n.t('debt.track.cta') : window.I18n.t('common.ok'),
         onSave: (close) => {
           close();
           if (hasAccounts) this.startRecurringPrefill(loan);
@@ -3993,11 +4007,11 @@ Object.assign(window.Views, {
       const tile = (type, extraStyle) => {
         const t = S.TYPES[type];
         return `
-          <div class="card debt-type-tile" data-type="${type}" role="button" tabindex="0" aria-label="Simulate a ${t.label}" style="cursor: pointer; display: flex; align-items: center; gap: var(--space-3); ${extraStyle || ''}">
+          <div class="card debt-type-tile" data-type="${type}" role="button" tabindex="0" aria-label="${window.I18n.t('debt.simulateAria', { type: window.I18n.t(t.label) })}" style="cursor: pointer; display: flex; align-items: center; gap: var(--space-3); ${extraStyle || ''}">
             <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${t.icon}"></i></div>
             <div>
-              <div style="font-weight: 700; font-size: var(--text-sm);">${t.label}</div>
-              <div style="color: var(--text-tertiary); font-size: var(--text-xs);">Simulate</div>
+              <div style="font-weight: 700; font-size: var(--text-sm);">${window.I18n.t(t.label)}</div>
+              <div style="color: var(--text-tertiary); font-size: var(--text-xs);">${window.I18n.t('debt.simulate')}</div>
             </div>
           </div>`;
       };
@@ -4007,9 +4021,9 @@ Object.assign(window.Views, {
         const sum = loan.config ? S.summary(loan.config) : null;
         const subtitle = sum
           ? `${S.fmtC(sum.financedPrincipalC)} · ${loan.config.annualRate}% · ${S.durationLabel(loan.config)}`
-          : 'Invalid configuration';
+          : window.I18n.t('debt.invalidConfig');
         const value = sum
-          ? `${S.fmtC(sum.initialPaymentC)}<div style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500; text-align: right;">/ mo</div>`
+          ? `${S.fmtC(sum.initialPaymentC)}<div style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500; text-align: right;">${window.I18n.t('debt.perMonth')}</div>`
           : '—';
         return `
           <div class="list-item ${cssClass}" data-id="${loan.id}" role="button" tabindex="0" style="cursor: pointer;">
@@ -4035,9 +4049,9 @@ Object.assign(window.Views, {
               <div style="flex: 1; min-width: 0;">
                 <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
                   ${S.esc(loan.name)}
-                  ${tracked ? `<span class="debt-tracked-badge" title="Tracked as a recurring expense" aria-label="Tracked as a recurring expense" style="display: inline-flex; color: var(--text-tertiary);"><i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i></span>` : ''}
+                  ${tracked ? `<span class="debt-tracked-badge" title="${window.I18n.t('debt.trackedBadge')}" aria-label="${window.I18n.t('debt.trackedBadge')}" style="display: inline-flex; color: var(--text-tertiary);"><i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i></span>` : ''}
                 </div>
-                <div class="list-item-subtitle">${p.isPaidOff ? 'Paid off' : `${S.fmtC(p.nextPayment ? p.nextPayment.amountC : p.initialPaymentC)} · next ${S.fmtDate(p.nextPayment ? p.nextPayment.date : p.lastPaymentDate)}`}</div>
+                <div class="list-item-subtitle">${p.isPaidOff ? window.I18n.t('debt.paidOff') : window.I18n.t('debt.nextShort', { amount: S.fmtC(p.nextPayment ? p.nextPayment.amountC : p.initialPaymentC), date: S.fmtDate(p.nextPayment ? p.nextPayment.date : p.lastPaymentDate) })}</div>
               </div>
               <div style="text-align: right; flex-shrink: 0;">
                 <div style="font-family: var(--font-family-display); font-weight: 700;">${S.pctLabel(p)}%</div>
@@ -4046,31 +4060,31 @@ Object.assign(window.Views, {
             </div>
             ${S.progressBar(p)}
             <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: var(--text-xs); color: var(--text-secondary);">
-              <span>${S.fmtC(p.paidPrincipalC)} paid</span>
-              <span>${S.fmtC(p.remainingC)} remaining</span>
+              <span>${window.I18n.t('debt.amountPaid', { amount: S.fmtC(p.paidPrincipalC) })}</span>
+              <span>${window.I18n.t('debt.amountRemaining', { amount: S.fmtC(p.remainingC) })}</span>
             </div>
           </div>`;
       };
 
       const simsHtml = sims.length ? `
-        <div class="section-title" style="margin-top: var(--space-6);">Simulations</div>
+        <div class="section-title" style="margin-top: var(--space-6);">${window.I18n.t('debt.simulations')}</div>
         ${sims.map(l => loanRow(l, 'debt-sim-item')).join('')}
       ` : '';
 
       const activeHtml = `
-        <div class="section-title" style="margin-top: var(--space-6);">My Loans</div>
+        <div class="section-title" style="margin-top: var(--space-6);">${window.I18n.t('debt.myLoans')}</div>
         ${active.length
           ? active.map(l => activeCard(l)).join('')
           : `<div class="card" id="debt-loans-empty" style="text-align: center; padding: var(--space-6) var(--space-4);">
-               <div style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto;">No active loans yet. Simulate one above, then add it to My Loans to track it.</div>
+               <div style="color: var(--text-secondary); font-size: var(--text-sm); max-width: 320px; margin: 0 auto;">${window.I18n.t('debt.noActiveLoans')}</div>
              </div>`}
       `;
 
       return `
         <div id="debt-hub" class="container" style="padding-bottom: 100px;">
-          <a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="Back to Dashboard"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> Dashboard</a>
-          <h1 class="page-header-title" style="margin-bottom: var(--space-1);">Loans</h1>
-          <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">Simulate loans and track the ones you have</div>
+          <a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${window.I18n.t('debt.backToDashboardAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${window.I18n.t('nav.dashboard')}</a>
+          <h1 class="page-header-title" style="margin-bottom: var(--space-1);">${window.I18n.t('debt.loans')}</h1>
+          <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">${window.I18n.t('debt.hubSubtitle')}</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             ${tile('mortgage')}
             ${tile('personal')}
@@ -4105,47 +4119,47 @@ Object.assign(window.Views, {
         S.draft = S.newDraft(params.type, loan);
       }
       const d = S.draft;
-      const title = d.editingLoanId ? 'Edit Simulation' : S.TYPES[d.type].label;
+      const title = d.editingLoanId ? window.I18n.t('debt.editSimulation') : window.I18n.t(S.TYPES[d.type].label);
 
       return `
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#debt" id="dsim-close" aria-label="Close simulator" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+            <a href="#debt" id="dsim-close" aria-label="${window.I18n.t('debt.closeSimAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
           </div>
 
           <div class="amount-input-group">
             <span style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
-            <label for="dsim-principal" class="sr-only">Loan amount</label>
+            <label for="dsim-principal" class="sr-only">${window.I18n.t('debt.loanAmount')}</label>
             <input type="number" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.principal}" style="width: auto; max-width: 220px;">
           </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
             ${d.type === 'mortgage' ? `
               <div class="form-group">
-                <label class="form-label" for="dsim-down">Down Payment <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
+                <label class="form-label" for="dsim-down">${window.I18n.t('debt.downPayment')} <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
                 <input type="number" id="dsim-down" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.downPayment}">
               </div>` : ''}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group">
-                <label class="form-label" for="dsim-duration">Duration</label>
-                <input type="number" id="dsim-duration" class="form-control" placeholder="e.g. 30" step="1" inputmode="numeric" value="${d.duration}">
+                <label class="form-label" for="dsim-duration">${window.I18n.t('debt.durationLabel')}</label>
+                <input type="number" id="dsim-duration" class="form-control" placeholder="${window.I18n.t('debt.durationPlaceholder')}" step="1" inputmode="numeric" value="${d.duration}">
               </div>
               <div class="form-group">
-                <label class="form-label" for="dsim-duration-unit">Unit</label>
+                <label class="form-label" for="dsim-duration-unit">${window.I18n.t('debt.unit')}</label>
                 <select id="dsim-duration-unit" class="form-control" style="appearance: none;">
-                  <option value="years" ${d.durationUnit === 'years' ? 'selected' : ''}>Years</option>
-                  <option value="months" ${d.durationUnit === 'months' ? 'selected' : ''}>Months</option>
+                  <option value="years" ${d.durationUnit === 'years' ? 'selected' : ''}>${window.I18n.t('debt.unitYears')}</option>
+                  <option value="months" ${d.durationUnit === 'months' ? 'selected' : ''}>${window.I18n.t('debt.unitMonths')}</option>
                 </select>
               </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="dsim-rate">Annual Rate %</label>
-                <input type="number" id="dsim-rate" class="form-control" placeholder="e.g. 4.05" step="0.01" inputmode="decimal" value="${d.annualRate}">
+                <label class="form-label" for="dsim-rate">${window.I18n.t('debt.annualRate')}</label>
+                <input type="number" id="dsim-rate" class="form-control" placeholder="${window.I18n.t('debt.ratePlaceholder')}" step="0.01" inputmode="decimal" value="${d.annualRate}">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="dsim-first-date">First Payment</label>
+                <label class="form-label" for="dsim-first-date">${window.I18n.t('debt.firstPayment')}</label>
                 <input type="date" id="dsim-first-date" class="form-control" value="${d.firstPaymentDate}">
               </div>
             </div>
@@ -4153,24 +4167,24 @@ Object.assign(window.Views, {
 
           <div class="card" style="margin-bottom: var(--space-6);">
             <div id="dsim-details-toggle" role="button" tabindex="0" aria-expanded="false" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-              <span style="font-weight: 700;">Details</span>
+              <span style="font-weight: 700;">${window.I18n.t('debt.details')}</span>
               <i data-lucide="chevron-down" id="dsim-details-chevron" style="width: 20px; height: 20px; color: var(--text-tertiary); transition: transform 0.2s;"></i>
             </div>
             <div id="dsim-details-body" style="display: none; padding-top: var(--space-3);">
               <div class="form-group">
-                <label class="form-label">Payment Type</label>
+                <label class="form-label">${window.I18n.t('debt.paymentType')}</label>
                 <div class="chart-toggle-group" id="dsim-amortization">
-                  <button type="button" class="chart-toggle-btn ${d.amortization === 'french' ? 'active' : ''}" data-amort="french">Constant payment</button>
-                  <button type="button" class="chart-toggle-btn ${d.amortization === 'italian' ? 'active' : ''}" data-amort="italian">Declining</button>
+                  <button type="button" class="chart-toggle-btn ${d.amortization === 'french' ? 'active' : ''}" data-amort="french">${window.I18n.t('debt.amortFrench')}</button>
+                  <button type="button" class="chart-toggle-btn ${d.amortization === 'italian' ? 'active' : ''}" data-amort="italian">${window.I18n.t('debt.amortItalian')}</button>
                 </div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0;">
-                <span style="font-size: var(--text-sm); font-weight: 600;">First installment — interest only</span>
+                <span style="font-size: var(--text-sm); font-weight: 600;">${window.I18n.t('debt.ioFirst')}</span>
                 <label class="toggle-switch"><input type="checkbox" id="dsim-io" ${d.firstInstallmentInterestOnly ? 'checked' : ''}><span class="slider"></span></label>
               </div>
               <div id="dsim-io-extend-row" style="display: ${d.firstInstallmentInterestOnly ? 'flex' : 'none'}; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0;">
-                <span style="font-size: var(--text-sm); font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">Don't extend the duration
-                  <i data-lucide="info" id="dsim-io-info" style="width: 16px; height: 16px; color: var(--text-tertiary); cursor: pointer;" role="button" tabindex="0" aria-label="About interest-only duration"></i>
+                <span style="font-size: var(--text-sm); font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">${window.I18n.t('debt.ioNoExtend')}
+                  <i data-lucide="info" id="dsim-io-info" style="width: 16px; height: 16px; color: var(--text-tertiary); cursor: pointer;" role="button" tabindex="0" aria-label="${window.I18n.t('debt.ioInfoAria')}"></i>
                 </span>
                 <label class="toggle-switch"><input type="checkbox" id="dsim-io-noextend" ${d.interestOnlyExtendsDuration ? '' : 'checked'}><span class="slider"></span></label>
               </div>
@@ -4179,7 +4193,7 @@ Object.assign(window.Views, {
           </div>
 
           <div id="dsim-error" role="alert" style="display: none; color: var(--color-expense-val); font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-3); text-align: center;"></div>
-          <button class="btn btn-primary" id="btn-dsim-calculate" style="padding: var(--space-4); border-radius: var(--radius-lg);">Calculate</button>
+          <button class="btn btn-primary" id="btn-dsim-calculate" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('debt.calculate')}</button>
         </div>
       `;
     },
@@ -4239,36 +4253,36 @@ Object.assign(window.Views, {
       });
       $('dsim-io-info').addEventListener('click', () => {
         window.Components.Modal.show({
-          title: 'Interest-only first installment',
-          content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0;">By default an interest-only first installment is not counted in the loan duration, so the final payment shifts one month later. Some banks keep the original end date instead — enable "Don't extend the duration" to amortize over one fewer installment.</p>`,
-          saveText: 'OK',
+          title: window.I18n.t('debt.ioModalTitle'),
+          content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0;">${window.I18n.t('debt.ioModalBody')}</p>`,
+          saveText: window.I18n.t('common.ok'),
           onSave: (close) => close()
         });
       });
 
       // ── Dynamic lists: rate changes / early repayments / extra costs ──────
       const listsEl = $('dsim-lists');
-      const ER_MODE_LABEL = { reducePayment: 'reduce payment', reduceDuration: 'reduce duration' };
+      const ER_MODE_LABEL = { reducePayment: window.I18n.t('debt.erModeReducePayment'), reduceDuration: window.I18n.t('debt.erModeReduceDuration') };
 
       const listRow = (text, listName, i) => `
         <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-color);">
           <span style="font-size: var(--text-sm);">${text}</span>
-          <button type="button" class="dsim-remove touch-target" data-list="${listName}" data-i="${i}" aria-label="Remove entry" style="background: none; border: none; color: var(--text-tertiary); cursor: pointer; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
+          <button type="button" class="dsim-remove touch-target" data-list="${listName}" data-i="${i}" aria-label="${window.I18n.t('debt.removeEntry')}" style="background: none; border: none; color: var(--text-tertiary); cursor: pointer; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
         </div>`;
 
       const addBtn = (kind, label) => `<button type="button" class="btn btn-secondary dsim-add" data-add="${kind}" style="min-height: 40px; font-size: var(--text-sm); margin-top: var(--space-2);">+ ${label}</button>`;
 
       const renderLists = () => {
         listsEl.innerHTML = `
-          <div class="form-label" style="margin-top: var(--space-3);">Rate Changes</div>
-          ${d.rateChanges.map((rc, i) => listRow(`${rc.annualRate}% from ${S.fmtDate(rc.effectiveFrom)}`, 'rateChanges', i)).join('')}
-          ${addBtn('rate', 'Add rate change')}
-          <div class="form-label" style="margin-top: var(--space-4);">Early Repayments</div>
-          ${d.earlyRepayments.map((er, i) => listRow(`${window.Store.formatCurrency(er.amount)} · ${er.frequency === 'monthly' ? 'monthly from' : 'on'} ${S.fmtDate(er.date)} · ${ER_MODE_LABEL[er.mode]}`, 'earlyRepayments', i)).join('')}
-          ${addBtn('er', 'Add early repayment')}
-          <div class="form-label" style="margin-top: var(--space-4);">Extra Costs</div>
-          ${d.additionalExpenses.map((ex, i) => listRow(`${S.esc(ex.name)} · ${window.Store.formatCurrency(ex.amount)}${ex.frequency === 'monthly' ? ' / month' : ' on ' + S.fmtDate(ex.date)}`, 'additionalExpenses', i)).join('')}
-          ${addBtn('expense', 'Add extra cost')}
+          <div class="form-label" style="margin-top: var(--space-3);">${window.I18n.t('debt.rateChanges')}</div>
+          ${d.rateChanges.map((rc, i) => listRow(window.I18n.t('debt.rateChangeRow', { rate: rc.annualRate, date: S.fmtDate(rc.effectiveFrom) }), 'rateChanges', i)).join('')}
+          ${addBtn('rate', window.I18n.t('debt.addRateChange'))}
+          <div class="form-label" style="margin-top: var(--space-4);">${window.I18n.t('debt.earlyRepayments')}</div>
+          ${d.earlyRepayments.map((er, i) => listRow(window.I18n.t(er.frequency === 'monthly' ? 'debt.erRowMonthly' : 'debt.erRowOnce', { amount: window.Store.formatCurrency(er.amount), date: S.fmtDate(er.date), mode: ER_MODE_LABEL[er.mode] }), 'earlyRepayments', i)).join('')}
+          ${addBtn('er', window.I18n.t('debt.addEarlyRepayment'))}
+          <div class="form-label" style="margin-top: var(--space-4);">${window.I18n.t('debt.extraCosts')}</div>
+          ${d.additionalExpenses.map((ex, i) => listRow(window.I18n.t(ex.frequency === 'monthly' ? 'debt.exRowMonthly' : 'debt.exRowOnce', { name: S.esc(ex.name), amount: window.Store.formatCurrency(ex.amount), date: S.fmtDate(ex.date) }), 'additionalExpenses', i)).join('')}
+          ${addBtn('expense', window.I18n.t('debt.addExtraCost'))}
         `;
         listsEl.querySelectorAll('.dsim-remove').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -4285,11 +4299,11 @@ Object.assign(window.Views, {
       const openAddModal = (kind) => {
         if (kind === 'rate') {
           window.Components.Modal.show({
-            title: 'Add Rate Change',
+            title: window.I18n.t('debt.addRateChangeTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-rc-rate">New Rate %</label><input type="number" id="dsim-rc-rate" class="form-control" step="0.01" inputmode="decimal" placeholder="e.g. 2.05"></div>
-              <div class="form-group"><label class="form-label" for="dsim-rc-date">Effective From</label><input type="date" id="dsim-rc-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
-            saveText: 'Add',
+              <div class="form-group"><label class="form-label" for="dsim-rc-rate">${window.I18n.t('debt.newRate')}</label><input type="number" id="dsim-rc-rate" class="form-control" step="0.01" inputmode="decimal" placeholder="${window.I18n.t('debt.newRatePlaceholder')}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-rc-date">${window.I18n.t('debt.effectiveFrom')}</label><input type="date" id="dsim-rc-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+            saveText: window.I18n.t('common.add'),
             onSave: (close) => {
               const rate = parseFloat(document.getElementById('dsim-rc-rate').value);
               const date = document.getElementById('dsim-rc-date').value;
@@ -4301,22 +4315,22 @@ Object.assign(window.Views, {
           });
         } else if (kind === 'er') {
           window.Components.Modal.show({
-            title: 'Add Early Repayment',
+            title: window.I18n.t('debt.addEarlyRepaymentTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-er-amount">Amount</label><input type="number" id="dsim-er-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
-              <div class="form-group"><label class="form-label" for="dsim-er-freq">Frequency</label>
+              <div class="form-group"><label class="form-label" for="dsim-er-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-er-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-er-freq" class="form-control" style="appearance: none;">
-                  <option value="once">One-off</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="once">${window.I18n.t('debt.freqOnce')}</option>
+                  <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group"><label class="form-label" for="dsim-er-date">Payment Date</label><input type="date" id="dsim-er-date" class="form-control" value="${d.firstPaymentDate}"></div>
-              <div class="form-group" id="dsim-er-end-group" style="display: none;"><label class="form-label" for="dsim-er-end">Until (optional)</label><input type="date" id="dsim-er-end" class="form-control"></div>
-              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-er-mode">Repayment Type</label>
+              <div class="form-group"><label class="form-label" for="dsim-er-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-er-date" class="form-control" value="${d.firstPaymentDate}"></div>
+              <div class="form-group" id="dsim-er-end-group" style="display: none;"><label class="form-label" for="dsim-er-end">${window.I18n.t('debt.untilOptional')}</label><input type="date" id="dsim-er-end" class="form-control"></div>
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-er-mode">${window.I18n.t('debt.repaymentType')}</label>
                 <select id="dsim-er-mode" class="form-control" style="appearance: none;">
-                  <option value="reducePayment">Reduce the monthly payment</option>
-                  <option value="reduceDuration">Reduce the loan duration</option>
+                  <option value="reducePayment">${window.I18n.t('debt.modeReducePayment')}</option>
+                  <option value="reduceDuration">${window.I18n.t('debt.modeReduceDuration')}</option>
                 </select></div>`,
-            saveText: 'Add',
+            saveText: window.I18n.t('common.add'),
             onSave: (close) => {
               const amount = parseFloat(document.getElementById('dsim-er-amount').value);
               const frequency = document.getElementById('dsim-er-freq').value;
@@ -4339,17 +4353,17 @@ Object.assign(window.Views, {
           }, 20);
         } else if (kind === 'expense') {
           window.Components.Modal.show({
-            title: 'Add Extra Cost',
+            title: window.I18n.t('debt.addExtraCostTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-ex-name">Name</label><input type="text" id="dsim-ex-name" class="form-control" placeholder="e.g. Insurance"></div>
-              <div class="form-group"><label class="form-label" for="dsim-ex-amount">Amount</label><input type="number" id="dsim-ex-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
-              <div class="form-group"><label class="form-label" for="dsim-ex-freq">Frequency</label>
+              <div class="form-group"><label class="form-label" for="dsim-ex-name">${window.I18n.t('common.name')}</label><input type="text" id="dsim-ex-name" class="form-control" placeholder="${window.I18n.t('debt.insurancePlaceholder')}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-ex-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-ex-freq" class="form-control" style="appearance: none;">
-                  <option value="once">One-off</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="once">${window.I18n.t('debt.freqOnce')}</option>
+                  <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">Payment Date</label><input type="date" id="dsim-ex-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
-            saveText: 'Add',
+              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-ex-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+            saveText: window.I18n.t('common.add'),
             onSave: (close) => {
               const name = document.getElementById('dsim-ex-name').value.trim();
               const amount = parseFloat(document.getElementById('dsim-ex-amount').value);
@@ -4387,7 +4401,7 @@ Object.assign(window.Views, {
         try {
           window.LoanEngine.simulate({ ...config, computeSavings: false });
         } catch (e) {
-          errEl.textContent = (e && e.name === 'LoanEngineError') ? e.message : 'Please check your inputs.';
+          errEl.textContent = (e && e.name === 'LoanEngineError') ? e.message : window.I18n.t('debt.checkInputs');
           errEl.style.display = 'block';
           return;
         }
@@ -4435,12 +4449,12 @@ Object.assign(window.Views, {
       const r = this._resolve(state);
 
       if (!r.config || r.error) {
-        const msg = r.error ? 'This simulation could not be computed: ' + S.esc(r.error.message) : 'Nothing to show here.';
+        const msg = r.error ? window.I18n.t('debt.computeError', { message: S.esc(r.error.message) }) : window.I18n.t('debt.nothingToShow');
         return `
           <div id="debt-results-view" class="container">
             <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4); margin-top: var(--space-8);">
               <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${msg}</div>
-              <a href="#debt" class="btn btn-primary" style="text-decoration: none;">Back to Loans</a>
+              <a href="#debt" class="btn btn-primary" style="text-decoration: none;">${window.I18n.t('debt.backToLoans')}</a>
             </div>
           </div>`;
       }
@@ -4462,19 +4476,19 @@ Object.assign(window.Views, {
       if (res.savings && res.totalEarlyRepaymentsC > 0) {
         savingsHtml = res.savings.degenerate
           ? `<div class="card" style="margin-top: var(--space-4); background: var(--color-warning-bg); border-color: transparent;">
-               <div style="font-size: var(--text-sm); color: var(--color-warning-text); line-height: 1.5;">At these terms the early-repayment plan doesn't reduce the loan's cost, so no saving is shown. Try a larger repayment amount or different terms.</div>
+               <div style="font-size: var(--text-sm); color: var(--color-warning-text); line-height: 1.5;">${window.I18n.t('debt.savingsDegenerate')}</div>
              </div>`
           : `<div class="card" style="margin-top: var(--space-4);">
-               <div class="section-title" style="margin-bottom: var(--space-2);">With Early Repayments</div>
-               ${row('Interest Saved', S.fmtC(res.savings.interestSavedC), res.savings.monthsSaved > 0 ? {} : { last: true })}
-               ${res.savings.monthsSaved > 0 ? row('Months Saved', String(res.savings.monthsSaved), { last: true }) : ''}
+               <div class="section-title" style="margin-bottom: var(--space-2);">${window.I18n.t('debt.withEarlyRepayments')}</div>
+               ${row(window.I18n.t('debt.interestSaved'), S.fmtC(res.savings.interestSavedC), res.savings.monthsSaved > 0 ? {} : { last: true })}
+               ${res.savings.monthsSaved > 0 ? row(window.I18n.t('debt.monthsSaved'), String(res.savings.monthsSaved), { last: true }) : ''}
              </div>`;
       }
 
       const actionsHtml = r.fromForm
         ? `<div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6);">
-             <button class="btn btn-primary" id="btn-dres-promote" style="padding: var(--space-4); border-radius: var(--radius-lg);">Add to My Loans</button>
-             <button class="btn btn-secondary" id="btn-dres-save">${r.editingLoanId ? 'Update Simulation' : 'Save Simulation'}</button>
+             <button class="btn btn-primary" id="btn-dres-promote" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('debt.addToMyLoans')}</button>
+             <button class="btn btn-secondary" id="btn-dres-save">${r.editingLoanId ? window.I18n.t('debt.updateSimulation') : window.I18n.t('debt.saveSimulation')}</button>
            </div>`
         : '';
 
@@ -4486,19 +4500,19 @@ Object.assign(window.Views, {
           const tracked = !!window.Store.getLoanLinkedTransactions(r.loan);
           progressHtml = `
             <div class="card" id="dres-progress" style="margin-top: var(--space-4);">
-              <div class="section-title" style="margin-bottom: var(--space-3);">Progress</div>
+              <div class="section-title" style="margin-bottom: var(--space-3);">${window.I18n.t('debt.progress')}</div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2);">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-xl); font-weight: 700;">${S.pctLabel(p)}%</span>
-                <span style="font-size: var(--text-sm); color: var(--text-secondary);">${p.paidCount} of ${p.totalCount} payments</span>
+                <span style="font-size: var(--text-sm); color: var(--text-secondary);">${window.I18n.t('debt.paymentsOf', { paid: p.paidCount, total: p.totalCount })}</span>
               </div>
               ${S.progressBar(p)}
               <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: var(--text-xs); color: var(--text-secondary);">
-                <span>${S.fmtC(p.paidPrincipalC)} paid</span>
-                <span>${S.fmtC(p.remainingC)} remaining</span>
+                <span>${window.I18n.t('debt.amountPaid', { amount: S.fmtC(p.paidPrincipalC) })}</span>
+                <span>${window.I18n.t('debt.amountRemaining', { amount: S.fmtC(p.remainingC) })}</span>
               </div>
               ${p.nextPayment ? `
                 <div style="display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--space-3); margin-top: var(--space-3); border-top: 1px solid var(--border-color);">
-                  <span style="font-size: var(--text-sm); color: var(--text-secondary);">Next Payment</span>
+                  <span style="font-size: var(--text-sm); color: var(--text-secondary);">${window.I18n.t('debt.nextPaymentLabel')}</span>
                   <span style="font-family: var(--font-family-display); font-weight: 700;">${S.fmtC(p.nextPayment.amountC)} · ${S.fmtDate(p.nextPayment.date)}</span>
                 </div>` : ''}
               ${tracked || S.trackablePayment(p) ? `
@@ -4506,10 +4520,10 @@ Object.assign(window.Views, {
                   ${tracked
                     ? `<div id="dres-tracked" style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary);">
                          <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                         <span style="flex: 1;">Tracked as a monthly expense</span>
-                         <a href="#transactions" style="color: var(--color-accent); font-weight: 600; text-decoration: underline;">View</a>
+                         <span style="flex: 1;">${window.I18n.t('debt.trackedMonthly')}</span>
+                         <a href="#transactions" style="color: var(--color-accent); font-weight: 600; text-decoration: underline;">${window.I18n.t('common.view')}</a>
                        </div>`
-                    : `<button class="btn btn-secondary" id="btn-dres-track" style="min-height: 44px; font-size: var(--text-sm);">Track monthly payment</button>`}
+                    : `<button class="btn btn-secondary" id="btn-dres-track" style="min-height: 44px; font-size: var(--text-sm);">${window.I18n.t('debt.trackMonthly')}</button>`}
                 </div>` : ''}
             </div>`;
         }
@@ -4518,28 +4532,28 @@ Object.assign(window.Views, {
       return `
         <div id="debt-results-view" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
-            <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : t.label}</h1>
+            <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : window.I18n.t(t.label)}</h1>
             <div style="display: flex; gap: var(--space-2);">
-              ${r.loan ? `<button id="btn-dres-menu" aria-label="More actions" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: none; border-radius: 10px; cursor: pointer;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></button>` : ''}
-              <a href="${backHref}" aria-label="Close results" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+              ${r.loan ? `<button id="btn-dres-menu" aria-label="${window.I18n.t('common.moreActions')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: none; border-radius: 10px; cursor: pointer;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></button>` : ''}
+              <a href="${backHref}" aria-label="${window.I18n.t('debt.closeResultsAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
             </div>
           </div>
 
           <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
             <div class="list-item-icon"><i data-lucide="${t.icon}"></i></div>
-            <div style="color: var(--text-secondary); font-size: var(--text-sm);">${t.label} · ${config.annualRate}% · ${S.durationLabel(config)}</div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm);">${window.I18n.t(t.label)} · ${config.annualRate}% · ${S.durationLabel(config)}</div>
           </div>
 
           <div class="card card-elevated">
-            ${row('Monthly Payment', S.fmtC(res.initialPaymentC), { strong: true })}
-            ${row('Loan Amount', S.fmtC(res.financedPrincipalC))}
-            ${res.downPaymentC > 0 ? row('Down Payment', S.fmtC(res.downPaymentC)) : ''}
-            ${row('Total Interest', S.fmtC(res.totalInterestC))}
-            ${res.totalExpensesC > 0 ? row('Extra Costs', S.fmtC(res.totalExpensesC)) : ''}
-            ${res.totalEarlyRepaymentsC > 0 ? row('Early Repayments', S.fmtC(res.totalEarlyRepaymentsC)) : ''}
-            ${row('Total Amount', S.fmtC(res.grandTotalC))}
-            ${row('Installments', String(res.installmentCount))}
-            ${row('Last Payment', S.fmtDate(res.lastPaymentDate), { last: true })}
+            ${row(window.I18n.t('debt.monthlyPayment'), S.fmtC(res.initialPaymentC), { strong: true })}
+            ${row(window.I18n.t('debt.loanAmount'), S.fmtC(res.financedPrincipalC))}
+            ${res.downPaymentC > 0 ? row(window.I18n.t('debt.downPayment'), S.fmtC(res.downPaymentC)) : ''}
+            ${row(window.I18n.t('debt.totalInterest'), S.fmtC(res.totalInterestC))}
+            ${res.totalExpensesC > 0 ? row(window.I18n.t('debt.extraCosts'), S.fmtC(res.totalExpensesC)) : ''}
+            ${res.totalEarlyRepaymentsC > 0 ? row(window.I18n.t('debt.earlyRepayments'), S.fmtC(res.totalEarlyRepaymentsC)) : ''}
+            ${row(window.I18n.t('debt.totalAmount'), S.fmtC(res.grandTotalC))}
+            ${row(window.I18n.t('debt.installments'), String(res.installmentCount))}
+            ${row(window.I18n.t('debt.lastPayment'), S.fmtDate(res.lastPaymentDate), { last: true })}
           </div>
 
           ${progressHtml}
@@ -4547,16 +4561,16 @@ Object.assign(window.Views, {
 
           <div class="card" style="margin-top: var(--space-4);">
             <div id="dres-schedule-toggle" role="button" tabindex="0" aria-expanded="false" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-              <span style="font-weight: 700; display: inline-flex; align-items: center; gap: var(--space-2);"><i data-lucide="list" style="width: 18px; height: 18px;"></i> Payment Schedule</span>
+              <span style="font-weight: 700; display: inline-flex; align-items: center; gap: var(--space-2);"><i data-lucide="list" style="width: 18px; height: 18px;"></i> ${window.I18n.t('debt.paymentSchedule')}</span>
               <i data-lucide="chevron-down" id="dres-schedule-chevron" style="width: 20px; height: 20px; color: var(--text-tertiary); transition: transform 0.2s;"></i>
             </div>
             <div id="dres-schedule-body" style="display: none; padding-top: var(--space-3);">
               <div class="chart-toggle-group" id="dres-schedule-mode" style="margin-bottom: var(--space-3);">
-                <button type="button" class="chart-toggle-btn active" data-mode="brief">Brief</button>
-                <button type="button" class="chart-toggle-btn" data-mode="detailed">Detailed</button>
+                <button type="button" class="chart-toggle-btn active" data-mode="brief">${window.I18n.t('debt.brief')}</button>
+                <button type="button" class="chart-toggle-btn" data-mode="detailed">${window.I18n.t('debt.detailed')}</button>
               </div>
               <div style="display: flex; justify-content: space-between; font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-color);">
-                <span>Date</span><span>Payment</span><span>Balance</span>
+                <span>${window.I18n.t('form.date')}</span><span>${window.I18n.t('debt.payment')}</span><span>${window.I18n.t('debt.balance')}</span>
               </div>
               <div id="dres-schedule-rows"></div>
             </div>
@@ -4584,8 +4598,8 @@ Object.assign(window.Views, {
             <span style="color: var(--text-secondary); flex: 0 0 auto;">${S.fmtDate(row.date)}</span>
             <span style="text-align: center; flex: 1;">
               <span style="font-family: var(--font-family-display); font-weight: 700;">${S.fmtC(row.paymentC + row.extraPrincipalC)}</span>
-              ${row.extraPrincipalC > 0 ? `<div style="font-size: var(--text-xs); color: var(--color-income-val);">incl. extra ${S.fmtC(row.extraPrincipalC)}</div>` : ''}
-              ${detailed ? `<div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">interest ${S.fmtC(row.interestC)} · principal ${S.fmtC(row.principalC + row.extraPrincipalC)}</div>` : ''}
+              ${row.extraPrincipalC > 0 ? `<div style="font-size: var(--text-xs); color: var(--color-income-val);">${window.I18n.t('debt.inclExtra', { amount: S.fmtC(row.extraPrincipalC) })}</div>` : ''}
+              ${detailed ? `<div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">${window.I18n.t('debt.interestPrincipal', { interest: S.fmtC(row.interestC), principal: S.fmtC(row.principalC + row.extraPrincipalC) })}</div>` : ''}
             </span>
             <span style="font-family: var(--font-family-display); font-weight: 600; flex: 0 0 auto;">${S.fmtC(row.balanceC)}</span>
           </div>`).join('');
@@ -4614,8 +4628,8 @@ Object.assign(window.Views, {
       const askName = (title, defaultName, cb) => {
         window.Components.Modal.show({
           title,
-          content: `<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="loan-name-input">Name</label><input type="text" id="loan-name-input" class="form-control" placeholder="e.g. Home Mortgage" value="${S.esc(defaultName || '')}"></div>`,
-          saveText: 'Save',
+          content: `<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="loan-name-input">${window.I18n.t('common.name')}</label><input type="text" id="loan-name-input" class="form-control" placeholder="${window.I18n.t('debt.namePlaceholder')}" value="${S.esc(defaultName || '')}"></div>`,
+          saveText: window.I18n.t('common.save'),
           onSave: (close) => {
             const v = document.getElementById('loan-name-input').value.trim();
             if (!v) return;
@@ -4634,7 +4648,7 @@ Object.assign(window.Views, {
           ? ((state.loans || []).find(l => l.id === r.editingLoanId) || {}).name
           : '';
         if (saveBtn) saveBtn.addEventListener('click', () => {
-          askName(r.editingLoanId ? 'Update Simulation' : 'Save Simulation', currentName, (name) => {
+          askName(r.editingLoanId ? window.I18n.t('debt.updateSimulation') : window.I18n.t('debt.saveSimulation'), currentName, (name) => {
             if (r.editingLoanId) {
               window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
             } else {
@@ -4645,7 +4659,7 @@ Object.assign(window.Views, {
           });
         });
         if (promoteBtn) promoteBtn.addEventListener('click', () => {
-          askName('Add to My Loans', currentName, (name) => {
+          askName(window.I18n.t('debt.addToMyLoans'), currentName, (name) => {
             let loanId = r.editingLoanId;
             if (loanId) {
               window.Store.dispatch('UPDATE_LOAN', { id: loanId, name, config: r.config });
@@ -4680,10 +4694,10 @@ Object.assign(window.Views, {
           window.Components.Modal.show({
             title: S.esc(r.loan.name),
             content: `
-              ${opt('edit', 'pencil', 'Edit')}
-              ${r.loan.kind === 'sim' ? opt('promote', 'plus', 'Add to My Loans') : ''}
-              ${opt('delete', 'trash-2', 'Delete', 'var(--color-expense-val)')}`,
-            saveText: 'Close',
+              ${opt('edit', 'pencil', window.I18n.t('common.edit'))}
+              ${r.loan.kind === 'sim' ? opt('promote', 'plus', window.I18n.t('debt.addToMyLoans')) : ''}
+              ${opt('delete', 'trash-2', window.I18n.t('common.delete'), 'var(--color-expense-val)')}`,
+            saveText: window.I18n.t('common.close'),
             onSave: (close) => close()
           });
           document.querySelectorAll('.dres-menu-opt').forEach(el => {
@@ -4700,9 +4714,9 @@ Object.assign(window.Views, {
                 window.Views.DebtResultsView._offerAfterPromote(r.loan.id);
               } else if (act === 'delete') {
                 window.Components.Modal.show({
-                  title: 'Delete this loan?',
-                  content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">"${S.esc(r.loan.name)}" will be permanently removed.</p>`,
-                  saveText: 'Keep it',
+                  title: window.I18n.t('debt.deleteLoanTitle'),
+                  content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">${window.I18n.t('debt.deleteLoanBody', { name: S.esc(r.loan.name) })}</p>`,
+                  saveText: window.I18n.t('debt.keepIt'),
                   showDelete: true,
                   onSave: (close) => close(),
                   onDelete: (close) => {

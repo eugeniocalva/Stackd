@@ -18,6 +18,9 @@ describe('Opening Balance Numeric Input & Decimal Shift', () => {
     // Global setup
     global.window = {
       Store: {
+        // v0.89 P8d: EditAccountView renders its Type dropdown from these.
+        ACCOUNT_TYPES: ['Bank', 'Debit card', 'Cash', 'Savings', 'Credit card', 'Investment', 'Wallet', 'Account'],
+        accountTypeLabel: (v) => v || 'Account',
         getState: () => ({
           accounts: [],
           transactions: [],

@@ -617,19 +617,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // Same interaction pattern as the OthersView Region Setting tile:
 // tappable rows → slide-up picker sheet → auto-dismiss on selection.
 // Shown once on first install and again after a Factory Reset.
-function _showRegionSetupModal() {
+// v0.89 P8d: the modal's own copy is translated, so picking a language here
+// has to rebuild it — the selections carry over via the arguments.
+function _showRegionSetupModal(initialCurrency, initialLanguage) {
   const CURRENCIES = [
-    { code: 'USD', symbol: '$', label: 'USD — US Dollar'      },
-    { code: 'EUR', symbol: '€', label: 'EUR — Euro'           },
-    { code: 'JPY', symbol: '¥', label: 'JPY — Japanese Yen'   },
-    { code: 'GBP', symbol: '£', label: 'GBP — Pound Sterling' },
-    { code: 'CNY', symbol: '¥', label: 'CNY — Renminbi'       },
+    { code: 'USD', symbol: '$', label: window.I18n.t('currency.USD') },
+    { code: 'EUR', symbol: '€', label: window.I18n.t('currency.EUR') },
+    { code: 'JPY', symbol: '¥', label: window.I18n.t('currency.JPY') },
+    { code: 'GBP', symbol: '£', label: window.I18n.t('currency.GBP') },
+    { code: 'CNY', symbol: '¥', label: window.I18n.t('currency.CNY') },
   ];
   const LANGUAGES = window.I18n.LANGUAGES; // v0.86 P8a: en/fr/it/es/pt
 
   // Defaults: EUR + English
-  let selectedCurrency = 'EUR';
-  let selectedLanguage  = 'en';
+  let selectedCurrency = initialCurrency || 'EUR';
+  let selectedLanguage  = initialLanguage || 'en';
 
   const currencyLabel = () => (CURRENCIES.find(x => x.code === selectedCurrency) || {}).label || selectedCurrency;
   const languageLabel = () => (LANGUAGES.find(x => x.code === selectedLanguage)  || {}).label || 'English';
@@ -690,20 +692,19 @@ function _showRegionSetupModal() {
   const content = `
     <p style="color:var(--text-secondary);font-size:var(--text-sm);
               margin-bottom:var(--space-5);line-height:1.6;">
-      Set your preferred region. You can always change this later in
-      <strong>Others → Region Setting</strong>.
+      ${window.I18n.t('setup.body', { path: '<strong>' + window.I18n.t('setup.bodyPath') + '</strong>' })}
     </p>
     <div class="card card-elevated" style="padding:var(--space-4) var(--space-5);margin-bottom:0;">
       <div id="setup-row-currency" class="touch-target"
            style="display:flex;align-items:center;justify-content:space-between;
                   cursor:pointer;border-bottom:1px solid var(--border-color);
                   padding-bottom:var(--space-4);margin-bottom:var(--space-4);width:100%;"
-           tabindex="0" role="button" aria-label="Choose currency">
+           tabindex="0" role="button" aria-label="${window.I18n.t('others.chooseCurrencyAria')}">
         <div style="display:flex;align-items:center;gap:var(--space-3);">
           <div class="list-item-icon" style="margin:0;"><i data-lucide="coins"></i></div>
           <div>
-            <div class="list-item-title">Currency</div>
-            <div class="list-item-subtitle" id="setup-currency-subtitle">EUR — Euro</div>
+            <div class="list-item-title">${window.I18n.t('others.currency')}</div>
+            <div class="list-item-subtitle" id="setup-currency-subtitle">${window.I18n.t('currency.EUR')}</div>
           </div>
         </div>
         <i data-lucide="chevron-right" style="color:var(--text-tertiary);width:20px;height:20px;flex-shrink:0;"></i>
@@ -711,12 +712,12 @@ function _showRegionSetupModal() {
       <div id="setup-row-language" class="touch-target"
            style="display:flex;align-items:center;justify-content:space-between;
                   cursor:pointer;width:100%;"
-           tabindex="0" role="button" aria-label="Choose language">
+           tabindex="0" role="button" aria-label="${window.I18n.t('others.chooseLanguageAria')}">
         <div style="display:flex;align-items:center;gap:var(--space-3);">
           <div class="list-item-icon" style="margin:0;"><i data-lucide="globe"></i></div>
           <div>
-            <div class="list-item-title">Language</div>
-            <div class="list-item-subtitle" id="setup-language-subtitle">English</div>
+            <div class="list-item-title">${window.I18n.t('others.language')}</div>
+            <div class="list-item-subtitle" id="setup-language-subtitle">${languageLabel()}</div>
           </div>
         </div>
         <i data-lucide="chevron-right" style="color:var(--text-tertiary);width:20px;height:20px;flex-shrink:0;"></i>
@@ -726,9 +727,9 @@ function _showRegionSetupModal() {
 
   // ── Show welcome modal ────────────────────────────────────────────────────
   window.Components.Modal.show({
-    title: "Welcome to Stack'd 👋",
+    title: window.I18n.t('setup.welcome'),
     content,
-    saveText: 'Get Started',
+    saveText: window.I18n.t('setup.getStarted'),
     onSave: (close) => {
       window.Store.dispatch('SET_CURRENCY', selectedCurrency);
       window.Store.dispatch('SET_LANGUAGE', selectedLanguage);
@@ -749,7 +750,7 @@ function _showRegionSetupModal() {
 
     if (rowCurrency) {
       const open = () => openPicker({
-        title: 'Currency', items: CURRENCIES, selected: selectedCurrency,
+        title: window.I18n.t('others.currency'), items: CURRENCIES, selected: selectedCurrency,
         onSelect: code => {
           selectedCurrency = code;
           const sub = document.getElementById('setup-currency-subtitle');
@@ -762,13 +763,17 @@ function _showRegionSetupModal() {
 
     if (rowLanguage) {
       const open = () => openPicker({
-        title: 'Language',
+        title: window.I18n.t('others.language'),
         items: LANGUAGES,
         selected: selectedLanguage,
         onSelect: (code) => {
+          if (code === selectedLanguage) return;
           selectedLanguage = code;
-          const sub = document.getElementById('setup-language-subtitle');
-          if (sub) sub.textContent = languageLabel();
+          // Re-open in the chosen language rather than leaving translated
+          // rows under an English heading.
+          window.I18n.setLang(code);
+          window.Components.Modal.hide();
+          setTimeout(() => _showRegionSetupModal(selectedCurrency, selectedLanguage), 320);
         }
       });
       rowLanguage.addEventListener('click', open);

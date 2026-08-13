@@ -16,6 +16,9 @@ describe('Negative Opening Balance Support', () => {
 
     global.window = {
       Store: {
+        // v0.89 P8d: EditAccountView renders its Type dropdown from these.
+        ACCOUNT_TYPES: ['Bank', 'Debit card', 'Cash', 'Savings', 'Credit card', 'Investment', 'Wallet', 'Account'],
+        accountTypeLabel: (v) => v || 'Account',
         ACCOUNT_COLORS: ['#0075EB', '#E60023'],
         getState: () => ({
           accounts: [

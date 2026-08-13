@@ -179,7 +179,7 @@ window.Components = {
 
   Modal: {
     show(options) {
-      const { title, content, onSave, saveText = 'Save', showDelete = false, onDelete, showClose = false } = options;
+      const { title, content, onSave, saveText = window.I18n.t('common.save'), showDelete = false, onDelete, showClose = false } = options;
       const container = document.getElementById('modal-container');
       container.innerHTML = `
         <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -188,7 +188,7 @@ window.Components = {
             <div class="modal-header-container">
               <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${title}</h2>
               ${showClose ? `
-                <button class="modal-close-btn" id="modal-close-icon-btn" aria-label="Close modal">
+                <button class="modal-close-btn" id="modal-close-icon-btn" aria-label="${window.I18n.t('modal.closeAria')}">
                   <i data-lucide="x" style="width: 24px; height: 24px;"></i>
                 </button>
               ` : ''}
@@ -196,8 +196,8 @@ window.Components = {
             <div class="modal-body">${content}</div>
             <div style="margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3);">
               <button class="btn btn-primary" id="modal-save-btn">${saveText}</button>
-              ${showDelete ? `<button class="btn btn-danger" id="modal-delete-btn" aria-label="Delete this item">Delete</button>` : ''}
-              <button class="btn btn-secondary" id="modal-cancel-btn" aria-label="Cancel and close modal">Cancel</button>
+              ${showDelete ? `<button class="btn btn-danger" id="modal-delete-btn" aria-label="${window.I18n.t('modal.deleteAria')}">${window.I18n.t('common.delete')}</button>` : ''}
+              <button class="btn btn-secondary" id="modal-cancel-btn" aria-label="${window.I18n.t('modal.cancelAria')}">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>`;
@@ -333,7 +333,7 @@ window.Components = {
           <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header-container">
-              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">FAQ</h2>
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${window.I18n.t('others.faq')}</h2>
             </div>
             <div class="modal-body">
               ${this.FAQS.map(f => `
@@ -343,7 +343,7 @@ window.Components = {
                 </details>`).join('')}
             </div>
             <div style="margin-top: var(--space-6);">
-              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close FAQ">Close</button>
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="${window.I18n.t('support.closeFaqAria')}">${window.I18n.t('common.close')}</button>
             </div>
           </div>
         </div>`;
@@ -504,13 +504,13 @@ window.Components = {
           <div class="modal-content" style="display: flex; flex-direction: column; height: calc(90vh - var(--safe-top));">
             <div class="modal-handle"></div>
             <div class="modal-header-container">
-              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">User Manual</h2>
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${window.I18n.t('others.userManual')}</h2>
             </div>
-            <input type="search" id="manual-search" class="form-control" placeholder="Search the manual..." autocomplete="off"
-                   aria-label="Search the manual" style="margin-bottom: var(--space-4); flex-shrink: 0;">
+            <input type="search" id="manual-search" class="form-control" placeholder="${window.I18n.t('support.searchManual')}" autocomplete="off"
+                   aria-label="${window.I18n.t('support.searchManualAria')}" style="margin-bottom: var(--space-4); flex-shrink: 0;">
             <div class="modal-body" id="manual-body">${this._renderBody('')}</div>
             <div style="margin-top: var(--space-4); flex-shrink: 0;">
-              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close user manual">Close</button>
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="${window.I18n.t('support.closeManualAria')}">${window.I18n.t('common.close')}</button>
             </div>
           </div>
         </div>`;
@@ -582,7 +582,7 @@ window.Components = {
       }).filter(Boolean);
 
       if (sectionsHtml.length === 0) {
-        return `<div style="text-align: center; color: var(--text-tertiary); padding: var(--space-8) 0; font-size: var(--text-sm);">No results for &ldquo;${this._esc(query.trim())}&rdquo;</div>`;
+        return `<div style="text-align: center; color: var(--text-tertiary); padding: var(--space-8) 0; font-size: var(--text-sm);">${window.I18n.t('support.noResults', { query: this._esc(query.trim()) })}</div>`;
       }
       return sectionsHtml.join('');
     }
@@ -610,7 +610,7 @@ window.Components = {
           <div class="modal-content" style="display: flex; flex-direction: column; height: calc(90vh - var(--safe-top));">
             <div class="modal-handle"></div>
             <div class="modal-header-container">
-              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">Terms &amp; Conditions</h2>
+              <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${window.I18n.t('support.termsTitle')}</h2>
             </div>
             <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); flex-shrink: 0;">Last updated: ${this.UPDATED}</div>
             <div class="modal-body">
@@ -642,7 +642,7 @@ window.Components = {
               ${clause('9. Changes to this policy', `If a future version of the app ever changes how data is handled (for example, an optional cloud backup), this policy will be updated first and the change will be clearly announced in the app before anything leaves your device.`)}
             </div>
             <div style="margin-top: var(--space-4); flex-shrink: 0;">
-              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="Close terms and conditions">Close</button>
+              <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="${window.I18n.t('others.openTermsAria')}">${window.I18n.t('common.close')}</button>
             </div>
           </div>
         </div>`;
@@ -692,7 +692,7 @@ window.Components = {
     render(selectedIcon = 'pin', groups = this.CATEGORY_GROUPS) {
       return `
         <div class="icon-picker" id="icon-picker-v2" style="font-size: 16px;">
-          <input type="text" id="icon-search" class="form-control" placeholder="Search icons..." aria-label="Search icons" autocomplete="off" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">
+          <input type="text" id="icon-search" class="form-control" placeholder="${window.I18n.t('iconPicker.search')}" aria-label="${window.I18n.t('iconPicker.searchAria')}" autocomplete="off" style="font-size: var(--text-sm); margin-bottom: var(--space-3);">
           <div id="icon-selected-display-v2" style="display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 auto var(--space-3); color: var(--color-primary); background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 2px dashed var(--border-color);">
             <i data-lucide="${selectedIcon}" style="font-size: 48px; width: 48px; height: 48px; display: inline-block; vertical-align: middle;"></i>
           </div>
@@ -776,8 +776,8 @@ window.Components = {
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; gap: var(--space-3);">
               <h3 id="ip-title" style="margin: 0; font-size: 1.25rem; font-family: var(--font-family-display); font-weight: 800;">Select Icon</h3>
               <div style="display: flex; width: 100%; gap: var(--space-3);">
-                <button class="btn btn-secondary" id="ip-cancel" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="Cancel selection">Cancel</button>
-                <button class="btn btn-primary" id="ip-confirm" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="Confirm selection">Done</button>
+                <button class="btn btn-secondary" id="ip-cancel" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
+                <button class="btn btn-primary" id="ip-confirm" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.confirmAria')}">${window.I18n.t('common.done')}</button>
               </div>
             </div>
             
@@ -1111,21 +1111,21 @@ window.Components = {
       div.innerHTML = `
         <div class="modal-content" style="padding: 0; display: flex; flex-direction: column;">
           <div class="modal-top-bar">
-            <button class="modal-btn-top modal-btn-close" id="crm-close">Cancel</button>
-            <h3 style="font-weight: 800; font-size: 1rem;">Custom Range</h3>
-            <button class="modal-btn-top" id="crm-apply">Apply</button>
+            <button class="modal-btn-top modal-btn-close" id="crm-close">${window.I18n.t('common.cancel')}</button>
+            <h3 style="font-weight: 800; font-size: 1rem;">${window.I18n.t('range.title')}</h3>
+            <button class="modal-btn-top" id="crm-apply">${window.I18n.t('range.apply')}</button>
           </div>
           
           <div class="modal-body" style="padding-bottom: 20px;">
             <div style="padding: var(--space-4);">
-              <div class="filter-group-title" style="margin-top: 0;">Quick Presets</div>
+              <div class="filter-group-title" style="margin-top: 0;">${window.I18n.t('range.quickPresets')}</div>
               <div class="multi-select-row">
-                <button class="multi-select-chip" data-days="7">Last 7 Days</button>
-                <button class="multi-select-chip" data-days="30">Last 30 Days</button>
-                <button class="multi-select-chip" data-days="90">Last 90 Days</button>
-                <button class="multi-select-chip" data-months="6">6 Months</button>
-                <button class="multi-select-chip" data-years="1">1 Year</button>
-                <button class="multi-select-chip" data-type="all">All Time</button>
+                <button class="multi-select-chip" data-days="7">${window.I18n.t('range.lastDays', { count: 7 })}</button>
+                <button class="multi-select-chip" data-days="30">${window.I18n.t('range.lastDays', { count: 30 })}</button>
+                <button class="multi-select-chip" data-days="90">${window.I18n.t('range.lastDays', { count: 90 })}</button>
+                <button class="multi-select-chip" data-months="6">${window.I18n.t('range.months', { count: 6 })}</button>
+                <button class="multi-select-chip" data-years="1">${window.I18n.t('range.years', { count: 1 })}</button>
+                <button class="multi-select-chip" data-type="all">${window.I18n.t('range.allTime')}</button>
               </div>
             </div>
 
@@ -1134,9 +1134,9 @@ window.Components = {
           </div>
           
           <div style="padding: var(--space-5); background: var(--bg-surface-sunken); border-top: 1px solid var(--color-border); text-align: center;">
-            <div style="font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">Summary</div>
+            <div style="font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">${window.I18n.t('range.summary')}</div>
             <div id="crm-range-summary" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
-              Pick start and end dates
+              ${window.I18n.t('range.pickDates')}
             </div>
           </div>
         </div>
@@ -1149,14 +1149,14 @@ window.Components = {
       const updateSummary = () => {
         const summary = document.getElementById('crm-range-summary');
         if (!currentStart || !currentEnd) {
-          summary.innerText = 'Pick start and end dates';
+          summary.innerText = window.I18n.t('range.pickDates');
           return;
         }
         const s = new Date(currentStart);
         const e = new Date(currentEnd);
         const diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
         const fmt = (d) => new Date(d).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
-        summary.innerHTML = `${fmt(currentStart)} - ${fmt(currentEnd)} <span style="color: var(--color-primary); margin-left: 8px;">(${diff} days)</span>`;
+        summary.innerHTML = `${fmt(currentStart)} - ${fmt(currentEnd)} <span style="color: var(--color-primary); margin-left: 8px;">${window.I18n.t('range.dayCount', { count: diff })}</span>`;
       };
 
       const renderCalendars = () => {
@@ -1166,7 +1166,7 @@ window.Components = {
         const startMonth = currentStart ? new Date(currentStart) : new Date();
         const endMonth = currentEnd ? new Date(currentEnd) : new Date();
 
-        const monthsStr = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const monthsStr = window.I18n.monthNames('long');
 
         const navHeader = (title, target, dt) => `
           <div class="calendar-nav-header">
@@ -1180,8 +1180,8 @@ window.Components = {
           </div>
         `;
 
-        startTarget.innerHTML = navHeader('Start Date', 'start', startMonth) + this._renderCalendar(startMonth, currentStart, currentStart, currentEnd);
-        endTarget.innerHTML = navHeader('End Date', 'end', endMonth) + this._renderCalendar(endMonth, currentEnd, currentStart, currentEnd);
+        startTarget.innerHTML = navHeader(window.I18n.t('range.startDate'), 'start', startMonth) + this._renderCalendar(startMonth, currentStart, currentStart, currentEnd);
+        endTarget.innerHTML = navHeader(window.I18n.t('range.endDate'), 'end', endMonth) + this._renderCalendar(endMonth, currentEnd, currentStart, currentEnd);
         
         // Attach day clicks
         startTarget.querySelectorAll('.calendar-day:not(.empty)').forEach(d => {
@@ -1265,8 +1265,8 @@ window.Components = {
       for (let i = 0; i < startIdx; i++) days.push(null);
       for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
-      const monthsStr = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-      const weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      const monthsStr = window.I18n.monthNames('long');
+      const weekdays = window.I18n.weekdayInitials();
       
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -1319,29 +1319,29 @@ window.Components = {
         div.innerHTML = `
           <div class="modal-content" style="padding: 0; display: flex; flex-direction: column;">
             <div class="modal-top-bar">
-              <button class="modal-btn-top modal-btn-close" id="afm-close">Cancel</button>
-              <h3 style="font-weight: 800; font-size: 1rem;">Filter & Sort</h3>
-              <button class="modal-btn-top" id="afm-apply">Apply</button>
+              <button class="modal-btn-top modal-btn-close" id="afm-close">${window.I18n.t('common.cancel')}</button>
+              <h3 style="font-weight: 800; font-size: 1rem;">${window.I18n.t('filter.filterAndSort')}</h3>
+              <button class="modal-btn-top" id="afm-apply">${window.I18n.t('range.apply')}</button>
             </div>
             
             <div class="modal-body" style="padding: var(--space-4) var(--space-5) 40px;">
               <div style="margin-bottom: var(--space-6); display: flex; justify-content: flex-end;">
-                <button id="afm-show-all" style="background: var(--bg-surface-sunken); border: none; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; color: var(--color-primary); cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s ease;">Show All</button>
+                <button id="afm-show-all" style="background: var(--bg-surface-sunken); border: none; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; color: var(--color-primary); cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s ease;">${window.I18n.t('filterModal.showAll')}</button>
               </div>
 
-              <div class="filter-group-title" style="margin-top: 0;">Sort Order</div>
+              <div class="filter-group-title" style="margin-top: 0;">${window.I18n.t('filterModal.sortOrder')}</div>
               <div class="multi-select-row">
-                <button class="multi-select-chip ${currentFilters.sortOrder === 'desc' ? 'active' : ''}" data-sort="desc">Newest First</button>
-                <button class="multi-select-chip ${currentFilters.sortOrder === 'asc' ? 'active' : ''}" data-sort="asc">Oldest First</button>
+                <button class="multi-select-chip ${currentFilters.sortOrder === 'desc' ? 'active' : ''}" data-sort="desc">${window.I18n.t('history.newestFirst')}</button>
+                <button class="multi-select-chip ${currentFilters.sortOrder === 'asc' ? 'active' : ''}" data-sort="asc">${window.I18n.t('history.oldestFirst')}</button>
               </div>
 
-              <div class="filter-group-title">Transaction Type</div>
+              <div class="filter-group-title">${window.I18n.t('filterModal.txType')}</div>
               <div class="multi-select-row">
-                <button class="multi-select-chip ${currentFilters.types.includes('income') ? 'active' : ''}" data-type="income">Income</button>
-                <button class="multi-select-chip ${currentFilters.types.includes('expense') ? 'active' : ''}" data-type="expense">Expense</button>
+                <button class="multi-select-chip ${currentFilters.types.includes('income') ? 'active' : ''}" data-type="income">${window.I18n.t('form.income')}</button>
+                <button class="multi-select-chip ${currentFilters.types.includes('expense') ? 'active' : ''}" data-type="expense">${window.I18n.t('form.expense')}</button>
               </div>
 
-              <div class="filter-group-title">Wallets</div>
+              <div class="filter-group-title">${window.I18n.t('dash.wallets')}</div>
               <div class="multi-select-row">
                 ${accounts.map(acc => `
                   <button class="multi-select-chip ${currentFilters.accounts.includes(acc.id) ? 'active' : ''}" data-acc="${acc.id}">
@@ -1350,7 +1350,7 @@ window.Components = {
                 `).join('')}
               </div>
 
-              <div class="filter-group-title">Categories</div>
+              <div class="filter-group-title">${window.I18n.t('others.categories')}</div>
               <div class="multi-select-row">
                 ${categories.map(cat => `
                   <button class="multi-select-chip ${currentFilters.categories.includes(cat.id) ? 'active' : ''}" data-cat="${cat.id}">
@@ -1360,11 +1360,11 @@ window.Components = {
               </div>
 
               ${(currentFilters.tags && currentFilters.tags.length) ? `
-                <div class="filter-group-title">Tags</div>
+                <div class="filter-group-title">${window.I18n.t('form.tags')}</div>
                 <div class="multi-select-row">
                   ${currentFilters.tags.map(tag => `
-                    <button class="multi-select-chip active" data-tag="${esc(tag)}" aria-label="Remove tag filter">
-                      ${tag === '__untagged__' ? 'No tag' : '#' + esc(tag)} ✕
+                    <button class="multi-select-chip active" data-tag="${esc(tag)}" aria-label="${window.I18n.t('filterModal.removeTagAria')}">
+                      ${tag === '__untagged__' ? window.I18n.t('history.noTag') : '#' + esc(tag)} ✕
                     </button>
                   `).join('')}
                 </div>
@@ -1468,7 +1468,7 @@ window.Components = {
       const years = [];
       for (let i = initYear - 10; i <= initYear + 5; i++) years.push(i);
       
-      const monthsStr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthsStr = window.I18n.monthNames('short');
       
       let columnsHtml = '';
       if (type === 'year') {
@@ -1495,9 +1495,9 @@ window.Components = {
         <div class="modal-backdrop" id="active-period-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="pp-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-              <button class="btn btn-secondary" id="pp-cancel" style="padding: 8px 16px; width: auto;" aria-label="Cancel">Cancel</button>
+              <button class="btn btn-secondary" id="pp-cancel" style="padding: 8px 16px; width: auto;" aria-label="${window.I18n.t('common.cancel')}">${window.I18n.t('common.cancel')}</button>
               <h3 id="pp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">Select ${type.charAt(0).toUpperCase() + type.slice(1)}</h3>
-              <button class="btn btn-primary" id="pp-confirm" style="padding: 8px 16px; width: auto;" aria-label="Confirm">Done</button>
+              <button class="btn btn-primary" id="pp-confirm" style="padding: 8px 16px; width: auto;" aria-label="${window.I18n.t('common.done')}">${window.I18n.t('common.done')}</button>
             </div>
             <div style="position: relative; display: flex; height: 200px; background: var(--bg-surface);">
               <div style="position: absolute; top: 80px; height: 40px; width: 100%; background: var(--bg-surface-sunken); opacity: 0.6; pointer-events: none; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);"></div>
@@ -1565,8 +1565,8 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-handle"></div>
             <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-              <h2 id="rcm-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">Initial Tag Scope</h2>
-              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">You're adding tags to a new recurring transaction. Should future generated transactions also have these tags?</p>
+              <h2 id="rcm-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${window.I18n.t('recCreate.title')}</h2>
+              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${window.I18n.t('recCreate.body')}</p>
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
@@ -1580,8 +1580,8 @@ window.Components = {
               ">
                 <div style="width: 40px; height: 40px; border-radius: 14px; background: var(--bg-surface-sunken); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); flex-shrink: 0;"><i data-lucide="pin" style="width: 20px; height: 20px;"></i></div>
                 <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">Only this transaction</div>
-                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">Keep future transactions tag-free</div>
+                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">${window.I18n.t('recCreate.onlyThis')}</div>
+                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">${window.I18n.t('recCreate.onlyThisDesc')}</div>
                 </div>
                 <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
               </button>
@@ -1595,14 +1595,14 @@ window.Components = {
               ">
                 <div style="width: 40px; height: 40px; border-radius: 14px; background: var(--color-income-bg); display: flex; align-items: center; justify-content: center; color: var(--color-income-text); flex-shrink: 0;"><i data-lucide="refresh-cw" style="width: 20px; height: 20px;"></i></div>
                 <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">All recurring transactions</div>
-                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">Apply tags to all future generations</div>
+                  <div style="font-weight: 600; color: var(--text-primary); font-size: var(--text-base);">${window.I18n.t('recCreate.all')}</div>
+                  <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: 2px;">${window.I18n.t('recCreate.allDesc')}</div>
                 </div>
                 <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
               </button>
 
               <!-- Cancel -->
-              <button id="rcm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
+              <button id="rcm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>`;
@@ -1659,7 +1659,7 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-handle"></div>
             <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-              <h2 id="rdm-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl); color: var(--color-expense);">Delete Recurring Transaction</h2>
+              <h2 id="rdm-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl); color: var(--color-expense);">${window.I18n.t('recDelete.title')}</h2>
               <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">This transaction belongs to a repeating series. How much do you want to delete?</p>
             </div>
 
@@ -1811,7 +1811,7 @@ window.Components = {
       };
 
       const renderContent = () => {
-        const title = recurrence.enabled ? 'Edit Recurring' : 'Recurring Settings';
+        const title = window.I18n.t(recurrence.enabled ? 'recSettings.editTitle' : 'recSettings.title');
         const isWeekly = recurrence.period === 'weekly';
         const isBiWeekly = recurrence.period === 'biweekly';
         const isMonthly = recurrence.period === 'monthly';
@@ -1848,22 +1848,22 @@ window.Components = {
                   <div>
                     <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Frequency</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                      <button class="freq-pill ${isWeekly ? 'active' : ''}" data-freq="weekly">Weekly</button>
+                      <button class="freq-pill ${isWeekly ? 'active' : ''}" data-freq="weekly">${window.I18n.t('recSettings.weekly')}</button>
                       <button class="freq-pill ${isBiWeekly ? 'active' : ''}" data-freq="biweekly">Every 2 Weeks</button>
-                      <button class="freq-pill ${isMonthly ? 'active' : ''}" data-freq="monthly">Monthly</button>
-                      <button class="freq-pill ${isQuarterly ? 'active' : ''}" data-freq="quarterly">Quarterly</button>
-                      <button class="freq-pill ${isYearly ? 'active' : ''}" data-freq="yearly">Yearly</button>
+                      <button class="freq-pill ${isMonthly ? 'active' : ''}" data-freq="monthly">${window.I18n.t('recSettings.monthly')}</button>
+                      <button class="freq-pill ${isQuarterly ? 'active' : ''}" data-freq="quarterly">${window.I18n.t('recSettings.quarterly')}</button>
+                      <button class="freq-pill ${isYearly ? 'active' : ''}" data-freq="yearly">${window.I18n.t('recSettings.yearly')}</button>
                     </div>
                   </div>
 
                   <!-- Dates -->
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
                     <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" for="rs-start-date">Start Date</label>
+                      <label class="form-label" for="rs-start-date">${window.I18n.t('range.startDate')}</label>
                       <input type="date" id="rs-start-date" class="form-control" value="${recurrence.startDate}">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" for="rs-end-date">Ends On</label>
+                      <label class="form-label" for="rs-end-date">${window.I18n.t('recSettings.endsOn')}</label>
                       <input type="date" id="rs-end-date" class="form-control" value="${recurrence.endDate || ''}">
                     </div>
                   </div>
@@ -1872,14 +1872,14 @@ window.Components = {
                   <div id="rs-warning" style="display: none; background: var(--color-expense-bg); color: var(--color-expense); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); line-height: 1.4; border: 1px solid rgba(255, 68, 68, 0.1);">
                     <div style="display: flex; gap: 8px;">
                       <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
-                      <span>Recurring transactions are capped at <strong>5 years (60 months)</strong> to keep the app fast. The end date will be automatically adjusted when saving.</span>
+                      <span>${window.I18n.t('recSettings.cap', { years: '<strong>' + window.I18n.t('recSettings.capYears') + '</strong>' })}</span>
                     </div>
                   </div>
                 </div>
 
                 <div style="display: flex; gap: var(--space-3); margin-top: var(--space-2);">
-                  <button id="rs-cancel" class="btn btn-secondary" style="flex: 1;">Cancel</button>
-                  <button id="rs-save" class="btn btn-primary" style="flex: 2;">Save Rules</button>
+                  <button id="rs-cancel" class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
+                  <button id="rs-save" class="btn btn-primary" style="flex: 2;">${window.I18n.t('recSettings.saveRules')}</button>
                 </div>
               </div>
             </div>
@@ -1996,10 +1996,10 @@ window.Components = {
       const container = document.getElementById('modal-container');
       
       const freqs = [
-        { id: 'days', label: 'Days' },
-        { id: 'weeks', label: 'Weeks' },
-        { id: 'months', label: 'Months' },
-        { id: 'years', label: 'Years' }
+        { id: 'days', label: window.I18n.t('freqPicker.days') },
+        { id: 'weeks', label: window.I18n.t('freqPicker.weeks') },
+        { id: 'months', label: window.I18n.t('freqPicker.months') },
+        { id: 'years', label: window.I18n.t('freqPicker.years') }
       ];
       
       const intervals = Array.from({ length: 30 }, (_, i) => i + 1);
@@ -2015,9 +2015,9 @@ window.Components = {
         <div class="modal-backdrop" id="active-freq-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="fp-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-              <button class="btn btn-secondary" id="fp-cancel" style="padding: 8px 16px;" aria-label="Cancel frequency selection">Cancel</button>
+              <button class="btn btn-secondary" id="fp-cancel" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
               <h3 id="fp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">Repeats Every</h3>
-              <button class="btn btn-primary" id="fp-confirm" style="padding: 8px 16px;" aria-label="Confirm frequency selection">Done</button>
+              <button class="btn btn-primary" id="fp-confirm" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.confirmAria')}">${window.I18n.t('common.done')}</button>
             </div>
             
             <div style="position: relative; display: flex; height: 200px; background: var(--bg-surface);">
@@ -2114,7 +2114,7 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh;">
             <div style="padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface);">
               <h3 id="lp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 800;">${title}</h3>
-              <button class="btn-icon touch-target" id="lp-close" aria-label="Close picker" style="color: var(--text-secondary); width: 44px; height: 44px; margin-right: -10px;">
+              <button class="btn-icon touch-target" id="lp-close" aria-label="${window.I18n.t('picker.closeAria')}" style="color: var(--text-secondary); width: 44px; height: 44px; margin-right: -10px;">
                 <i data-lucide="x" style="width: 24px; height: 24px;"></i>
               </button>
             </div>
@@ -2220,8 +2220,8 @@ window.Components = {
         return `
           <div class="card card-elevated" style="padding: var(--space-6); margin-top: var(--space-4); text-align: center; border-radius: var(--radius-2xl); border: 2px dashed var(--border-color); background: var(--bg-surface-sunken);">
             <div style="font-size: 2.5rem; margin-bottom: var(--space-3); opacity: 0.5;">📊</div>
-            <p style="color: var(--text-secondary); font-weight: 500;">Chart not available for custom ranges.</p>
-            <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: var(--space-4); font-style: italic;">Note: Custom date ranges do not apply to this view</p>
+            <p style="color: var(--text-secondary); font-weight: 500;">${window.I18n.t('charts.customRangeUnavailable')}</p>
+            <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: var(--space-4); font-style: italic;">${window.I18n.t('charts.customRangeNote')}</p>
           </div>
         `;
       }
@@ -2229,7 +2229,7 @@ window.Components = {
       if (!data || data.length === 0) {
         return `
           <div class="card card-elevated" style="padding: var(--space-6); margin-top: var(--space-4); text-align: center; border-radius: var(--radius-2xl);">
-            <p class="text-secondary">No data for the selected period.</p>
+            <p class="text-secondary">${window.I18n.t('charts.noData')}</p>
           </div>
         `;
       }
@@ -2240,8 +2240,8 @@ window.Components = {
           <div style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: var(--color-primary); opacity: 0.03; border-radius: 20px; filter: blur(30px);"></div>
           
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); position: relative; z-index: 1;">
-            <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">Net Flow Analysis</p>
-            <span style="font-size: 10px; color: var(--text-tertiary); font-weight: 700; background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 10px;">INCOME - EXPENSES</span>
+            <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">${window.I18n.t('charts.netFlowAnalysis')}</p>
+            <span style="font-size: 10px; color: var(--text-tertiary); font-weight: 700; background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 10px;">${window.I18n.t('charts.incomeMinusExpenses')}</span>
           </div>
           
           <div style="height: 200px; width: 100%; position: relative; z-index: 1;">
@@ -2476,7 +2476,7 @@ window.Components = {
       const totalAmount = rawData.reduce((sum, item) => sum + item.amount, 0);
       top5.push({
         id: '__others__',
-        name: 'Others',
+        name: window.I18n.t('charts.others'),
         amount: othersAmount,
         icon: 'more-horizontal',
         percentage: totalAmount > 0 ? (othersAmount / totalAmount) * 100 : 0,
@@ -2499,7 +2499,7 @@ window.Components = {
         contentHtml = `
           <div style="height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.5;">
             <div style="font-size: 2.5rem; margin-bottom: var(--space-2);">🥯</div>
-            <p>No ${type} data for this period.</p>
+            <p>${window.I18n.t(type === 'expense' ? 'charts.noExpenseData' : 'charts.noIncomeData')}</p>
           </div>
         `;
       } else {
@@ -2508,7 +2508,7 @@ window.Components = {
             <div class="donut-chart-container">
               <canvas id="categoryDonutChart"></canvas>
               <div class="donut-chart-center">
-                <div class="donut-total-label">Total</div>
+                <div class="donut-total-label">${window.I18n.t('charts.total')}</div>
                 <div class="donut-total-value">${window.Store.formatCurrency(totalAmount)}</div>
               </div>
             </div>
@@ -2547,11 +2547,11 @@ window.Components = {
       return `
         <div class="card card-elevated" style="padding: var(--space-5); margin-top: var(--space-4); border-radius: var(--radius-2xl); position: relative; overflow: hidden;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6); position: relative; z-index: 1;">
-            <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">Distribution</p>
+            <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">${window.I18n.t('charts.distribution')}</p>
             
             <div class="chart-toggle-group">
-              <button class="chart-toggle-btn ${isExpense ? 'active' : ''}" data-type="expense">Expenses</button>
-              <button class="chart-toggle-btn ${!isExpense ? 'active' : ''}" data-type="income">Income</button>
+              <button class="chart-toggle-btn ${isExpense ? 'active' : ''}" data-type="expense">${window.I18n.t('charts.expenses')}</button>
+              <button class="chart-toggle-btn ${!isExpense ? 'active' : ''}" data-type="income">${window.I18n.t('form.income')}</button>
             </div>
           </div>
           
@@ -2620,7 +2620,7 @@ window.Components = {
         const breakdown = window.Store.computeCategoryTagBreakdown(filters, this._currentType, catId);
         const rows = breakdown.rows.map(r => `
           <div class="donut-tag-row touch-target" data-tag-row="${esc(r.tag)}" role="button" tabindex="0">
-            <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${r.isUntagged ? 'No tag' : '#' + esc(r.tag)}</span>
+            <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${r.isUntagged ? window.I18n.t('history.noTag') : '#' + esc(r.tag)}</span>
             <span class="donut-tag-count">${r.count}</span>
             <span class="donut-tag-amount">${esc(window.Store.formatCurrency(r.amount))}</span>
           </div>`).join('');
@@ -2762,7 +2762,7 @@ window.Components = {
             <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 85vh;">
               <div class="modal-handle"></div>
               <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-                <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">Tags</h2>
+                <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">${window.I18n.t('form.tags')}</h2>
                 <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 0;">Categorize your transaction with tags.</p>
               </div>
 
@@ -2771,7 +2771,7 @@ window.Components = {
                 <div style="margin-bottom: var(--space-5);">
                   <div style="display: flex; gap: 8px;">
                     <div style="flex: 1; position: relative;">
-                      <input type="text" id="tag-input" class="form-control" placeholder="New tag..." aria-label="New tag name" maxlength="20" style="padding-left: 32px;" autocomplete="off">
+                      <input type="text" id="tag-input" class="form-control" placeholder="${window.I18n.t('tagsModal.newTag')}" aria-label="${window.I18n.t('tagsModal.newTagAria')}" maxlength="20" style="padding-left: 32px;" autocomplete="off">
                       <i data-lucide="hash" style="position: absolute; left: 10px; top: 12px; width: 14px; color: var(--text-tertiary);" aria-hidden="true"></i>
                     </div>
                     <button id="add-tag-btn" class="btn btn-primary" style="width: auto; padding: 0 16px;">Add</button>
@@ -2806,8 +2806,8 @@ window.Components = {
               </div>
 
               <div style="padding: var(--space-5); border-top: 1px solid var(--border-color); display: flex; gap: var(--space-3);">
-                <button id="tags-cancel" class="btn btn-secondary" style="flex: 1;">Cancel</button>
-                <button id="tags-save" class="btn btn-primary" style="flex: 2;">Apply Tags</button>
+                <button id="tags-cancel" class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
+                <button id="tags-save" class="btn btn-primary" style="flex: 2;">${window.I18n.t('tagsModal.apply')}</button>
               </div>
             </div>
             <style>
@@ -2961,15 +2961,15 @@ window.Components = {
       const container = document.getElementById('modal-container');
 
       let description = "This transaction is part of a repeating series. How far should your changes apply? Past transactions always keep their dates.";
-      let futureSub = 'Apply the change from this point on';
-      let allSub = 'Also update past transactions (their dates never move)';
+      let futureSub = window.I18n.t('recUpdate.futureSub');
+      let allSub = window.I18n.t('recUpdate.allSub');
       if (recurrenceRemoved) {
         description = "You turned off Recurrent on a transaction that belongs to a repeating series. What should happen to the series?";
-        futureSub = 'Stop the series: upcoming scheduled transactions are removed';
-        allSub = 'Also unlink past transactions (they stay in your history)';
+        futureSub = window.I18n.t('recUpdate.futureSubStop');
+        allSub = window.I18n.t('recUpdate.allSubStop');
       } else if (dateChanged) {
-        futureSub = 'Upcoming transactions shift to the new day';
-        allSub = 'Past dates never move; upcoming shift to the new day';
+        futureSub = window.I18n.t('recUpdate.futureSubDate');
+        allSub = window.I18n.t('recUpdate.allSubDate');
       }
 
       const optionCard = (id, title, sub) => `
@@ -2991,14 +2991,14 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-handle"></div>
             <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-              <h2 id="rum-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${recurrenceRemoved ? 'Stop Recurring?' : 'Recurring Transaction'}</h2>
+              <h2 id="rum-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${window.I18n.t(recurrenceRemoved ? 'recUpdate.stopTitle' : 'recUpdate.title')}</h2>
               <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${description}</p>
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
-              ${optionCard('ru-only-this', 'Only this transaction', recurrenceRemoved ? 'Unlink just this one; the series continues' : 'Everything else in the series stays as it is')}
-              ${optionCard('ru-this-future', 'This and future transactions', futureSub)}
-              ${optionCard('ru-all-series', 'All transactions in the series', allSub)}
+              ${optionCard('ru-only-this', window.I18n.t('recUpdate.onlyThis'), window.I18n.t(recurrenceRemoved ? 'recUpdate.onlyThisSubUnlink' : 'recUpdate.onlyThisSub'))}
+              ${optionCard('ru-this-future', window.I18n.t('recUpdate.thisFuture'), futureSub)}
+              ${optionCard('ru-all-series', window.I18n.t('recUpdate.allSeries'), allSub)}
               <button id="ru-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
             </div>
           </div>
@@ -3078,7 +3078,7 @@ window.Components = {
   // -------------------------
   MonthPicker: {
     MONTHS: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-    MONTHS_FULL: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    get MONTHS_FULL() { return window.I18n.monthNames('long'); },
 
     show(options = {}) {
       const { initialValue, onSelect } = options;
@@ -3116,8 +3116,8 @@ window.Components = {
         wrapper.innerHTML = `
           <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border-color);">
-              <button class="modal-btn-top modal-btn-close" id="mp-cancel">Cancel</button>
-              <h3 id="mp-title" style="margin: 0; font-weight: 800; font-size: 1rem;">Select Month</h3>
+              <button class="modal-btn-top modal-btn-close" id="mp-cancel">${window.I18n.t('common.cancel')}</button>
+              <h3 id="mp-title" style="margin: 0; font-weight: 800; font-size: 1rem;">${window.I18n.t('monthPicker.title')}</h3>
               <button class="modal-btn-top" id="mp-done" style="color: var(--color-accent); font-weight: 700;">Done</button>
             </div>
 
@@ -3134,7 +3134,7 @@ window.Components = {
               </div>
 
               <!-- Month Grid -->
-              <div id="mp-month-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;" role="group" aria-label="Month selection">
+              <div id="mp-month-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;" role="group" aria-label="${window.I18n.t('monthPicker.gridAria')}">
                 ${this.MONTHS.map((m, i) => {
                   const isSelected = (i === selectedMonth && currentYear === selectedYear);
                   const isToday = (i === now.getMonth() && currentYear === now.getFullYear());
@@ -3231,8 +3231,8 @@ window.Components = {
       modalBackdrop.innerHTML = `
         <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
           <div class="modal-top-bar modal-top-bar--safe">
-            <button class="modal-btn-top modal-btn-close" id="csm-close" aria-label="Close category selection" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
-            <h2 id="csm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">Select Category</h2>
+            <button class="modal-btn-top modal-btn-close" id="csm-close" aria-label="${window.I18n.t('catPicker.closeAria')}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
+            <h2 id="csm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${window.I18n.t('catPicker.title')}</h2>
             <button class="modal-btn-top" id="csm-add-new" aria-label="Add new category" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--color-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">+</button>
           </div>
           
@@ -3295,7 +3295,7 @@ window.Components = {
           const catId = item.dataset.id;
           const cat = catId ? sortedCategories.find(c => c.id === catId) : null;
           close();
-          if (onSelect) onSelect(cat || { id: '', name: 'No category selected' });
+          if (onSelect) onSelect(cat || { id: '', name: window.I18n.t('form.noCategorySelected') });
         };
       });
 
@@ -3355,13 +3355,13 @@ window.Components = {
           <div class="modal-content" style="height: 92vh; border-top-left-radius: 32px; border-top-right-radius: 32px; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface);">
             <!-- Top Bar with X (Left) and Filter (Right) -->
             <div class="modal-top-bar" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 20; background: var(--bg-surface);">
-              <button class="modal-btn-icon-left" id="egm-close" aria-label="Close chart modal">
+              <button class="modal-btn-icon-left" id="egm-close" aria-label="${window.I18n.t('graphModal.closeAria')}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" data-hydrated="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <h3 style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.1rem; margin: 0; color: var(--text-primary);">Balance Trend</h3>
-              <button class="modal-btn-filter-right ${showFilterPanel ? 'active' : ''}" id="egm-filter" aria-label="Toggle chart filters">
+              <button class="modal-btn-filter-right ${showFilterPanel ? 'active' : ''}" id="egm-filter" aria-label="${window.I18n.t('graphModal.toggleFiltersAria')}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders" data-hydrated="true"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                <span>Filter</span>
+                <span>${window.I18n.t('graphModal.filter')}</span>
               </button>
             </div>
 
@@ -3377,20 +3377,20 @@ window.Components = {
                 <div class="graph-filter-card animate-fade-in">
                   <!-- 1. Interval Selector -->
                   <div>
-                    <div class="filter-section-title">Interval</div>
+                    <div class="filter-section-title">${window.I18n.t('graphModal.interval')}</div>
                     <div class="filter-interval-group">
-                      <button class="filter-interval-btn ${activeInterval === 'weekly' ? 'active' : ''}" data-interval="weekly">Weekly</button>
-                      <button class="filter-interval-btn ${activeInterval === 'monthly' ? 'active' : ''}" data-interval="monthly">Monthly</button>
-                      <button class="filter-interval-btn ${activeInterval === 'quarter' ? 'active' : ''}" data-interval="quarter">Quarter</button>
+                      <button class="filter-interval-btn ${activeInterval === 'weekly' ? 'active' : ''}" data-interval="weekly">${window.I18n.t('dash.interval.weekly')}</button>
+                      <button class="filter-interval-btn ${activeInterval === 'monthly' ? 'active' : ''}" data-interval="monthly">${window.I18n.t('dash.interval.monthly')}</button>
+                      <button class="filter-interval-btn ${activeInterval === 'quarter' ? 'active' : ''}" data-interval="quarter">${window.I18n.t('dash.interval.quarter')}</button>
                     </div>
                   </div>
 
                   <!-- 2. Accounts Checkboxes -->
                   <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                      <div class="filter-section-title" style="margin-bottom: 0;">Accounts</div>
+                      <div class="filter-section-title" style="margin-bottom: 0;">${window.I18n.t('others.accounts')}</div>
                       <button id="egm-toggle-all-accounts" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-primary, #111); cursor: pointer;">
-                        ${selectedAccountIds.length === accounts.length ? 'Deselect All' : 'Select All'}
+                        ${window.I18n.t(selectedAccountIds.length === accounts.length ? 'history.deselectAll' : 'history.selectAll')}
                       </button>
                     </div>
                     <div class="filter-checkbox-grid">
@@ -3407,9 +3407,9 @@ window.Components = {
                   <!-- 3. Categories Checkboxes -->
                   <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                      <div class="filter-section-title" style="margin-bottom: 0;">Categories</div>
+                      <div class="filter-section-title" style="margin-bottom: 0;">${window.I18n.t('others.categories')}</div>
                       <button id="egm-toggle-all-categories" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-primary, #111); cursor: pointer;">
-                        ${selectedCategoryIds.length === categories.length || selectedCategoryIds.length === 0 ? 'Select All' : 'Deselect All'}
+                        ${window.I18n.t(selectedCategoryIds.length === categories.length || selectedCategoryIds.length === 0 ? 'history.selectAll' : 'history.deselectAll')}
                       </button>
                     </div>
                     <div class="filter-checkbox-grid">
@@ -3425,7 +3425,7 @@ window.Components = {
                   <!-- 4. Save View Button -->
                   <button class="btn-save-filters" id="egm-save-filters">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    <span>Save View</span>
+                    <span>${window.I18n.t('graphModal.saveView')}</span>
                   </button>
                 </div>
               ` : ''}
@@ -3581,7 +3581,7 @@ window.Components = {
         const tickColor = isDark ? '#94a3b8' : '#64748b';
 
         const datasets = [{
-          label: 'Total Net Balance',
+          label: window.I18n.t('analytics.totalNetBalance'),
           data: (mainResult && mainResult.points) ? mainResult.points : [],
           borderColor: isDark ? '#38bdf8' : '#111111',
           backgroundColor: isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(17, 17, 17, 0.05)',

@@ -19,6 +19,18 @@ const DEFAULT_CATEGORIES = [
 window.Store = {
   // v0.65: every color holds >=3:1 (WCAG graphics) against both card surfaces
   // (#ffffff light, #161e2e dark) — used for chart lines, icon glyphs, accents.
+  // v0.89 P8d: the account "type" is a closed enum, and the ENGLISH value is
+  // what gets stored on the record (and exported) — only its label is
+  // localized, by stable value. Anything unrecognised (older/imported data)
+  // falls through to the raw stored string rather than showing a bare key.
+  ACCOUNT_TYPES: ['Bank', 'Debit card', 'Cash', 'Savings', 'Credit card', 'Investment', 'Wallet', 'Account'],
+
+  accountTypeLabel(value) {
+    if (!value) return window.I18n ? window.I18n.t('accType.Account') : 'Account';
+    if (!this.ACCOUNT_TYPES.includes(value) || !window.I18n) return value;
+    return window.I18n.t('accType.' + value);
+  },
+
   ACCOUNT_COLORS: [
     '#E60023', // 01 Monster Red     (4.8 / 3.5)
     '#EA580C', // 02 Pure Orange     (3.6 / 4.7)

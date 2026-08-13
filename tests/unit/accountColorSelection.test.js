@@ -16,6 +16,9 @@ describe('Account Color Selection', () => {
 
     global.window = {
       Store: {
+        // v0.89 P8d: EditAccountView renders its Type dropdown from these.
+        ACCOUNT_TYPES: ['Bank', 'Debit card', 'Cash', 'Savings', 'Credit card', 'Investment', 'Wallet', 'Account'],
+        accountTypeLabel: (v) => v || 'Account',
         ACCOUNT_COLORS: ['#E60023', '#FF9500', '#FFD600', '#32D74B', '#0075EB'],
         getState: () => ({
           accounts: [

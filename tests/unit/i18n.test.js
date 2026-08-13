@@ -32,6 +32,39 @@ describe('I18n core (v0.86 P8a)', () => {
       .toEqual(['en', 'es', 'fr', 'it', 'pt']);
   });
 
+  // v0.89 P8d: with 500+ keys across five files, a key added to en.js and
+  // forgotten elsewhere silently falls back to English — invisible in review
+  // and only caught by someone actually reading that screen in that language.
+  describe('dictionary parity', () => {
+    const LANGS = ['fr', 'it', 'es', 'pt'];
+    const placeholders = (s) => (String(s).match(/\{\w+\}/g) || []).sort().join(',');
+
+    it.each(LANGS)('%s covers every English key, with no strays', (lang) => {
+      const en = global.window.I18n.dicts.en;
+      const dict = global.window.I18n.dicts[lang];
+      expect(Object.keys(en).filter(k => !(k in dict))).toEqual([]);
+      expect(Object.keys(dict).filter(k => !(k in en))).toEqual([]);
+    });
+
+    it.each(LANGS)('%s uses the same placeholders as English', (lang) => {
+      const en = global.window.I18n.dicts.en;
+      const dict = global.window.I18n.dicts[lang];
+      // A dropped {amount}/{count} renders a sentence with a hole in it.
+      const mismatched = Object.keys(en)
+        .filter(k => k in dict && placeholders(en[k]) !== placeholders(dict[k]));
+      expect(mismatched).toEqual([]);
+    });
+
+    it.each(LANGS)('%s defines both plural variants wherever English does', (lang) => {
+      const en = global.window.I18n.dicts.en;
+      const dict = global.window.I18n.dicts[lang];
+      const missing = Object.keys(en)
+        .filter(k => /\.(one|other)$/.test(k))
+        .filter(k => !(k in dict));
+      expect(missing).toEqual([]);
+    });
+  });
+
   describe('locale()', () => {
     it('maps each language code to its BCP 47 locale', () => {
       const I18n = global.window.I18n;

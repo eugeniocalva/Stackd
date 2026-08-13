@@ -58,6 +58,37 @@ const I18n = {
     return dict[key] != null ? dict[key] : null;
   },
 
+  // v0.89 P8d: calendar/picker chrome had hardcoded English month and weekday
+  // arrays. Intl derives them from the active locale, so they never need a
+  // dictionary entry — and they stay correct for any locale added later.
+  // Cached per locale+style: the pickers rebuild these on every re-render.
+  _dateNameCache: {},
+
+  monthNames(style = 'long') {
+    const key = this.locale() + '|' + style;
+    if (!this._dateNameCache[key]) {
+      const fmt = new Intl.DateTimeFormat(this.locale(), { month: style });
+      // Day 15 avoids any month-length/DST edge; the year is irrelevant here.
+      this._dateNameCache[key] = Array.from({ length: 12 }, (_, m) =>
+        fmt.format(new Date(2021, m, 15))
+      );
+    }
+    return this._dateNameCache[key];
+  },
+
+  // Monday-first, matching the calendar grid's own layout.
+  weekdayInitials() {
+    const key = this.locale() + '|weekday-narrow';
+    if (!this._dateNameCache[key]) {
+      const fmt = new Intl.DateTimeFormat(this.locale(), { weekday: 'narrow' });
+      // 2021-02-01 was a Monday.
+      this._dateNameCache[key] = Array.from({ length: 7 }, (_, i) =>
+        fmt.format(new Date(2021, 1, 1 + i))
+      );
+    }
+    return this._dateNameCache[key];
+  },
+
   // t('history.selection.count', { count: 3 }) → '3 selected'
   // Placeholders use {name} syntax; unknown placeholders are left intact.
   t(key, params) {
