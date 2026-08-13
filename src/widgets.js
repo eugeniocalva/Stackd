@@ -149,7 +149,7 @@ window.Widgets = {
     return `<div class="multi-select-row">
       <button type="button" class="multi-select-chip ${all ? 'active' : ''}"
               data-config-multi="${this._esc(key)}" data-config-value="__all__"
-              aria-pressed="${all}">All</button>
+              aria-pressed="${all}">${window.I18n.t('widget.cfg.all')}</button>
       ${items.map(it => {
         const on = !all && selectedIds.includes(it.id);
         return `<button type="button" class="multi-select-chip ${on ? 'active' : ''}"
@@ -196,8 +196,8 @@ window.Widgets = {
   // the dashboard card. hasConfig types gain a config step in Phase 2.
   registry: {
     latest: {
-      title: 'Latest transactions',
-      description: 'Your most recent activity at a glance, without leaving the dashboard.',
+      get title() { return window.I18n.t('widget.latest.title'); },
+      get description() { return window.I18n.t('widget.latest.desc'); },
       icon: 'receipt',
       sizes: ['small', 'large'],
       hasConfig: false,
@@ -218,7 +218,7 @@ window.Widgets = {
           .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
           .slice(0, limit);
 
-        if (txs.length === 0) return W._emptyState('No transactions yet');
+        if (txs.length === 0) return W._emptyState(window.I18n.t('widget.empty.noTx'));
 
         return `<div class="widget-rows">${txs.map(tx => {
           const cat = (state.categories || []).find(c => c.id === tx.categoryId);
@@ -226,7 +226,7 @@ window.Widgets = {
           const isExpense = tx.type === 'expense';
           const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
           const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount));
-          const title = cat ? cat.name : (tx.transferRef ? 'Transfer' : 'Unknown');
+          const title = cat ? cat.name : window.I18n.t(tx.transferRef ? 'common.transfer' : 'common.unknown');
           const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
 
           return `
@@ -234,7 +234,7 @@ window.Widgets = {
               <div class="widget-row-icon"><i data-lucide="${W._esc(cat ? cat.icon : 'receipt')}"></i></div>
               <div class="widget-row-main">
                 <span class="widget-row-title">${W._esc(title)}</span>
-                ${isLarge ? `<span class="widget-row-sub">${W._esc(acc ? acc.name : 'Account')} · ${W._esc(dateLabel)}</span>` : ''}
+                ${isLarge ? `<span class="widget-row-sub">${W._esc(acc ? acc.name : window.I18n.t('common.account'))} · ${W._esc(dateLabel)}</span>` : ''}
               </div>
               <span class="widget-row-value ${amountClass}">${W._esc(amount)}</span>
             </div>`;
@@ -254,8 +254,8 @@ window.Widgets = {
     },
 
     incomeExpense: {
-      title: 'Income vs Expenses',
-      description: 'Track what comes in against what goes out, month by month.',
+      get title() { return window.I18n.t('widget.netflow.title'); },
+      get description() { return window.I18n.t('widget.netflow.desc'); },
       icon: 'bar-chart-3',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -276,11 +276,11 @@ window.Widgets = {
       render(instance) {
         const W = window.Widgets;
         const buckets = this._buckets(instance);
-        if (buckets.length === 0) return W._emptyState('Not enough data to chart');
+        if (buckets.length === 0) return W._emptyState(window.I18n.t('widget.empty.notEnough'));
 
         if (instance.size !== 'large') {
           const cur = buckets[buckets.length - 1];
-          if (cur.income === 0 && cur.expense === 0) return W._emptyState('Nothing this month');
+          if (cur.income === 0 && cur.expense === 0) return W._emptyState(window.I18n.t('widget.empty.nothingMonth'));
           const peak = Math.max(cur.income, cur.expense) || 1;
           const bar = (label, value, cls) => `
             <div class="widget-minibar">
@@ -303,7 +303,7 @@ window.Widgets = {
 
         const recent = buckets.slice(-6);
         if (recent.every(b => b.income === 0 && b.expense === 0)) {
-          return W._emptyState('Not enough data to chart');
+          return W._emptyState(window.I18n.t('widget.empty.notEnough'));
         }
         return `<div class="widget-chart-wrap"><canvas id="${W._canvasId(instance)}"></canvas></div>`;
       },
@@ -332,14 +332,14 @@ window.Widgets = {
             labels: recent.map(b => b.label),
             datasets: [
               {
-                label: 'Income',
+                label: window.I18n.t('form.income'),
                 data: recent.map(b => b.income),
                 backgroundColor: 'rgba(16, 185, 129, 0.85)',
                 borderRadius: 4,
                 borderSkipped: false
               },
               {
-                label: 'Expenses',
+                label: window.I18n.t('charts.expenses'),
                 data: recent.map(b => b.expense),
                 backgroundColor: 'rgba(239, 68, 68, 0.85)',
                 borderRadius: 4,
@@ -396,7 +396,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -405,8 +405,8 @@ window.Widgets = {
     },
 
     categories: {
-      title: 'Categories',
-      description: 'See where your money goes this month, broken down by category.',
+      get title() { return window.I18n.t('widget.categories.title'); },
+      get description() { return window.I18n.t('widget.categories.desc'); },
       icon: 'pie-chart',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -431,7 +431,7 @@ window.Widgets = {
         const cfg = W._cfg(instance);
         const data = this._data(instance);
         if (data.length === 0) {
-          return W._emptyState(cfg.direction === 'income' ? 'No income this month' : 'No spending this month');
+          return W._emptyState(window.I18n.t(cfg.direction === 'income' ? 'widget.empty.noIncome' : 'widget.empty.noSpending'));
         }
 
         const total = data.reduce((sum, d) => sum + d.amount, 0);
@@ -522,18 +522,18 @@ window.Widgets = {
             : (c.typeHint === 'expense' || c.typeHint === 'both')));
 
         return [
-          W._configSection('Show', W._segmented('direction', [
-            { value: 'expense', label: 'Spending' },
-            { value: 'income', label: 'Income' }
+          W._configSection(window.I18n.t('widget.cfg.show'), W._segmented('direction', [
+            { value: 'expense', label: window.I18n.t('widget.cfg.spending') },
+            { value: 'income', label: window.I18n.t('form.income') }
           ], config.direction)),
-          W._configSection('Which categories', W._segmented('mode', [
-            { value: 'top', label: 'Top categories' },
-            { value: 'selected', label: 'Pick categories' }
+          W._configSection(window.I18n.t('widget.cfg.whichCategories'), W._segmented('mode', [
+            { value: 'top', label: window.I18n.t('widget.cfg.topCategories') },
+            { value: 'selected', label: window.I18n.t('widget.cfg.pickCategories') }
           ], config.mode)),
           config.mode === 'selected'
-            ? W._configSection('Categories', W._multiChips('categoryIds', expenseCats, config.categoryIds))
+            ? W._configSection(window.I18n.t('others.categories'), W._multiChips('categoryIds', expenseCats, config.categoryIds))
             : '',
-          W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds))
+          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds))
         ].join('');
       },
 
@@ -547,8 +547,8 @@ window.Widgets = {
     },
 
     netWorth: {
-      title: 'Net worth',
-      description: 'Keep an eye on your total balance across accounts as it moves over time.',
+      get title() { return window.I18n.t('widget.networth.title'); },
+      get description() { return window.I18n.t('widget.networth.desc'); },
       icon: 'trending-up',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -569,7 +569,7 @@ window.Widgets = {
       render(instance) {
         const W = window.Widgets;
         const points = this._points(instance);
-        if (points.length === 0) return W._emptyState('No balance history yet');
+        if (points.length === 0) return W._emptyState(window.I18n.t('widget.empty.noHistory'));
 
         const latest = points[points.length - 1].balance;
         const forecast = window.Store.computeBalanceForecast(W._cfg(instance).accountIds || []);
@@ -649,7 +649,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -658,8 +658,8 @@ window.Widgets = {
     },
 
     savings: {
-      title: 'Personal savings',
-      description: 'See how much you actually put aside each month — what is left after expenses.',
+      get title() { return window.I18n.t('widget.savings.title'); },
+      get description() { return window.I18n.t('widget.savings.desc'); },
       icon: 'piggy-bank',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -678,7 +678,7 @@ window.Widgets = {
       render(instance) {
         const W = window.Widgets;
         const buckets = this._buckets(instance);
-        if (buckets.length === 0) return W._emptyState('Not enough data yet');
+        if (buckets.length === 0) return W._emptyState(window.I18n.t('widget.empty.notEnoughYet'));
 
         const current = buckets[buckets.length - 1];
         const previous = buckets.length > 1 ? buckets[buckets.length - 2] : null;
@@ -744,7 +744,7 @@ window.Widgets = {
                 padding: 10,
                 displayColors: false,
                 bodyFont: { family: 'Manrope', size: 12, weight: '700' },
-                callbacks: { label: (ctx) => `Saved: ${window.Store.formatCurrency(ctx.parsed.y)}` }
+                callbacks: { label: (ctx) => window.I18n.t('widget.savedLabel', { amount: window.Store.formatCurrency(ctx.parsed.y) }) }
               } : { enabled: false }
             },
             scales: {
@@ -772,7 +772,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -781,8 +781,8 @@ window.Widgets = {
     },
 
     upcoming: {
-      title: 'Upcoming transactions',
-      description: 'Your next scheduled payments — recurring transactions, subscriptions and loan instalments.',
+      get title() { return window.I18n.t('widget.upcoming.title'); },
+      get description() { return window.I18n.t('widget.upcoming.desc'); },
       icon: 'calendar',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -865,7 +865,7 @@ window.Widgets = {
           .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
         if (merged.length === 0) {
-          return W._emptyState(`Nothing scheduled in the next ${days} days`);
+          return W._emptyState(window.I18n.t('widget.empty.nothingScheduled', { count: days }));
         }
 
         const limit = isLarge ? 5 : 3;
@@ -886,9 +886,9 @@ window.Widgets = {
             const isExpense = row.type === 'expense';
             const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
             icon = row.transferRef ? 'arrow-up-down' : (cat ? cat.icon : 'receipt');
-            title = cat ? cat.name : (row.transferRef ? 'Transfer' : 'Unknown');
+            title = cat ? cat.name : window.I18n.t(row.transferRef ? 'common.transfer' : 'common.unknown');
             amountHtml = `<span class="widget-row-value ${cls}">${isExpense ? '-' : '+'}${W._esc(window.Store.formatCurrency(Math.abs(row.amount)))}</span>`;
-            sub = isLarge ? `${acc ? acc.name : 'Account'} · ${dateLabel}` : dateLabel;
+            sub = isLarge ? `${acc ? acc.name : window.I18n.t('common.account')} · ${dateLabel}` : dateLabel;
           }
 
           return `
@@ -931,12 +931,12 @@ window.Widgets = {
       renderConfig(config, state) {
         const W = window.Widgets;
         return [
-          W._configSection('Look ahead', W._segmented('horizonDays', [
-            { value: '7', label: '7 days' },
-            { value: '30', label: '30 days' },
-            { value: '60', label: '60 days' }
+          W._configSection(window.I18n.t('widget.cfg.lookAhead'), W._segmented('horizonDays', [
+            { value: '7', label: window.I18n.t('widget.cfg.days', { count: 7 }) },
+            { value: '30', label: window.I18n.t('widget.cfg.days', { count: 30 }) },
+            { value: '60', label: window.I18n.t('widget.cfg.days', { count: 60 }) }
           ], config.horizonDays)),
-          W._configSection('Accounts', W._multiChips('accountIds', state.accounts || [], config.accountIds))
+          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds))
         ].join('');
       },
 
@@ -946,8 +946,8 @@ window.Widgets = {
     },
 
     budgets: {
-      title: 'Budget goals',
-      description: 'Track your monthly spending limits and see how much room is left.',
+      get title() { return window.I18n.t('widget.budget.title'); },
+      get description() { return window.I18n.t('widget.budget.desc'); },
       icon: 'target',
       sizes: ['small', 'large'],
       hasConfig: true,
@@ -998,7 +998,7 @@ window.Widgets = {
       render(instance, state) {
         const W = window.Widgets;
         const rows = this._rows(instance, state);
-        if (rows.length === 0) return W._emptyState('No budget limits set');
+        if (rows.length === 0) return W._emptyState(window.I18n.t('widget.empty.noBudgets'));
 
         const { limit, spent } = this._totals(rows);
 
@@ -1107,12 +1107,12 @@ window.Widgets = {
         }).filter(Boolean);
 
         return [
-          W._configSection('Which budgets', W._segmented('mode', [
-            { value: 'all', label: 'All budgets' },
-            { value: 'selected', label: 'Pick categories' }
+          W._configSection(window.I18n.t('widget.cfg.whichBudgets'), W._segmented('mode', [
+            { value: 'all', label: window.I18n.t('widget.cfg.allBudgets') },
+            { value: 'selected', label: window.I18n.t('widget.cfg.pickCategories') }
           ], config.mode)),
           config.mode === 'selected'
-            ? W._configSection('Categories', W._multiChips('categoryIds', budgeted, config.categoryIds))
+            ? W._configSection(window.I18n.t('others.categories'), W._multiChips('categoryIds', budgeted, config.categoryIds))
             : ''
         ].join('');
       },
@@ -1123,8 +1123,8 @@ window.Widgets = {
     },
 
     fiftyThirtyTwenty: {
-      title: '50/30/20 budget',
-      description: 'Split your planned monthly income into needs, wants and savings.',
+      get title() { return window.I18n.t('widget.fifty.title'); },
+      get description() { return window.I18n.t('widget.fifty.desc'); },
       icon: 'scale',
       sizes: ['large'],
       hasConfig: true,
@@ -1173,7 +1173,7 @@ window.Widgets = {
       render(instance) {
         const W = window.Widgets;
         const d = this._data(instance);
-        if (!d) return W._emptyState('Set your planned monthly income in the widget settings');
+        if (!d) return W._emptyState(window.I18n.t('widget.empty.setIncome'));
 
         const fmt = (v) => window.Store.formatCurrency(v);
         // Static rows: fill width IS the percentage, one neutral color — there
@@ -1195,9 +1195,9 @@ window.Widgets = {
             <span class="widget-stat-label">planned monthly income${d.pcts.fallback ? ' · using 50/30/20 (fix the split)' : ''}</span>
           </div>
           <div class="widget-minibars">
-            ${row('Needs', d.pcts.needs, d.targets.needs)}
-            ${row('Wants', d.pcts.wants, d.targets.wants)}
-            ${row('Savings', d.pcts.savings, d.targets.savings)}
+            ${row(window.I18n.t('widget.fifty.needs'), d.pcts.needs, d.targets.needs)}
+            ${row(window.I18n.t('widget.fifty.wants'), d.pcts.wants, d.targets.wants)}
+            ${row(window.I18n.t('widget.fifty.savings'), d.pcts.savings, d.targets.savings)}
           </div>`;
       },
 
@@ -1220,15 +1220,15 @@ window.Widgets = {
           </div>`;
 
         return [
-          W._configSection('Planned monthly income', `
+          W._configSection(window.I18n.t('widget.cfg.plannedIncome'), `
             <input type="number" inputmode="decimal" min="0" step="0.01" class="form-control"
                    data-fifty-income value="${config.plannedIncome == null ? '' : W._esc(config.plannedIncome)}"
                    placeholder="e.g. 2000" aria-label="Planned monthly income">`),
-          W._configSection('Split', `
+          W._configSection(window.I18n.t('widget.cfg.split'), `
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2);">
-              ${pctInput('pctNeeds', 'Needs %', config.pctNeeds)}
-              ${pctInput('pctWants', 'Wants %', config.pctWants)}
-              ${pctInput('pctSavings', 'Savings %', config.pctSavings)}
+              ${pctInput('pctNeeds', window.I18n.t('widget.fifty.needsPct'), config.pctNeeds)}
+              ${pctInput('pctWants', window.I18n.t('widget.fifty.wantsPct'), config.pctWants)}
+              ${pctInput('pctSavings', window.I18n.t('widget.fifty.savingsPct'), config.pctSavings)}
             </div>
             <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${sum === 100 ? 'display: none;' : ''}">Currently ${sum}% — the split must total 100%</p>`)
         ].join('');
@@ -1276,24 +1276,24 @@ window.Widgets = {
 
     const header = `
       <div class="widgets-header">
-        <p class="section-title" style="margin-bottom: 0;">Widgets</p>
+        <p class="section-title" style="margin-bottom: 0;">${window.I18n.t('widget.section')}</p>
         <div class="widgets-header-actions">
           ${widgets.length > 0 ? `
             <button type="button" class="widget-pill-btn ${editMode ? 'is-active' : ''}" id="btn-widgets-edit"
-                    aria-pressed="${editMode}">${editMode ? 'Done' : 'Edit'}</button>
+                    aria-pressed="${editMode}">${window.I18n.t(editMode ? 'common.done' : 'common.edit')}</button>
           ` : ''}
-          <button type="button" class="widget-pill-btn widget-pill-btn--accent" id="btn-widgets-add" aria-label="Add widget">
-            <i data-lucide="plus" style="width: 15px; height: 15px;"></i><span>Add</span>
+          <button type="button" class="widget-pill-btn widget-pill-btn--accent" id="btn-widgets-add" aria-label="${window.I18n.t('widget.addAria')}">
+            <i data-lucide="plus" style="width: 15px; height: 15px;"></i><span>${window.I18n.t('widget.add')}</span>
           </button>
         </div>
       </div>`;
 
     const body = widgets.length === 0
       ? `
-        <button type="button" class="widget-empty-cta touch-target" id="btn-widgets-add-empty" aria-label="Add your first widget">
+        <button type="button" class="widget-empty-cta touch-target" id="btn-widgets-add-empty" aria-label="${window.I18n.t('widget.addFirst')}">
           <i data-lucide="layout-dashboard" style="width: 26px; height: 26px;"></i>
-          <span class="widget-empty-cta-title">Add your first widget</span>
-          <span class="widget-empty-cta-sub">Pick what you want to see on your dashboard</span>
+          <span class="widget-empty-cta-title">${window.I18n.t('widget.addFirst')}</span>
+          <span class="widget-empty-cta-sub">${window.I18n.t('widget.addFirstSub')}</span>
         </button>`
       : `<div class="widgets-grid ${editMode ? 'is-editing' : ''}" id="widgets-grid">
           ${widgets.map((w, i) => this._renderCard(w, state, editMode, i, widgets.length)).join('')}
@@ -1314,8 +1314,8 @@ window.Widgets = {
       return `
         <div class="${classes.join(' ')}" data-widget-id="${this._esc(instance.id)}" data-widget-type="${this._esc(instance.type)}">
           ${editMode ? this._renderEditChrome(instance, index, total, isLarge) : ''}
-          <div class="widget-card-head"><span class="widget-card-title">Unavailable</span></div>
-          <div class="widget-card-body">${this._emptyState('This widget is not supported in this version')}</div>
+          <div class="widget-card-head"><span class="widget-card-title">${window.I18n.t('widget.unavailable')}</span></div>
+          <div class="widget-card-body">${this._emptyState(window.I18n.t('widget.unsupportedBody'))}</div>
         </div>`;
     }
 
@@ -1325,7 +1325,7 @@ window.Widgets = {
     } catch (err) {
       // One broken widget must not take the whole dashboard down with it.
       console.error(`[widgets] render failed for "${instance.type}"`, err);
-      bodyHtml = this._emptyState('Could not load this widget');
+      bodyHtml = this._emptyState(window.I18n.t('widget.loadFailed'));
     }
 
     return `
@@ -1352,16 +1352,16 @@ window.Widgets = {
       </button>
       <div class="widget-edit-bar">
         <button type="button" class="widget-chrome-btn" data-widget-action="move-up" data-widget-id="${id}"
-                ${index === 0 ? 'disabled' : ''} aria-label="Move widget up">
+                ${index === 0 ? 'disabled' : ''} aria-label="${window.I18n.t('widget.moveUpAria')}">
           <i data-lucide="chevron-up" style="width: 16px; height: 16px;"></i>
         </button>
         <button type="button" class="widget-chrome-btn" data-widget-action="move-down" data-widget-id="${id}"
-                ${index === total - 1 ? 'disabled' : ''} aria-label="Move widget down">
+                ${index === total - 1 ? 'disabled' : ''} aria-label="${window.I18n.t('widget.moveDownAria')}">
           <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
         </button>
         ${gearBtn}
         <button type="button" class="widget-size-pill" data-widget-action="toggle-size" data-widget-id="${id}"
-                aria-label="Toggle widget size">${isLarge ? 'Wide' : 'Small'}</button>
+                aria-label="${window.I18n.t('widget.toggleSizeAria')}">${window.I18n.t(isLarge ? 'widget.sizeWide' : 'widget.sizeSmall')}</button>
       </div>`;
   },
 

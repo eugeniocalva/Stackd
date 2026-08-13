@@ -723,7 +723,7 @@ window.Store = {
     const { type, value, start, end } = period;
     
     if (type === 'custom') {
-      if (!start || !end) return 'Custom Range';
+      if (!start || !end) return window.I18n.t('period.customRange');
       const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' });
       return `${fmt(start)} - ${fmt(end)}`;
     }
@@ -739,21 +739,21 @@ window.Store = {
 
     switch (type) {
       case 'today':
-        if (bounds.start === todayStr) return 'Today';
+        if (bounds.start === todayStr) return window.I18n.t('period.today');
         const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-        if (bounds.start === yest.toISOString().split('T')[0]) return 'Yesterday';
+        if (bounds.start === yest.toISOString().split('T')[0]) return window.I18n.t('period.yesterday');
         return d.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
       
       case 'week':
-        if (today >= startDt && today <= endDt) return 'This Week';
+        if (today >= startDt && today <= endDt) return window.I18n.t('period.thisWeek');
         return `${startDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })} – ${endDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })}`;
  
       case 'month':
-        if (today.getFullYear() === d.getFullYear() && today.getMonth() === d.getMonth()) return 'This Month';
+        if (today.getFullYear() === d.getFullYear() && today.getMonth() === d.getMonth()) return window.I18n.t('period.thisMonth');
         return d.toLocaleDateString(this.getLocale(), { month: 'long', year: 'numeric' });
  
       case 'year':
-        if (today.getFullYear() === d.getFullYear()) return 'This Year';
+        if (today.getFullYear() === d.getFullYear()) return window.I18n.t('period.thisYear');
         return d.getFullYear().toString();
     }
     return '';

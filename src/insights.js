@@ -25,32 +25,35 @@ window.Insights = {
   // from the sentence, so translation never fights word order. Params arrive
   // pre-escaped from _renderCard.
   STRINGS: {
+    // v0.90 P8e: the sentence lives in the dictionary (it carries the <strong>
+    // markup, so params stay plain text and _renderCard's escape-then-assemble
+    // ordering is unchanged); `value` is a formatted figure, never prose.
     accountConcentration: (p) => ({
-      text: `of your money sits in <strong>${p.name}</strong> — consider spreading it across accounts`,
+      text: window.I18n.t('insight.accountConcentration', p),
       value: `${p.pct}%`
     }),
     accountBalanced: (p) => ({
-      text: `is the most any account holds (<strong>${p.name}</strong>) — your money is nicely spread`,
+      text: window.I18n.t('insight.accountBalanced', p),
       value: `${p.pct}%`
     }),
     topSpendingHigh: (p) => ({
-      text: `of this month's spending went to <strong>${p.name}</strong> — try to trim it`,
+      text: window.I18n.t('insight.topSpendingHigh', p),
       value: `${p.pct}%`
     }),
     topSpending: (p) => ({
-      text: `of this month's spending went to <strong>${p.name}</strong>, your top category`,
+      text: window.I18n.t('insight.topSpending', p),
       value: `${p.pct}%`
     }),
     onTrackSave: (p) => ({
-      text: `is what you're set to put aside by the end of ${p.month}, scheduled payments included`,
+      text: window.I18n.t('insight.onTrackSave', p),
       value: `+${p.amount}`
     }),
     shortfall: (p) => ({
-      text: `is where ${p.month} is heading once scheduled payments land — mind the spending`,
+      text: window.I18n.t('insight.shortfall', p),
       value: p.amount
     }),
     incomeSource: (p) => ({
-      text: `of this month's income comes from <strong>${p.name}</strong>`,
+      text: window.I18n.t('insight.incomeSource', p),
       value: `${p.pct}%`
     })
   },
@@ -198,7 +201,7 @@ window.Insights = {
       const iconStyle = card.iconColor ? ` style="color: ${this._esc(card.iconColor)};"` : '';
       return `
         <div class="insight-card card card-elevated touch-target" data-insight="${this._esc(card.stringId)}"
-             role="button" tabindex="0" aria-label="Insight: ${s.value} ${s.text.replace(/<[^>]+>/g, '')}">
+             role="button" tabindex="0" aria-label="${window.I18n.t('insight.cardAria', { value: s.value, text: s.text.replace(/<[^>]+>/g, '') })}">
           <div class="insight-icon"${iconStyle}><i data-lucide="${this._esc(card.icon)}"></i></div>
           <span class="insight-value ${toneClass}">${s.value}</span>
           <span class="insight-text">${s.text}</span>
@@ -222,7 +225,7 @@ window.Insights = {
     return `
       <div class="insights-section" id="insights-section">
         <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
-          <p class="section-title" style="margin-bottom: 0;">Smart insights</p>
+          <p class="section-title" style="margin-bottom: 0;">${window.I18n.t('insight.section')}</p>
           <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--text-secondary);" aria-hidden="true"></i>
         </div>
         <div class="insights-list">

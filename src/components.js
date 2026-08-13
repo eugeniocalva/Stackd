@@ -3797,14 +3797,14 @@ window.Components = {
           <p class="widget-detail-desc">${esc(def.description)}</p>
           <div id="awm-preview">${W.renderPreview(selectedType, selectedSize, draft, window.Store.getState())}</div>
           ${sizes.length > 1 ? `
-            <div class="widget-size-dots" role="group" aria-label="Widget size">
+            <div class="widget-size-dots" role="group" aria-label="${window.I18n.t('widget.sizeAria')}">
               ${sizes.map(s => `
                 <button type="button" class="widget-size-dot ${s === selectedSize ? 'is-active' : ''}"
                         data-size="${esc(s)}" aria-pressed="${s === selectedSize}"
-                        aria-label="${s === 'large' ? 'Wide size' : 'Small size'}"></button>
+                        aria-label="${window.I18n.t(s === 'large' ? 'widget.sizeWideAria' : 'widget.sizeSmallAria')}"></button>
               `).join('')}
             </div>
-            <p class="widget-size-caption">${selectedSize === 'large' ? 'Wide' : 'Small'}</p>
+            <p class="widget-size-caption">${window.I18n.t(selectedSize === 'large' ? 'widget.sizeWide' : 'widget.sizeSmall')}</p>
           ` : ''}`;
       };
 
@@ -3815,19 +3815,19 @@ window.Components = {
         const def = selectedType ? W.registry[selectedType] : null;
         const isConfig = step === 'config';
         const isDetail = step === 'detail';
-        const title = (isConfig && editId) ? (def ? def.title : 'Configure') : 'Add widget';
+        const title = (isConfig && editId) ? (def ? def.title : window.I18n.t('widget.configure')) : window.I18n.t('widget.addWidget');
         // Only the edit-mode entry point has no earlier step to go back to.
         const canGoBack = (isDetail || isConfig) && !editId;
         const leftGlyph = canGoBack ? '‹' : '✕';
         // Detail advances to config when there is something to configure.
         const confirmLabel = editId
-          ? 'Save changes'
-          : (isDetail && def && def.hasConfig ? 'Next' : 'Add widget');
+          ? window.I18n.t('account.saveChanges')
+          : (isDetail && def && def.hasConfig ? window.I18n.t('widget.next') : window.I18n.t('widget.addWidget'));
 
         backdrop.innerHTML = `
           <div class="modal-content" style="padding: 0; display: flex; flex-direction: column; width: 100%; height: 100%; max-width: 100%; max-height: 100vh; border-radius: 0; transform: translateY(0); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
             <div class="modal-top-bar modal-top-bar--safe">
-              <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${canGoBack ? 'Back' : 'Close'}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
+              <button class="modal-btn-top modal-btn-close" id="awm-left" aria-label="${window.I18n.t(canGoBack ? 'widget.back' : 'common.close')}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">${leftGlyph}</button>
               <h2 id="awm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${esc(title)}</h2>
               <div style="width: 36px;"></div>
             </div>

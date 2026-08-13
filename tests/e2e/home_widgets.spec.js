@@ -292,7 +292,9 @@ test.describe('Home dashboard widgets', () => {
 
     // Gear reopens the sheet directly on the config step for that widget.
     await page.locator('[data-widget-action="configure"]').click();
-    await expect(page.locator('#awm-confirm')).toHaveText('Save changes');
+    // v0.90 P8e: shares the account form's 'account.saveChanges' key, so this
+    // button is now title-case like every other primary action in the app.
+    await expect(page.locator('#awm-confirm')).toHaveText('Save Changes');
     await page.click('[data-config-key="direction"][data-config-value="income"]');
     await page.click('#awm-confirm');
     await expect(page.locator('#add-widget-modal')).toHaveCount(0);
