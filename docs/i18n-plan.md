@@ -1,12 +1,13 @@
 # Phase 8 — Internationalization (FR / IT / ES / PT)
 
-Sub-phase plan for the last item of [docs/refactor-plan.md](refactor-plan.md)
-(item 12b of the 2026-08-11 screenshot review). Split out because the work is
-far larger than one session: ~350 app-chrome strings plus ~250–300 lines of
-Support prose, across five monolithic global-script files.
+**STATUS: COMPLETE — shipped v0.86 → v0.92 (2026-08-13).** The app runs
+fully in English, French, Italian, Spanish and Portuguese. This document is
+now the *record* of how it was done; read it before touching i18n code, and
+read `CLAUDE.md` for the architecture and house rules.
 
-**This document is the entry point for a fresh session.** Read it, then read
-`CLAUDE.md` for the architecture and house rules before touching code.
+Was the last item of [docs/refactor-plan.md](refactor-plan.md) (item 12b of
+the 2026-08-11 screenshot review), split out because the work was far larger
+than one session.
 
 ---
 
@@ -97,68 +98,48 @@ window.I18n = {
 
 ---
 
-## Sub-phases
+## Sub-phases — ALL SHIPPED
 
-Each sub-phase is independently shippable, testable, and commits on its own.
-Translations land **with** their slice (not in one giant pass at the end) so
-the user can review real screens early.
+Each sub-phase shipped independently, with its translations, on its own commit.
 
-### P8a — Foundation *(no visible change)*
-Build `src/i18n.js` + `src/i18n/en.js`; wire `I18n.lang` from
-`state.language` on boot and in the `SET_LANGUAGE` case; add the four
-language files as empty dictionaries; expand both language pickers
-(Settings + `main.js` Region Setup, dropping its "More languages coming
-soon…" row) to the five languages. With only `en` populated, everything
-falls back to English — the app must look **identical** when done.
-*Done when:* unit tests cover interpolation, plural variants, `en` fallback,
-missing-key fallback, and `locale()` mapping; switching language in Settings
-persists and re-renders with no visual change.
+| Sub-phase | Shipped | What landed |
+|---|---|---|
+| P8a Foundation | v0.86 | `src/i18n.js` (`t()`, `locale()`, `setLang()`, plural variants, lang→en→key fallback) + five dictionaries; `I18n.lang` wired to `state.language` on boot, in `SET_LANGUAGE` and in the cross-tab storage handler; both pickers offer 5 languages. |
+| P8b Locale formatting | v0.87 | All 27 date/number/currency sites route through `Store.getLocale()`. CSV headers and amounts stay English/dot-decimal, pinned by an export→import round-trip test under `language=it`. |
+| P8c Core chrome | v0.88 | Bottom nav + FAB, Dashboard, History (selection bar, filter bar, delete + scope modals), New/Edit Log form. Plural sites restructured to `.one`/`.other`; the nav is rebuilt on language change because it mounts outside the render loop. |
+| P8d Remaining views | v0.89 | Analytics, Budget/Goals, Debt (hub/sim/results), Settings, Edit Account, Categories, Tags, every shared modal, Region Setup. Calendar month/weekday names come from `Intl` via `I18n.monthNames()`/`weekdayInitials()`. |
+| P8e Widgets, insights, store | v0.90 | All 8 widgets (registry `title`/`description` are GETTERS so live switching reaches the gallery), `insights.js` STRINGS table, store period labels. |
+| P8f Support prose | v0.91 | FAQ, User Manual and Terms fully translated (182 keys/language). The three blocks are id-only structures resolved at render time, so the manual's **search runs over the localized corpus**. |
+| P8g QA sweep | v0.92 | Straggler sweep (aria-labels, picker titles, recurring/tags modal copy, the PDF report); long-translation layout audit across all 5 languages, both themes. |
 
-### P8b — Locale-aware formatting *(highest regression risk — isolated on purpose)*
-Route every date/number/currency site through `I18n.locale()`, replacing both
-the `undefined` (device-locale) and `'en-US'` (pinned) arguments.
-**Danger:** switching off `en-US` changes decimal separators to `1.234,56`
-for IT/ES/PT — audit anything that *parses* formatted output, especially the
-amount input in the transaction form. **CSV column headers must stay
-English** or `import.js` stops matching them; pin that with a test.
-*Done when:* a locale-matrix unit test covers currency/date output per
-language, and a CSV export→import round-trip passes unchanged under a
-non-English language.
+**Final state: 816 keys × 5 languages, parity enforced by
+`tests/unit/i18n.test.js`** (key coverage, placeholder match, plural
+completeness). 518 unit tests, 31 e2e.
 
-### P8c — Core chrome *(the daily screens)*
-Extract + translate Dashboard, Wallets, History (incl. the selection bar and
-filter bar), the New/Edit Log form, and the bottom nav. Restructure the
-plural-concatenation and assembled-sentence sites in these files into full
-templates with placeholders.
-*Done when:* those screens are fully translated in all four languages and the
-e2e suite passes in at least one non-English language.
+### Conventions worth keeping
 
-### P8d — Remaining views
-Analytics (incl. the v0.85 tag drilldown), Budget/Goals, Debt (hub, simulator,
-results), Settings, Categories, Tags, and the shared modals in
-`components.js` (filter, recurring scope/delete, pickers, region setup).
+- Call sites use `window.I18n.t(...)` in full — deliberately **no bare `t`
+  alias**, because `t` is already a heavily-used callback parameter in
+  views.js/components.js.
+- Anything that varies by count is a **whole-sentence key per variant**
+  (`form.repeatsEvery.<freq>.one/.other`), never a `{unit}` placeholder —
+  French gender agreement makes the placeholder form impossible.
+- Data that is **stored** stays English (category names by user decision,
+  account-type values, CSV headers); only its *label* is localized, by stable
+  id (`Store.accountTypeLabel`, `_DebtShared.TYPES[x].label`).
+- Month and weekday names are **derived from `Intl`**, never dictionary keys.
+- Any structure that feeds `I18n.t` at render time (widget registry, FAQ /
+  manual / terms) must expose a **getter**, not a plain property, or it
+  freezes in the boot language.
 
-### P8e — Widgets, insights, store labels
-`widgets.js` (titles, descriptions, config labels, empty states),
-`insights.js` (its `STRINGS` table is already the seam — swap it for `t()`
-calls), and `store.js` period labels ("Today", "This Month", …).
-**`DEFAULT_CATEGORIES` names live inside stored user data** — translate them
-at *render* time by stable `cat_*` id for `isDefault` categories only; never
-rewrite what is in localStorage, or a user's edits and CSV backups break.
+### Known-acceptable truncation
 
-### P8f — Support prose *(decision pending — recommend deferring)*
-FAQ (~30 Q&A pairs), User Manual, and Terms in `components.js`: ~250–300
-entries **per language**. Recommendation: ship English-first and revisit.
-If translated, `ManualModal`'s search must search the *localized* corpus, not
-the English source text.
-
-### P8g — QA sweep
-Hunt missed strings (the 90 `aria-label`s and `title` attributes are the
-usual stragglers, plus `alert()`/`confirm()` text); check layout at longer
-translations — French and Portuguese run ~20–30% longer than English, which
-stresses the fixed-height widget cards (`--widget-h-small/large`), the
-segmented pills, and the truncating list rows; verify both themes; rebuild
-and check on device.
+Small widget cards are fixed-height and their title is one line with
+`text-overflow: ellipsis` (a deliberate v0.73 decision — a wrapped title eats
+a row of the body). English itself truncates at this size
+("UPCOMING TRANSACTIONS" by 48px), so the translated titles sit within the
+existing baseline; the two that were dramatically worse (es/pt "Budget goals")
+were shortened to the name each language already uses for that screen.
 
 ---
 

@@ -426,9 +426,15 @@ Bumps: store.js, components.js, views.js (+router.js if deep links) together.
 
 ---
 
-## Phase 8 — i18n: FR / IT / ES / PT (item 12b) (v0.86+)
+## Phase 8 — i18n: FR / IT / ES / PT (item 12b) — ✅ SHIPPED v0.86 → v0.92
 
-Current state: zero i18n infrastructure; ~600-700 hardcoded English strings
+Delivered across sub-phases P8a–P8g in its own session; **816 keys × 5
+languages**, parity enforced by a unit test. See
+[docs/i18n-plan.md](i18n-plan.md) for what shipped and the conventions to
+follow when adding strings. The notes below are the ORIGINAL survey, kept
+for context.
+
+Original state: zero i18n infrastructure; ~600-700 hardcoded English strings
 (~350 app chrome + ~250-300 FAQ/Manual/Terms prose). `state.language` is fully
 plumbed dead state (stackd_v1_language, SET_LANGUAGE persists+emits, en-only
 pickers). Dates already half-localize: History day headers use device locale

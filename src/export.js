@@ -169,7 +169,7 @@ window.StackdExport = {
     if (!window.jspdf || !window.jspdf.jsPDF) {
       this._ensurePdfLibs().then(
         () => this.exportTransactionsPDF(state, options),
-        () => alert('PDF export needs an internet connection to fetch the PDF library. Please try again once online.')
+        () => alert(window.I18n.t('export.pdfOffline'))
       );
       return;
     }
@@ -181,17 +181,17 @@ window.StackdExport = {
     // Header
     doc.setFontSize(20);
     doc.setTextColor(33, 37, 41);
-    doc.text('Stackd Transaction Report', 14, 20);
+    doc.text(window.I18n.t('export.pdfTitle'), 14, 20);
     
     // Metadata
     doc.setFontSize(10);
     doc.setTextColor(100);
     const now = new Date().toLocaleString(window.Store.getLocale());
-    doc.text(`Generated on: ${now}`, 14, 28);
+    doc.text(window.I18n.t('export.pdfGeneratedOn', { date: now }), 14, 28);
 
     const periodText = (options.period && options.period.start && options.period.end) 
-      ? `Range: ${this._formatDate(options.period.start, dateFormat)} to ${this._formatDate(options.period.end, dateFormat)}`
-      : 'Range: All Time';
+      ? window.I18n.t('export.pdfRange', { start: this._formatDate(options.period.start, dateFormat), end: this._formatDate(options.period.end, dateFormat) })
+      : window.I18n.t('export.pdfRangeAll');
     doc.text(periodText, 14, 34);
 
     const filtered = state.transactions
@@ -211,7 +211,7 @@ window.StackdExport = {
       const cat = state.categories.find(c => c.id === t.categoryId);
       return [
         this._formatDate(t.date, dateFormat),
-        t.type.charAt(0).toUpperCase() + t.type.slice(1),
+        window.I18n.t('export.txType.' + t.type),
         acc ? acc.name : '-',
         cat ? cat.name : '-',
         t.comment || '',
@@ -221,7 +221,7 @@ window.StackdExport = {
 
     doc.autoTable({
       startY: 40,
-      head: [['Date', 'Type', 'Account', 'Category', 'Note', 'Amount']],
+      head: [[window.I18n.t('form.date'), window.I18n.t('account.type'), window.I18n.t('common.account'), window.I18n.t('form.category'), window.I18n.t('export.pdfNote'), window.I18n.t('form.amount')]],
       body: tableData,
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 3 },
@@ -232,7 +232,7 @@ window.StackdExport = {
       margin: { top: 40, bottom: 20 },
       didDrawPage: (data) => {
         // Footer: Page number
-        const str = 'Page ' + doc.internal.getNumberOfPages();
+        const str = window.I18n.t('export.pdfPage', { n: doc.internal.getNumberOfPages() });
         doc.setFontSize(10);
         const pageSize = doc.internal.pageSize;
         const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();

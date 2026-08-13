@@ -580,7 +580,7 @@ window.Components = {
         return `<div style="margin-bottom: var(--space-3);">
           <div class="section-title" style="font-size: 0.75rem; margin-bottom: var(--space-2); opacity: 0.7;">${group.label}</div>
           <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;" role="group" aria-label="${group.label}">
-            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="Select icon ${i}" aria-pressed="false" style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-surface-sunken); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-primary); transition: all 0.2s ease;">
+            ${filtered.map(i => `<button class="icon-btn touch-target" data-icon="${i}" aria-label="${window.I18n.t('iconPicker.selectAria', { icon: i })}" aria-pressed="false" style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-surface-sunken); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-primary); transition: all 0.2s ease;">
               <i data-lucide="${i}" style="font-size: 20px; width: 20px; height: 20px; display: inline-block; vertical-align: middle;"></i>
             </button>`).join('')}
           </div></div>`;
@@ -645,7 +645,7 @@ window.Components = {
         <div class="modal-backdrop" id="active-icon-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="ip-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 85vh;">
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; gap: var(--space-3);">
-              <h3 id="ip-title" style="margin: 0; font-size: 1.25rem; font-family: var(--font-family-display); font-weight: 800;">Select Icon</h3>
+              <h3 id="ip-title" style="margin: 0; font-size: 1.25rem; font-family: var(--font-family-display); font-weight: 800;">${window.I18n.t('iconPicker.title')}</h3>
               <div style="display: flex; width: 100%; gap: var(--space-3);">
                 <button class="btn btn-secondary" id="ip-cancel" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
                 <button class="btn btn-primary" id="ip-confirm" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.confirmAria')}">${window.I18n.t('common.done')}</button>
@@ -696,7 +696,7 @@ window.Components = {
     render(account, balance) {
       const formattedBalance = window.Store.formatCurrency(balance); // v0.87 P8b: was pinned en-US/USD
       return `
-        <div class="card card-elevated account-card touch-target" data-id="${account.id}" style="cursor: pointer; padding: var(--space-5); width: 100%; justify-content: space-between;" tabindex="0" role="button" aria-label="View account ${account.name}">
+        <div class="card card-elevated account-card touch-target" data-id="${account.id}" style="cursor: pointer; padding: var(--space-5); width: 100%; justify-content: space-between;" tabindex="0" role="button" aria-label="${window.I18n.t('account.viewAria', { name: account.name })}">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <p style="font-size: var(--text-sm); font-family: var(--font-family-body); color: var(--text-secondary); margin-bottom: var(--space-2);">${account.name}</p>
@@ -1531,7 +1531,7 @@ window.Components = {
             <div class="modal-handle"></div>
             <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
               <h2 id="rdm-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl); color: var(--color-expense);">${window.I18n.t('recDelete.title')}</h2>
-              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">This transaction belongs to a repeating series. How much do you want to delete?</p>
+              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${window.I18n.t('recDelete.body')}</p>
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
@@ -1544,8 +1544,8 @@ window.Components = {
                 cursor: pointer; text-align: left; width: 100%;
               ">
                 <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">Only this transaction</div>
-                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Keep past and future intact</div>
+                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">${window.I18n.t('recDelete.onlyThis')}</div>
+                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">${window.I18n.t('recDelete.onlyThisSub')}</div>
                 </div>
               </button>
 
@@ -1557,8 +1557,8 @@ window.Components = {
                 cursor: pointer; text-align: left; width: 100%;
               ">
                 <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">This and future transactions</div>
-                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Stop the series from continuing</div>
+                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">${window.I18n.t('recDelete.thisFuture')}</div>
+                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">${window.I18n.t('recDelete.thisFutureSub')}</div>
                 </div>
               </button>
 
@@ -1570,13 +1570,13 @@ window.Components = {
                 cursor: pointer; text-align: left; width: 100%;
               ">
                 <div style="flex: 1;">
-                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">All transactions</div>
-                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">Destroy the entire history of this series</div>
+                  <div style="font-weight: 600; color: var(--color-expense); font-size: var(--text-base);">${window.I18n.t('recDelete.all')}</div>
+                  <div style="color: var(--color-expense); font-size: var(--text-sm); margin-top: 2px;">${window.I18n.t('recDelete.allSub')}</div>
                 </div>
               </button>
 
               <!-- Cancel -->
-              <button id="rdm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
+              <button id="rdm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>`;
@@ -1696,7 +1696,7 @@ window.Components = {
               <div class="modal-handle"></div>
               <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
                 <h2 class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${title}</h2>
-                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">Configure repeating rules for this transaction.</p>
+                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${window.I18n.t('recSettings.body')}</p>
               </div>
 
               <div style="display: flex; flex-direction: column; padding: var(--space-4) var(--space-5) var(--space-6); gap: var(--space-5);">
@@ -1704,8 +1704,8 @@ window.Components = {
                 <!-- Toggle: Enable Recurring -->
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                   <div>
-                    <div style="font-weight: 600; color: var(--text-primary);">Enable recurring</div>
-                    <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">Generate future transactions automatically</div>
+                    <div style="font-weight: 600; color: var(--text-primary);">${window.I18n.t('recSettings.enable')}</div>
+                    <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">${window.I18n.t('recSettings.enableSub')}</div>
                   </div>
                   <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;">
                     <button id="rs-toggle-off" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${!recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">OFF</button>
@@ -1717,7 +1717,7 @@ window.Components = {
                   
                   <!-- Frequency Pills -->
                   <div>
-                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Frequency</label>
+                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('debt.frequency')}</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                       <button class="freq-pill ${isWeekly ? 'active' : ''}" data-freq="weekly">${window.I18n.t('recSettings.weekly')}</button>
                       <button class="freq-pill ${isBiWeekly ? 'active' : ''}" data-freq="biweekly">Every 2 Weeks</button>
@@ -1887,7 +1887,7 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
               <button class="btn btn-secondary" id="fp-cancel" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
-              <h3 id="fp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">Repeats Every</h3>
+              <h3 id="fp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">${window.I18n.t('freqPicker.title')}</h3>
               <button class="btn btn-primary" id="fp-confirm" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.confirmAria')}">${window.I18n.t('common.done')}</button>
             </div>
             
@@ -2634,7 +2634,7 @@ window.Components = {
               <div class="modal-handle"></div>
               <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
                 <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">${window.I18n.t('form.tags')}</h2>
-                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 0;">Categorize your transaction with tags.</p>
+                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 0;">${window.I18n.t('tagsModal.body')}</p>
               </div>
 
               <div style="padding: var(--space-4) var(--space-5); flex: 1; overflow-y: auto;">
@@ -2652,21 +2652,21 @@ window.Components = {
 
                 <!-- Current Tags -->
                 <div style="margin-bottom: var(--space-6);">
-                  <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Active Tags</label>
+                  <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.active')}</label>
                   <div id="current-tags-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
                     ${currentTags.length > 0 ? currentTags.map(tag => `
                       <div class="tag-chip active" data-tag="${tag}">
                         <span>#${tag}</span>
                         <i data-lucide="x" style="width: 14px; margin-left: 4px; cursor: pointer;"></i>
                       </div>
-                    `).join('') : '<p style="color: var(--text-tertiary); font-size: var(--text-sm); font-style: italic;">No tags added yet</p>'}
+                    `).join('') : `<p style="color: var(--text-tertiary); font-size: var(--text-sm); font-style: italic;">${window.I18n.t('tagsModal.none')}</p>`}
                   </div>
                 </div>
 
                 <!-- Suggestions -->
                 ${suggestions.length > 0 ? `
                   <div>
-                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">Recent Tags</label>
+                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.recent')}</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                       ${suggestions.slice(0, 10).map(tag => `
                         <div class="tag-chip suggestion" data-tag="${tag}">#${tag}</div>
@@ -2870,7 +2870,7 @@ window.Components = {
               ${optionCard('ru-only-this', window.I18n.t('recUpdate.onlyThis'), window.I18n.t(recurrenceRemoved ? 'recUpdate.onlyThisSubUnlink' : 'recUpdate.onlyThisSub'))}
               ${optionCard('ru-this-future', window.I18n.t('recUpdate.thisFuture'), futureSub)}
               ${optionCard('ru-all-series', window.I18n.t('recUpdate.allSeries'), allSub)}
-              <button id="ru-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">Cancel</button>
+              <button id="ru-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -2989,17 +2989,17 @@ window.Components = {
             <div class="modal-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border-color);">
               <button class="modal-btn-top modal-btn-close" id="mp-cancel">${window.I18n.t('common.cancel')}</button>
               <h3 id="mp-title" style="margin: 0; font-weight: 800; font-size: 1rem;">${window.I18n.t('monthPicker.title')}</h3>
-              <button class="modal-btn-top" id="mp-done" style="color: var(--color-accent); font-weight: 700;">Done</button>
+              <button class="modal-btn-top" id="mp-done" style="color: var(--color-accent); font-weight: 700;">${window.I18n.t('common.done')}</button>
             </div>
 
             <div style="padding: 16px 20px;">
               <!-- Year Navigator -->
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                <button id="mp-prev-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="Previous year">
+                <button id="mp-prev-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="${window.I18n.t('monthPicker.prevYear')}">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 </button>
                 <span id="mp-year-label" style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.4rem; color: var(--text-primary);">${currentYear}</span>
-                <button id="mp-next-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="Next year">
+                <button id="mp-next-year" class="btn-icon touch-target" style="width: 36px; height: 36px; background: var(--bg-surface-sunken); border-radius: 50%; border: none; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; justify-content: center;" aria-label="${window.I18n.t('monthPicker.nextYear')}">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </button>
               </div>
@@ -3104,7 +3104,7 @@ window.Components = {
           <div class="modal-top-bar modal-top-bar--safe">
             <button class="modal-btn-top modal-btn-close" id="csm-close" aria-label="${window.I18n.t('catPicker.closeAria')}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; padding: 0;">✕</button>
             <h2 id="csm-title" class="header-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 700;">${window.I18n.t('catPicker.title')}</h2>
-            <button class="modal-btn-top" id="csm-add-new" aria-label="Add new category" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--color-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">+</button>
+            <button class="modal-btn-top" id="csm-add-new" aria-label="${window.I18n.t('catPicker.addNewAria')}" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--bg-surface-sunken); border: none; cursor: pointer; color: var(--color-primary); font-size: 1.3rem; font-weight: bold; padding: 0;">+</button>
           </div>
           
           <div class="modal-body" style="padding: var(--space-4) var(--space-4) 40px; flex: 1; overflow-y: auto;">
@@ -3112,7 +3112,7 @@ window.Components = {
               <div class="list-item touch-target category-select-item" data-id="" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-lg); ${!selectedCategoryId ? 'background: var(--bg-surface-sunken); border: 2px solid var(--color-primary);' : ''}">
                 <div style="display: flex; align-items: center; gap: var(--space-3);">
                   <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="minus-circle"></i></div>
-                  <div class="list-item-title" style="font-weight: 600; color: var(--text-secondary);">No category selected</div>
+                  <div class="list-item-title" style="font-weight: 600; color: var(--text-secondary);">${window.I18n.t('form.noCategorySelected')}</div>
                 </div>
                 ${!selectedCategoryId ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-primary);"></i>' : ''}
               </div>
@@ -3229,7 +3229,7 @@ window.Components = {
               <button class="modal-btn-icon-left" id="egm-close" aria-label="${window.I18n.t('graphModal.closeAria')}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" data-hydrated="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
-              <h3 style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.1rem; margin: 0; color: var(--text-primary);">Balance Trend</h3>
+              <h3 style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.1rem; margin: 0; color: var(--text-primary);">${window.I18n.t('graphModal.balanceTrend')}</h3>
               <button class="modal-btn-filter-right ${showFilterPanel ? 'active' : ''}" id="egm-filter" aria-label="${window.I18n.t('graphModal.toggleFiltersAria')}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders" data-hydrated="true"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
                 <span>${window.I18n.t('graphModal.filter')}</span>
@@ -3239,7 +3239,7 @@ window.Components = {
             <div class="modal-body" style="padding: var(--space-5); flex: 1; overflow-y: auto;">
               <!-- Overall Metrics -->
               <div style="margin-bottom: var(--space-4);">
-                <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em;">Total Balance</span>
+                <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em;">${window.I18n.t('dash.totalBalance')}</span>
                 <div style="font-family: var(--font-family-display); font-size: 2.2rem; font-weight: 850; color: var(--text-primary); margin-top: 2px;">${formattedTotal}</div>
               </div>
 

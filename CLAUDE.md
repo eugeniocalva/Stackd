@@ -118,6 +118,38 @@ Two rules that are easy to get wrong:
 - Any edit-save of a series member in the transaction form must go through `Components.RecurringUpdateModal` (3 scope options, same layout family as `RecurringDeleteModal`); it accepts `onSelection(scope)` with `'single'|'future'|'all'` or the `onlyThis/thisAndFuture/allTransactions` callback shape.
 - `_calculateNextRecurrenceDate` is deliberately local-time, noon-anchored string math — do not reintroduce `new Date('YYYY-MM-DD')`/`toISOString()` round-trips, they drift a day at DST boundaries.
 
+### i18n (Phase 8, v0.86–v0.92)
+
+The app ships in **en / fr / it / es / pt**. `window.I18n` (`src/i18n.js`,
+loaded after `db.js` and **before** `store.js`) holds `t()`, `locale()`,
+`setLang()` and five flat dictionaries in `src/i18n/<lang>.js` — 816 keys
+each. **`docs/i18n-plan.md` is the reference.** Live switching is free:
+`SET_LANGUAGE` sets `I18n.lang` and the emit re-renders the view.
+
+Rules that are easy to get wrong:
+
+- **Every new user-facing string needs a key in all five dictionaries.**
+  `tests/unit/i18n.test.js` fails on a missing key, a placeholder mismatch or
+  a half-defined plural, so this is enforced, not merely encouraged.
+- Write `window.I18n.t('key')` in full. There is deliberately **no bare `t`
+  alias** — `t` is already a common callback parameter in views/components.
+- Anything varying by count gets a **whole-sentence key per plural variant**
+  (`.one` / `.other`, plus an explicit `.zero` where wanted), never
+  `"{n} " + noun`. French treats 0 as singular, so suffix hacks are wrong.
+- **Never translate stored data.** Category names, account `type` values and
+  CSV headers stay English on disk; only their *labels* are localized, by
+  stable id (`Store.accountTypeLabel`, `_DebtShared.TYPES[x].label`, which
+  holds a KEY not text). Translating stored values breaks CSV round-trips.
+- Month/weekday names come from `I18n.monthNames()` / `weekdayInitials()`
+  (Intl-derived, cached) — never dictionary keys.
+- All date/number/currency formatting goes through `Store.getLocale()`.
+- A structure that feeds `t()` at render time (widget registry, FAQ, manual,
+  terms) must expose a **getter**, or it freezes in the boot language. Same
+  reason `main.js` rebuilds the bottom nav when `state.language` changes: the
+  nav is mounted once, outside the render loop.
+- Unit-test `executeFile` chains must load `i18n.js` + `i18n/en.js` right
+  after `db.js`.
+
 ### Icons
 
 Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries a large inline `EMERGENCY_ICONS` fallback map + `window.StackdHydrateIcons` so icons still render on `file://`/native where the CDN script may be unavailable. When adding a new icon name, it may need an entry in that fallback map.

@@ -1223,7 +1223,7 @@ window.Widgets = {
           W._configSection(window.I18n.t('widget.cfg.plannedIncome'), `
             <input type="number" inputmode="decimal" min="0" step="0.01" class="form-control"
                    data-fifty-income value="${config.plannedIncome == null ? '' : W._esc(config.plannedIncome)}"
-                   placeholder="e.g. 2000" aria-label="Planned monthly income">`),
+                   placeholder="${window.I18n.t('widget.cfg.incomePlaceholder')}" aria-label="${window.I18n.t('widget.cfg.plannedIncome')}">`),
           W._configSection(window.I18n.t('widget.cfg.split'), `
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2);">
               ${pctInput('pctNeeds', window.I18n.t('widget.fifty.needsPct'), config.pctNeeds)}
@@ -1343,11 +1343,11 @@ window.Widgets = {
     const def = this.registry[instance.type];
     const gearBtn = (def && def.hasConfig) ? `
         <button type="button" class="widget-chrome-btn" data-widget-action="configure" data-widget-id="${id}"
-                aria-label="Configure widget">
+                aria-label="${window.I18n.t('widget.configureAria')}">
           <i data-lucide="settings" style="width: 15px; height: 15px;"></i>
         </button>` : '';
     return `
-      <button type="button" class="widget-remove-btn" data-widget-action="remove" data-widget-id="${id}" aria-label="Remove widget">
+      <button type="button" class="widget-remove-btn" data-widget-action="remove" data-widget-id="${id}" aria-label="${window.I18n.t('widget.removeAria')}">
         <i data-lucide="minus" style="width: 16px; height: 16px;"></i>
       </button>
       <div class="widget-edit-bar">
