@@ -296,36 +296,16 @@ window.Components = {
   // v0.74: FAQ sheet (Others → Support → FAQ). Static Q&A accordion; reuses
   // the #active-modal id so Modal.hide() owns the teardown.
   FaqModal: {
-    FAQS: [
-      {
-        q: 'How do I set up an account?',
-        a: 'Tap the + button in the bottom bar and choose <b>Add Account</b>, or use the Add Account tile at the end of the accounts row on Home. Give it a name, an icon and an opening balance. From then on the balance is always computed from your transactions, so it stays in sync automatically.'
-      },
-      {
-        q: 'How do I add a new transaction?',
-        a: 'Tap the + button and choose <b>Add Log</b>. Pick Expense, Income or Transfer, then enter the amount, date, account and category. You can also add a note and tags, or turn on the repeat option to make it recurring (daily, weekly, monthly…).'
-      },
-      {
-        q: 'How do I edit or delete a transaction?',
-        a: 'Open <b>History</b> (the list icon in the bottom bar) and tap any transaction to open it in the editor. Change what you need and save, or use Delete. If the transaction is part of a recurring series, you will be asked whether the change should apply to only this one, this and future ones, or the whole series.'
-      },
-      {
-        q: 'How do I set up widgets on my Home screen?',
-        a: 'On Home, scroll to the <b>Widgets</b> section. Tap <b>Add</b> to pick a widget from the gallery and choose its size. Tap <b>Edit</b> to reorder, resize, configure or remove widgets, then tap Done when you are happy with the layout.'
-      },
-      {
-        q: 'How do I set up a loan?',
-        a: 'Tap the + button and choose <b>Debt</b>. Pick a loan type to open the simulator, enter the amount, interest rate and duration, and review the full payment schedule. You can keep it as a simulation or track it as an active loan — tracking links it to a recurring expense so your progress updates automatically as payments are logged.'
-      },
-      {
-        q: 'How do I manage categories?',
-        a: 'Go to <b>Others → Categories</b> to see all your categories, or tap the + button and choose <b>Add Category</b> to create one. Tap a category to see its activity, or edit its name, icon and color. Stack\'d ships with a default set you can adapt to your needs.'
-      },
-      {
-        q: 'How do I use tags?',
-        a: 'Tags are free-form labels you type in the <b>Tags</b> field when creating or editing a transaction — autocomplete suggests the ones you already use. Browse them under <b>Others → Tags</b>, or filter History by tag to see everything with that label.'
-      }
-    ],
+    // v0.91 P8f: 7 stable ids; the text lives in the dictionary, so the
+    // list is rebuilt in the active language on every show().
+    IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags'],
+
+    get FAQS() {
+      return this.IDS.map(id => ({
+        q: window.I18n.t(`faq.${id}.q`),
+        a: window.I18n.t(`faq.${id}.a`)
+      }));
+    },
     show() {
       const container = document.getElementById('modal-container');
       container.innerHTML = `
@@ -370,132 +350,34 @@ window.Components = {
   // Items are PLAIN TEXT (no HTML) so search/highlight can escape safely.
   // Reuses the #active-modal id so Modal.hide() owns the teardown.
   ManualModal: {
-    SECTIONS: [
-      {
-        title: 'Getting around',
-        items: [
-          { h: 'Bottom bar', d: 'Four tabs: Home, History, Goals and Analytics. Tap the tab you are already on to jump back to the top (in History, back to today).' },
-          { h: 'The + button', d: 'Opens the quick actions menu: Add Log, Add Account, Debt, Add Category, and Others & Settings.' },
-          { h: 'Settings', d: 'All settings live under the + button → Others & Settings, not in the bottom bar.' }
-        ]
-      },
-      {
-        title: 'Home',
-        items: [
-          { h: 'Total balance', d: 'Your total across all wallets, with two deltas vs the start of the month: as of today and projected end of month.' },
-          { h: 'Balance chart', d: 'Tap the chart to expand it. In the expanded view, tap Filter to switch Weekly / Monthly / Quarter and choose which accounts and categories are plotted. Save View keeps those filters on the Home chart; Reset View restores the default.' },
-          { h: 'Wallet cards', d: 'Tap a wallet to open History filtered to that account. Tap the ⋯ button on a card to edit the account. The last tile, Add Wallet, creates a new account.' }
-        ]
-      },
-      {
-        title: 'Accounts (wallets)',
-        items: [
-          { h: 'Create an account', d: 'Tap + → Add Account, the Add Wallet tile on Home, or Others → Accounts → Create New Account.' },
-          { h: 'Account fields', d: 'Name, type (Bank, Debit card, Cash, Savings, Credit card, Investment, Wallet, Account), icon, color, opening balance with Positive / Negative sign and date, and a Set as Default Wallet toggle. Choosing Credit card automatically flips a new account to negative.' },
-          { h: 'Balances', d: 'Balances are always computed from your transactions, so they stay in sync automatically.' },
-          { h: 'Edit or delete', d: 'Open the account via the ⋯ on its wallet card or Others → Accounts. Deleting an account permanently deletes all of its transactions.' }
-        ]
-      },
-      {
-        title: 'Adding transactions',
-        items: [
-          { h: 'New log', d: 'Tap + → Add Log. Pick Expense, Income or Transfer, then enter the amount, account, category and date.' },
-          { h: 'Category picker', d: 'Tapping the category field opens the Select Category sheet. Use + Add custom to create a new category on the spot — your form is kept while you do.' },
-          { h: 'Transfers', d: 'Transfers move money between two of your accounts: pick From and To. They have no category and do not count as income or spending.' },
-          { h: 'Tags', d: 'Type in the Tags field and press Enter, comma or space to add a chip. Autocomplete suggests tags you already use.' },
-          { h: 'Notes and time', d: 'The note field suggests notes you have used before. A time field appears if you enable transaction time input in Others.' },
-          { h: 'Recurring', d: 'Turn on the Recurrent toggle, tap the "Repeats every…" line to choose the interval (every 1–30 days, weeks, months or years) and set an End Date. All future occurrences are created ahead automatically.' }
-        ]
-      },
-      {
-        title: 'Editing transactions',
-        items: [
-          { h: 'Edit', d: 'Tap any transaction — in History, a category or tag page, or a widget — to open it in the editor.' },
-          { h: 'Recurring scope', d: 'When you save or delete a recurring item you choose the scope: only this transaction, this and future transactions, or all transactions in the series.' },
-          { h: 'Delete', d: 'Use the Delete button in the editor, or swipe the row left in History.' }
-        ]
-      },
-      {
-        title: 'History',
-        items: [
-          { h: 'Swipe actions', d: 'Swipe a row left for Edit and Delete. Swipe right to toggle its Paid state — unpaid rows show a marker on their left edge.' },
-          { h: 'Bulk selection', d: 'Long-press a row (or tap Select) to enter selection mode, then tap rows to select them. Use Select All / Deselect All and Delete (N) to remove many at once.' },
-          { h: 'Periods', d: 'Use the Day / Week / Month / Year pills and the ‹ › arrows to move through periods. Today scrolls the list back to today.' },
-          { h: 'Custom range', d: 'The calendar pill opens a custom range picker with presets: Last 7 / 30 / 90 Days, 6 Months, 1 Year and All Time.' },
-          { h: 'Filter & sort', d: 'The sliders pill filters by transaction type, wallet and category, and switches Newest First / Oldest First. The clear pill resets every filter.' },
-          { h: 'Summary card', d: 'Shows the Start balance, End balance and Net Change for the selected period.' }
-        ]
-      },
-      {
-        title: 'Goals (budget)',
-        items: [
-          { h: 'Monthly limits', d: 'Goals are monthly spending (or income) limits per category. Switch between Expenses and Income, and change month with the ‹ › arrows or by tapping the month name.' },
-          { h: 'Set a limit', d: 'Tap any category to set its Monthly Limit, a Start Month and an optional End Month.' },
-          { h: 'Rollover', d: 'The Cumulative Rollover toggle carries unused budget into the next month; overspending deducts from it.' },
-          { h: 'Progress', d: 'The donut shows Allocated, Total Spent and Remaining. Category bars turn amber at 75% and red at 90% or when over budget. Remove Budget Limit clears a limit.' }
-        ]
-      },
-      {
-        title: 'Analytics',
-        items: [
-          { h: 'Filters', d: 'Analytics uses the same filter bar as History: periods, custom ranges, and type / wallet / category filters.' },
-          { h: 'Net balance', d: 'The hero card shows the period’s net balance and the change vs the previous period. When the period includes the future, a Today / end-of-period toggle switches between actuals and a projection that includes upcoming recurring items.' },
-          { h: 'Net flow chart', d: 'Bars show income minus expenses per bucket. Tap a bar to open exactly those transactions in History.' },
-          { h: 'Distribution', d: 'The donut breaks the period down by category, with an Expenses / Income toggle. Tap a legend row to open that category in History.' }
-        ]
-      },
-      {
-        title: 'Loans (debt)',
-        items: [
-          { h: 'Open', d: 'Tap + → Debt to reach the Loans hub.' },
-          { h: 'Simulate', d: 'Pick Mortgage, Personal Loan or Installment Plan, then enter the amount (mortgages also take a Down Payment), duration, annual rate and first payment date, and tap Calculate.' },
-          { h: 'Advanced options', d: 'The Details section adds constant vs declining payments, an interest-only first installment, future rate changes, early repayments (reducing the payment or the duration), and extra costs such as insurance.' },
-          { h: 'Results', d: 'See the monthly payment, total interest, totals and the full payment schedule in Brief or Detailed form.' },
-          { h: 'Save or track', d: 'Save Simulation keeps it for later; Add to My Loans turns it into a real loan with paid / remaining progress.' },
-          { h: 'Track the payment', d: 'Tracking adds the installment as a monthly recurring expense (category Loan Payment), so progress and the next payment update automatically as payments are logged.' },
-          { h: 'Manage', d: 'Tap a saved simulation or loan to reopen it, then use the ⋯ menu to Edit, Add to My Loans, or Delete.' }
-        ]
-      },
-      {
-        title: 'Categories',
-        items: [
-          { h: 'Manage', d: 'Others → Categories lists them grouped by Income, Expense and All Types. Create one with + → Add Category, the + button on the Categories screen, or + Add custom inside the transaction form.' },
-          { h: 'Category fields', d: 'Name, type (Expense, Income or Both) and icon.' },
-          { h: 'Detail and edit', d: 'Tap a category to see all its transactions; tap its ⋮ button to edit it.' },
-          { h: 'Deleting', d: 'A category that still has transactions cannot be deleted.' }
-        ]
-      },
-      {
-        title: 'Tags',
-        items: [
-          { h: 'Add tags', d: 'Tags are free-form labels typed in the transaction form. They are created on the fly — no setup needed.' },
-          { h: 'Browse', d: 'Others → Tags lists every tag in use; tap one to see its transactions.' },
-          { h: 'Lifecycle', d: 'A tag disappears automatically once no transaction uses it anymore.' }
-        ]
-      },
-      {
-        title: 'Home widgets',
-        items: [
-          { h: 'Add a widget', d: 'On Home, tap Add in the Widgets section, pick from the gallery, preview it with your real data, choose Small or Wide, and configure it if it has options.' },
-          { h: 'Widget types', d: 'Latest transactions, Income vs Expenses, Categories, Net worth, Personal savings, Upcoming transactions, Budget goals, and the 50/30/20 budget.' },
-          { h: 'Edit mode', d: 'Tap Edit to rearrange: remove with the − button, reorder with the up / down arrows, resize with the Small / Wide pill, configure with the gear, then tap Done.' },
-          { h: 'Shortcuts', d: 'Outside edit mode, tapping a widget jumps to its related page — History, Goals or Analytics.' },
-          { h: 'Options', d: 'Most widgets can be limited to specific accounts; Categories and Budget goals can pick categories; Upcoming has a 7 / 30 / 60 day horizon; the 50/30/20 widget takes a planned monthly income and a custom split, and simply shows how that income divides.' }
-        ]
-      },
-      {
-        title: 'Others & settings',
-        items: [
-          { h: 'Manage', d: 'Shortcuts to your Accounts, Categories and Tags.' },
-          { h: 'Region', d: 'Choose the currency (USD, EUR, JPY, GBP, CNY) and language.' },
-          { h: 'Preferences', d: 'History sort order (newest or oldest first), the transaction time input toggle, and the theme: Light, Dark or System Default.' },
-          { h: 'Export', d: 'Export Accounts, Categories, Transactions and Loans as CSV files for any spreadsheet app.' },
-          { h: 'Import', d: 'Import CSV accepts files with the columns Date, Amount, Type, Account, Category, Note. Missing accounts and categories are created automatically, and a loans export is recognised on its own.' },
-          { h: 'Factory reset', d: 'The Danger Zone erases every account, budget and transaction permanently. This cannot be undone.' },
-          { h: 'Privacy', d: 'All data lives only on this device — there are no accounts, no cloud and no tracking.' }
-        ]
-      }
+    // v0.91 P8f: section/item ids only — every heading and body comes from
+    // the dictionary. _renderBody reads SECTIONS, so search and highlighting
+    // run over the ACTIVE language's text, not the English source.
+    STRUCTURE: [
+      { id: 'around',     items: ['bottomBar', 'plusButton', 'settings'] },
+      { id: 'home',       items: ['totalBalance', 'balanceChart', 'walletCards'] },
+      { id: 'accounts',   items: ['create', 'fields', 'balances', 'editDelete'] },
+      { id: 'addTx',      items: ['newLog', 'categoryPicker', 'transfers', 'tags', 'notesTime', 'recurring'] },
+      { id: 'editTx',     items: ['edit', 'scope', 'delete'] },
+      { id: 'history',    items: ['swipe', 'bulk', 'periods', 'customRange', 'filterSort', 'summary'] },
+      { id: 'goals',      items: ['limits', 'setLimit', 'rollover', 'progress'] },
+      { id: 'analytics',  items: ['filters', 'netBalance', 'netFlow', 'distribution'] },
+      { id: 'loans',      items: ['open', 'simulate', 'advanced', 'results', 'saveTrack', 'trackPayment', 'manage'] },
+      { id: 'categories', items: ['manage', 'fields', 'detailEdit', 'deleting'] },
+      { id: 'tags',       items: ['add', 'browse', 'lifecycle'] },
+      { id: 'widgets',    items: ['add', 'types', 'editMode', 'shortcuts', 'options'] },
+      { id: 'others',     items: ['manage', 'region', 'preferences', 'export', 'import', 'factoryReset', 'privacy'] }
     ],
+
+    get SECTIONS() {
+      return this.STRUCTURE.map(sec => ({
+        title: window.I18n.t(`manual.${sec.id}.title`),
+        items: sec.items.map(it => ({
+          h: window.I18n.t(`manual.${sec.id}.${it}.h`),
+          d: window.I18n.t(`manual.${sec.id}.${it}.d`)
+        }))
+      }));
+    },
 
     show() {
       const container = document.getElementById('modal-container');
@@ -594,7 +476,9 @@ window.Components = {
   // GDPR data-subject rights mapped to in-app features. Static trusted
   // content; reuses the #active-modal id so Modal.hide() owns the teardown.
   TermsModal: {
-    UPDATED: 'August 10, 2026',
+    // v0.91 P8f: clause ids only; every heading and body is a dictionary key.
+    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'yourData', 'noWarranty', 'liability', 'changes'],
+    PRIVACY_IDS: ['short', 'whatStored', 'whatNot', 'gdpr', 'rights', 'security', 'children', 'contact', 'changes'],
 
     show() {
       const clause = (title, body) => `
@@ -603,6 +487,10 @@ window.Components = {
           <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">${body}</div>
         </div>`;
       const part = (title) => `<div class="section-title" style="margin: var(--space-5) 0 var(--space-3);">${title}</div>`;
+      // Numbering is generated, not baked into each translated heading.
+      const clauses = (prefix, ids) => ids.map((id, i) =>
+        clause(`${i + 1}. ${window.I18n.t(`terms.${prefix}.${id}.h`)}`, window.I18n.t(`terms.${prefix}.${id}.d`))
+      ).join('');
 
       const container = document.getElementById('modal-container');
       container.innerHTML = `
@@ -612,34 +500,17 @@ window.Components = {
             <div class="modal-header-container">
               <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${window.I18n.t('support.termsTitle')}</h2>
             </div>
-            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); flex-shrink: 0;">Last updated: ${this.UPDATED}</div>
+            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); flex-shrink: 0;">${window.I18n.t('terms.lastUpdated', { date: window.I18n.t('terms.updatedDate') })}</div>
             <div class="modal-body">
               <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">
-                Stack'd is a privacy-first personal finance tracker. Everything you record stays on your device —
-                the app has no servers, no user accounts and no data collection. These conditions are in two parts:
-                the <b>Terms of Use</b>, which govern your use of the app, and the <b>Privacy Policy</b>, which
-                explains how your data is (and is not) handled.
+                ${window.I18n.t('terms.intro')}
               </div>
 
-              ${part('Part 1 — Terms of Use')}
-              ${clause('1. Acceptance', `By installing or using Stack'd you agree to these Terms of Use. If you do not agree, please do not use the app.`)}
-              ${clause('2. License', `You are granted a personal, non-transferable, non-exclusive license to use Stack'd for your own personal, non-commercial finance tracking.`)}
-              ${clause('3. Not financial advice', `Stack'd is an organizational tool. Balances, projections, budgets and loan simulations are informational estimates only and may differ from the figures of your bank or lender. Nothing in the app constitutes financial, investment, tax or legal advice — always verify important figures with your financial institution or a qualified advisor before acting on them.`)}
-              ${clause('4. Your data, your responsibility', `All data lives only on this device. You are responsible for keeping backups — use the CSV export in Others &amp; Settings. Uninstalling the app, clearing your browser's site data, or using Factory Reset permanently deletes all data, and no one (including the developer) can recover it.`)}
-              ${clause('5. No warranty', `Stack'd is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo;, without warranties of any kind, express or implied, including accuracy of calculations, fitness for a particular purpose, or uninterrupted availability.`)}
-              ${clause('6. Limitation of liability', `To the maximum extent permitted by applicable law, the developer shall not be liable for any loss or damage — including financial loss or loss of data — arising from your use of, or inability to use, the app.`)}
-              ${clause('7. Changes to these terms', `These terms may be updated together with app updates. The &ldquo;Last updated&rdquo; date above reflects the current version; continued use of the app after an update constitutes acceptance of the revised terms.`)}
+              ${part(window.I18n.t('terms.part1'))}
+              ${clauses('use', this.TERMS_IDS)}
 
-              ${part('Part 2 — Privacy Policy')}
-              ${clause('1. The short version', `Stack'd does not collect, transmit, sell or share any personal data. There is nothing to opt out of, because nothing ever leaves your device.`)}
-              ${clause('2. What is stored, and where', `Your accounts, transactions, budgets, loans, tags and settings are stored exclusively in your device's local storage. They are never sent to a server — the app works fully offline and has no backend.`)}
-              ${clause('3. What the app does not do', `No user accounts or registration. No cloud sync. No analytics or usage tracking. No advertising or ad identifiers. No third-party data sharing. No cookies beyond the local storage the app needs to function.`)}
-              ${clause('4. GDPR position', `Under the EU General Data Protection Regulation (Regulation (EU) 2016/679), the developer does not process your personal data: all processing happens locally, under your sole control, on your own device. For the data you record in Stack'd, no controller&ndash;processor relationship with the developer arises, no data is transferred (within or outside the EU/EEA), and no consent banner is required because there is nothing to consent to.`)}
-              ${clause('5. Your rights, built in', `The GDPR data-subject rights are satisfied directly in the app: <b>access &amp; portability</b> (Art. 15 &amp; 20) — export everything as CSV from Others &amp; Settings; <b>rectification</b> (Art. 16) — edit any record at any time; <b>erasure</b> (Art. 17) — delete individual records or erase everything with Factory Reset. No request to the developer is needed for any of these.`)}
-              ${clause('6. Security', `Because your data lives on your device, it is exactly as secure as the device itself. We recommend protecting your device with a screen lock, keeping its system updated, and storing CSV backups in a safe place. Anyone with unrestricted access to your unlocked device can view your data.`)}
-              ${clause('7. Children', `Stack'd collects no data from anyone, including children. The app has no age-gated features and no way to identify its users.`)}
-              ${clause('8. Contact', `If you email feedback to hi@stackd.com, your email address and message are used only to respond to you and are never added to any marketing list. Data-protection questions can be sent to the same address.`)}
-              ${clause('9. Changes to this policy', `If a future version of the app ever changes how data is handled (for example, an optional cloud backup), this policy will be updated first and the change will be clearly announced in the app before anything leaves your device.`)}
+              ${part(window.I18n.t('terms.part2'))}
+              ${clauses('privacy', this.PRIVACY_IDS)}
             </div>
             <div style="margin-top: var(--space-4); flex-shrink: 0;">
               <button class="btn btn-secondary" id="modal-cancel-btn" style="width: 100%;" aria-label="${window.I18n.t('others.openTermsAria')}">${window.I18n.t('common.close')}</button>
