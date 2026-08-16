@@ -45,16 +45,20 @@ window.Router = {
     const baseHash = hash.split('?')[0];
     const viewId = this.routes[baseHash] || 'dashboard';
 
-    // Set filter FIRST — store emits synchronously, so by the time SET_VIEW
-    // triggers the view render, activeAccountFilter is already correct in state.
+    // Set filter FIRST — state mutates synchronously with the dispatch, so by
+    // the time SET_VIEW triggers the (coalesced) render, the filters are
+    // already correct in state.
+    // v0.94: ?account= now REPLACES the History filters (fresh defaults +
+    // this account) instead of merging — "the account as the only filter".
+    // Analytics is no longer silently filtered, and the zero-reader legacy
+    // SET_ACCOUNT_FILTER dispatch is gone.
     const params = this.getParams();
     if (params.account) {
-      // Sync both for consistency if requested via URL
-      const filters = { accounts: [params.account] };
-      window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters });
-      window.Store.dispatch('UPDATE_FILTERS', { page: 'analytics', filters });
-      // Also update legacy if still used
-      window.Store.dispatch('SET_ACCOUNT_FILTER', params.account);
+      window.Store.dispatch('UPDATE_FILTERS', {
+        page: 'history',
+        filters: { accounts: [params.account] },
+        replace: true
+      });
     }
     
     // Always open budget in the current physical month

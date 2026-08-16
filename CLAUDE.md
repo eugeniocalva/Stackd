@@ -106,10 +106,14 @@ Edit mode (`state.widgetEditMode`) is transient and cleared by `SET_VIEW`.
 The slice is deliberately **not** in the CSV backup (house convention for prefs).
 
 Two rules that are easy to get wrong:
-- **Widgets are month-to-date.** Use `Widgets._monthToDateFilters` for anything
-  built on `getFilteredTransactions` — that helper honours the whole calendar
-  month otherwise, and future-dated recurring members would count as spent.
-  `computeNetFlowData` is the exception: it clamps itself via its `clampEnd` arg.
+- **Know a widget's side of the MTD/EOM split (v0.94).** Month-to-date
+  ("spent so far"): `categories`, `fiftyThirtyTwenty`, `latest`, Smart
+  Insights — use `Widgets._monthToDateFilters` for anything built on
+  `getFilteredTransactions`, or future-dated recurring members count as spent.
+  Whole-calendar-month / EOM ("how the month ends up"): `incomeExpense`,
+  `savings` (since v0.94), `budgets` — these use `_monthFilters` unclamped and
+  carry an "End of month" caption on the large card (`def.caption`).
+  `computeNetFlowData` clamps only via its explicit `clampEnd` arg.
 - **Chart instances are tracked by widget id** in `Widgets._charts`, because the
   dashboard replaces every canvas on each render so `Chart.getChart(canvas)`
   can't find the old instance. Mount via `Widgets._mountChart`, never `new Chart`.

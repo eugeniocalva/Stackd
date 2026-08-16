@@ -383,6 +383,52 @@ body.keyboard-active .bottom-nav {
   /* Background remains glassmorphic as the pill */
 }
 
+/* v0.94: History back-to-top. Fixed (viewport-relative, so it must carry its
+   own safe-area offsets — #app's padding does not reach fixed children), and
+   visibility is driven purely by #router-view.is-deep-scrolled from the boot
+   scroll listener in main.js — no per-view JS. Sits under the nav pill in the
+   z-order and clear of it vertically. */
+.history-to-top {
+  position: fixed;
+  bottom: calc(96px + var(--safe-bottom));
+  right: max(var(--space-4), var(--safe-right));
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: var(--bg-surface);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: calc(var(--z-nav) - 1);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity var(--dur-quick) ease, transform var(--dur-quick) var(--ease-spring);
+}
+
+.view-container.is-deep-scrolled .history-to-top {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.history-to-top:active {
+  transform: scale(0.9);
+}
+
+/* Same rule family as the bottom nav: slide out of the way for the keyboard. */
+body.keyboard-active .history-to-top {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Action Menu Items */
 .menu-action-item {
   transition: all 0.2s var(--ease-spring);
@@ -2231,6 +2277,17 @@ a:focus-visible,
   height: var(--widget-h-large);
 }
 
+/* v0.94: the head is a ROW — title left, optional caption right (EOM label).
+   Horizontal on purpose: cards are fixed-height, a second head line would
+   steal chart space. */
+.widget-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .widget-card-title {
   font-family: var(--font-family-body);
   font-size: 0.75rem;
@@ -2245,6 +2302,19 @@ a:focus-visible,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* v0.94: EOM caption. Truncates before the title does (title keeps priority). */
+.widget-card-caption {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 4;
+  min-width: 0;
 }
 
 /* The body is a flex column that fills whatever the fixed card leaves over;

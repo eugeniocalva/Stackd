@@ -388,6 +388,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (routerView) {
     routerView.addEventListener('scroll', () => {
       routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
+      // v0.94: drives the History back-to-top button purely via CSS — one
+      // boot-time listener, no per-view wiring, survives every innerHTML swap.
+      routerView.classList.toggle('is-deep-scrolled', routerView.scrollTop > 400);
     }, { passive: true });
   }
 

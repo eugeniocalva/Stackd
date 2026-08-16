@@ -86,4 +86,24 @@ test.describe('History scroll preservation', () => {
     // sits deep in the oldest-first list — so we must NOT be at the top.
     expect(await scrollTop(page)).toBeGreaterThan(50);
   });
+
+  // v0.94 (docs/refactor-plan-2.md P2.2): the floating back-to-top button.
+  test('back-to-top button appears when deep-scrolled and returns to the top', async ({ page }) => {
+    await bootstrap(page);
+
+    // Entry scroll already put us deep (see the test above); the boot-time
+    // scroll listener flags the container and CSS reveals the button.
+    await page.evaluate(() => { document.getElementById('router-view').scrollTop = 600; });
+    await page.waitForFunction(() =>
+      document.getElementById('router-view').classList.contains('is-deep-scrolled'));
+    const btn = page.locator('#btn-history-to-top');
+    await expect(btn).toBeVisible();
+
+    await btn.click();
+    // Native smooth scroll — wait for it to land at (or clamp to) the top.
+    await page.waitForFunction(() => document.getElementById('router-view').scrollTop <= 4);
+    // The flag drops with the scroll, so CSS hides the button again.
+    await page.waitForFunction(() =>
+      !document.getElementById('router-view').classList.contains('is-deep-scrolled'));
+  });
 });

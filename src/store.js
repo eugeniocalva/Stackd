@@ -66,7 +66,6 @@ window.Store = {
     budgets: [],
     currency: 'USD',
     activeView: 'dashboard',
-    activeAccountFilter: '',
     activeMonthFilter: '', // Will hold 'YYYY-MM' (Legacy)
     activePeriod: {
       type: 'month', // 'today', 'week', 'month', 'year'
@@ -1951,11 +1950,8 @@ window.Store = {
         break;
       }
 
-      case 'SET_ACCOUNT_FILTER':
-        // Always emit — even if same view, filter change must re-render
-        this.state.activeAccountFilter = payload || '';
-        changed = true;
-        break;
+      // v0.94: SET_ACCOUNT_FILTER removed — activeAccountFilter had zero
+      // readers; the wallet deep-link goes through UPDATE_FILTERS {replace}.
 
       case 'SET_CURRENCY': {
         this.state.currency = payload;
@@ -2050,9 +2046,25 @@ window.Store = {
       }
 
       case 'UPDATE_FILTERS': {
-        const { page, filters } = payload;
+        const { page, filters, replace } = payload;
         const key = page === 'history' ? 'historyFilters' : 'analyticsFilters';
-        this.state[key] = { ...this.state[key], ...filters };
+        // v0.94: replace=true rebuilds from pristine defaults (same shape
+        // CLEAR_ALL_FILTERS produces) before applying the partial. The wallet
+        // tile deep-link means "ONLY this account" — merging onto whatever
+        // period/type/tag filters were left behind broke that promise.
+        let base = this.state[key];
+        if (replace) {
+          const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+          base = {
+            period: { type: 'month', value: fmt(new Date()), start: '', end: '' },
+            types: [],
+            accounts: [],
+            categories: [],
+            tags: [],
+            sortOrder: page === 'history' ? 'asc' : 'desc'
+          };
+        }
+        this.state[key] = { ...base, ...filters };
         // Persist history sort order preference
         if (page === 'history' && filters.sortOrder !== undefined) {
           window.StackdDB.save('historyFilterSortOrder', this.state.historyFilters.sortOrder);

@@ -465,9 +465,10 @@ window.Views = {
           if (e.target.closest('.account-edit-trigger')) return;
           
           const id = card.dataset.id;
-          // Set period type to month as requested
-          window.Store.dispatch('SET_PERIOD_TYPE', 'month');
-          // Navigate with account param so router picks it up
+          // Navigate with account param — the router resets History filters to
+          // defaults + this account (v0.94 replace semantics). The old
+          // SET_PERIOD_TYPE dispatch here wrote activePeriod, which History
+          // never reads — pure wasted render.
           window.Router.navigate(`#transactions?account=${id}`);
         });
       });
@@ -839,8 +840,14 @@ window.Views = {
       }
 
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
+      // v0.94: same treatment as the tag chip below — the wallet-tile deep
+      // link filters by account, and an invisible filter reads as "my
+      // transactions disappeared". Shows the account names, tap to clear.
       const accountFilterIndicatorHtml = hasAccountFilter
-        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
+        ? `<div id="history-account-filter-chip" role="button" tabindex="0" title="${window.I18n.t('history.clearAccountTitle')}"
+                style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface-sunken); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
+             ${filters.accounts.map(id => { const a = state.accounts.find(x => x.id === id); return escapeAttr(a ? a.name : id); }).join(', ')} <span aria-hidden="true">✕</span>
+           </div>`
         : '';
 
       // v0.85: a tag filter usually arrives from a drilldown, so say so — an
@@ -903,6 +910,13 @@ window.Views = {
           <div style="margin-top: var(--space-4);">
             ${txListHtml}
           </div>
+
+          <!-- v0.94: floating back-to-top. Visibility is CSS-driven by
+               #router-view.is-deep-scrolled (boot scroll listener in main.js);
+               position:fixed escapes .container's overflow-x clip. -->
+          <button type="button" id="btn-history-to-top" class="history-to-top" aria-label="${window.I18n.t('history.backToTop')}">
+            <i data-lucide="chevron-up" style="width: 22px; height: 22px;"></i>
+          </button>
         </div>
       `;
     },
@@ -917,6 +931,24 @@ window.Views = {
       if (tagChip) {
         tagChip.addEventListener('click', () => {
           window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { tags: [] } });
+        });
+      }
+
+      // v0.94: the account chip clears the wallet-tile drilldown in place.
+      const accChip = container.querySelector('#history-account-filter-chip');
+      if (accChip) {
+        accChip.addEventListener('click', () => {
+          window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { accounts: [] } });
+        });
+      }
+
+      // v0.94: back-to-top — native smooth scroll on the app's only scroller
+      // (never ScrollUtils' multi-target sweep). Fresh node per render, so a
+      // bare listener is fine; visibility is handled by CSS.
+      const toTopBtn = container.querySelector('#btn-history-to-top');
+      if (toTopBtn) {
+        toTopBtn.addEventListener('click', () => {
+          container.scrollTo({ top: 0, behavior: 'smooth' });
         });
       }
 

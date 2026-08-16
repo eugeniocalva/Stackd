@@ -103,9 +103,11 @@ window.Widgets = {
   },
 
   // ── data helpers ────────────────────────────────────────────────────────
-  // The store's aggregations all take the analytics "filters" shape. Widgets
-  // are always current-month and always clamped to today, so this builds that
-  // one shape rather than each widget hand-rolling it.
+  // The store's aggregations all take the analytics "filters" shape; this
+  // builds it once rather than each widget hand-rolling it. This is the
+  // WHOLE-calendar-month shape — the EOM widgets (incomeExpense, savings as
+  // of v0.94) use it as-is; the spent-so-far widgets use the clamped
+  // month-to-date variant below.
   _monthFilters(config) {
     return {
       period: { type: 'month', value: this._todayStr(), start: '', end: '' },
@@ -297,12 +299,17 @@ window.Widgets = {
       hasConfig: true,
       defaultConfig: { accountIds: [] },
 
+      // v0.94: values are whole-month (EOM) — say so on the large card.
+      caption(instance) {
+        return instance.size === 'large' ? window.I18n.t('widget.eomCaption') : '';
+      },
+
       // Last 12 monthly buckets, WHOLE calendar months (v0.82): the current
       // month deliberately includes already-materialised future occurrences of
       // recurring series, so the widget answers "how does this month end up",
       // not "where am I so far". This intentionally diverges from the
-      // month-to-date widgets (categories, savings, fiftyThirtyTwenty) — see
-      // docs/home-widgets-plan.md §8b.
+      // month-to-date widgets (categories, fiftyThirtyTwenty — savings joined
+      // the EOM side in v0.94) — see docs/home-widgets-plan.md §8b.
       _buckets(instance) {
         const W = window.Widgets;
         return W._memoized(instance, 'buckets', () => {
@@ -331,7 +338,7 @@ window.Widgets = {
           return `
             <div class="widget-stat">
               <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net))}</span>
-              <span class="widget-stat-label">net · ${W._esc(cur.label)} · EOM</span>
+              <span class="widget-stat-label">net · ${W._esc(cur.label)} · ${W._esc(window.I18n.t('widget.eomShort'))}</span>
             </div>
             <div class="widget-minibars">
               ${bar('In', cur.income, 'text-income')}
@@ -707,14 +714,21 @@ window.Widgets = {
       hasConfig: true,
       defaultConfig: { accountIds: [] },
 
-      // Net saved per month = income - expenses, month-to-date (clamped to
-      // today). v0.82: this DELIBERATELY diverges from the incomeExpense
-      // widget, which now shows whole-month (EOM) figures including scheduled
-      // occurrences — savings reports what was actually put aside so far.
+      // v0.94: values are whole-month (EOM) — say so on the large card.
+      caption(instance) {
+        return instance.size === 'large' ? window.I18n.t('widget.eomCaption') : '';
+      },
+
+      // Net saved per month = income - expenses, WHOLE calendar months.
+      // v0.94: joined incomeExpense on the EOM side — the current month
+      // includes already-materialised future occurrences of recurring series
+      // (salary on the 29th counts), answering "how does this month end up"
+      // instead of a mid-month negative that flips green after payday. The
+      // v0.82 MTD divergence is gone; the two widgets can no longer disagree.
       _buckets(instance) {
         const W = window.Widgets;
         return W._memoized(instance, 'buckets', () => {
-          const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance)), W._todayStr()) || [];
+          const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance))) || [];
           return all.slice(-6);
         });
       },
@@ -1375,11 +1389,23 @@ window.Widgets = {
       bodyHtml = this._emptyState(window.I18n.t('widget.loadFailed'));
     }
 
+    // v0.94: optional right-aligned caption in the head ROW (never a second
+    // line — cards are fixed-height, a vertical caption would steal chart
+    // space). def.caption may be a string or (instance) => string; empty
+    // string = no caption (widgets gate on instance.size themselves).
+    let captionText = '';
+    if (def.caption) {
+      try {
+        captionText = typeof def.caption === 'function' ? (def.caption(instance) || '') : String(def.caption);
+      } catch (err) { captionText = ''; }
+    }
+
     return `
       <div class="${classes.join(' ')}" data-widget-id="${this._esc(instance.id)}" data-widget-type="${this._esc(instance.type)}">
         ${editMode ? this._renderEditChrome(instance, index, total, isLarge) : ''}
         <div class="widget-card-head">
           <span class="widget-card-title">${this._esc(def.title)}</span>
+          ${captionText ? `<span class="widget-card-caption">${this._esc(captionText)}</span>` : ''}
         </div>
         <div class="widget-card-body">${bodyHtml}</div>
       </div>`;

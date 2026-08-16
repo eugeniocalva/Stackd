@@ -211,7 +211,28 @@ document-wide icon hydration + synchronous animated Chart, per swipe, no debounc
 
 ---
 
-## Phase 2 — Home & History UX (v0.94)
+## Phase 2 — Home & History UX (v0.94) — ✅ SHIPPED 2026-08-16
+
+**As-built notes:** all three items landed as specced, plus: the History
+account indicator became a tap-to-clear chip naming the filtered account(s)
+(`#history-account-filter-chip`, mirroring the tag chip; Analytics' plain
+indicator untouched); `UPDATE_FILTERS` gained the `replace: true` flag;
+`SET_ACCOUNT_FILTER` + `state.activeAccountFilter` deleted outright (zero
+readers); the dead `SET_PERIOD_TYPE` dispatch removed from the wallet handler.
+Back-to-top visibility is pure CSS off a `.is-deep-scrolled` class the existing
+boot scroll listener toggles at 400px — zero per-view listeners. Widget
+captions render right-aligned in the head row via optional `def.caption`
+(large-size gated in the widgets themselves); the small incomeExpense card's
+hardcoded `EOM` literal moved to i18n (`widget.eomShort`); the small savings
+line was deliberately left alone (the caption covers the ask; suffixing the
+shared head line would double-label the large card). New keys ×5:
+`history.clearAccountTitle`, `history.backToTop`, `widget.eomCaption`,
+`widget.eomShort`. Tests: trends divergence spec inverted to pin agreement
+(now date-independent too); new e2e `wallet_account_filter.spec.js` (2 specs)
++ back-to-top spec in `history_scroll.spec.js` — 523 unit / 34 e2e green.
+Docs: home-widgets-plan §8b/§8c amended, CLAUDE.md widget split updated.
+Bumps: title v0.94; `store.js?v=33`, `main.js?v=28`, `views.js?v=50`,
+`widgets.js?v=18`, `router.js?v=17`, five dicts `?v=9`.
 
 ### 2.1 Wallet tile → History with the account as the ONLY filter (item 1)
 

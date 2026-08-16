@@ -337,6 +337,15 @@ two defects caught during verification:
     for the current month; the small card labels it "incl. scheduled". Do NOT
     "re-fix" this back to MTD — the divergence is the requested behavior, and
     the regression tests were rewritten to pin it.
+  - **v0.94 amendment (docs/refactor-plan-2.md P2): `savings` joined the EOM
+    side** — its `_buckets` dropped the `_todayStr()` clamp, so savings and
+    incomeExpense agree everywhere again (the trends test was inverted back to
+    pin agreement). The MTD/EOM split is now: `categories`, `fiftyThirtyTwenty`,
+    `latest`, insights = month-to-date; `incomeExpense`, `savings`, `budgets` =
+    whole month. Both EOM widgets show a right-aligned "End of month" caption
+    in the large card head (`def.caption` in `_renderCard`, key
+    `widget.eomCaption`), and the small incomeExpense line's `EOM` literal went
+    through i18n (`widget.eomShort`).
 - **Edit-mode jiggle removed (defect, found by e2e).** Phase 1's iOS-style
   infinite jiggle made every 28px chrome button perpetually unstable — Playwright
   could not click them, and the same instability hurts real tap accuracy,
@@ -409,7 +418,9 @@ Both trend widgets plus the detail/preview step shipped as specified.
   `computeBalanceForecast().todayVariation`, which returns `null` when there is
   no baseline — rendered as an em dash by the shared `_deltaBadge`, never 0% or NaN.
 - **savings** is net saved per month from the same `computeNetFlowData` buckets
-  `incomeExpense` uses, so the two can never disagree (a test pins this).
+  `incomeExpense` uses, so the two can never disagree (a test pins this; true
+  again as of v0.94 — between v0.82 and v0.93 savings was clamped
+  month-to-date and the test pinned the divergence instead).
   Per-bar colouring marks months that lost money. The percentage baseline is the
   previous month's net; a zero baseline shows a dash rather than Infinity.
 - Small sizes render a sparkline: axes hidden, tooltip disabled (there is
