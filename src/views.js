@@ -2690,14 +2690,19 @@ Object.assign(window.Views, {
       const isExpenseCtx = cat.typeHint === 'expense'
         || (cat.typeHint === 'both' && this.currentBudgetFilter === 'expense');
       const avg = isExpenseCtx ? window.Store.getCategoryMonthlyAverage(cat.id, 6) : null;
-      const insightHtml = avg ? `
+      // v0.96: currentMonth flag = young-dataset fallback (all data lives in
+      // the current month) — different wording, no plural machinery.
+      const insightText = !avg ? '' : (avg.currentMonth
+        ? window.I18n.t('budget.avgSpendHintThisMonth', { amount: window.Store.formatCurrency(avg.average) })
+        : window.I18n.t('budget.avgSpendHint', {
+            amount: window.Store.formatCurrency(avg.average),
+            count: avg.months
+          }));
+      const insightHtml = insightText ? `
             <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--bg-surface-sunken);">
               <i data-lucide="trending-down" style="width: 18px; height: 18px; flex-shrink: 0; color: var(--text-secondary); margin-top: 2px;"></i>
               <span style="font-size: var(--text-sm); color: var(--text-secondary); min-width: 0;">
-                ${window.I18n.t('budget.avgSpendHint', {
-                  amount: window.Store.formatCurrency(avg.average),
-                  count: avg.months
-                })}
+                ${insightText}
               </span>
             </div>` : '';
 
@@ -3228,7 +3233,13 @@ Object.assign(window.Views, {
               </div>
             </div>
           </div>
-          
+
+          <!-- v0.96: visible build marker. A stale synced web bundle inside
+               the native shell (the b7afd6e failure mode, hit again today) is
+               now detectable at a glance — document.title is the version
+               source of truth (index.html <title>), so this never drifts. -->
+          <p style="text-align: center; color: var(--text-tertiary); font-size: 0.72rem; margin: 0 0 var(--space-4);">${document.title}</p>
+
         </div>`;
     },
     attachEvents(container, state) {

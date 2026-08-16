@@ -2508,9 +2508,30 @@ window.Store = {
       totals[k] += tx.amount;
     }
     const active = keys.filter(k => totals[k] > 0);
-    if (active.length === 0) return null;
-    const sum = active.reduce((s, k) => s + totals[k], 0);
-    return { average: sum / active.length, months: active.length };
+    if (active.length > 0) {
+      const sum = active.reduce((s, k) => s + totals[k], 0);
+      return { average: sum / active.length, months: active.length };
+    }
+
+    // v0.96: young-dataset fallback. A brand-new user has ALL their data in
+    // the current (deliberately excluded) month and used to get no insight at
+    // all. Fall back to this month's spend SO FAR (past-dated, paid rows
+    // only — never materialised future occurrences), flagged so the view
+    // picks the "so far this month" wording instead of an average.
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = `${ym}-${String(now.getDate()).padStart(2, '0')}`;
+    let mtd = 0;
+    for (const tx of this.state.transactions) {
+      if (tx.type !== 'expense') continue;
+      if (tx.categoryId !== categoryId) continue;
+      if (tx.transferRef) continue;
+      if (tx.isPaid === false) continue;
+      if (tx.date.slice(0, 7) !== ym || tx.date > todayStr) continue;
+      if (this._isTxBeforeOpeningDate(tx)) continue;
+      mtd += tx.amount;
+    }
+    if (mtd <= 0) return null;
+    return { average: mtd, months: 0, currentMonth: true };
   },
 
   getAllUniqueTags(querySubstring = '') {

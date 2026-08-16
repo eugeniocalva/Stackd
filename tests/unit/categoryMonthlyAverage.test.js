@@ -89,23 +89,37 @@ describe('Store.getCategoryMonthlyAverage (v0.95 P3)', () => {
     expect(out).toEqual({ average: 90, months: 1 });
   });
 
-  it('returns null when there is nothing meaningful to average', () => {
+  it('returns null when there is nothing meaningful to show', () => {
     expect(S.getCategoryMonthlyAverage('cat_groceries', 6)).toBe(null); // no history
-    add({ amount: 10, date: monthDay(0, 2) });                               // current month only
-    expect(S.getCategoryMonthlyAverage('cat_groceries', 6)).toBe(null);
     expect(S.getCategoryMonthlyAverage('cat_balance', 6)).toBe(null);   // adjustment pseudo-cat
     expect(S.getCategoryMonthlyAverage('', 6)).toBe(null);
     expect(S.getCategoryMonthlyAverage(null, 6)).toBe(null);
   });
 
-  it('renders through the plural i18n keys without leaving placeholders', () => {
+  it('falls back to this month so far when ALL data lives in the current month (v0.96)', () => {
+    // Day 1 is always <= today, so this stays date-independent.
+    add({ amount: 10, date: monthDay(0, 1) });
+    add({ amount: 15, date: monthDay(0, 1) });
+    expect(S.getCategoryMonthlyAverage('cat_groceries', 6))
+      .toEqual({ average: 25, months: 0, currentMonth: true });
+
+    // As soon as a prior month has spend, the real average wins again.
+    add({ amount: 40, date: monthDay(2, 5) });
+    expect(S.getCategoryMonthlyAverage('cat_groceries', 6))
+      .toEqual({ average: 40, months: 1 });
+  });
+
+  it('renders through the i18n keys without leaving placeholders', () => {
     const I18n = global.window.I18n;
     const one = I18n.t('budget.avgSpendHint', { amount: '€90.00', count: 1 });
     const other = I18n.t('budget.avgSpendHint', { amount: '€90.00', count: 4 });
+    const thisMonth = I18n.t('budget.avgSpendHintThisMonth', { amount: '€90.00' });
     expect(one).toContain('€90.00');
     expect(one).not.toContain('{');
     expect(other).toContain('€90.00');
     expect(other).toContain('4');
     expect(other).not.toContain('{');
+    expect(thisMonth).toContain('€90.00');
+    expect(thisMonth).not.toContain('{');
   });
 });

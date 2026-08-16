@@ -469,6 +469,36 @@ are known to exist.
 
 ---
 
+## Post-round fixes (v0.96, 2026-08-16) — from the first on-device build
+
+The first Mac build shipped the new NATIVE assets with a STALE web bundle
+(the b7afd6e failure mode again: dist was built before the pull landed), which
+made the P2 back-to-top button and P3 insight look missing. Three fixes:
+
+1. **Visible build marker** — Settings now shows `document.title`
+   ("Stack'd v0.96") in a footer, so a stale synced bundle is detectable at a
+   glance. Deterministic pre-build check on the Mac after `npx cap sync ios`:
+   `grep -o "Stack'd v0.9[0-9]" ios/App/App/public/index.html` must print the
+   current version.
+2. **Dark splash was auto-derived garbage** — `assets/` had no dark source, so
+   capacitor-assets composed the icon tile on black (the tiny white square the
+   user saw in dark mode). Both splash sources are now generated from the real
+   brand lockup (canvas render, Manrope 800): `assets/splash.png` (white bg,
+   black mark+wordmark, ~30% larger lockup) and NEW `assets/splash-dark.png`
+   (#0b0f19 bg, white lockup — matches the v0.81 web dark splash). iOS + 
+   Android assets regenerated (`npm run assets:gen` covers both; the bare
+   command also tries a PWA target and dies on www/manifest.json — use
+   `--ios`/`--android` flags).
+3. **Insight young-dataset fallback** — the average excludes the current
+   month, so a user whose data starts this month (this user) saw nothing.
+   `getCategoryMonthlyAverage` now falls back to current month-to-date spend
+   (past-dated, paid rows only) returning `{average, months: 0, currentMonth:
+   true}`; the view renders `budget.avgSpendHintThisMonth` ("So far this month
+   you spent…") ×5 languages. Unit specs updated/added.
+
+534 unit / 34 e2e green. Bumps: title v0.96; `store.js?v=35`, `views.js?v=52`,
+dicts `?v=11`.
+
 ## Cross-cutting rules for the whole round
 
 - **Script cache-busting**: every touched `src/*.js` needs its `?v=` bumped in

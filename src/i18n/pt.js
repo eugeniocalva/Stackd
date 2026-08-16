@@ -211,6 +211,7 @@ window.I18n.dicts.pt = {
   'budget.cumulativeRolloverDesc': 'O orçamento não utilizado transita para o mês seguinte. Os excessos são descontados do mês seguinte.',
   'budget.avgSpendHint.one': 'Recentemente gastou <strong>{amount}</strong>/mês nesta categoria — defina um limite mais baixo para reduzir a despesa.',
   'budget.avgSpendHint.other': 'Em média gastou <strong>{amount}</strong>/mês nesta categoria nos últimos {count} meses — defina um limite mais baixo para reduzir a despesa.',
+  'budget.avgSpendHintThisMonth': 'Este mês já gastou <strong>{amount}</strong> nesta categoria — defina um limite abaixo desse valor para a controlar.',
   'budget.removeLimit': 'Remover o limite de orçamento',
 
   // ── Debt (P8d) ───────────────────────────────────────────────────────────
