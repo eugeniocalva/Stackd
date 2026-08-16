@@ -738,7 +738,7 @@ window.Components = {
       }
 
       const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount));
-      const dateStr = new Date(transaction.date).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
+      const dateStr = window.Components.TransactionItem._fmtDate(transaction.date);
       
       const isSelectionMode = options && options.isSelectionMode === true;
       const isSelected = options && options.isSelected === true;
@@ -818,15 +818,44 @@ window.Components = {
         </div>`;
     },
 
+    // v0.93: cached row-date formatter. Constructing Intl.DateTimeFormat per
+    // rendered row (the old toLocaleDateString call) dominated row cost. The
+    // noon anchor keeps 'YYYY-MM-DD' from drifting a day in negative-UTC
+    // timezones (the old code parsed it as UTC midnight).
+    _dateFmtCache: {},
+    _fmtDate(dateStr) {
+      const loc = window.Store.getLocale();
+      let fmt = this._dateFmtCache[loc];
+      if (!fmt) fmt = this._dateFmtCache[loc] = new Intl.DateTimeFormat(loc, { month: 'short', day: 'numeric' });
+      return fmt.format(new Date(dateStr + 'T12:00:00'));
+    },
+
     // v0.63: Pills that don't fit on line 2 collapse into a "+N" counter.
     // Must run after the tiles are in the DOM (called from the main.js render loop).
-    applyTagOverflow(root) {
-      (root || document).querySelectorAll('.tx-tags-inline').forEach(container => {
+    // v0.93: batched — the old loop interleaved a scrollWidth read with a
+    // display write per pill, forcing a synchronous layout per pill per tagged
+    // row. Now one read pass finds the rows that actually overflow (after a
+    // fresh render every pill starts visible, so no reset writes are needed);
+    // only those rows pay the iterative hide loop. Pass { reset: true } on the
+    // resize path, where a previously collapsed row may fit again.
+    applyTagOverflow(root, opts) {
+      const scope = root || document;
+      const containers = Array.from(scope.querySelectorAll('.tx-tags-inline'));
+      if (containers.length === 0) return;
+
+      if (opts && opts.reset) {
+        containers.forEach(container => {
+          container.querySelectorAll('.tx-tag-pill').forEach(p => { p.style.display = ''; });
+          const more = container.querySelector('.tx-tag-more');
+          if (more) more.style.display = 'none';
+        });
+      }
+
+      containers.forEach(container => {
+        if (container.clientWidth === 0 || container.scrollWidth <= container.clientWidth) return;
         const pills = Array.from(container.querySelectorAll('.tx-tag-pill'));
         const more = container.querySelector('.tx-tag-more');
-        if (pills.length === 0 || !more || container.clientWidth === 0) return;
-        pills.forEach(p => { p.style.display = ''; });
-        more.style.display = 'none';
+        if (pills.length === 0 || !more) return;
         let hiddenCount = 0;
         for (let i = pills.length - 1; i >= 0 && container.scrollWidth > container.clientWidth; i--) {
           pills[i].style.display = 'none';
@@ -2168,7 +2197,7 @@ window.Components = {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          animation: { duration: 800, easing: 'easeOutQuart' },
+          animation: false, // v0.93: entry animation played inside the render pass — pure added latency
           onHover: (event, elements) => {
             event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
           },
@@ -2588,7 +2617,7 @@ window.Components = {
           responsive: true,
           maintainAspectRatio: false,
           cutout: '74%',
-          animation: { duration: 700, easing: 'easeOutQuart' },
+          animation: false, // v0.93: no entry animation (see NetFlowChart note)
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -3679,6 +3708,30 @@ window.Components = {
           ` : ''}`;
       };
 
+      // v0.93: size flips (dots + swipe) repaint ONLY the preview area. The old
+      // path ran renderAll() — a full-modal innerHTML rebuild, a second widget
+      // data pass, document-wide icon hydration and a synchronous animated
+      // chart mount, all inside the touch handler — which froze the swipe for
+      // seconds on device. The modal shell, footer and handlers stay put here
+      // (the swipe listener lives on #awm-preview itself and survives an
+      // innerHTML swap of its children).
+      const renderPreviewOnly = () => {
+        const previewWrap = backdrop.querySelector('#awm-preview');
+        if (!previewWrap || !selectedType) return;
+        W.destroyPreview();
+        const state = window.Store.getState();
+        previewWrap.innerHTML = W.renderPreview(selectedType, selectedSize, draft, state);
+        backdrop.querySelectorAll('.widget-size-dot').forEach(d => {
+          const active = d.dataset.size === selectedSize;
+          d.classList.toggle('is-active', active);
+          d.setAttribute('aria-pressed', String(active));
+        });
+        const caption = backdrop.querySelector('.widget-size-caption');
+        if (caption) caption.textContent = window.I18n.t(selectedSize === 'large' ? 'widget.sizeWide' : 'widget.sizeSmall');
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(previewWrap);
+        W.attachPreview(backdrop, selectedType, selectedSize, draft, state);
+      };
+
       const renderAll = () => {
         // Any previous preview chart belongs to markup we are about to discard.
         W.destroyPreview();
@@ -3763,7 +3816,7 @@ window.Components = {
         backdrop.querySelectorAll('.widget-size-dot').forEach(dot => {
           dot.onclick = () => {
             selectedSize = dot.dataset.size;
-            renderAll();
+            renderPreviewOnly(); // v0.93: targeted swap, not a full-modal rebuild
           };
         });
 
@@ -3794,7 +3847,7 @@ window.Components = {
                 : Math.max(idx - 1, 0);
               if (next === idx) return;
               selectedSize = sizes[next];
-              renderAll();
+              renderPreviewOnly(); // v0.93: targeted swap, not a full-modal rebuild
             }, { passive: true });
           }
         }

@@ -43,8 +43,12 @@ test.describe('History scroll preservation', () => {
   test('long-press keeps the scroll position and one selection bar', async ({ page }) => {
     await bootstrap(page);
 
-    // Move away from the entry position to a past day.
+    // Move away from the entry position to a past day. v0.93: the list's
+    // scroll-snap nudges an arbitrary scrollTop onto the nearest row edge a
+    // few ms later — settle first, or `before` races the nudge and the
+    // assertion measures the setup, not the selection flow.
     await page.evaluate(() => { document.getElementById('router-view').scrollTop = 120; });
+    await page.waitForTimeout(150);
     const before = await scrollTop(page);
 
     // Long-press (mousedown held past the 500ms timer) on a visible item.

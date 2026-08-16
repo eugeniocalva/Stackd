@@ -219,7 +219,7 @@ describe('Store ↔ I18n wiring (v0.86 P8a)', () => {
     expect(global.window.I18n.locale()).toBe('it-IT');
   });
 
-  it('SET_LANGUAGE updates I18n.lang, persists, and emits', () => {
+  it('SET_LANGUAGE updates I18n.lang, persists, and emits (coalesced, v0.93)', async () => {
     bootWindow();
     global.window.Store.init();
     expect(global.window.I18n.lang).toBe('en');
@@ -228,9 +228,13 @@ describe('Store ↔ I18n wiring (v0.86 P8a)', () => {
     global.window.Store.subscribe(() => { emitted = true; });
     global.window.Store.dispatch('SET_LANGUAGE', 'pt');
 
+    // State mutates synchronously with the dispatch…
     expect(global.window.Store.getState().language).toBe('pt');
     expect(global.window.I18n.lang).toBe('pt');
     expect(JSON.parse(global.window.localStorage.getItem('stackd_v1_language'))).toBe('pt');
+    // …but the listener pass coalesces to the next microtask (v0.93).
+    expect(emitted).toBe(false);
+    await Promise.resolve();
     expect(emitted).toBe(true);
   });
 });

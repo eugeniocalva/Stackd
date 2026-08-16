@@ -426,6 +426,10 @@ window.Store = {
   _sortData() {
     this.state.accounts.sort((a, b) => this.compareAlpha(a, b));
     this.state.categories.sort((a, b) => this.compareAlpha(a, b));
+    // v0.93: boot + cross-tab sync replace whole slices — invalidate the
+    // memoized indexes here too (dispatch already does).
+    this._openingIdx = null;
+    this._budgetSpendIdx = null;
   },
 
   // ── Theme State Management & Detection ────────────────────────────────────
@@ -679,6 +683,13 @@ window.Store = {
   // --- Period Helpers (v0.52) ---
   
   _getPeriodBounds(type, anchorDateStr) {
+    // v0.93: pure function, memoized — hot callers used to re-derive identical
+    // bounds thousands of times per render. Key space stays tiny (period type ×
+    // anchors the user actually visits). Callers must not mutate the result.
+    const cacheKey = type + '|' + anchorDateStr;
+    if (!this._periodBoundsCache) this._periodBoundsCache = Object.create(null);
+    const cached = this._periodBoundsCache[cacheKey];
+    if (cached) return cached;
     const d = new Date(anchorDateStr + 'T00:00:00');
     let start, end;
 
@@ -686,7 +697,7 @@ window.Store = {
       case 'custom':
         // For custom, anchorDateStr might be empty, we look at the period object specifically.
         // But here we rely on the period having start/end set already.
-        return { start: '', end: '' }; // Should be overridden by the caller or handled separately
+        return (this._periodBoundsCache[cacheKey] = { start: '', end: '' }); // Should be overridden by the caller or handled separately
       case 'today':
         start = new Date(d);
         end = new Date(d);
@@ -712,10 +723,10 @@ window.Store = {
     }
 
     const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-    return {
+    return (this._periodBoundsCache[cacheKey] = {
       start: fmt(start),
       end: fmt(end)
-    };
+    });
   },
 
   _getPeriodLabel(period) {
@@ -778,9 +789,15 @@ window.Store = {
     // "match nothing" (this function feeds History, Analytics and widgets).
     const tagFilter = Array.isArray(filters.tags) ? filters.tags : [];
 
-    return this.state.transactions.filter(tx => {
-      if (this._isTxBeforeOpeningDate(tx)) return false;
+    // v0.93: period bounds hoisted out of the per-transaction loop — they were
+    // re-derived per row via isDateInPeriod (3 Date allocations + 2 formats
+    // each). Same comparison semantics, incl. custom periods with empty bounds.
+    const bounds = !period ? null
+      : (period.type === 'custom'
+        ? { start: period.start, end: period.end }
+        : this._getPeriodBounds(period.type, period.value));
 
+    return this.state.transactions.filter(tx => {
       if (pageKey === 'analytics') {
         if (tx.isPaid === false) return false; // Exclude unpaid transactions from analytics
         if (tx.type !== 'expense' && tx.type !== 'income') return false;
@@ -788,17 +805,20 @@ window.Store = {
         if (tx.categoryId === 'cat_balance') return false; // Exclude adjustments (initial balances)
       }
 
-      const matchPeriod = this.isDateInPeriod(tx.date, period);
-      const matchType = types.length === 0 || types.includes(tx.type);
-      const matchAccount = accounts.length === 0 || accounts.includes(tx.accountId);
+      if (bounds && (tx.date < bounds.start || tx.date > bounds.end)) return false;
+      if (types.length > 0 && !types.includes(tx.type)) return false;
+      if (accounts.length > 0 && !accounts.includes(tx.accountId)) return false;
       const matchCategory = categories.length === 0 ||
                             categories.includes(tx.categoryId) ||
                             (categories.includes('uncategorized') && !tx.categoryId);
+      if (!matchCategory) return false;
       const txTags = Array.isArray(tx.tags) ? tx.tags : [];
       const matchTag = tagFilter.length === 0 ||
                        txTags.some(t => tagFilter.includes(t)) ||
                        (tagFilter.includes('__untagged__') && txTags.length === 0);
-      return matchPeriod && matchType && matchAccount && matchCategory && matchTag;
+      if (!matchTag) return false;
+      // v0.93: memoized opening-date check runs last — cheap rejections first.
+      return !this._isTxBeforeOpeningDate(tx);
     }).sort((a, b) => {
       const dir = sortOrder === 'asc' ? 1 : -1;
       const tsA = this._getTransactionTimestamp(a);
@@ -873,9 +893,34 @@ window.Store = {
     return () => { this.listeners = this.listeners.filter(cb => cb !== callback); };
   },
 
-  emit() { this.listeners.forEach(cb => cb(this.state)); },
+  // v0.93: emits coalesce — N dispatches in one tick produce ONE listener pass
+  // on the next microtask (state itself still mutates synchronously). Chained
+  // navigations (e.g. wallet tile → filter dispatches + SET_VIEW) used to
+  // re-render the heavy outgoing view once per dispatch. Boot passes
+  // { sync: true } because the splash-dismissal sequence in main.js relies on
+  // the first render having happened when emit() returns.
+  emit(opts) {
+    if (opts && opts.sync) {
+      this._emitQueued = false;
+      this.listeners.forEach(cb => cb(this.state));
+      return;
+    }
+    if (this._emitQueued) return;
+    this._emitQueued = true;
+    const flush = () => {
+      if (!this._emitQueued) return; // a sync flush already ran this tick
+      this._emitQueued = false;
+      this.listeners.forEach(cb => cb(this.state));
+    };
+    if (typeof queueMicrotask === 'function') queueMicrotask(flush);
+    else Promise.resolve().then(flush);
+  },
 
   dispatch(action, payload) {
+    // v0.93: any mutation may touch transactions/accounts — drop the memoized
+    // indexes; they rebuild lazily in one O(T) pass on next use.
+    this._openingIdx = null;
+    this._budgetSpendIdx = null;
     let changed = false;
 
     switch (action) {
@@ -2084,18 +2129,25 @@ window.Store = {
     return symbols[this.state.currency] || '$';
   },
 
+  // v0.93: Intl.NumberFormat construction is one of the most expensive routine
+  // JS operations (locale-data resolution) and this runs once per rendered
+  // amount — every row, wallet card and widget value. Cache per locale+digits;
+  // language/currency switches produce a new key, so no invalidation needed.
+  _numberFormatCache: {},
   formatCurrency(amount) {
     const symbol = this.getCurrencySymbol();
     const isNeg = amount < 0;
     const abs = Math.abs(amount);
-    let formatted;
-    if (this.state.currency === 'JPY' || this.state.currency === 'CNY') {
-      // No decimal places for Yen / Renminbi
-      formatted = new Intl.NumberFormat(this.getLocale(), { maximumFractionDigits: 0 }).format(abs);
-    } else {
-      formatted = new Intl.NumberFormat(this.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(abs);
+    // No decimal places for Yen / Renminbi
+    const noDecimals = this.state.currency === 'JPY' || this.state.currency === 'CNY';
+    const key = this.getLocale() + '|' + (noDecimals ? '0' : '2');
+    let fmt = this._numberFormatCache[key];
+    if (!fmt) {
+      fmt = this._numberFormatCache[key] = noDecimals
+        ? new Intl.NumberFormat(this.getLocale(), { maximumFractionDigits: 0 })
+        : new Intl.NumberFormat(this.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return `${isNeg ? '-' : ''}${symbol}${formatted}`;
+    return `${isNeg ? '-' : ''}${symbol}${fmt.format(abs)}`;
   },
 
   _isPositiveTx(tx) {
@@ -2104,10 +2156,22 @@ window.Store = {
 
   getAccountOpeningDate(accountId) {
     if (!accountId) return null;
-    const obTx = this.state.transactions.find(
-      t => t.accountId === accountId && t.type === 'opening_balance'
-    );
-    return obTx ? obTx.date : null;
+    // v0.93: memoized. This was a full-array .find called from per-transaction
+    // filter predicates (getFilteredTransactions, computeNetFlowData,
+    // getBalanceAtDate) — O(T²) on every balance/filter path, and the
+    // opening_balance rows sit at the END of the desc-sorted array. The index
+    // is dropped at every dispatch/_sortData and rebuilt lazily in one pass.
+    let idx = this._openingIdx;
+    if (!idx) {
+      idx = this._openingIdx = Object.create(null);
+      for (const t of this.state.transactions) {
+        if (t.type === 'opening_balance' && t.accountId && idx[t.accountId] === undefined) {
+          idx[t.accountId] = t.date;
+        }
+      }
+    }
+    const date = idx[accountId];
+    return date === undefined ? null : date;
   },
 
   _isTxBeforeOpeningDate(tx) {
@@ -2130,12 +2194,13 @@ window.Store = {
   },
 
   getBalanceAtDate(date, accountIds = [], categoryIds = []) {
+    // v0.93: cheap string/array checks first, memoized opening-date check last.
     return this.state.transactions
       .filter(t => t.date <= date &&
-        !this._isTxBeforeOpeningDate(t) &&
         t.isPaid !== false &&
         (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
-        (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId))
+        (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId)) &&
+        !this._isTxBeforeOpeningDate(t)
       )
       .reduce((sum, tx) => this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
   },
@@ -2147,9 +2212,9 @@ window.Store = {
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const upcoming = this.state.transactions.filter(t =>
       t.date > todayStr && t.date <= endDate &&
-      !this._isTxBeforeOpeningDate(t) &&
       t.isPaid !== false &&
-      (accountIds.length === 0 || accountIds.includes(t.accountId))
+      (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
+      !this._isTxBeforeOpeningDate(t)
     );
     return {
       count: upcoming.length,
@@ -2342,21 +2407,37 @@ window.Store = {
     });
   },
 
+  // v0.93: one-pass category×month spend index. getBudgetForMonth used to
+  // rescan the whole transactions array once per month of its cumulative loop
+  // (a two-year-old budget = 24 full scans, per budget row, per render).
+  // Same lifecycle as _openingIdx: dropped on every dispatch/_sortData,
+  // rebuilt lazily in one pass.
+  _categoryMonthSpend(categoryId, yearMonth) {
+    let idx = this._budgetSpendIdx;
+    if (!idx) {
+      idx = this._budgetSpendIdx = Object.create(null);
+      for (const t of this.state.transactions) {
+        if (t.type !== 'expense' || !t.categoryId) continue;
+        const key = t.categoryId + '|' + t.date.slice(0, 7);
+        idx[key] = (idx[key] || 0) + t.amount;
+      }
+    }
+    return idx[categoryId + '|' + yearMonth] || 0;
+  },
+
   getBudgetForMonth(categoryId, yearMonth) {
     // yearMonth is format "YYYY-MM"
     const budget = this.state.budgets.find(b => b.categoryId === categoryId);
     if (!budget) return { allocated: 0, spent: 0, carryover: 0, finalLimit: 0 };
-    
+
     // Check if within date bounds
     if (budget.startDate && yearMonth < budget.startDate) return { allocated: 0, spent: 0, carryover: 0, finalLimit: 0 };
     if (budget.endDate && yearMonth > budget.endDate) return { allocated: 0, spent: 0, carryover: 0, finalLimit: 0 };
 
     const baseAmount = parseFloat(budget.amount) || 0;
-    
+
     // Calculate spent in this current yearMonth
-    const spentThisMonth = this.state.transactions
-      .filter(t => t.categoryId === categoryId && t.date.startsWith(yearMonth) && t.type === 'expense')
-      .reduce((sum, tx) => sum + tx.amount, 0);
+    const spentThisMonth = this._categoryMonthSpend(categoryId, yearMonth);
 
     let carryOver = 0;
 
@@ -2367,13 +2448,11 @@ window.Store = {
 
       while (iterDate < endDateTarget) {
         const lookupMonth = `${iterDate.getFullYear()}-${String(iterDate.getMonth() + 1).padStart(2, '0')}`;
-        const spentPast = this.state.transactions
-          .filter(t => t.categoryId === categoryId && t.date.startsWith(lookupMonth) && t.type === 'expense')
-          .reduce((sum, tx) => sum + tx.amount, 0);
-        
+        const spentPast = this._categoryMonthSpend(categoryId, lookupMonth);
+
         const remainder = baseAmount - spentPast;
         // cumulative logic normally adds up left-over, but can go negative if overspent
-        carryOver += remainder; 
+        carryOver += remainder;
 
         // advance 1 month
         iterDate.setMonth(iterDate.getMonth() + 1);
@@ -2499,16 +2578,16 @@ window.Store = {
     return buckets.map(b => {
       const bucketEnd = clampEnd && b.end > clampEnd ? clampEnd : b.end;
       const txs = this.state.transactions.filter(t => {
-        if (this._isTxBeforeOpeningDate(t)) return false;
+        // v0.93: date-range compare first (rejects the bulk of a 60-month
+        // materialized dataset on a string compare), memoized opening-date last.
+        if (t.date < b.start || t.date > bucketEnd) return false;
         if (t.isPaid === false) return false; // Exclude unpaid transactions
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments
-
-        const matchDate = t.date >= b.start && t.date <= bucketEnd;
-        const matchAcc = accounts.length === 0 || accounts.includes(t.accountId);
-        const matchCat = categories.length === 0 || categories.includes(t.categoryId);
-        return matchDate && matchAcc && matchCat;
+        if (accounts.length > 0 && !accounts.includes(t.accountId)) return false;
+        if (categories.length > 0 && !categories.includes(t.categoryId)) return false;
+        return !this._isTxBeforeOpeningDate(t);
       });
 
       const income = txs

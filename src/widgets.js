@@ -60,18 +60,41 @@ window.Widgets = {
   // their entry animation on the first mount of a dashboard visit, but a
   // dashboard re-render (any dispatch while it is open) must not replay it —
   // with view transitions on top it would read as double motion (v0.73 Phase 4).
-  _suppressChartAnimation: false,
+  _suppressChartAnimation: false, // v0.93: obsolete — mounts are always animation-free now
 
   _mountChart(id, canvas, config) {
     if (!canvas || !window.Chart) return null;
     this._destroyChart(id);
-    // Belt and braces: if this exact canvas is somehow still registered, clear it.
-    const stale = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
-    if (stale) stale.destroy();
-    if (this._suppressChartAnimation && config && config.options) {
-      config.options.animation = false;
+    // v0.93: widget charts never animate. The 600ms entry animations used to
+    // play inside the navigation render pass — i.e. inside the view-transition
+    // freeze — stacking motion cost on an already heavy mount.
+    if (!config.options) config.options = {};
+    config.options.animation = false;
+    const mount = () => {
+      this._destroyChart(id); // a newer mount for this id may have raced in
+      // Belt and braces: if this exact canvas is somehow still registered, clear it.
+      const stale = window.Chart.getChart ? window.Chart.getChart(canvas) : null;
+      if (stale) stale.destroy();
+      this._charts[id] = new window.Chart(canvas, config);
+    };
+    // v0.93: construct one frame later so the freshly swapped DOM paints before
+    // Chart.js does its canvas-measuring work. rAF is suspended in hidden
+    // documents (background tab, covered WebView), so a short timer races it —
+    // whichever fires first mounts, the other is a no-op. A rapid double
+    // navigation detaches the canvas before either fires — skip mounting then.
+    // Unit tests run on a bare mock window without rAF and take the sync path.
+    if (typeof window.requestAnimationFrame === 'function') {
+      let ran = false;
+      const run = () => {
+        if (ran) return;
+        ran = true;
+        if (canvas.isConnected) mount();
+      };
+      window.requestAnimationFrame(run);
+      setTimeout(run, 48);
+      return null;
     }
-    this._charts[id] = new window.Chart(canvas, config);
+    mount();
     return this._charts[id];
   },
 
@@ -112,6 +135,19 @@ window.Widgets = {
   _cfg(instance) {
     const def = this.registry[instance.type];
     return { ...((def && def.defaultConfig) || {}), ...(instance.config || {}) };
+  },
+
+  // v0.93: per-render-pass data memo. render() and attach() run back-to-back
+  // in one synchronous pass (main.js renderView), but every chart widget used
+  // to run its data builder in BOTH — doubling the store-aggregation cost of a
+  // navigation to Home. renderSection/renderPreview reset the memo, so entries
+  // never survive into a later pass (state may have changed by then).
+  _passMemo: {},
+  _memoized(instance, key, build) {
+    const k = instance.id + ':' + instance.size + ':' + key;
+    const m = this._passMemo;
+    if (Object.prototype.hasOwnProperty.call(m, k)) return m[k];
+    return (m[k] = build());
   },
 
   // ── shared config controls ──────────────────────────────────────────────
@@ -269,8 +305,10 @@ window.Widgets = {
       // docs/home-widgets-plan.md §8b.
       _buckets(instance) {
         const W = window.Widgets;
-        const filters = W._monthFilters(W._cfg(instance));
-        return window.Store.computeNetFlowData(filters) || [];
+        return W._memoized(instance, 'buckets', () => {
+          const filters = W._monthFilters(W._cfg(instance));
+          return window.Store.computeNetFlowData(filters) || [];
+        });
       },
 
       render(instance) {
@@ -415,15 +453,17 @@ window.Widgets = {
 
       _data(instance) {
         const W = window.Widgets;
-        const cfg = W._cfg(instance);
-        const filters = W._monthToDateFilters(cfg);
-        if (cfg.mode === 'selected' && cfg.categoryIds.length > 0) {
-          filters.categories = cfg.categoryIds;
-        }
-        const raw = window.Store.computeCategoryDistribution(filters, cfg.direction) || [];
-        const donut = window.Components.CategoryDonutChart;
-        // Reuse the analytics donut's top-5 + Others capping and colour assignment.
-        return donut._assignColors(donut._capData(raw));
+        return W._memoized(instance, 'data', () => {
+          const cfg = W._cfg(instance);
+          const filters = W._monthToDateFilters(cfg);
+          if (cfg.mode === 'selected' && cfg.categoryIds.length > 0) {
+            filters.categories = cfg.categoryIds;
+          }
+          const raw = window.Store.computeCategoryDistribution(filters, cfg.direction) || [];
+          const donut = window.Components.CategoryDonutChart;
+          // Reuse the analytics donut's top-5 + Others capping and colour assignment.
+          return donut._assignColors(donut._capData(raw));
+        });
       },
 
       render(instance) {
@@ -558,12 +598,14 @@ window.Widgets = {
       // recurring occurrences never inflate the trend.
       _points(instance) {
         const W = window.Widgets;
-        const result = window.Store.computeGraphBalances({
-          interval: 'monthly',
-          accountIds: W._cfg(instance).accountIds || [],
-          categoryIds: []
+        return W._memoized(instance, 'points', () => {
+          const result = window.Store.computeGraphBalances({
+            interval: 'monthly',
+            accountIds: W._cfg(instance).accountIds || [],
+            categoryIds: []
+          });
+          return (result && result.points) ? result.points.slice(-6) : [];
         });
-        return (result && result.points) ? result.points.slice(-6) : [];
       },
 
       render(instance) {
@@ -671,8 +713,10 @@ window.Widgets = {
       // occurrences — savings reports what was actually put aside so far.
       _buckets(instance) {
         const W = window.Widgets;
-        const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance)), W._todayStr()) || [];
-        return all.slice(-6);
+        return W._memoized(instance, 'buckets', () => {
+          const all = window.Store.computeNetFlowData(W._monthFilters(W._cfg(instance)), W._todayStr()) || [];
+          return all.slice(-6);
+        });
       },
 
       render(instance) {
@@ -964,28 +1008,30 @@ window.Widgets = {
       // cumulative budget that is deep in the red (finalLimit <= 0).
       _rows(instance, state) {
         const W = window.Widgets;
-        const cfg = W._cfg(instance);
-        const ym = W._todayStr().slice(0, 7);
-        const cats = state.categories || [];
+        return W._memoized(instance, 'rows', () => {
+          const cfg = W._cfg(instance);
+          const ym = W._todayStr().slice(0, 7);
+          const cats = state.categories || [];
 
-        const rows = (state.budgets || []).map(b => {
-          const cat = cats.find(c => c.id === b.categoryId);
-          if (!cat) return null;                       // orphaned by DELETE_CATEGORY
-          if (cat.id === 'cat_balance') return null;   // adjustment pseudo-category
-          if (cat.typeHint === 'income') return null;  // budgets are expense-only
-          if (cfg.mode === 'selected' && cfg.categoryIds.length > 0 && !cfg.categoryIds.includes(cat.id)) return null;
-          const bdg = window.Store.getBudgetForMonth(cat.id, ym);
-          if (bdg.allocated <= 0) return null;
-          return { cat, bdg };
-        }).filter(Boolean);
+          const rows = (state.budgets || []).map(b => {
+            const cat = cats.find(c => c.id === b.categoryId);
+            if (!cat) return null;                       // orphaned by DELETE_CATEGORY
+            if (cat.id === 'cat_balance') return null;   // adjustment pseudo-category
+            if (cat.typeHint === 'income') return null;  // budgets are expense-only
+            if (cfg.mode === 'selected' && cfg.categoryIds.length > 0 && !cfg.categoryIds.includes(cat.id)) return null;
+            const bdg = window.Store.getBudgetForMonth(cat.id, ym);
+            if (bdg.allocated <= 0) return null;
+            return { cat, bdg };
+          }).filter(Boolean);
 
-        // Most at-risk first. A non-positive limit with real spend is the
-        // worst state there is (cumulative budget in the red).
-        const usage = (r) => r.bdg.finalLimit > 0
-          ? r.bdg.spent / r.bdg.finalLimit
-          : (r.bdg.spent > 0 ? Infinity : 0);
-        rows.sort((a, b) => usage(b) - usage(a));
-        return rows;
+          // Most at-risk first. A non-positive limit with real spend is the
+          // worst state there is (cumulative budget in the red).
+          const usage = (r) => r.bdg.finalLimit > 0
+            ? r.bdg.spent / r.bdg.finalLimit
+            : (r.bdg.spent > 0 ? Infinity : 0);
+          rows.sort((a, b) => usage(b) - usage(a));
+          return rows;
+        });
       },
 
       _totals(rows) {
@@ -1271,6 +1317,7 @@ window.Widgets = {
 
   // ── section render ──────────────────────────────────────────────────────
   renderSection(state) {
+    this._passMemo = {}; // v0.93: new render pass — drop last pass's data memo
     const widgets = Array.isArray(state.homeWidgets) ? state.homeWidgets : [];
     const editMode = !!state.widgetEditMode && widgets.length > 0;
 
@@ -1378,6 +1425,7 @@ window.Widgets = {
 
   renderPreview(type, size, config, state) {
     if (!this.registry[type]) return '';
+    this._passMemo = {}; // v0.93: preview render = its own pass (config/size may differ)
     const instance = this._previewInstance(type, size, config);
     return `
       <div class="widget-preview-stage">
@@ -1405,13 +1453,9 @@ window.Widgets = {
 
   // ── section events ──────────────────────────────────────────────────────
   attachSection(root, state) {
-    // Tracked charts existing here means the dashboard was already mounted —
-    // this attach is a same-view re-render, so entry animations are replays
-    // and get suppressed. A fresh visit starts with an empty registry
-    // (DashboardView.destroy cleared it) and keeps its entry animation.
-    const isRemount = Object.keys(this._charts).length > 0;
     // The section just re-rendered, so every tracked chart now points at a
-    // detached canvas. Drop them all before remounting.
+    // detached canvas. Drop them all before remounting. (v0.93: the old
+    // isRemount animation-suppression is gone — _mountChart never animates.)
     this.destroyCharts();
 
     const section = root.querySelector('#widgets-section');
@@ -1474,7 +1518,6 @@ window.Widgets = {
     });
 
     // Per-instance attach (chart mounts, navigation) — errors stay contained.
-    this._suppressChartAnimation = isRemount;
     (state.homeWidgets || []).forEach(instance => {
       const def = this.registry[instance.type];
       if (!def || !def.attach) return;
@@ -1486,9 +1529,5 @@ window.Widgets = {
         console.error(`[widgets] attach failed for "${instance.type}"`, err);
       }
     });
-
-    // Mounts above ran synchronously; the preview stage (add-widget sheet)
-    // mounts through the same _mountChart and must keep its animation.
-    this._suppressChartAnimation = false;
   }
 };

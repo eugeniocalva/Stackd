@@ -31,7 +31,43 @@ sites have matching destroys); bottom-nav rebuild correctly gated on language ch
 
 ---
 
-## Phase 1 — Performance core (v0.93)
+## Phase 1 — Performance core (v0.93) — ✅ SHIPPED 2026-08-16
+
+**Results (same rig/dataset as baseline, desktop Chrome, 3,002 tx):** zero long
+tasks (>50ms) across Home/History/Analytics navigations — dashboard nav was a
+single 1,052–1,270ms task before; wallet-tap now runs 2 render passes (was 5);
+`computeNetFlowData` 2 calls/dashboard render (was 4/485ms); add-widget size
+swap handler ≈4ms with the modal shell kept alive (was a full-modal rebuild).
+523 unit + 31 e2e green.
+
+**As-built deviations from the plan below:**
+- 1.5: `_mountChart` defers via rAF **raced against a 48ms timer** — rAF is
+  suspended in hidden documents (background tab/covered WebView), so the timer
+  guarantees mounting; whichever fires first wins, detached canvases are
+  skipped. `_suppressChartAnimation` is retired (mounts are always
+  animation-free). The three singleton charts (analytics bar/donut, budget
+  donut) got `animation: false` but stay synchronous — they were not the
+  bottleneck.
+- 1.7 icons: per-view `StackdHydrateIcons()` calls were KEPT (cheap once lucide
+  is loaded; removing 12 call sites wasn't worth the blank-icon risk); the
+  render-loop pass is scoped to `#router-view` and the nav rebuild hydrates its
+  own subtree. `StackdHydrateIcons(root)` now takes an optional scope root.
+- 1.7 donut: Analytics reuses `ctx` + bar-chart data across render/attach, but
+  the donut deliberately still recomputes in its component — its expense/income
+  toggle (`_currentType`) owns that data and precomputing would couple them.
+- 1.7 `_fmtDate` (row dates) also fixes a latent day-drift: the old
+  `new Date('YYYY-MM-DD').toLocaleDateString` parsed as UTC midnight and showed
+  the previous day in negative-UTC timezones; now noon-anchored.
+- e2e `history_scroll.spec.js`: added a 150ms settle after the spec's manual
+  `scrollTop = 120` — the list's scroll-snap nudges an arbitrary offset onto a
+  row edge a few ms later, and with faster renders the `before` capture started
+  racing that nudge (the guarded behavior — no movement during selection — was
+  verified intact via a scroll-event trace).
+- New tests: `tests/unit/emitCoalescing.test.js` (coalescing semantics + index
+  invalidation); `i18n.test.js` SET_LANGUAGE spec updated to the async contract.
+- Bumps: title v0.93; `scroll.js?v=14`, `store.js?v=32`, `components.js?v=41`,
+  `widgets.js?v=17`, `views.js?v=49`, `main.js?v=27`. CLAUDE.md updated
+  (render model, store indexes, icon scoping).
 
 Goal: page-to-page navigation and the add-widget swipe feel instant. Everything else in
 this round benefits, and the P2 wallet-tap fix depends on 1.3 landing first.

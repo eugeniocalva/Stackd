@@ -3,71 +3,28 @@ window.ScrollUtils = {
     _pendingInterval: null,
 
     /**
-     * Aggressively scrolls all possible scroll containers to the top.
-     * Uses setInterval for maximum compatibility on throttled mobile devices.
+     * Smooth-scrolls the app's scroll containers to the top.
+     * v0.93: #router-view is the app's only real vertical scroller (#app is
+     * overflow:hidden and body never scrolls — global.css). The old
+     * implementation swept document.querySelectorAll('*'), reading scrollTop
+     * on EVERY node (a forced-layout full-DOM pass) and then animated with a
+     * 20ms setInterval; native smooth scrolling does the job without either.
      */
     universalSmoothScrollToTop() {
         try {
             if (this._pendingInterval) {
                 clearInterval(this._pendingInterval);
+                this._pendingInterval = null;
             }
-
-            // 1. Identify common targets
-            const commonTargets = [
-                document.getElementById('router-view'),
-                document.documentElement,
-                document.body,
-                window
-            ].filter(t => !!t);
-
-            // 2. Global Scroll Search: Identify targets ONCE at the start
-            // We only care about elements that actually HAVE a scrollbar and are scrolled.
-            const allScrolled = Array.from(document.querySelectorAll('*'))
-                .filter(el => el.scrollTop > 5); 
-            
-            const targets = [...new Set([...commonTargets, ...allScrolled])];
-
-            const duration = 300;
-            const startTime = Date.now();
-            
-            // Capture initial scroll positions
-            const starts = targets.map(t => {
-                if (t === window) return window.pageYOffset || document.documentElement.scrollTop;
-                return t.scrollTop || 0;
-            });
-
-            // If nothing is scrolled, exit early
-            if (starts.every(s => s <= 0)) {
-                console.log('[Stackd] Scroll: Already at top');
-                return;
+            const rv = document.getElementById('router-view');
+            if (rv && rv.scrollTop > 0) {
+                if (typeof rv.scrollTo === 'function') rv.scrollTo({ top: 0, behavior: 'smooth' });
+                else rv.scrollTop = 0;
             }
-
-            console.log('[Stackd] Scroll started on targets:', targets.length);
-
-            this._pendingInterval = setInterval(() => {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                const ease = progress * (2 - progress); // easeOutQuad
-
-                for (let i = 0; i < targets.length; i++) {
-                    const t = targets[i];
-                    const start = starts[i];
-                    const current = progress === 1 ? 0 : start * (1 - ease);
-                    
-                    if (t === window) {
-                        window.scrollTo(0, Math.floor(current));
-                    } else {
-                        t.scrollTop = Math.floor(current);
-                    }
-                }
-
-                if (progress >= 1) {
-                    clearInterval(this._pendingInterval);
-                    this._pendingInterval = null;
-                }
-            }, 20); // Slightly slower interval (50fps) for mobile stability
+            if ((window.pageYOffset || document.documentElement.scrollTop || 0) > 0) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         } catch (err) {
-            console.error('[Stackd] Scroll Error:', err);
             // Emergency fallback for mobile
             window.scrollTo(0, 0);
             const rv = document.getElementById('router-view');

@@ -148,6 +148,11 @@ window.Views = {
       const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom');
 
+      // v0.93: attachEvents runs right after render in the same synchronous
+      // pass and needs the same context + bar-chart series — stash, don't
+      // recompute (each computeNetFlowData is a 12-bucket scan).
+      this._pass = { ctx, chartData };
+
       const donutData = window.Store.computeCategoryDistribution(effectiveFilters, 'expense');
       const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
 
@@ -241,10 +246,14 @@ window.Views = {
     attachEvents(container, state) {
       window.Components.AdvancedFilterBar.attachEvents(container, 'analytics');
 
-      // v0.64 - Use the same today/period-end basis as render() so chart interactions match
-      const ctx = this._getBalanceModeContext(state);
+      // v0.64 - Use the same today/period-end basis as render() so chart interactions match.
+      // v0.93: render() stashed both moments ago in this same pass — reuse them.
+      const pass = this._pass;
+      const ctx = (pass && pass.ctx) || this._getBalanceModeContext(state);
       const filters = ctx.filters;
-      const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
+      const chartData = (pass && pass.chartData !== undefined)
+        ? pass.chartData
+        : window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       if (filters.period.type !== 'custom') {
         window.Components.NetFlowChart.attachEvents(container, chartData, filters);
       }
@@ -299,6 +308,12 @@ window.Views = {
         accountIds: selectedAccountIds,
         categoryIds: selectedCategoryIds
       });
+      // v0.93: attachEvents needs this exact series for the chart datasets and
+      // runs in the same synchronous pass — stash it instead of re-aggregating.
+      this._passGraph = {
+        key: `${selectedInterval}|${selectedAccountIds.join(',')}|${selectedCategoryIds.join(',')}`,
+        result: mainResult
+      };
       const points = (mainResult && mainResult.points) ? mainResult.points : [];
       const globalBalance = points.length > 0 ? points[points.length - 1].balance : 0;
       const formattedBalance = window.Store.formatCurrency(globalBalance);
@@ -306,15 +321,19 @@ window.Views = {
       let walletsHtml = `
         <div class="wallets-scroll-wrapper">
           ${(() => {
+            // v0.93: one balance per account, computed before the sort — the
+            // comparator used to recompute full-scan balances O(A·logA) times.
+            const balancesById = {};
+            state.accounts.forEach(acc => { balancesById[acc.id] = window.Store.getAccountBalance(acc.id); });
             const sortedAccounts = [...state.accounts].sort((a, b) => {
               // Priority: Default first, then balance desc
               if (a.id === state.defaultAccountId) return -1;
               if (b.id === state.defaultAccountId) return 1;
-              return window.Store.getAccountBalance(b.id) - window.Store.getAccountBalance(a.id);
+              return balancesById[b.id] - balancesById[a.id];
             });
 
               return sortedAccounts.map(acc => {
-                const balance = window.Store.getAccountBalance(acc.id);
+                const balance = balancesById[acc.id];
                 const formattedBal = window.Store.formatCurrency(balance);
                 const isDefault = acc.id === state.defaultAccountId;
                 const isHidden = this.hiddenChartAccounts.includes(acc.id);
@@ -503,11 +522,16 @@ window.Views = {
             : state.accounts.map(acc => acc.id);
           const selectedCategoryIds = savedFilters.categories || [];
 
-          const graphResult = window.Store.computeGraphBalances({
-            interval: selectedInterval,
-            accountIds: selectedAccountIds,
-            categoryIds: selectedCategoryIds
-          });
+          // v0.93: render() computed this exact series moments ago in the same
+          // synchronous pass — reuse it (key guards against filter drift).
+          const graphKey = `${selectedInterval}|${selectedAccountIds.join(',')}|${selectedCategoryIds.join(',')}`;
+          const graphResult = (this._passGraph && this._passGraph.key === graphKey)
+            ? this._passGraph.result
+            : window.Store.computeGraphBalances({
+                interval: selectedInterval,
+                accountIds: selectedAccountIds,
+                categoryIds: selectedCategoryIds
+              });
 
           const mainPoints = (graphResult && graphResult.points) ? graphResult.points : [];
           const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
@@ -2865,7 +2889,7 @@ Object.assign(window.Views, {
               responsive: true,
               maintainAspectRatio: false,
               cutout: '74%',
-              animation: { duration: 600, easing: 'easeOutQuart' },
+              animation: false, // v0.93: no entry animation (see NetFlowChart note)
               plugins: { tooltip: { enabled: false }, legend: { display: false } }
             }
           });

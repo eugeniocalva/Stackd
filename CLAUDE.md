@@ -60,7 +60,9 @@ The core globals and their roles:
 
 ### Rendering model
 
-There is **no virtual DOM and no framework**. The render loop lives in `main.js`: `Store.subscribe` fires on every dispatch, a `switch(state.activeView)` picks the view module, and it does `routerView.innerHTML = viewModule.render(state)` followed by `viewModule.attachEvents(...)`. Views are re-rendered wholesale on state change. If a view sets up listeners/timers, clean them up in its `destroy()` (called on view transition).
+There is **no virtual DOM and no framework**. The render loop lives in `main.js`: `Store.subscribe` fires on emit, a `switch(state.activeView)` picks the view module, and it does `routerView.innerHTML = viewModule.render(state)` followed by `viewModule.attachEvents(...)`. Views are re-rendered wholesale on state change. If a view sets up listeners/timers, clean them up in its `destroy()` (called on view transition).
+
+**Emits coalesce (v0.93):** `Store.emit()` batches to ONE listener pass per microtask tick — state still mutates synchronously with each `dispatch`, but N dispatches in one tick render once (a navigation that sets filters then `SET_VIEW` no longer re-renders the outgoing view per dispatch). Never dispatch and then synchronously read the freshly rendered DOM in the same tick. Boot is the one sync exception: `main.js` calls `Store.emit({ sync: true })` because splash dismissal relies on the first render having happened. `render()` and `attachEvents()` still run back-to-back in one synchronous pass, so a view may stash data computed in `render` for reuse in `attachEvents` (DashboardView `_passGraph`, AnalyticsView `_pass`, `Widgets._passMemo`) — compute heavy aggregations once per pass, not once per method.
 
 ### State & data model
 
@@ -68,7 +70,8 @@ There is **no virtual DOM and no framework**. The render loop lives in `main.js`
 - **Account balances are computed from transactions, never stored.** Use `Store.getAccountBalance(id)`.
 - Transactions have a `type` of `income`, `expense`, or `opening_balance`. Creating an account auto-inserts an `opening_balance` transaction (category `cat_balance`).
 - Default categories are seeded from the `DEFAULT_CATEGORIES` constant at the top of `store.js` (stable ids like `cat_salary`, `cat_groceries`).
-- All mutations go through `Store.dispatch(ACTION, payload)`. To add behavior, add a `case` to the dispatch switch, mutate `this.state`, call `StackdDB.save(...)` for the affected slice, set `changed = true`, and let `emit()` re-render. The store also handles **cross-tab sync** via storage events.
+- All mutations go through `Store.dispatch(ACTION, payload)`. To add behavior, add a `case` to the dispatch switch, mutate `this.state`, call `StackdDB.save(...)` for the affected slice, set `changed = true`, and let `emit()` re-render (coalesced — see Rendering model). The store also handles **cross-tab sync** via storage events.
+- The store keeps lazy per-dispatch indexes for hot lookups — `_openingIdx` (account opening dates) and `_budgetSpendIdx` (category×month expense sums) — both nulled at the top of `dispatch` and in `_sortData`, rebuilt in one O(T) pass on next use. If you add a mutation path that bypasses `dispatch`, invalidate them there too.
 
 ### Loans / debt (v0.71 rebuild)
 
@@ -152,7 +155,7 @@ Rules that are easy to get wrong:
 
 ### Icons
 
-Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries a large inline `EMERGENCY_ICONS` fallback map + `window.StackdHydrateIcons` so icons still render on `file://`/native where the CDN script may be unavailable. When adding a new icon name, it may need an entry in that fallback map.
+Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries a large inline `EMERGENCY_ICONS` fallback map + `window.StackdHydrateIcons` so icons still render on `file://`/native where the CDN script may be unavailable. When adding a new icon name, it may need an entry in that fallback map. `StackdHydrateIcons(root)` takes an optional scope root (v0.93): the render loop passes `#router-view` and the nav rebuild passes the nav container, so anything rendering icons **outside** those subtrees (modals) must keep calling it on its own root — the existing modal call sites already do.
 
 ## Testing model
 

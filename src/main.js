@@ -243,16 +243,19 @@ const EMOJI_MAP = {
   '📍': 'pin', '📦': 'package', '⭐': 'star', '🔖': 'bookmark', '🔔': 'bell', '🚩': 'flag', '❓': 'help-circle', '🌐': 'globe', '🐕': 'dog', '🐈': 'cat', '🍀': 'clover', '💻': 'laptop', '⚖️': 'scale'
 };
 
-window.StackdHydrateIcons = () => {
+window.StackdHydrateIcons = (root) => {
   // v0.81: idempotent hydration. lucide's createIcons keeps data-lucide on the
   // <svg> it generates, so earlier passes re-matched their own output and
   // rebuilt every icon in the DOM on each call (full-DOM churn that collided
   // with the splash fade). Generated svgs are now skipped, and when lucide is
   // available the emergency injection is skipped too — createIcons replaces
   // the whole element anyway, so injecting first was double work.
+  // v0.93: optional root scopes the scan (render loop passes #router-view;
+  // modals can pass their own subtree). No root = whole document, as before.
+  const scope = (root && typeof root.querySelectorAll === 'function') ? root : document;
   const lucideReady = window.lucide && typeof window.lucide.createIcons === 'function';
   let pending = false;
-  document.querySelectorAll('[data-lucide]').forEach(el => {
+  scope.querySelectorAll('[data-lucide]').forEach(el => {
     if (el.tagName.toLowerCase() === 'svg') return; // already lucide output
     pending = true;
     let name = el.getAttribute('data-lucide');
@@ -493,15 +496,20 @@ document.addEventListener('DOMContentLoaded', () => {
         navContainer.innerHTML = window.Components.BottomNav.render();
         window.Components.BottomNav.attachEvents(navContainer);
         navContainer._lang = state.language;
+        // v0.93: the render-loop hydration below is scoped to #router-view,
+        // so the rebuilt nav hydrates its own subtree here.
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(navContainer);
       }
 
       if (navContainer && window.Components.BottomNav) {
         window.Components.BottomNav.updateActiveState(navContainer, state.activeView);
       }
 
-      // Trigger Icon Hydration
+      // Trigger Icon Hydration (v0.93: scoped to the swapped subtree — the nav
+      // rebuild above hydrates itself via the language-change branch, and
+      // modals hydrate their own roots)
       if (window.StackdHydrateIcons) {
-        window.StackdHydrateIcons();
+        window.StackdHydrateIcons(routerView);
       }
 
       // v0.63: Collapse overflowing inline tag pills into a "+N" counter
@@ -537,7 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(tagOverflowResizeTimer);
     tagOverflowResizeTimer = setTimeout(() => {
       if (window.Components && window.Components.TransactionItem && window.Components.TransactionItem.applyTagOverflow) {
-        window.Components.TransactionItem.applyTagOverflow(routerView);
+        // v0.93: reset — a previously collapsed row may fit at the new width
+        window.Components.TransactionItem.applyTagOverflow(routerView, { reset: true });
       }
     }, 150);
   });
@@ -545,8 +554,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Start initial hydration
   runHydration();
 
-  // Initial render (force trigger the subscription)
-  window.Store.emit();
+  // Initial render (force trigger the subscription). v0.93: emits normally
+  // coalesce to the next microtask — boot must stay synchronous because the
+  // splash dismissal below relies on the first render having happened.
+  window.Store.emit({ sync: true });
 
   // ── Splash dismissal (v0.81) ────────────────────────────────────────────
   // Readiness-gated instead of blind timers: the first render just happened
