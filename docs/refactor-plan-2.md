@@ -312,7 +312,27 @@ five dicts (`i18n/*.js`), `components.css` (styles are `<link>`s — bump if ver
 
 ---
 
-## Phase 3 — Forms (v0.95)
+## Phase 3 — Forms (v0.95) — ✅ SHIPPED 2026-08-16
+
+**As-built notes:** CSS landed as specced (appearance:none + display:block on
+the date/time controls, new `::-webkit-date-and-time-value` block, `.card`
+min-width:0 + overflow-x:clip backstop, `.form-group` min-width:0 for the
+budget month grid; desktop shadow-tree + indicator rules kept).
+`dateInputFraming.test.js` rewritten to pin the load-bearing declarations —
+including a negative assertion that the counterproductive `display:flex` host
+never comes back. Insight shipped with `Store.getCategoryMonthlyAverage`
+(trailing 6 full months, current month excluded, averaged over months WITH
+spend, isPaid-gated — deliberately stricter than getBudgetForMonth's spent
+figure); plural keys `budget.avgSpendHint.one/.other` ×5 (the `.one` variant
+drops `{count}` and reads "Recently you spent…" — "over the last 1 month" was
+wrong whenever the single active month wasn't last month). New unit suite
+`categoryMonthlyAverage.test.js` (6 specs: averaging, windowing, exclusions,
+pre-opening, nulls, plural render). Verified live: insight on Groceries,
+absent on Salary; date input contained at desktop too. 533 unit / 34 e2e
+green. Bumps: title v0.95; `store.js?v=34`, `views.js?v=51`, dicts `?v=10`.
+**Device check still owed (no iOS here):** Expense form + Recurrent end date +
+edit-account date at 320px, it/fr locales, light+dark — expected fixed by
+appearance:none; if anything still bleeds, the `.card` clip now contains it.
 
 ### 3.1 Date field overflow — the iOS-real fix (item 2)
 
@@ -380,7 +400,33 @@ Cache-busting P3: `store.js`, `views.js`, five dicts; `components.css`.
 
 ---
 
-## Phase 4 — iOS native identity: icon + splash (v0.96)
+## Phase 4 — iOS native identity: icon + splash (v0.96) — ✅ SHIPPED 2026-08-16 (Mac handoff pending)
+
+**As-built notes:** `npx cap add ios` ran fine on Windows (template copied;
+pod install correctly skipped); `npx capacitor-assets generate --ios` produced
+the branded `AppIcon-512@2x.png` (Stack'd mark, verified visually) and six
+`Default@{1,2,3}x~universal~anyany(-dark).png` splashes (full lockup: mark +
+wordmark; dark variants included — parity with android's drawable-night);
+the three orphaned template `splash-2732x2732*.png` were deleted (the
+regenerated Contents.json no longer references them). `npm run build` +
+`npx cap sync ios` completed: Podfile lists `@capacitor/app` +
+`@capacitor/splash-screen`, `CFBundleDisplayName` = "Stack'd". Capacitor's own
+`ios/.gitignore` already excludes `App/App/public` (the dist copy) and the
+generated `capacitor.config.json` — consistent with the b7afd6e convention,
+so the committed `ios/` stays clean of build output. New npm script:
+`npm run assets:gen` regenerates both platforms from `assets/`.
+
+**Mac handoff (the one-time steps still owed on the Mac):**
+1. Move aside the Mac's local untracked `ios/` folder BEFORE `git pull`
+   (it will collide with the now-tracked one).
+2. `npm install && npm run build && npx cap sync ios` (this runs pod install).
+3. Open `ios/App` in Xcode, re-select the signing team (one-time — the old
+   local project's signing isn't carried over).
+4. **Delete the old app from the iPhone** (iOS caches home-screen icons),
+   then build & run.
+5. Verify: branded icon on the home screen; branded splash held until first
+   paint (no blue Capacitor mark anywhere); dark-mode launch uses the dark
+   splash variant.
 
 Diagnosis: the device currently shows Capacitor **template** assets — the blue
 Capacitor mark on the splash and a template/placeholder home-screen icon. The Stack'd

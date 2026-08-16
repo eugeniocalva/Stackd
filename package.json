@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "assets:gen": "capacitor-assets generate"
   },
   "devDependencies": {
     "@capacitor/android": "^6.1.1",
