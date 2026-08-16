@@ -79,6 +79,12 @@
   padding: var(--space-4);
   margin-bottom: var(--space-4);
   box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+  /* v0.95: containment backstop — an intrinsic-width control (iOS date
+     inputs, pre-fix) must never bleed past the card. clip, not hidden, for
+     the same sticky-header reason as .container. min-width:0 because cards
+     sit as flex/grid items in several views. */
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .card-elevated {
@@ -160,6 +166,9 @@
   width: 100%;
   box-sizing: border-box;
   position: relative;
+  /* v0.95: grid/flex items default to min-width:auto — the budget form's
+     two-column month grid needs this to let its fields shrink. */
+  min-width: 0;
 }
 
 .form-control {
@@ -184,19 +193,46 @@
   box-shadow: 0 0 0 3px var(--color-border);
 }
 
-/* Date and Time input framing, centering, and overflow prevention */
+/* Date and Time input framing, centering, and overflow prevention.
+   v0.95 (refactor-plan-2 P3.1): iOS WebKit sizes these from the UA-intrinsic
+   width of the widest localized date string and IGNORES width:100% while the
+   native appearance is on — appearance:none is the load-bearing declaration;
+   nothing below it can shrink the control without it. The old display:flex
+   host made iOS fall back to intrinsic-content sizing (the overflow itself);
+   iOS renders the value through ::-webkit-date-and-time-value (styled below),
+   not the desktop ::-webkit-datetime-edit tree the v0.6x fix targeted. */
 input[type="date"].form-control,
 input[type="time"].form-control {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  max-inline-size: 100%;
   box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: normal; /* iOS mishandles min-height + UA line-height combos */
   padding-right: var(--space-3);
   font-family: inherit;
   color-scheme: light dark;
+}
+
+/* iOS Safari renders the value through THIS pseudo — the previous fix only
+   styled the desktop shadow tree, which is why it never took effect on
+   device. iOS also centers it with UA margins by default. */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator,

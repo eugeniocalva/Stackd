@@ -209,6 +209,8 @@ window.I18n.dicts.fr = {
   'budget.noEndDate': 'Aucune date de fin',
   'budget.cumulativeRollover': 'Report cumulatif',
   'budget.cumulativeRolloverDesc': 'Le budget non utilisé est reporté au mois suivant. Un dépassement est déduit du mois suivant.',
+  'budget.avgSpendHint.one': 'Récemment, vous avez dépensé <strong>{amount}</strong>/mois dans cette catégorie — fixez une limite plus basse pour réduire cette dépense.',
+  'budget.avgSpendHint.other': 'En moyenne, vous avez dépensé <strong>{amount}</strong>/mois dans cette catégorie sur les {count} derniers mois — fixez une limite plus basse pour réduire cette dépense.',
   'budget.removeLimit': 'Supprimer la limite de budget',
 
   // ── Debt (P8d) ───────────────────────────────────────────────────────────

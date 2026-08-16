@@ -214,6 +214,8 @@ window.I18n.dicts.en = {
   'budget.noEndDate': 'No end date',
   'budget.cumulativeRollover': 'Cumulative Rollover',
   'budget.cumulativeRolloverDesc': 'Unused budget carries over to next month. Overspending deducts from next month.',
+  'budget.avgSpendHint.one': 'Recently you spent <strong>{amount}</strong>/month on this category — set a lower limit to bring it down.',
+  'budget.avgSpendHint.other': 'On average you spent <strong>{amount}</strong>/month on this category over the last {count} months — set a lower limit to bring it down.',
   'budget.removeLimit': 'Remove Budget Limit',
 
   // ── Debt: hub, simulator, results (P8d) ──────────────────────────────────

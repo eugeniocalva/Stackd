@@ -2683,6 +2683,24 @@ Object.assign(window.Views, {
       const budget = state.budgets.find(b => b.categoryId === cat.id) || {};
       const currSym = window.Store.getCurrencySymbol();
 
+      // v0.95 (refactor-plan-2 P3.2): average-spend insight between the limit
+      // field and the month selectors. Expense context only — suggesting a
+      // lower budget for income would read as "reduce your salary". 'both'
+      // categories count as expense only when reached from the expense tab.
+      const isExpenseCtx = cat.typeHint === 'expense'
+        || (cat.typeHint === 'both' && this.currentBudgetFilter === 'expense');
+      const avg = isExpenseCtx ? window.Store.getCategoryMonthlyAverage(cat.id, 6) : null;
+      const insightHtml = avg ? `
+            <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--bg-surface-sunken);">
+              <i data-lucide="trending-down" style="width: 18px; height: 18px; flex-shrink: 0; color: var(--text-secondary); margin-top: 2px;"></i>
+              <span style="font-size: var(--text-sm); color: var(--text-secondary); min-width: 0;">
+                ${window.I18n.t('budget.avgSpendHint', {
+                  amount: window.Store.formatCurrency(avg.average),
+                  count: avg.months
+                })}
+              </span>
+            </div>` : '';
+
       return `
         <div class="absolute-pane animate-slide-up" style="background: var(--bg-body); z-index: 100;">
           <div class="header-nav" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-4); background: var(--bg-surface); border-bottom: 1px solid var(--border-color);">
@@ -2703,7 +2721,7 @@ Object.assign(window.Views, {
                 <input type="number" id="bdg-amount" class="form-control" placeholder="0.00" value="${budget.amount || ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;" step="0.01" inputmode="decimal">
               </div>
             </div>
-
+            ${insightHtml}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
               <div class="form-group">
                 <label class="form-label" for="bdg-start">${window.I18n.t('budget.startMonth')}</label>

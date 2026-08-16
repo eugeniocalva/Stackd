@@ -2480,6 +2480,39 @@ window.Store = {
     };
   },
 
+  // v0.95 (refactor-plan-2 P3.2): average monthly spend for one category over
+  // the trailing `months` WHOLE calendar months (current month excluded — it
+  // is partial and would drag the average down). Feeds the budget form's
+  // insight line. Unlike getBudgetForMonth's spent figure this applies the
+  // isPaid gate — "you spent" must not count scheduled/unpaid rows. Averages
+  // over the months that actually had spend (matches the copy "on average you
+  // spent X/month"); returns null when there is nothing meaningful to show.
+  getCategoryMonthlyAverage(categoryId, months = 6) {
+    if (!categoryId || categoryId === 'cat_balance') return null;
+    const now = new Date();
+    const keys = [];
+    for (let i = months; i >= 1; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const totals = {};
+    keys.forEach(k => { totals[k] = 0; });
+    for (const tx of this.state.transactions) {
+      if (tx.type !== 'expense') continue;           // excludes income + opening_balance
+      if (tx.categoryId !== categoryId) continue;    // transfer legs carry '' → excluded
+      if (tx.transferRef) continue;                  // defensive — never count transfers
+      if (tx.isPaid === false) continue;             // lean flag: absent means paid
+      const k = tx.date.slice(0, 7);
+      if (!(k in totals)) continue;
+      if (this._isTxBeforeOpeningDate(tx)) continue; // memoized (v0.93), cheap
+      totals[k] += tx.amount;
+    }
+    const active = keys.filter(k => totals[k] > 0);
+    if (active.length === 0) return null;
+    const sum = active.reduce((s, k) => s + totals[k], 0);
+    return { average: sum / active.length, months: active.length };
+  },
+
   getAllUniqueTags(querySubstring = '') {
     const tagsSet = new Set();
     this.state.transactions.forEach(tx => {
