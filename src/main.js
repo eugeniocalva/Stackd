@@ -327,7 +327,7 @@ const runHydration = () => {
   setTimeout(window.StackdHydrateIcons, 250);
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // v0.73: Testing aid — ?safetop=59 (before the #hash) forces a fake
   // status-bar inset so safe-area layouts are verifiable in desktop browsers
   // and Playwright, where env(safe-area-inset-*) is always 0.
@@ -352,7 +352,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window.KeyboardManager.init();
   }
 
-  // 1. Initialize data store
+  // 1. Initialize data store. v0.97: on native, the file mirror must get a
+  // chance to restore an evicted WebView localStorage BEFORE the store (or
+  // the homeWidgets seed check) reads it — a no-op on web and when healthy.
+  await window.StackdDB.initNative();
   window.Store.init();
   
   // 2. Initialize router
@@ -747,7 +750,9 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
     onSave: (close) => {
       window.Store.dispatch('SET_CURRENCY', selectedCurrency);
       window.Store.dispatch('SET_LANGUAGE', selectedLanguage);
-      localStorage.setItem('stackd_v1_setup_done', '1');
+      // v0.97: through StackdDB so the native file mirror sees it too
+      // (stores the same '1' string the old raw setItem wrote).
+      window.StackdDB.save('setup_done', 1);
       close();
     }
   });

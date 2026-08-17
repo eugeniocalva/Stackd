@@ -49,7 +49,7 @@ The core globals and their roles:
 
 | Global | File | Role |
 |---|---|---|
-| `window.StackdDB` | `db.js` | localStorage wrapper. Keys are namespaced with prefix `stackd_v1_`. `load()`, `save()`, `generateId()`. |
+| `window.StackdDB` | `db.js` | localStorage wrapper. Keys are namespaced with prefix `stackd_v1_`. `load()`, `save()`, `remove()`, `generateId()`. **v0.97:** on native builds every `stackd_v1_*` key is mirrored to real files (Capacitor Filesystem, `stackd_db/` in Directory `DATA`) because iOS can evict WKWebView localStorage; `main.js` awaits `StackdDB.initNative()` before `Store.init()` so an evicted store is restored from the mirror first. Never write or delete `stackd_v1_*` keys via raw `localStorage` — it bypasses the mirror (deletes would resurrect at next boot). |
 | `window.LoanEngine` | `loan-engine.js` | Pure amortization engine (integer cents, `'YYYY-MM-DD'` string date math). `simulate(config)` → schedule + totals. Zero deps on other globals. |
 | `window.Store` | `store.js` | Single source of truth. Holds `state`, a pub/sub `subscribe()`/`emit()`, and one large `dispatch(action, payload)` switch. Persists each slice to `StackdDB` on mutation. |
 | `window.Router` | `router.js` | Hash-based SPA router. Maps `#route` → `viewId`, parses `?account=` query params, dispatches `SET_VIEW`, and drives scroll reset. |

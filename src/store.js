@@ -1864,7 +1864,9 @@ window.Store = {
         this.state.homeWidgets = this._defaultHomeWidgets();
         window.StackdDB.save('homeWidgets', this.state.homeWidgets);
         // Clear the first-launch flag so the region setup modal shows again
-        localStorage.removeItem('stackd_v1_setup_done');
+        // (v0.97: through StackdDB so the native file mirror deletes it too —
+        // a raw removeItem would let the mirror resurrect it at next boot).
+        window.StackdDB.remove('setup_done');
         this.state.loans = [];
         // App will force reload by the caller, so we don't even need to emit strictly
         break;
