@@ -226,6 +226,109 @@ describe('Recurring transaction editing (v0.67)', () => {
     });
   });
 
+  // v0.98: the "billed on a different day" bug report — a monthly series on the
+  // 7th whose real bill lands on the 5th. Editing the FIRST occurrence to an
+  // EARLIER day with future/all scope must yield exactly one chain on the new
+  // day, even when the stored data carries poison from the old duplicate-chain
+  // bug (a stray armed generator, or a leftover interleaved chain member).
+  describe('date moved earlier on the first occurrence (v0.98)', () => {
+    const createBillsSeries = () => {
+      Store.dispatch('ADD_TRANSACTION', {
+        type: 'expense',
+        amount: 80,
+        accountId,
+        categoryId: 'cat_groceries',
+        date: '2026-08-07',
+        comment: 'Bills',
+        recurrence: { interval: 1, frequency: 'months', endDate: '2027-08-07' }
+      });
+      return Store.getState().transactions.find(t => t.comment === 'Bills' && t.date === '2026-08-07').recurrence.seriesId;
+    };
+
+    it('future scope: single clean chain on the new day', () => {
+      const sid = createBillsSeries();
+      const head = seriesMembers(sid).find(t => t.date === '2026-08-07');
+      Store.dispatch('UPDATE_TRANSACTION', formEditPayload(Store, head, { date: '2026-08-05', updateFuture: true }));
+      const members = seriesMembers(sid);
+      expect(members).toHaveLength(13);
+      expect(members.every(t => t.date.endsWith('-05'))).toBe(true);
+      expect(members.filter(t => t.recurrence.nextDate)).toHaveLength(1);
+    });
+
+    it('all scope: same single clean chain on the new day', () => {
+      const sid = createBillsSeries();
+      const head = seriesMembers(sid).find(t => t.date === '2026-08-07');
+      Store.dispatch('UPDATE_TRANSACTION', formEditPayload(Store, head, { date: '2026-08-05', updateAll: true }));
+      const members = seriesMembers(sid);
+      expect(members).toHaveLength(13);
+      expect(members.every(t => t.date.endsWith('-05'))).toBe(true);
+      expect(members.filter(t => t.recurrence.nextDate)).toHaveLength(1);
+    });
+
+    it('a stray armed PAST member cannot resurrect the old chain after the edit', () => {
+      const sid = createBillsSeries();
+      const head = seriesMembers(sid).find(t => t.date === '2026-08-07');
+      const rec = head.recurrence;
+      // Poison: a past member of the same series still armed as a generator
+      // (old duplicate-chain bug / pre-v0.68 import leftovers).
+      Store.state.transactions.push({
+        id: 'stray-july',
+        type: 'expense', amount: 80, accountId, categoryId: 'cat_groceries',
+        date: '2026-07-07', time: '12:00:00', comment: 'Bills',
+        createdAt: '2026-07-07T00:00:00.000Z',
+        recurrence: { seriesId: sid, interval: rec.interval, frequency: rec.frequency, endDate: rec.endDate, startDate: rec.startDate, nextDate: '2026-08-07' }
+      });
+
+      Store.dispatch('UPDATE_TRANSACTION', formEditPayload(Store, head, { date: '2026-08-05', updateFuture: true }));
+
+      const bills = Store.getState().transactions.filter(t => t.comment === 'Bills');
+      expect(bills.filter(t => t.date.startsWith('2026-08')).map(t => t.date)).toEqual(['2026-08-05']);
+      expect(bills.filter(t => t.date.startsWith('2026-09')).map(t => t.date)).toEqual(['2026-09-05']);
+      expect(seriesMembers(sid).filter(t => t.recurrence.nextDate)).toHaveLength(1);
+    });
+
+    it('a date-change edit sweeps interleaved duplicate-chain members between old and new date', () => {
+      const sid = createBillsSeries();
+      const head = seriesMembers(sid).find(t => t.date === '2026-08-07');
+      Store.dispatch('UPDATE_TRANSACTION', formEditPayload(Store, head, { date: '2026-08-05', updateFuture: true }));
+      const rec = seriesMembers(sid)[0].recurrence;
+      // Poison: a leftover member of a parallel chain on the old day.
+      Store.state.transactions.push({
+        id: 'straggler-sep7',
+        type: 'expense', amount: 80, accountId, categoryId: 'cat_groceries',
+        date: '2026-09-07', time: '12:00:00', comment: 'Bills',
+        createdAt: '2026-08-07T00:00:00.000Z',
+        recurrence: { seriesId: sid, interval: rec.interval, frequency: rec.frequency, endDate: rec.endDate, startDate: rec.startDate }
+      });
+
+      // Repair gesture: edit the straggler onto the right day, this and future.
+      const straggler = Store.getState().transactions.find(t => t.id === 'straggler-sep7');
+      Store.dispatch('UPDATE_TRANSACTION', formEditPayload(Store, straggler, { date: '2026-09-05', updateFuture: true }));
+
+      const sept = Store.getState().transactions.filter(t => t.comment === 'Bills' && t.date.startsWith('2026-09'));
+      expect(sept.map(t => t.date)).toEqual(['2026-09-05']);
+      expect(seriesMembers(sid).filter(t => t.recurrence.nextDate)).toHaveLength(1);
+    });
+
+    it('boot heals a series with two armed generators down to one (latest-dated wins)', () => {
+      const sid = createBillsSeries();
+      const oct = seriesMembers(sid).find(t => t.date === '2026-10-07');
+      oct.recurrence = { ...oct.recurrence, nextDate: '2026-11-02' };
+      const stored = JSON.parse(JSON.stringify(Store.getState().transactions));
+
+      // Fresh boot on that poisoned stored data
+      global.window.localStorage.getItem = (k) => k === 'stackd_v1_transactions' ? JSON.stringify(stored) : null;
+      executeFile('store.js');
+      global.window.Store.init();
+      const S2 = global.window.Store;
+
+      const armed = S2.getState().transactions.filter(t => t.recurrence && t.recurrence.seriesId === sid && t.recurrence.nextDate);
+      expect(armed).toHaveLength(1);
+      const dates = S2.getState().transactions.filter(t => t.comment === 'Bills').map(t => t.date);
+      expect(new Set(dates).size).toBe(dates.length); // no duplicate dates materialized
+    });
+  });
+
   describe('editing all occurrences', () => {
     it('amount change reaches every member but past dates never move', () => {
       const sid = createMonthlySeries();

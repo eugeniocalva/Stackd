@@ -381,6 +381,9 @@ window.Store = {
       window.StackdDB.save('categories', this.state.categories);
     }
 
+    // v0.98: heal poisoned generator state BEFORE the first generation pass —
+    // a second armed member in a series doubles the chain on every pass.
+    this._healRecurrenceGenerators();
     this._processRecurringTransactions();
 
     // ── Cross-Tab Synchronization ──────────────────────────────────────────
@@ -567,6 +570,36 @@ window.Store = {
     else if (freq === 'years') d.setFullYear(d.getFullYear() + interval);
 
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  // v0.98: enforce the one-armed-tail invariant on stored data. Exactly one
+  // member per series (the chain tail) may carry recurrence.nextDate; a second
+  // armed member — poison left behind by the pre-v0.67 duplicate-chain bug or
+  // a pre-v0.68 CSV import — materializes a duplicate parallel chain on every
+  // generation pass. Mirrors import.js _relinkSeries: keep the latest-dated
+  // armed member, on a date tie prefer the expense leg (the only side of a
+  // recurring transfer that is ever the generator). Runs at boot, before the
+  // first generation pass; saves only when something was actually healed.
+  _healRecurrenceGenerators() {
+    const bySeries = {};
+    this.state.transactions.forEach(t => {
+      if (!t.recurrence || !t.recurrence.seriesId || !t.recurrence.nextDate) return;
+      (bySeries[t.recurrence.seriesId] = bySeries[t.recurrence.seriesId] || []).push(t);
+    });
+    let healed = false;
+    Object.keys(bySeries).forEach(sid => {
+      const armed = bySeries[sid];
+      if (armed.length <= 1) return;
+      armed.sort((a, b) => (a.date === b.date)
+        ? (a.type === 'expense' ? 1 : 0) - (b.type === 'expense' ? 1 : 0)
+        : a.date.localeCompare(b.date));
+      armed.slice(0, -1).forEach(t => {
+        t.recurrence = { ...t.recurrence };
+        delete t.recurrence.nextDate;
+      });
+      healed = true;
+    });
+    if (healed) window.StackdDB.save('transactions', this.state.transactions);
   },
 
   _processRecurringTransactions() {
@@ -1248,9 +1281,15 @@ window.Store = {
            if (regenerate) {
               // Drop future members and let _processRecurringTransactions
               // rebuild them from this member's new date/schedule.
+              // v0.98: the drop window starts at the EARLIER of the old and new
+              // date — when a date moves backward (7th → 5th), same-series
+              // members sitting between the two (interleaved duplicate chains
+              // from poisoned data) must fall inside the regeneration, or the
+              // rebuilt chain lands next to them and the month shows twice.
+              const dropFrom = (payload.date !== undefined && payload.date < baseDate) ? payload.date : baseDate;
               this.state.transactions = this.state.transactions.filter(t => {
                  const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
-                   t.id !== existingTx.id && t.date >= baseDate &&
+                   t.id !== existingTx.id && t.date >= dropFrom &&
                    !(existingTx.transferRef && t.transferRef === existingTx.transferRef);
                  return !isFutureInSeries;
               });
@@ -1258,6 +1297,18 @@ window.Store = {
               if (updatedTx && updatedTx.recurrence && !recurrenceRemoved) {
                  updatedTx.recurrence.nextDate = this._calculateNextRecurrenceDate(updatedTx.date, updatedTx.recurrence.interval, updatedTx.recurrence.frequency);
               }
+              // v0.98: after a regeneration exactly ONE member may be armed —
+              // the edited one. A stray armed PAST member (old duplicate-chain
+              // bug / pre-v0.68 import poison) survives the drop above, and the
+              // processing pass below would materialize the old chain right
+              // back on the old dates next to the regenerated one.
+              this.state.transactions.forEach((t, i) => {
+                 if (t.id === payload.id || !t.recurrence || t.recurrence.seriesId !== seriesId || !t.recurrence.nextDate) return;
+                 if (existingTx.transferRef && t.transferRef === existingTx.transferRef) return;
+                 const disarmed = { ...t.recurrence };
+                 delete disarmed.nextDate;
+                 this.state.transactions[i] = { ...t, recurrence: disarmed };
+              });
            }
         }
 
@@ -1448,10 +1499,19 @@ window.Store = {
            });
 
            if (regenerate) {
+              // v0.98: same widened drop window + single-generator sweep as
+              // UPDATE_TRANSACTION — see the comments there.
+              const dropFrom = (payload.date !== undefined && payload.date < baseDate) ? payload.date : baseDate;
               this.state.transactions = this.state.transactions.filter(t => {
                  const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
-                   t.transferRef !== payload.transferRef && t.date >= baseDate;
+                   t.transferRef !== payload.transferRef && t.date >= dropFrom;
                  return !isFutureInSeries;
+              });
+              this.state.transactions.forEach((t, i) => {
+                 if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.transferRef === payload.transferRef || !t.recurrence.nextDate) return;
+                 const disarmed = { ...t.recurrence };
+                 delete disarmed.nextDate;
+                 this.state.transactions[i] = { ...t, recurrence: disarmed };
               });
               if (!recurrenceRemoved) {
                  // Re-arm exactly one leg (the expense side) from the new date

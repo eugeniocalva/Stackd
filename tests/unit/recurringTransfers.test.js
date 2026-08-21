@@ -253,22 +253,22 @@ describe('Recurring transfers and the generation engine', () => {
     Object.values(refCounts).forEach(c => expect(c).toBe(2));
   });
 
-  // ── 8. Collision guard: regeneration over surviving members skips their dates ──
-  it('collision guard skips dates already occupied by surviving members and terminates', () => {
+  // ── 8. Backward date move consumes the members it moves over (v0.98) ──
+  // Pre-v0.98 this kept the original Sep/Oct pairs alongside the regenerated
+  // chain ("user-made overlap allowed") — exactly the interleaved-duplicate
+  // class of the "billed on a different day" bug report. The regeneration
+  // window now starts at the EARLIER of the old and new date, so the series
+  // ends up as one clean chain from the edited pair onward.
+  it('moving a pair date backward regenerates one clean chain, no interleaved leftovers', () => {
     const sid = createMonthlyTransfer(); // Aug..Jan on the 15th
     const nov = series(sid).find(t => t.date === '2026-11-15' && t.type === 'expense');
-    // Move Nov pair back to Sep 15 (same date as the surviving Sep pair) with future scope
+    // Move Nov pair back to Sep 15 (same date as the then-existing Sep pair) with future scope
     Store.dispatch('UPDATE_TRANSFER', transferEditPayload(nov, { date: '2026-09-15', updateFuture: true }));
 
     const pairs = pairsOf(sid);
     const dates = [...pairs.values()].map(l => l[0].date).sort();
-    // Aug15, Sep15(orig), Sep15(edited), then regen chain: Oct 15 collides -> skipped,
-    // Nov 15 (freed by the edit) generated, Dec 15 + Jan 15 regenerated
-    expect(dates.filter(d => d === '2026-10-15')).toHaveLength(1); // NOT duplicated
-    expect(dates.filter(d => d === '2026-09-15')).toHaveLength(2); // user-made overlap allowed
-    expect(dates.filter(d => d === '2026-11-15')).toHaveLength(1);
-    expect(dates.filter(d => d === '2026-12-15')).toHaveLength(1);
-    expect(dates.filter(d => d === '2027-01-15')).toHaveLength(1);
+    // Aug 15 (past, untouched) + edited Sep 15 + regenerated Oct..Jan 15
+    expect(dates).toEqual(['2026-08-15', '2026-09-15', '2026-10-15', '2026-11-15', '2026-12-15', '2027-01-15']);
     expect(generators(sid)).toHaveLength(1);
     for (const [, legs] of pairs) expect(legs).toHaveLength(2);
   });
@@ -380,8 +380,11 @@ describe('Recurring transfers and the generation engine', () => {
 
     const pairs = pairsOf(sid);
     const dates = [...pairs.values()].map(l => l[0].date).sort();
-    // survivors Aug/Sep/Oct 15 + edited Aug 20 + regen Sep 20..Dec 20 (Jan 20 > endDate)
-    expect(dates).toEqual(['2026-08-15', '2026-08-20', '2026-09-15', '2026-09-20', '2026-10-15', '2026-10-20', '2026-11-20', '2026-12-20']);
+    // v0.98: the regeneration window opens at the new date, so the Sep/Oct 15
+    // pairs are consumed instead of interleaving with the regenerated chain.
+    // Aug 15 (before the new date) survives + edited Aug 20 + regen Sep 20..Dec 20
+    // (Jan 20 > endDate).
+    expect(dates).toEqual(['2026-08-15', '2026-08-20', '2026-09-20', '2026-10-20', '2026-11-20', '2026-12-20']);
     expect(generators(sid)).toHaveLength(1);
     for (const [, legs] of pairs) expect(legs).toHaveLength(2);
   });
