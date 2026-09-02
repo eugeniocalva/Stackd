@@ -6,6 +6,12 @@ import { test, expect } from '@playwright/test';
 // date group on every store dispatch, losing the user's place mid-selection.
 test.describe('History scroll preservation', () => {
   const bootstrap = async (page) => {
+    // Pin the clock to the 25th of the current month: the seed below creates
+    // one transaction per day up to "today", so early in a real month the
+    // list is too short to scroll and every scroll assertion fails (bit us
+    // on Sep 2). Time still flows normally after install.
+    const now = new Date();
+    await page.clock.install({ time: new Date(now.getFullYear(), now.getMonth(), 25, 12, 0, 0) });
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();
