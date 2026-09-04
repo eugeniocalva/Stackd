@@ -3106,6 +3106,68 @@ window.Components = {
     }
   },
 
+  // v1.01: manage the taught import rules (docs/bank-import-plan.md §5).
+  // Deletes dispatch DELETE_IMPORT_RULE and prune the row in place — the
+  // emit re-renders the view behind the sheet, but #modal-container lives
+  // outside #router-view so the sheet itself survives.
+  ImportRulesModal: {
+    show() {
+      const existing = document.getElementById('import-rules-modal');
+      if (existing) existing.remove();
+      const container = document.getElementById('modal-container');
+      if (!container) return;
+
+      const state = window.Store.getState();
+      const rules = state.importRules || [];
+      const esc = (s) => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+      const row = (r) => {
+        const cat = (state.categories || []).find(c => c.id === r.categoryId);
+        return `
+          <div class="list-item irm-row" data-rule-id="${r.id}" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0;">
+            <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${cat ? (cat.icon || 'pin') : 'pin'}"></i></div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-weight: 600; font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(r.match)}</div>
+              <div style="font-size: var(--text-xs); color: var(--text-secondary);">${cat ? esc(cat.name) : ''}</div>
+            </div>
+            <button type="button" class="irm-delete touch-target" aria-label="${window.I18n.t('common.delete')}" style="background: none; border: none; cursor: pointer; color: var(--color-expense); display: flex; padding: var(--space-2);"><i data-lucide="trash-2" style="width: 18px; height: 18px;"></i></button>
+          </div>`;
+      };
+      const emptyHtml = `<div id="irm-empty" style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; padding: var(--space-3) 0;">${window.I18n.t('bankImport.rulesEmpty')}</div>`;
+
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <div class="modal-backdrop" id="import-rules-modal" role="dialog" aria-modal="true" aria-labelledby="irm-title">
+          <div class="modal-content">
+            <div class="modal-handle"></div>
+            <h2 id="irm-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem;">${window.I18n.t('bankImport.rulesTitle')}</h2>
+            <p style="color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.5; margin: 0 0 var(--space-3);">${window.I18n.t('bankImport.rulesDesc')}</p>
+            <div id="irm-list" style="max-height: 50vh; overflow-y: auto;">${rules.length ? rules.map(row).join('') : emptyHtml}</div>
+            <button class="btn btn-secondary" id="irm-close" style="width: 100%; margin-top: var(--space-4);">${window.I18n.t('common.close')}</button>
+          </div>
+        </div>`;
+      container.appendChild(div.firstElementChild);
+
+      const backdrop = document.getElementById('import-rules-modal');
+      const close = () => { backdrop.classList.remove('open'); setTimeout(() => backdrop.remove(), 300); };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#irm-close').addEventListener('click', close);
+      backdrop.querySelector('#irm-list').addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('.irm-delete') : null;
+        if (!btn) return;
+        const rowEl = btn.closest('.irm-row');
+        if (!rowEl) return;
+        window.Store.dispatch('DELETE_IMPORT_RULE', rowEl.dataset.ruleId);
+        rowEl.remove();
+        const list = backdrop.querySelector('#irm-list');
+        if (list && !list.querySelector('.irm-row')) list.innerHTML = emptyHtml;
+      });
+
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      requestAnimationFrame(() => backdrop.classList.add('open'));
+    }
+  },
+
   CategorySelectionModal: {
     show(options) {
       const { selectedCategoryId, typeHint, onSelect, onAddNewCategory } = options;

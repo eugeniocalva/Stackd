@@ -3190,6 +3190,7 @@ Object.assign(window.Views, {
               <button class="btn btn-secondary" id="btn-export-categories">${window.I18n.t('others.exportCategories')}</button>
               <button class="btn btn-secondary" id="btn-export-transactions">${window.I18n.t('others.exportTransactions')}</button>
               <button class="btn btn-secondary" id="btn-export-loans">${window.I18n.t('others.exportLoans')}</button>
+              <button class="btn btn-secondary" id="btn-export-rules">${window.I18n.t('bankImport.exportRules')}</button>
             </div>
           </div>
 
@@ -3200,6 +3201,7 @@ Object.assign(window.Views, {
             </p>
             <input type="file" id="import-csv-file" accept=".csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
             <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${window.I18n.t('others.importCsv')}</button>
+            <button class="btn btn-secondary" id="btn-import-rules" style="width: 100%; margin-top: var(--space-3);">${window.I18n.t('bankImport.rulesManage')}</button>
           </div>
 
           <div class="section-title">${window.I18n.t('others.support')}</div>
@@ -3293,6 +3295,15 @@ Object.assign(window.Views, {
         exportTxBtn.addEventListener('click', () => window.StackdExport.exportTransactions(state));
       }
 
+      // v1.01: import-rules export + management sheet
+      const exportRulesBtn = document.getElementById('btn-export-rules');
+      if (exportRulesBtn) {
+        exportRulesBtn.addEventListener('click', () => window.StackdExport.exportImportRules(state));
+      }
+      const importRulesBtn = document.getElementById('btn-import-rules');
+      if (importRulesBtn) {
+        importRulesBtn.addEventListener('click', () => window.Components.ImportRulesModal.show());
+      }
       const exportLoansBtn = document.getElementById('btn-export-loans');
       if (exportLoansBtn) {
         exportLoansBtn.addEventListener('click', () => window.StackdExport.exportLoans(state));
@@ -3446,6 +3457,8 @@ Object.assign(window.Views, {
               // rows) used to vanish silently — report them.
               let message = result.kind === 'loans'
                 ? window.I18n.t('others.importedLoans', { count: result.importedCount })
+                : result.kind === 'rules' // v1.01: restored import rules
+                ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
                 : window.I18n.t('others.importedTransactions', {
                     count: result.importedCount,
                     accounts: result.newAccounts,
@@ -4947,6 +4960,13 @@ Object.assign(window.Views, {
       return (tx.type === 'expense' ? '-' : '+') + window.Store.formatCurrency(tx.amount);
     },
 
+    // v1.01: category chip contents, shared by the preview's render and its
+    // in-place updates after a pick (same markup either way).
+    catChipInner(tx) {
+      const cat = tx.categoryId ? (window.Store.getState().categories || []).find(c => c.id === tx.categoryId) : null;
+      return `<i data-lucide="${cat ? (cat.icon || 'pin') : 'tag'}" style="width: 12px; height: 12px;"></i><span>${cat ? esc(cat.name) : window.I18n.t('bankImport.noCategory')}</span>`;
+    },
+
     // v0.99 review fix: parser reasons are stable English tokens (data layer,
     // same convention as stats.skipped) — localize them at render time only.
     errorLabel(reason) {
@@ -5301,6 +5321,7 @@ Object.assign(window.Views, {
               <div class="import-row-main">
                 <div class="import-ellipsis" style="font-weight: 600; font-size: var(--text-sm);">${esc(it.tx.comment) || '—'}</div>
                 <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${it.tx.date}</div>
+                <button type="button" class="import-row-cat" data-i="${i}">${S.catChipInner(it.tx)}</button>
               </div>
               <div class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; font-size: var(--text-sm); flex-shrink: 0;">${S.signedAmount(it.tx)}</div>
             </label>`;
@@ -5381,6 +5402,55 @@ Object.assign(window.Views, {
         const it = d.items[Number(cb.dataset.i)];
         if (it) it.include = cb.checked;
         updateSummary();
+      });
+
+      // v1.01: category chip → picker; "Remember" pill → teach a rule and
+      // apply it to every other uncategorized row of the same merchant.
+      $('iprev-list').addEventListener('click', (e) => {
+        const chip = e.target && e.target.closest ? e.target.closest('.import-row-cat') : null;
+        const pill = e.target && e.target.closest ? e.target.closest('.import-row-rule') : null;
+        if (!chip && !pill) return;
+        // Rows are <label>s — stop the click from toggling the checkbox.
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = Number((chip || pill).dataset.i);
+        const it = d.items[idx];
+        if (!it || !it.tx) return;
+
+        if (pill) {
+          const match = window.StackdImport.suggestRuleMatch(it.tx.comment);
+          if (match && it.tx.categoryId) {
+            d.items.forEach(other => {
+              if (other !== it && other.tx && !other.error && !other.tx.categoryId &&
+                  String(other.tx.comment || '').toLowerCase().indexOf(match) !== -1) {
+                other.tx.categoryId = it.tx.categoryId;
+              }
+            });
+            // The coalesced emit re-renders the preview from d.items — every
+            // chip refreshes and the transient pill disappears with it.
+            window.Store.dispatch('ADD_IMPORT_RULE', { match: match, categoryId: it.tx.categoryId });
+          }
+          return;
+        }
+
+        window.Components.CategorySelectionModal.show({
+          selectedCategoryId: it.tx.categoryId || '',
+          typeHint: it.tx.type,
+          onSelect: (cat) => {
+            it.tx.categoryId = cat && cat.id ? cat.id : '';
+            chip.innerHTML = S.catChipInner(it.tx);
+            if (window.StackdHydrateIcons) window.StackdHydrateIcons(chip);
+            const oldPill = chip.parentElement.querySelector('.import-row-rule');
+            if (oldPill) oldPill.remove();
+            if (it.tx.categoryId) {
+              const match = window.StackdImport.suggestRuleMatch(it.tx.comment);
+              if (match) {
+                chip.insertAdjacentHTML('afterend',
+                  `<button type="button" class="import-row-rule" data-i="${idx}">${window.I18n.t('bankImport.alwaysUse', { match: esc(match) })}</button>`);
+              }
+            }
+          }
+        });
       });
 
       $('iprev-toggle-all').addEventListener('change', (e) => {

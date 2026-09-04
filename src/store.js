@@ -148,6 +148,10 @@ window.Store = {
     // returning bank layout is recognised and its column mapping pre-applied.
     // Capped at 20 (evict smallest updatedAt) in SAVE_IMPORT_PRESET.
     importPresets: [],
+    // v1.01: ordered category rules for imported rows — {id, match (lowercase
+    // substring), categoryId, createdAt}. First match wins; newest rules sit
+    // at the front (ADD_IMPORT_RULE prepends and dedupes by match).
+    importRules: [],
 
     initialized: false
   },
@@ -182,6 +186,7 @@ window.Store = {
       this.state.homeWidgets = window.StackdDB.load('homeWidgets', []);
     }
     this.state.importPresets = window.StackdDB.load('importPresets', []); // v0.99
+    this.state.importRules = window.StackdDB.load('importRules', []); // v1.01
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -414,6 +419,7 @@ window.Store = {
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
+        if (e.key === 'stackd_v1_importRules') { this.state.importRules = window.StackdDB.load('importRules', []); changed = true; } // v1.01
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -1824,6 +1830,32 @@ window.Store = {
         break;
       }
 
+      case 'ADD_IMPORT_RULE': {
+        // v1.01: category rule taught from the import preview (plan §5).
+        // Prepending + dedupe-by-match means re-teaching a merchant replaces
+        // the old rule and wins immediately (first match wins in
+        // matchImportRule), which stands in for a reorder UI.
+        const match = String(payload && payload.match || '').toLowerCase().trim().slice(0, 60);
+        if (!match || !payload.categoryId) break;
+        const rules = this.state.importRules || (this.state.importRules = []);
+        this.state.importRules = [
+          { id: window.StackdDB.generateId(), match: match, categoryId: payload.categoryId, createdAt: new Date().toISOString() }
+        ].concat(rules.filter(r => r.match !== match)).slice(0, 100); // cap bounds the per-row scan
+        window.StackdDB.save('importRules', this.state.importRules);
+        changed = true;
+        break;
+      }
+
+      case 'DELETE_IMPORT_RULE': {
+        const before = (this.state.importRules || []).length;
+        this.state.importRules = (this.state.importRules || []).filter(r => r.id !== payload);
+        if (this.state.importRules.length !== before) {
+          window.StackdDB.save('importRules', this.state.importRules);
+          changed = true;
+        }
+        break;
+      }
+
       case 'ADD_CATEGORY': {
         const newCategory = {
           id: payload.id || window.StackdDB.generateId(),
@@ -1991,6 +2023,7 @@ window.Store = {
         window.StackdDB.save('budgets', []);
         window.StackdDB.save('loans', []);
         window.StackdDB.save('importPresets', []); // v0.99
+        window.StackdDB.save('importRules', []); // v1.01
         // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
         // comes back (Recent Activities no longer exists outside the widgets).
         this.state.homeWidgets = this._defaultHomeWidgets();
@@ -2343,6 +2376,22 @@ window.Store = {
 
   hasImportKey(key) {
     return this._ensureImportKeyIdx().has(key);
+  },
+
+  // v1.01: first matching import rule wins (rules are newest-first). A rule
+  // whose category was deleted is skipped, not surfaced as a broken id.
+  // Unindexed on purpose: ≤100 rules × includes() is cheap even for a
+  // 1000-row statement.
+  matchImportRule(description) {
+    const desc = String(description || '').toLowerCase();
+    if (!desc) return '';
+    for (const r of (this.state.importRules || [])) {
+      if (r.match && desc.indexOf(r.match) !== -1 &&
+          this.state.categories.some(c => c.id === r.categoryId)) {
+        return r.categoryId;
+      }
+    }
+    return '';
   },
 
   getAccountBalance(accountId) {

@@ -466,6 +466,16 @@ window.I18n.dicts.es = {
   'bankImport.currencyMismatch': "Este extracto está en {statement}, pero Stack'd está configurado en {app}. Los importes se importan como números sin más — no se realiza ninguna conversión.",
   'bankImport.setOpening': "Establecer el saldo inicial de esta cuenta a partir del extracto ({amount} el {date})",
   'bankImport.reconcileMismatch': "Atención: tu banco indicó {bank} el {date}, pero Stack'd ahora muestra {app} para esta cuenta. Puede que falten movimientos anteriores o que haya entradas manuales que se solapen con las importadas.",
+  // v1.01: category rules for imported rows (plan §5)
+  'bankImport.noCategory': "Elegir categoría",
+  'bankImport.alwaysUse': "Recordar para «{match}»",
+  'bankImport.rulesManage': "Reglas de importación",
+  'bankImport.rulesTitle': "Reglas de importación",
+  'bankImport.rulesDesc': "Los movimientos importados reciben su categoría de la primera regla cuyo texto aparece en su descripción. Las reglas más recientes tienen prioridad.",
+  'bankImport.rulesEmpty': "Aún no hay reglas. Elige una categoría en una fila al revisar una importación y toca «Recordar» para crear una.",
+  'bankImport.exportRules': "Exportar reglas de importación",
+  'bankImport.importedRules.one': "¡Listo! {count} regla importada.",
+  'bankImport.importedRules.other': "¡Listo! {count} reglas importadas.",
 
   // ── Currencies (P8d) ─────────────────────────────────────────────────────
   'currency.USD': 'USD — Dólar estadounidense',

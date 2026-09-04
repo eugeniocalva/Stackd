@@ -678,7 +678,8 @@ window.StackdImport = {
         type: type,
         amount: amount,
         accountId: accountId,
-        categoryId: '',
+        // v1.01: category rules apply at build (= preview) time, per plan §5
+        categoryId: window.Store.matchImportRule ? window.Store.matchImportRule(description) : '',
         date: date,
         comment: description
       };
@@ -693,6 +694,15 @@ window.StackdImport = {
     });
 
     return { items: items, stats: stats };
+  },
+
+  // v1.01: the match string offered when the user teaches a rule from the
+  // preview. Structured descriptions are "party — remittance" (our own join,
+  // see parseCamt/_mt940Narrative); the remittance varies per payment, the
+  // party is the stable merchant — so the suggestion is the party segment.
+  suggestRuleMatch(description) {
+    const base = String(description || '').split(' — ')[0];
+    return base.toLowerCase().trim().slice(0, 60).trim();
   },
 
   // v1.00: shared by the CSV and statement builders so both formats produce
@@ -937,13 +947,15 @@ window.StackdImport = {
       const amount = Math.abs(Number(e.amount));
       if (!isFinite(amount) || amount === 0) { fail('invalid amount'); return; }
 
+      const description = String(e.description || '').trim();
       const tx = {
         type: e.type === 'expense' ? 'expense' : 'income',
         amount: amount,
         accountId: accountId,
-        categoryId: '',
+        // v1.01: category rules apply at build (= preview) time, per plan §5
+        categoryId: window.Store.matchImportRule ? window.Store.matchImportRule(description) : '',
         date: date,
-        comment: String(e.description || '').trim()
+        comment: description
       };
       const duplicate = this._stampImportKey(tx, String(e.bankRef || '').trim(), accountId, keyCounts);
       items.push({ tx: tx, duplicate: duplicate, error: null });
@@ -952,6 +964,47 @@ window.StackdImport = {
     });
 
     return { items: items, stats: stats };
+  },
+
+  // ── v1.01 import-rules CSV (backup parity for the rules slice, plan §5) ───
+  // Recognised by Match+Category headers WITHOUT the transaction columns —
+  // checked before the bank-CSV fallback, or a rules file would open the
+  // column-mapping flow.
+  isRuleRows(rows) {
+    if (!rows || !rows.length) return false;
+    const r = rows[0];
+    const has = (k) => Object.prototype.hasOwnProperty.call(r, k);
+    return has('match') && has('category') && !has('date') && !has('amount');
+  },
+
+  // Categories are resolved by NAME (ids differ across installs), created when
+  // missing — same convention as buildTransactions. Rows are applied in
+  // REVERSE file order through ADD_IMPORT_RULE (which prepends), so the file's
+  // first row ends up first = highest priority, and dedupe-by-match holds.
+  buildImportRules(rows) {
+    const stats = { importedCount: 0, skippedCount: 0, skipped: {} };
+    const skip = (reason) => {
+      stats.skippedCount++;
+      stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
+    };
+
+    [...rows].reverse().forEach(row => {
+      const match = String(row['match'] || '').toLowerCase().trim().slice(0, 60);
+      const catName = String(row['category'] || '').trim();
+      if (!match || !catName) { skip('missing match or category'); return; }
+
+      let category = window.Store.getState().categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+      if (!category) {
+        window.Store.dispatch('ADD_CATEGORY', { name: catName, icon: 'pin', typeHint: 'both' });
+        category = window.Store.getState().categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+      }
+      if (!category) { skip('missing match or category'); return; }
+
+      window.Store.dispatch('ADD_IMPORT_RULE', { match: match, categoryId: category.id });
+      stats.importedCount++;
+    });
+
+    return stats;
   },
 
   importLoans(file, state, onComplete, onError) {
@@ -1015,6 +1068,13 @@ window.StackdImport = {
           const { loans, stats } = this.buildLoans(rows);
           loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
           if (onComplete) onComplete({ ...stats, kind: 'loans' });
+          return;
+        }
+        // v1.01: a rules export restores directly — checked before the bank
+        // fallback or its two text columns would open the mapping flow.
+        if (this.isRuleRows(rows)) {
+          const stats = this.buildImportRules(rows);
+          if (onComplete) onComplete({ ...stats, kind: 'rules' });
           return;
         }
         // A Stack'd backup is recognised by its own headers; parseCSV squashed

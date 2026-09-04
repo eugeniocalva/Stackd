@@ -466,6 +466,16 @@ window.I18n.dicts.fr = {
   'bankImport.currencyMismatch': "Ce relevé est en {statement}, mais Stack'd est réglé sur {app}. Les montants sont importés comme de simples nombres — aucune conversion n'est effectuée.",
   'bankImport.setOpening': "Définir le solde initial de ce compte à partir du relevé ({amount} au {date})",
   'bankImport.reconcileMismatch': "Attention : votre banque a indiqué {bank} au {date}, mais Stack'd affiche maintenant {app} pour ce compte. Des opérations plus anciennes manquent peut-être, ou des saisies manuelles chevauchent celles importées.",
+  // v1.01: category rules for imported rows (plan §5)
+  'bankImport.noCategory': "Choisir une catégorie",
+  'bankImport.alwaysUse': "Mémoriser pour « {match} »",
+  'bankImport.rulesManage': "Règles d'import",
+  'bankImport.rulesTitle': "Règles d'import",
+  'bankImport.rulesDesc': "Les lignes importées reçoivent leur catégorie de la première règle dont le texte apparaît dans leur description. Les règles les plus récentes priment.",
+  'bankImport.rulesEmpty': "Aucune règle pour l'instant. Choisissez une catégorie sur une ligne pendant la vérification d'un import, puis touchez « Mémoriser » pour en créer une.",
+  'bankImport.exportRules': "Exporter les règles d'import",
+  'bankImport.importedRules.one': "Réussi ! {count} règle importée.",
+  'bankImport.importedRules.other': "Réussi ! {count} règles importées.",
 
   // ── Currencies (P8d) ─────────────────────────────────────────────────────
   'currency.USD': 'USD — Dollar américain',

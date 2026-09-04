@@ -83,6 +83,23 @@ window.StackdExport = {
     this._download('stackd_loans.csv', [headers, ...rows].join('\n'));
   },
 
+  // v1.01: import rules travel by category NAME (ids differ across installs);
+  // import.js resolves the name back and re-creates a missing category. Rules
+  // whose category was deleted export nothing restorable, so they are skipped.
+  RULE_HEADERS: ['Match', 'Category'],
+
+  exportImportRules(state, options = {}) {
+    const delimiter = options.delimiter || ',';
+    const headers = this._toRow(this.RULE_HEADERS, delimiter);
+    const rows = (state.importRules || [])
+      .map(r => {
+        const cat = (state.categories || []).find(c => c.id === r.categoryId);
+        return cat ? this._toRow([r.match, cat.name], delimiter) : null;
+      })
+      .filter(Boolean);
+    this._download('stackd_import_rules.csv', [headers, ...rows].join('\n'));
+  },
+
   // v0.68: the CSV is a backup/restore format, so it now carries every field the
   // importer needs to rebuild a transaction faithfully — time, tags, isPaid, the
   // transfer pairing ref and the full recurrence descriptor. Dates default to ISO

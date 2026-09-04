@@ -1,10 +1,11 @@
 # Bank File Import Plan (Option A) — "Works with every bank in Europe"
 
-> Status: **Phases 1–2 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
-> (camt.053/MT940 + reconciliation) as v1.00 (2026-09-04, §4a). Phases 3–5 not
-> started. This is the cold-start reference for the bank-statement import
-> feature. Read it before touching import code, the same way
-> `docs/debt-rebuild-plan.md` is the reference for loans.
+> Status: **Phases 1–3 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
+> (camt.053/MT940 + reconciliation) as v1.00 (2026-09-04, §4a), phase 3
+> (category rules) as v1.01 (2026-09-04, §5a). Phases 4–5 not started. This is
+> the cold-start reference for the bank-statement import feature. Read it
+> before touching import code, the same way `docs/debt-rebuild-plan.md` is the
+> reference for loans.
 
 ## 1. Context and goal
 
@@ -257,6 +258,43 @@ Shipped per §4 with these concrete decisions:
 - Backup: include rules in the CSV export as their own section (like loans,
   recognized by shape) — unlike widget prefs these are user-authored data
   that would be painful to lose. Decision to confirm at build time.
+
+### 5a. Phase 3 as built (v1.01, 2026-09-04)
+
+Shipped per §5 with these concrete decisions:
+
+- **Slice** `stackd_v1_importRules`: `{id, match, categoryId, createdAt}`,
+  newest-first, capped at 100, wired into init/cross-tab/RESET_APP like the
+  presets. `ADD_IMPORT_RULE` PREPENDS and dedupes by match (re-teaching a
+  merchant replaces its rule and wins immediately) — this deliberately stands
+  in for the reorder UI the plan sketched; `DELETE_IMPORT_RULE` removes by id.
+  `Store.matchImportRule(description)` is the first-match-wins, deliberately
+  unindexed scan; rules pointing at deleted categories are skipped.
+- **Application point:** both builders (`buildBankTransactions`,
+  `buildStatementTransactions`) stamp `tx.categoryId` from the rules at build
+  (= preview) time, exactly as §5 specified — never a background mutation of
+  existing data.
+- **Preview UX:** every clean row carries a category chip
+  (`_ImportShared.catChipInner`) → taps open the existing
+  `CategorySelectionModal` (typeHint = row type); after a pick a transient
+  "Remember for “{match}”" pill appears. The pill's match comes from
+  `StackdImport.suggestRuleMatch` — the party segment before the ` — `
+  join (our own camt/MT940 description format), so the stable merchant name
+  is taught, not the varying remittance. Teaching also applies the category
+  to every other uncategorized matching row in the batch (the rule dispatch's
+  re-render refreshes all chips and clears the pill).
+- **Management:** `Components.ImportRulesModal` (opened from Others → Data
+  Import) lists match + category with per-row delete.
+- **Backup parity (the §5 open decision → YES):** `exportImportRules` writes
+  `stackd_import_rules.csv` (Match, Category-by-NAME; dead-category rules
+  skipped); `importCSV` recognises rules files (`isRuleRows`, checked BEFORE
+  the bank-CSV fallback or the two text columns would open the mapping flow)
+  and `buildImportRules` restores in file order via reversed
+  `ADD_IMPORT_RULE`s, creating missing categories by name.
+- **Tests:** `tests/unit/importRules.test.js` (dispatch semantics, matcher,
+  builder application, suggestRuleMatch, CSV round-trip, routing) and
+  `tests/e2e/import_rules.spec.js` (teach from preview → next month's import
+  of the same merchant arrives pre-categorized → manage/delete in Settings).
 
 ## 6. Phase 4 — Per-account currency
 

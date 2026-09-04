@@ -473,6 +473,16 @@ window.I18n.dicts.en = {
   'bankImport.currencyMismatch': "This statement is in {statement}, but Stack'd is set to {app}. Amounts are imported as plain numbers — nothing is converted.",
   'bankImport.setOpening': "Set this account's opening balance from the statement ({amount} on {date})",
   'bankImport.reconcileMismatch': "Heads up: your bank reported {bank} on {date}, but Stack'd now shows {app} for this account. Older transactions may be missing, or manual entries may overlap the imported ones.",
+  // v1.01: category rules for imported rows (plan §5)
+  'bankImport.noCategory': "Choose category",
+  'bankImport.alwaysUse': "Remember for “{match}”",
+  'bankImport.rulesManage': "Import rules",
+  'bankImport.rulesTitle': "Import Rules",
+  'bankImport.rulesDesc': "Imported rows get their category from the first rule whose text appears in their description. Newer rules take priority.",
+  'bankImport.rulesEmpty': "No rules yet. Pick a category on a row while reviewing an import, then tap “Remember” to create one.",
+  'bankImport.exportRules': "Export Import Rules",
+  'bankImport.importedRules.one': "Success! Imported {count} rule.",
+  'bankImport.importedRules.other': "Success! Imported {count} rules.",
 
   // ── Currencies (P8d) — the ISO code stays, the name is localized ─────────
   'currency.USD': 'USD — US Dollar',
