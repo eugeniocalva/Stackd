@@ -68,7 +68,9 @@ window.Insights = {
       id: 'accountMix',
       priority: 1,
       compute(state) {
-        const accounts = state.accounts || [];
+        // v1.02: concentration is a ratio of balances — mixing currencies in
+        // it produces a meaningless number, so only primary accounts count.
+        const accounts = (state.accounts || []).filter(a => window.Store._isPrimaryAccount(a.id));
         const balances = accounts
           .map(a => ({ name: a.name, bal: window.Store.getAccountBalance(a.id) }))
           .filter(x => x.bal > 0); // negative balances would push shares past 100%

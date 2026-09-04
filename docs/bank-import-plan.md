@@ -1,11 +1,12 @@
 # Bank File Import Plan (Option A) — "Works with every bank in Europe"
 
-> Status: **Phases 1–3 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
+> Status: **Phases 1–4 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
 > (camt.053/MT940 + reconciliation) as v1.00 (2026-09-04, §4a), phase 3
-> (category rules) as v1.01 (2026-09-04, §5a). Phases 4–5 not started. This is
-> the cold-start reference for the bank-statement import feature. Read it
-> before touching import code, the same way `docs/debt-rebuild-plan.md` is the
-> reference for loans.
+> (category rules) as v1.01 (2026-09-04, §5a), phase 4 (per-account currency)
+> as v1.02 (2026-09-04, §6a). Phase 5 not started. This is the cold-start
+> reference for the bank-statement import feature. Read it before touching
+> import code, the same way `docs/debt-rebuild-plan.md` is the reference for
+> loans.
 
 ## 1. Context and goal
 
@@ -323,6 +324,67 @@ without FX conversion.
 - This phase is independent of phases 1–3 order-wise; it's sequenced fourth
   because a EUR-only user gets full value from phases 1–3 alone, and the
   currency guard in §4 keeps mixed imports safe meanwhile.
+
+### 6a. Phase 4 as built (v1.02, 2026-09-04)
+
+Shipped per §6. The mechanics a cold start needs:
+
+- **Field + migration:** `account.currency` (one of the app's five codes);
+  boot migration stamps `state.currency` on legacy accounts inside the
+  existing account-migration loop (idempotent, one save). `ADD_ACCOUNT`
+  defaults to the primary currency; `UPDATE_ACCOUNT` merges
+  `payload.currency`; the account form gained a currency select whose choice
+  live-drives the opening-balance symbol prefix.
+- **The primary test is a FOREIGN-id index.** `Store._ensureForeignIdx()`
+  memoizes the set of accounts whose currency differs from `state.currency`
+  (standard lazy-index lifecycle: nulled at dispatch top + `_sortData`, so
+  account edits AND `SET_CURRENCY` reclassify). `_isPrimaryAccount(id)` is
+  `!foreign.has(id)` — deliberately, so an UNKNOWN accountId (dangling
+  transaction, fixture data) counts as primary and never drops out of totals
+  it was always in. Public: `getAccountCurrency`, `primaryAccountIds`,
+  `foreignAccountCount`.
+- **Exclusion choke points** (empty account list now means "all PRIMARY"):
+  `getBalanceAtDate`, `computeBalanceForecast` (both its account loop and its
+  balance calls), `computeUpcomingImpact`, `computeNetFlowData`,
+  `getFilteredTransactions` — the last one only for `pageKey === 'analytics'`
+  (History is a ledger and keeps every account visible; its summary bar and
+  day footers do exclude foreign rows). `_budgetSpendIdx` and the
+  `upcoming` widget's own scan skip foreign accounts; Smart Insights'
+  account-concentration ratio counts primary accounts only. CRITICAL
+  discovery: the dashboard and `ExpandedGraphModal` eagerly expand "all" to
+  explicit id lists — both expansion points now use `primaryAccountIds()`,
+  which the empty-branch guard alone would have missed. An EXPLICIT account
+  selection (filters, expanded-graph checkboxes) is always respected, mixed
+  currencies and all — the user's call.
+- **Formatting:** `formatCurrency(amount, currencyCode?)` /
+  `getCurrencySymbol(currencyCode?)` — cache key stays `locale|digits` (the
+  symbol is applied outside the cached formatter; decimals derive from the
+  effective code). Per-account surfaces now pass the account's currency:
+  wallet tiles, `TransactionItem` rows (via its `accountData` param — covers
+  History + category detail), the `latest` widget's rows, the PDF export
+  rows, the transaction form's amount symbol, and the import preview
+  (`signedAmount` formats in the TARGET account's currency).
+- **Captions:** a shared `common.otherCurrencyExcluded` plural renders on the
+  dashboard header, Analytics, the History summary bar and Budget when
+  foreign accounts exist — ONE dashboard-level caption instead of eight
+  per-widget ones (deliberate; the widgets sit under it).
+- **Statement import guard** now compares against the TARGET ACCOUNT's
+  currency (mismatch card re-evaluates on account change; reconciliation runs
+  when statement and account currencies agree and formats the app figure in
+  the account's currency) — importing a SEK statement into a SEK account is
+  the happy path. `bankImport.currencyMismatch` copy updated accordingly.
+- **Accounts CSV** gained a `currency` column (write-only — no account
+  importer exists, per §6's "ignored on import"; import.js ignores unknown
+  columns anyway).
+- **Invariant:** with every account in the primary currency, all of the above
+  is byte-for-byte the pre-v1.02 behavior — which is why the entire existing
+  suite doubles as the regression net. New coverage:
+  `tests/unit/accountCurrency.test.js` (migration, overrides, every exclusion
+  choke point, SET_CURRENCY reclassification, CSV column).
+- **Known accepted imperfections:** analytics figures for an explicitly
+  selected foreign account format with the primary symbol; the dashboard
+  chart tooltip formats per-account dashed lines with the primary symbol when
+  a user explicitly mixes currencies in the expanded-graph filter.
 
 ## 7. Phase 5 — Reconciliation polish: matching and transfers
 

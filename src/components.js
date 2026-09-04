@@ -737,7 +737,8 @@ window.Components = {
         amountClass = 'text-expense';
       }
 
-      const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount));
+      // v1.02: a row belongs to ONE account — format in that account's currency
+      const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount), accountData && accountData.currency);
       const dateStr = window.Components.TransactionItem._fmtDate(transaction.date);
       
       const isSelectionMode = options && options.isSelectionMode === true;
@@ -3292,9 +3293,12 @@ window.Components = {
         : { interval: 'monthly', accounts: [], categories: [] };
 
       let activeInterval = savedFilters.interval || 'monthly';
+      // v1.02: the "all accounts" default expands to PRIMARY-currency accounts
+      // only (exclude-never-convert, plan §6); an explicit user selection may
+      // still mix currencies — their call.
       let selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
         ? [...savedFilters.accounts]
-        : accounts.map(a => a.id);
+        : window.Store.primaryAccountIds();
       let selectedCategoryIds = (savedFilters.categories && savedFilters.categories.length > 0)
         ? [...savedFilters.categories]
         : [];

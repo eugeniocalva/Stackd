@@ -182,7 +182,9 @@ window.Views = {
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
       const accountFilterIndicatorHtml = hasAccountFilter
         ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
-        : '';
+        : (filters.accounts.length === 0 && window.Store.foreignAccountCount() > 0 // v1.02
+          ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); text-align: right; margin-top: 2px;">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>`
+          : '');
 
       // v0.64 - Projection caveat + Today/period-end toggle
       const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
@@ -307,7 +309,7 @@ window.Views = {
       const selectedInterval = savedFilters.interval || 'monthly';
       const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
         ? savedFilters.accounts
-        : state.accounts.map(acc => acc.id);
+        : window.Store.primaryAccountIds(); // v1.02: default aggregate = primary-currency accounts only
       const selectedCategoryIds = savedFilters.categories || [];
 
       const mainResult = window.Store.computeGraphBalances({
@@ -341,7 +343,7 @@ window.Views = {
 
               return sortedAccounts.map(acc => {
                 const balance = balancesById[acc.id];
-                const formattedBal = window.Store.formatCurrency(balance);
+                const formattedBal = window.Store.formatCurrency(balance, acc.currency); // v1.02
                 const isDefault = acc.id === state.defaultAccountId;
                 const isHidden = this.hiddenChartAccounts.includes(acc.id);
                 const balColor = balance > 0 ? 'var(--color-income)' : (balance < 0 ? 'var(--color-expense)' : 'var(--text-primary)');
@@ -412,6 +414,12 @@ window.Views = {
           <div style="margin-bottom: var(--space-8);">
             <p class="section-title">${window.I18n.t('dash.totalBalance')}</p>
             <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
+            ${(() => { // v1.02: honest totals — say when foreign-currency accounts are excluded
+              const foreign = window.Store.foreignAccountCount();
+              return foreign > 0 && !(savedFilters.accounts && savedFilters.accounts.length > 0)
+                ? `<p style="margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: foreign })}</p>`
+                : '';
+            })()}
             <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
               <div style="display: flex; flex-direction: column; gap: 1px;">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
@@ -527,7 +535,7 @@ window.Views = {
           const selectedInterval = savedFilters.interval || 'monthly';
           const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
             ? savedFilters.accounts
-            : state.accounts.map(acc => acc.id);
+            : window.Store.primaryAccountIds(); // v1.02
           const selectedCategoryIds = savedFilters.categories || [];
 
           // v0.93: render() computed this exact series moments ago in the same
@@ -711,14 +719,15 @@ window.Views = {
 
       const startBalance = state.transactions
         .filter(t => {
-            const matchAcc = filters.accounts.length === 0 || filters.accounts.includes(t.accountId);
+            // v1.02: an empty filter means all PRIMARY-currency accounts (plan §6)
+            const matchAcc = filters.accounts.length === 0 ? window.Store._isPrimaryAccount(t.accountId) : filters.accounts.includes(t.accountId);
             return matchAcc && t.date < rangeStart;
         })
         .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
         
       const endBalance = state.transactions
         .filter(t => {
-            const matchAcc = filters.accounts.length === 0 || filters.accounts.includes(t.accountId);
+            const matchAcc = filters.accounts.length === 0 ? window.Store._isPrimaryAccount(t.accountId) : filters.accounts.includes(t.accountId);
             return matchAcc && t.date <= rangeEnd;
         })
         .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
@@ -749,7 +758,11 @@ window.Views = {
       const summaryLabelStyle = 'font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 4px;';
       const summaryValueStyle = `font-family: var(--font-family-display); font-weight: 700; font-size: ${summaryFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
 
-      const balanceSummaryHtml = `
+      // v1.02: the summary bar and day footers exclude foreign-currency rows
+      const foreignNote = (!filters.accounts.length && window.Store.foreignAccountCount() > 0)
+        ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin: 0 2px var(--space-2);">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>`
+        : '';
+      const balanceSummaryHtml = foreignNote + `
         <div style="
           background: var(--bg-surface);
           border: 1px solid var(--color-border);
@@ -808,6 +821,9 @@ window.Views = {
 
           const daySum = dayTxs.reduce((sum, tx) => {
             if (tx.isPaid === false) return sum;
+            // v1.02: with no account filter, foreign-currency rows stay VISIBLE
+            // in the list but out of the (primary-currency) day footer.
+            if (filters.accounts.length === 0 && !window.Store._isPrimaryAccount(tx.accountId)) return sum;
             if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') {
               return sum;
             }
@@ -1475,7 +1491,7 @@ window.Views = {
           
           <!-- Large Amount Input -->
           <div class="amount-input-group">
-            <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
+            <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol(window.Store.getAccountCurrency(initialAccount))}</span>
             <label for="tx-amount" class="sr-only">${window.I18n.t('form.amount')}</label>
             <input type="number" id="tx-amount" class="amount-input ${initialType === 'expense' ? 'text-expense' : (initialType === 'income' ? 'text-income' : 'text-transfer')}" placeholder="0.00" step="0.01" inputmode="decimal" value="${initialAmount}" style="width: auto; max-width: 200px;">
           </div>
@@ -2631,6 +2647,7 @@ Object.assign(window.Views, {
           <div class="history-header-sticky">
             <div class="page-header">
               <h1 class="page-header-title">${window.I18n.t('budget.title')}</h1>
+              ${window.Store.foreignAccountCount() > 0 ? `<div style="font-size: 0.72rem; color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>` : ''}
             </div>
 
             <!-- Month Switcher (Modern Pill Style) -->
@@ -3579,7 +3596,10 @@ Object.assign(window.Views, {
       const isNegativeOb = currentObAmt < 0;
       const currentObDate = currentOb ? currentOb.date : new Date().toISOString().split('T')[0];
       const currentBalance = account ? window.Store.getAccountBalance(account.id) : 0;
-      const currSym = window.Store.getCurrencySymbol();
+      // v1.02: the form (and its opening-balance prefix) follows the ACCOUNT's
+      // currency; new accounts default to the primary one.
+      const currencyValue = (account && account.currency) || state.currency;
+      const currSym = window.Store.getCurrencySymbol(currencyValue);
       const txCount = account ? state.transactions.filter(t => t.accountId === account.id).length : 0;
 
       const title = isEdit ? window.I18n.t('account.editTitle') : window.I18n.t('account.newTitle');
@@ -3616,6 +3636,14 @@ Object.assign(window.Views, {
                   <i id="acc-icon-preview" data-lucide="${iconValue}"></i>
                 </div>
               </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: var(--space-5);">
+              <label class="form-label" for="edit-acc-currency">${window.I18n.t('account.currency')}</label>
+              <select id="edit-acc-currency" class="form-control">
+                ${['USD', 'EUR', 'JPY', 'GBP', 'CNY'].map(c => `<option value="${c}" ${currencyValue === c ? 'selected' : ''}>${window.I18n.t('currency.' + c)}</option>`).join('')}
+              </select>
+              <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.currencyHint')}</p>
             </div>
 
             <div class="form-group" style="margin-bottom: var(--space-5);">
@@ -3693,7 +3721,7 @@ Object.assign(window.Views, {
       ) : null;
       const currentObAmt = currentOb ? currentOb.amount : 0;
       let isNegativeOb = currentObAmt < 0;
-      const currSym = window.Store.getCurrencySymbol();
+      let currSym = window.Store.getCurrencySymbol((account && account.currency) || window.Store.getState().currency); // v1.02
 
       let selectedIcon = account ? account.icon : 'wallet';
       let selectedColor = account ? account.color : ((window.Store.ACCOUNT_COLORS || [])[state.accounts.length % (window.Store.ACCOUNT_COLORS || []).length] || '#0075EB');
@@ -3727,6 +3755,15 @@ Object.assign(window.Views, {
               }
             }
           });
+        });
+      }
+
+      // v1.02: the opening-balance prefix live-follows the currency choice
+      const ccySelect = document.getElementById('edit-acc-currency');
+      if (ccySelect) {
+        ccySelect.addEventListener('change', () => {
+          currSym = window.Store.getCurrencySymbol(ccySelect.value);
+          updateObSignUI();
         });
       }
 
@@ -3862,7 +3899,8 @@ Object.assign(window.Views, {
               openingDate: dDate,
               icon: selectedIcon,
               color: selectedColor,
-              type: type
+              type: type,
+              currency: document.getElementById('edit-acc-currency').value // v1.02
             });
             if (makeDefault) {
               window.Store.dispatch('SET_DEFAULT_ACCOUNT', account.id);
@@ -3880,7 +3918,8 @@ Object.assign(window.Views, {
               openingDate: dDate,
               icon: selectedIcon,
               color: selectedColor,
-              type: type
+              type: type,
+              currency: document.getElementById('edit-acc-currency').value // v1.02
             });
             if (makeDefault) {
               window.Store.dispatch('SET_DEFAULT_ACCOUNT', newId);
@@ -4956,8 +4995,10 @@ Object.assign(window.Views, {
     },
 
     // Same sign convention as Components.TransactionItem: sign + abs amount.
+    // v1.02: formatted in the TARGET account's currency (one import = one account).
     signedAmount(tx) {
-      return (tx.type === 'expense' ? '-' : '+') + window.Store.formatCurrency(tx.amount);
+      const ccy = this.draft ? window.Store.getAccountCurrency(this.draft.accountId) : undefined;
+      return (tx.type === 'expense' ? '-' : '+') + window.Store.formatCurrency(tx.amount, ccy);
     },
 
     // v1.01: category chip contents, shared by the preview's render and its
@@ -5082,7 +5123,10 @@ Object.assign(window.Views, {
       const S = window.Views._ImportShared;
       const st = d.statement;
       const formatName = st.format === 'camt' ? 'camt.053 (ISO 20022)' : 'MT940';
-      const mismatch = st.currency && st.currency !== state.currency;
+      // v1.02: the guard compares against the TARGET ACCOUNT's currency —
+      // importing a SEK statement into a SEK account is now the happy path.
+      const accCcy = window.Store.getAccountCurrency(d.accountId);
+      const mismatch = st.currency && st.currency !== accCcy;
       const canOpen = S.canSetOpening(state);
 
       const infoRow = (label, value, last) => `
@@ -5098,11 +5142,10 @@ Object.assign(window.Views, {
             <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
           </div>
           <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.fileInfo', { count: st.entries.length, file: esc(d.fileName) })}</div>
-          ${mismatch ? `
-          <div class="card" style="display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--color-warning, var(--text-secondary)); font-size: var(--text-xs); line-height: 1.5;">
+          <div class="card" id="imap-ccy-warn" style="display: ${mismatch ? 'flex' : 'none'}; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--color-warning, var(--text-secondary)); font-size: var(--text-xs); line-height: 1.5;">
             <i data-lucide="alert-triangle" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
-            <span>${window.I18n.t('bankImport.currencyMismatch', { statement: esc(st.currency), app: esc(state.currency) })}</span>
-          </div>` : ''}
+            <span id="imap-ccy-text">${mismatch ? window.I18n.t('bankImport.currencyMismatch', { statement: esc(st.currency), app: esc(accCcy) }) : ''}</span>
+          </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
             ${infoRow(window.I18n.t('bankImport.stmtFormat'), formatName)}
@@ -5239,6 +5282,17 @@ Object.assign(window.Views, {
       $('imap-account').addEventListener('change', (e) => {
         d.accountId = e.target.value;
         d.itemsStale = true;
+        // v1.02: the currency guard is per-account — re-evaluate on change
+        const warn = $('imap-ccy-warn');
+        if (warn) {
+          const accCcy = window.Store.getAccountCurrency(d.accountId);
+          const mm = !!(d.statement.currency && d.statement.currency !== accCcy);
+          // inline display, not [hidden] — the card's own display:flex would
+          // win; the text also empties so the DOM carries no phantom warning.
+          warn.style.display = mm ? 'flex' : 'none';
+          const txt = $('imap-ccy-text');
+          if (txt) txt.textContent = mm ? window.I18n.t('bankImport.currencyMismatch', { statement: d.statement.currency, app: accCcy }) : '';
+        }
         // Eligibility is per-account: re-arm the offer for a fresh account,
         // hide it for one that already has history.
         const eligible = S.canSetOpening(window.Store.getState());
@@ -5494,13 +5548,14 @@ Object.assign(window.Views, {
         // currencies agree (comparing raw numbers across currencies is noise).
         if (d.kind === 'statement' && d.statement.closingBalance && d.statement.closingBalance.date) {
           const st = d.statement;
-          const sameCcy = !st.currency || st.currency === window.Store.getState().currency;
+          const accCcy = window.Store.getAccountCurrency(d.accountId); // v1.02: account, not app
+          const sameCcy = !st.currency || st.currency === accCcy;
           if (sameCcy) {
             const appBal = window.Store.getBalanceAtDate(st.closingBalance.date, [d.accountId]);
             if (Math.abs(appBal - st.closingBalance.amount) > 0.005) {
               message += '\n\n' + window.I18n.t('bankImport.reconcileMismatch', {
                 bank: S.fmtStatementAmount(st.closingBalance.amount, st.currency),
-                app: window.Store.formatCurrency(appBal),
+                app: window.Store.formatCurrency(appBal, accCcy),
                 date: st.closingBalance.date
               });
             }

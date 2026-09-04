@@ -220,6 +220,8 @@ window.I18n.dicts.pt = {
   'common.save': 'Guardar',
   'common.edit': 'Editar',
   'common.close': 'Fechar',
+  'common.otherCurrencyExcluded.one': "{count} conta noutra moeda fica excluída destes totais.",
+  'common.otherCurrencyExcluded.other': "{count} contas noutra moeda ficam excluídas destes totais.", // v1.02
   'common.view': 'Ver',
   'common.name': 'Nome',
   'common.moreActions': 'Mais ações',
@@ -463,7 +465,7 @@ window.I18n.dicts.pt = {
   'bankImport.stmtCurrency': "Moeda do extrato",
   'bankImport.openingBalance': "Saldo inicial",
   'bankImport.closingBalance': "Saldo final",
-  'bankImport.currencyMismatch': "Este extrato está em {statement}, mas o Stack'd está definido para {app}. Os montantes são importados como simples números — não é feita qualquer conversão.",
+  'bankImport.currencyMismatch': "Este extrato está em {statement}, mas a conta selecionada usa {app}. Os montantes são importados como simples números — não é feita qualquer conversão.", // v1.02: account, not app
   'bankImport.setOpening': "Definir o saldo inicial desta conta a partir do extrato ({amount} em {date})",
   'bankImport.reconcileMismatch': "Atenção: o seu banco indicou {bank} em {date}, mas o Stack'd mostra agora {app} para esta conta. Podem faltar movimentos mais antigos, ou entradas manuais sobrepõem-se às importadas.",
   // v1.01: category rules for imported rows (plan §5)
@@ -503,6 +505,9 @@ window.I18n.dicts.pt = {
   'account.color': 'Cor da conta',
   'account.selectColorAria': 'Selecionar a cor {color}',
   'account.openingBalance': 'Saldo inicial',
+  // v1.02: per-account currency (plan §6)
+  'account.currency': "Moeda",
+  'account.currencyHint': "Uma conta noutra moeda mostra os seus próprios montantes, mas fica fora dos totais combinados — não é feita qualquer conversão.",
   'account.balanceSignAria': 'Sinal do saldo',
   'account.positive': 'Positivo',
   'account.negative': 'Negativo',

@@ -30,10 +30,12 @@ window.StackdExport = {
   },
 
   exportAccounts(state) {
-    const headers = 'id,name,opening_balance,created_at';
+    // v1.02: Currency column appended (plan §6). Write-only for now — no
+    // account importer exists; import.js ignores unknown columns either way.
+    const headers = 'id,name,opening_balance,created_at,currency';
     const rows = state.accounts.map(acc => {
       const ob = state.transactions.find(t => t.accountId === acc.id && t.type === 'opening_balance');
-      return this._toRow([acc.id, acc.name, ob ? ob.amount : 0, acc.createdAt]);
+      return this._toRow([acc.id, acc.name, ob ? ob.amount : 0, acc.createdAt, acc.currency || '']);
     });
     this._download('stackd_accounts.csv', [headers, ...rows].join('\n'));
   },
@@ -234,7 +236,7 @@ window.StackdExport = {
         acc ? acc.name : '-',
         cat ? cat.name : '-',
         t.comment || '',
-        window.Store.formatCurrency(t.amount)
+        window.Store.formatCurrency(t.amount, acc && acc.currency) // v1.02: row currency
       ];
     });
 

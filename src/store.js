@@ -231,6 +231,12 @@ window.Store = {
         }
         accountsChanged = true;
       }
+      // 3. v1.02: per-account currency (docs/bank-import-plan.md §6a) —
+      // pre-existing accounts adopt the primary currency, idempotently.
+      if (!acc.currency) {
+        acc.currency = this.state.currency;
+        accountsChanged = true;
+      }
     });
 
     if (accountsChanged) {
@@ -448,6 +454,7 @@ window.Store = {
     this._openingIdx = null;
     this._budgetSpendIdx = null;
     this._importKeyIdx = null; // v0.99
+    this._primaryIdx = null; // v1.02
   },
 
   // ── Theme State Management & Detection ────────────────────────────────────
@@ -855,7 +862,14 @@ window.Store = {
 
       if (bounds && (tx.date < bounds.start || tx.date > bounds.end)) return false;
       if (types.length > 0 && !types.includes(tx.type)) return false;
-      if (accounts.length > 0 && !accounts.includes(tx.accountId)) return false;
+      if (accounts.length > 0) {
+        if (!accounts.includes(tx.accountId)) return false;
+      } else if (pageKey === 'analytics' && !this._isPrimaryAccount(tx.accountId)) {
+        // v1.02: analytics is aggregate math — an empty account filter means
+        // primary-currency accounts only. History (a ledger, not a sum)
+        // deliberately keeps every account visible.
+        return false;
+      }
       const matchCategory = categories.length === 0 ||
                             categories.includes(tx.categoryId) ||
                             (categories.includes('uncategorized') && !tx.categoryId);
@@ -970,6 +984,7 @@ window.Store = {
     this._openingIdx = null;
     this._budgetSpendIdx = null;
     this._importKeyIdx = null; // v0.99
+    this._primaryIdx = null; // v1.02
     let changed = false;
 
     switch (action) {
@@ -981,6 +996,7 @@ window.Store = {
           color: payload.color || this.ACCOUNT_COLORS[existingCount % this.ACCOUNT_COLORS.length],
           icon: payload.icon || 'wallet',
           type: payload.type || 'Account',
+          currency: payload.currency || this.state.currency, // v1.02: plan §6
           createdAt: new Date().toISOString()
         };
         this.state.accounts.push(newAccount);
@@ -1020,6 +1036,7 @@ window.Store = {
           if (payload.icon !== undefined) this.state.accounts[accountIndex].icon = payload.icon;
           if (payload.type !== undefined) this.state.accounts[accountIndex].type = payload.type;
           if (payload.color !== undefined) this.state.accounts[accountIndex].color = payload.color;
+          if (payload.currency !== undefined) this.state.accounts[accountIndex].currency = payload.currency; // v1.02
           
           this._sortData();
           window.StackdDB.save('accounts', this.state.accounts);
@@ -2303,9 +2320,10 @@ window.Store = {
   },
 
   // Currency helpers
-  getCurrencySymbol() {
+  getCurrencySymbol(currencyCode) {
+    // v1.02: optional override for per-account surfaces; defaults to primary.
     const symbols = { USD: '$', EUR: '\u20ac', JPY: '\u00a5', GBP: '\u00a3', CNY: '\u00a5' };
-    return symbols[this.state.currency] || '$';
+    return symbols[currencyCode || this.state.currency] || '$';
   },
 
   // v0.93: Intl.NumberFormat construction is one of the most expensive routine
@@ -2313,12 +2331,16 @@ window.Store = {
   // amount — every row, wallet card and widget value. Cache per locale+digits;
   // language/currency switches produce a new key, so no invalidation needed.
   _numberFormatCache: {},
-  formatCurrency(amount) {
-    const symbol = this.getCurrencySymbol();
+  formatCurrency(amount, currencyCode) {
+    // v1.02: optional currency override (per-account surfaces). The cache key
+    // stays locale|digits — the symbol is applied OUTSIDE the cached formatter
+    // and the decimals rule is folded into the digits half of the key.
+    const code = currencyCode || this.state.currency;
+    const symbol = this.getCurrencySymbol(code);
     const isNeg = amount < 0;
     const abs = Math.abs(amount);
     // No decimal places for Yen / Renminbi
-    const noDecimals = this.state.currency === 'JPY' || this.state.currency === 'CNY';
+    const noDecimals = code === 'JPY' || code === 'CNY';
     const key = this.getLocale() + '|' + (noDecimals ? '0' : '2');
     let fmt = this._numberFormatCache[key];
     if (!fmt) {
@@ -2378,6 +2400,44 @@ window.Store = {
     return this._ensureImportKeyIdx().has(key);
   },
 
+  // ── v1.02 per-account currency (docs/bank-import-plan.md §6) ──────────────
+  // Aggregates operate on PRIMARY-currency accounts only — exclude, never
+  // convert. "Primary" = account.currency equals state.currency (a missing
+  // field counts as primary for safety). Memoized with the standard lazy-index
+  // lifecycle: nulled at the top of dispatch and in _sortData, so account
+  // edits AND a SET_CURRENCY reclassification both invalidate it.
+  getAccountCurrency(accountId) {
+    const acc = this.state.accounts.find(a => a.id === accountId);
+    return (acc && acc.currency) || this.state.currency;
+  },
+
+  // The memo indexes FOREIGN ids (not primary ones) so an unknown accountId —
+  // a dangling transaction after odd deletions, or fixture data — counts as
+  // primary and never silently vanishes from totals it was always part of.
+  _ensureForeignIdx() {
+    let idx = this._primaryIdx;
+    if (!idx) {
+      idx = this._primaryIdx = new Set();
+      for (const a of this.state.accounts) {
+        if (a.currency && a.currency !== this.state.currency) idx.add(a.id);
+      }
+    }
+    return idx;
+  },
+
+  _isPrimaryAccount(accountId) {
+    return !this._ensureForeignIdx().has(accountId);
+  },
+
+  primaryAccountIds() {
+    const idx = this._ensureForeignIdx();
+    return this.state.accounts.filter(a => !idx.has(a.id)).map(a => a.id);
+  },
+
+  foreignAccountCount() {
+    return this._ensureForeignIdx().size;
+  },
+
   // v1.01: first matching import rule wins (rules are newest-first). A rule
   // whose category was deleted is skipped, not surfaced as a broken id.
   // Unindexed on purpose: ≤100 rules × includes() is cheap even for a
@@ -2411,7 +2471,10 @@ window.Store = {
     return this.state.transactions
       .filter(t => t.date <= date &&
         t.isPaid !== false &&
-        (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
+        // v1.02: an empty list means "all PRIMARY-currency accounts" — foreign
+        // accounts never leak into aggregate balances (explicit ids untouched,
+        // so a foreign account's own balance still computes over its rows).
+        (accountIds.length === 0 ? this._isPrimaryAccount(t.accountId) : accountIds.includes(t.accountId)) &&
         (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId)) &&
         !this._isTxBeforeOpeningDate(t)
       )
@@ -2426,7 +2489,8 @@ window.Store = {
     const upcoming = this.state.transactions.filter(t =>
       t.date > todayStr && t.date <= endDate &&
       t.isPaid !== false &&
-      (accountIds.length === 0 || accountIds.includes(t.accountId)) &&
+      // v1.02: empty list = all primary-currency accounts
+      (accountIds.length === 0 ? this._isPrimaryAccount(t.accountId) : accountIds.includes(t.accountId)) &&
       !this._isTxBeforeOpeningDate(t)
     );
     return {
@@ -2525,7 +2589,7 @@ window.Store = {
 
     const targetAccounts = (accountIds && accountIds.length > 0)
       ? this.state.accounts.filter(a => accountIds.includes(a.id))
-      : this.state.accounts;
+      : this.state.accounts.filter(a => this._isPrimaryAccount(a.id)); // v1.02
 
     // Calculate effective start-of-month baseline balance for a cutoff date (today or eom).
     // For accounts opened on or before startOfMonthBaseline: use historical balance at startOfMonthBaseline.
@@ -2631,6 +2695,7 @@ window.Store = {
       idx = this._budgetSpendIdx = Object.create(null);
       for (const t of this.state.transactions) {
         if (t.type !== 'expense' || !t.categoryId) continue;
+        if (!this._isPrimaryAccount(t.accountId)) continue; // v1.02: budgets are primary-currency
         const key = t.categoryId + '|' + t.date.slice(0, 7);
         idx[key] = (idx[key] || 0) + t.amount;
       }
@@ -2852,7 +2917,7 @@ window.Store = {
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments
-        if (accounts.length > 0 && !accounts.includes(t.accountId)) return false;
+        if (accounts.length > 0 ? !accounts.includes(t.accountId) : !this._isPrimaryAccount(t.accountId)) return false; // v1.02
         if (categories.length > 0 && !categories.includes(t.categoryId)) return false;
         return !this._isTxBeforeOpeningDate(t);
       });

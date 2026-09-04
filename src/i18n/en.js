@@ -225,6 +225,8 @@ window.I18n.dicts.en = {
   'common.save': 'Save',
   'common.edit': 'Edit',
   'common.close': 'Close',
+  'common.otherCurrencyExcluded.one': "{count} account in another currency is excluded from these totals.",
+  'common.otherCurrencyExcluded.other': "{count} accounts in another currency are excluded from these totals.", // v1.02
   'common.view': 'View',
   'common.name': 'Name',
   'common.moreActions': 'More actions',
@@ -470,7 +472,7 @@ window.I18n.dicts.en = {
   'bankImport.stmtCurrency': "Statement currency",
   'bankImport.openingBalance': "Opening balance",
   'bankImport.closingBalance': "Closing balance",
-  'bankImport.currencyMismatch': "This statement is in {statement}, but Stack'd is set to {app}. Amounts are imported as plain numbers — nothing is converted.",
+  'bankImport.currencyMismatch': "This statement is in {statement}, but the selected account uses {app}. Amounts are imported as plain numbers — nothing is converted.", // v1.02: account, not app
   'bankImport.setOpening': "Set this account's opening balance from the statement ({amount} on {date})",
   'bankImport.reconcileMismatch': "Heads up: your bank reported {bank} on {date}, but Stack'd now shows {app} for this account. Older transactions may be missing, or manual entries may overlap the imported ones.",
   // v1.01: category rules for imported rows (plan §5)
@@ -510,6 +512,9 @@ window.I18n.dicts.en = {
   'account.color': 'Account Color',
   'account.selectColorAria': 'Select color {color}',
   'account.openingBalance': 'Opening Balance',
+  // v1.02: per-account currency (plan §6)
+  'account.currency': "Currency",
+  'account.currencyHint': "An account in another currency shows its own amounts, but stays out of combined totals — nothing is converted.",
   'account.balanceSignAria': 'Balance sign',
   'account.positive': 'Positive',
   'account.negative': 'Negative',

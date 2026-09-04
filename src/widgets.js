@@ -263,7 +263,7 @@ window.Widgets = {
           const acc = (state.accounts || []).find(a => a.id === tx.accountId);
           const isExpense = tx.type === 'expense';
           const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
-          const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount));
+          const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount), acc && acc.currency); // v1.02: row currency
           const title = cat ? cat.name : window.I18n.t(tx.transferRef ? 'common.transfer' : 'common.unknown');
           const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
 
@@ -870,7 +870,9 @@ window.Widgets = {
           t.date > today && t.date <= horizon &&
           t.isPaid !== false &&
           !window.Store._isTxBeforeOpeningDate(t) &&
-          (accountIds.length === 0 || accountIds.includes(t.accountId))
+          // v1.02: unscoped widget = primary-currency accounts only (the net
+          // footer sums these rows; exclude-never-convert, plan §6)
+          (accountIds.length === 0 ? window.Store._isPrimaryAccount(t.accountId) : accountIds.includes(t.accountId))
         );
 
         // Untracked active loans: a tracked loan's payments already exist as
