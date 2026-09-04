@@ -377,7 +377,7 @@ window.I18n.dicts.fr = {
   'others.exportTransactions': 'Exporter les opérations',
   'others.exportLoans': 'Exporter les prêts',
   'others.dataImport': 'Import des données',
-  'others.importDesc': "Importez une sauvegarde Stack'd, un export de prêts ou n'importe quel relevé CSV téléchargé depuis votre banque — les fichiers bancaires ouvrent un aperçu de correspondance des colonnes. Une sauvegarde Stack'd doit contenir les colonnes : {columns}.",
+  'others.importDesc': "Importez une sauvegarde Stack'd, un export de prêts ou n'importe quel relevé téléchargé depuis votre banque — un CSV ouvre un aperçu de correspondance des colonnes, camt.053 (ISO 20022) et MT940 sont reconnus automatiquement. Une sauvegarde Stack'd doit inclure les colonnes : {columns}.",
   'others.importCsv': 'Importer un CSV',
   'others.importing': 'Import en cours…',
   'others.importedLoans.one': 'Réussi ! {count} prêt importé.',
@@ -457,6 +457,15 @@ window.I18n.dicts.fr = {
   'bankImport.errDate': 'Date non reconnue',
   'bankImport.errAmount': 'Montant invalide',
   'bankImport.errMissing': 'Montant débit/crédit manquant',
+  // v1.00: camt.053/MT940 statement details + reconciliation (plan §4)
+  'bankImport.stmtTitle': "Détails du relevé",
+  'bankImport.stmtFormat': "Format détecté",
+  'bankImport.stmtCurrency': "Devise du relevé",
+  'bankImport.openingBalance': "Solde initial",
+  'bankImport.closingBalance': "Solde final",
+  'bankImport.currencyMismatch': "Ce relevé est en {statement}, mais Stack'd est réglé sur {app}. Les montants sont importés comme de simples nombres — aucune conversion n'est effectuée.",
+  'bankImport.setOpening': "Définir le solde initial de ce compte à partir du relevé ({amount} au {date})",
+  'bankImport.reconcileMismatch': "Attention : votre banque a indiqué {bank} au {date}, mais Stack'd affiche maintenant {app} pour ce compte. Des opérations plus anciennes manquent peut-être, ou des saisies manuelles chevauchent celles importées.",
 
   // ── Currencies (P8d) ─────────────────────────────────────────────────────
   'currency.USD': 'USD — Dollar américain',
@@ -844,7 +853,7 @@ window.I18n.dicts.fr = {
   'manual.others.export.h': 'Export',
   'manual.others.export.d': 'Exportez Comptes, Catégories, Opérations et Prêts en fichiers CSV pour tout tableur.',
   'manual.others.import.h': 'Import',
-  'manual.others.import.d': "Importer un CSV accepte une sauvegarde Stack'd (colonnes Date, Amount, Type, Account, Category, Note — les comptes et catégories manquants sont créés automatiquement, et un export de prêts est reconnu tout seul) ou n'importe quel relevé CSV téléchargé depuis votre banque, qui ouvre un aperçu de correspondance des colonnes avant tout enregistrement.",
+  'manual.others.import.d': "Importer un CSV accepte une sauvegarde Stack'd (colonnes Date, Amount, Type, Account, Category, Note — les comptes et catégories manquants sont créés automatiquement, et un export de prêts est reconnu tout seul) ou n'importe quel relevé bancaire — CSV, camt.053 (ISO 20022) ou MT940 — qui ouvre un aperçu de vérification avant tout enregistrement.",
   'manual.others.factoryReset.h': 'Réinitialisation',
   'manual.others.factoryReset.d': 'La Zone sensible efface définitivement chaque compte, budget et opération. Cette action est irréversible.',
   'manual.others.privacy.h': 'Confidentialité',

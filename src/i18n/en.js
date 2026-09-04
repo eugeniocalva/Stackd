@@ -384,7 +384,7 @@ window.I18n.dicts.en = {
   'others.dataImport': 'Data Import',
   // {columns} is the bolded, deliberately UNTRANSLATED CSV header list — the
   // importer matches those English names (see P8b).
-  'others.importDesc': "Import a Stack'd backup, a loans export, or any CSV statement downloaded from your bank — bank files open a column-mapping preview. A Stack'd backup must include columns: {columns}.",
+  'others.importDesc': "Import a Stack'd backup, a loans export, or any statement downloaded from your bank — CSV opens a column-mapping preview, camt.053 (ISO 20022) and MT940 are recognised automatically. A Stack'd backup must include columns: {columns}.",
   'others.importCsv': 'Import CSV',
   'others.importing': 'Importing...',
   'others.importedLoans.one': 'Success! Imported {count} loan.',
@@ -464,6 +464,15 @@ window.I18n.dicts.en = {
   'bankImport.errDate': 'Unrecognised date',
   'bankImport.errAmount': 'Invalid amount',
   'bankImport.errMissing': 'Missing debit/credit amount',
+  // v1.00: camt.053/MT940 statement details + reconciliation (plan §4)
+  'bankImport.stmtTitle': "Statement Details",
+  'bankImport.stmtFormat': "Detected format",
+  'bankImport.stmtCurrency': "Statement currency",
+  'bankImport.openingBalance': "Opening balance",
+  'bankImport.closingBalance': "Closing balance",
+  'bankImport.currencyMismatch': "This statement is in {statement}, but Stack'd is set to {app}. Amounts are imported as plain numbers — nothing is converted.",
+  'bankImport.setOpening': "Set this account's opening balance from the statement ({amount} on {date})",
+  'bankImport.reconcileMismatch': "Heads up: your bank reported {bank} on {date}, but Stack'd now shows {app} for this account. Older transactions may be missing, or manual entries may overlap the imported ones.",
 
   // ── Currencies (P8d) — the ISO code stays, the name is localized ─────────
   'currency.USD': 'USD — US Dollar',
@@ -863,7 +872,7 @@ window.I18n.dicts.en = {
   'manual.others.export.h': 'Export',
   'manual.others.export.d': 'Export Accounts, Categories, Transactions and Loans as CSV files for any spreadsheet app.',
   'manual.others.import.h': 'Import',
-  'manual.others.import.d': "Import CSV accepts a Stack'd backup (columns Date, Amount, Type, Account, Category, Note — missing accounts and categories are created automatically, and a loans export is recognised on its own) or any CSV statement downloaded from your bank, which opens a column-mapping preview before anything is saved.",
+  'manual.others.import.d': "Import CSV accepts a Stack'd backup (columns Date, Amount, Type, Account, Category, Note — missing accounts and categories are created automatically, and a loans export is recognised on its own) or any bank statement — CSV, camt.053 (ISO 20022) or MT940 — which opens a review preview before anything is saved.",
   'manual.others.factoryReset.h': 'Factory reset',
   'manual.others.factoryReset.d': 'The Danger Zone erases every account, budget and transaction permanently. This cannot be undone.',
   'manual.others.privacy.h': 'Privacy',

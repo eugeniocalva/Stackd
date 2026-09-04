@@ -377,7 +377,7 @@ window.I18n.dicts.es = {
   'others.exportTransactions': 'Exportar movimientos',
   'others.exportLoans': 'Exportar préstamos',
   'others.dataImport': 'Importar datos',
-  'others.importDesc': "Importa una copia de seguridad de Stack'd, una exportación de préstamos o cualquier extracto CSV descargado de tu banco — los archivos bancarios abren una vista previa de asignación de columnas. Una copia de seguridad de Stack'd debe incluir las columnas: {columns}.",
+  'others.importDesc': "Importa una copia de seguridad de Stack'd, una exportación de préstamos o cualquier extracto descargado de tu banco — un CSV abre una vista previa de asignación de columnas, y camt.053 (ISO 20022) y MT940 se reconocen automáticamente. Una copia de seguridad de Stack'd debe incluir las columnas: {columns}.",
   'others.importCsv': 'Importar CSV',
   'others.importing': 'Importando…',
   'others.importedLoans.one': '¡Listo! {count} préstamo importado.',
@@ -457,6 +457,15 @@ window.I18n.dicts.es = {
   'bankImport.errDate': 'Fecha no reconocida',
   'bankImport.errAmount': 'Importe no válido',
   'bankImport.errMissing': 'Falta el importe de cargo/abono',
+  // v1.00: camt.053/MT940 statement details + reconciliation (plan §4)
+  'bankImport.stmtTitle': "Detalles del extracto",
+  'bankImport.stmtFormat': "Formato detectado",
+  'bankImport.stmtCurrency': "Moneda del extracto",
+  'bankImport.openingBalance': "Saldo inicial",
+  'bankImport.closingBalance': "Saldo final",
+  'bankImport.currencyMismatch': "Este extracto está en {statement}, pero Stack'd está configurado en {app}. Los importes se importan como números sin más — no se realiza ninguna conversión.",
+  'bankImport.setOpening': "Establecer el saldo inicial de esta cuenta a partir del extracto ({amount} el {date})",
+  'bankImport.reconcileMismatch': "Atención: tu banco indicó {bank} el {date}, pero Stack'd ahora muestra {app} para esta cuenta. Puede que falten movimientos anteriores o que haya entradas manuales que se solapen con las importadas.",
 
   // ── Currencies (P8d) ─────────────────────────────────────────────────────
   'currency.USD': 'USD — Dólar estadounidense',
@@ -844,7 +853,7 @@ window.I18n.dicts.es = {
   'manual.others.export.h': 'Exportar',
   'manual.others.export.d': 'Exporta Cuentas, Categorías, Movimientos y Préstamos como archivos CSV para cualquier hoja de cálculo.',
   'manual.others.import.h': 'Importar',
-  'manual.others.import.d': "Importar CSV acepta una copia de seguridad de Stack'd (columnas Date, Amount, Type, Account, Category, Note — las cuentas y categorías que falten se crean automáticamente, y una exportación de préstamos se reconoce por sí sola) o cualquier extracto CSV descargado de tu banco, que abre una vista previa de asignación de columnas antes de guardar nada.",
+  'manual.others.import.d': "Importar CSV acepta una copia de seguridad de Stack'd (columnas Date, Amount, Type, Account, Category, Note — las cuentas y categorías que falten se crean automáticamente, y una exportación de préstamos se reconoce por sí sola) o cualquier extracto bancario — CSV, camt.053 (ISO 20022) o MT940 — que abre una vista de revisión antes de guardar nada.",
   'manual.others.factoryReset.h': 'Restablecer de fábrica',
   'manual.others.factoryReset.d': 'La Zona de riesgo borra permanentemente todas las cuentas, presupuestos y movimientos. Esto no se puede deshacer.',
   'manual.others.privacy.h': 'Privacidad',

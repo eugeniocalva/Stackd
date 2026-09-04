@@ -1,9 +1,10 @@
 # Bank File Import Plan (Option A) — "Works with every bank in Europe"
 
-> Status: **Phase 1 SHIPPED as v0.99 (2026-09-03)** — see §3f "as built" below.
-> Phases 2–5 not started. This is the cold-start reference for the
-> bank-statement import feature. Read it before touching import code, the same
-> way `docs/debt-rebuild-plan.md` is the reference for loans.
+> Status: **Phases 1–2 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
+> (camt.053/MT940 + reconciliation) as v1.00 (2026-09-04, §4a). Phases 3–5 not
+> started. This is the cold-start reference for the bank-statement import
+> feature. Read it before touching import code, the same way
+> `docs/debt-rebuild-plan.md` is the reference for loans.
 
 ## 1. Context and goal
 
@@ -191,6 +192,52 @@ and opening/closing balances.
   if it differs from `state.currency`, warn prominently and let the user
   proceed or cancel (amounts are stored as numbers either way; nothing
   converts). After phase 4: check against the target *account's* currency.
+
+### 4a. Phase 2 as built (v1.00, 2026-09-04)
+
+Shipped per §4 with these concrete decisions:
+
+- **Structured statements skip column mapping.** `sniffFormat(text)` routes by
+  CONTENT (`'camt' | 'mt940' | 'csv'`) inside `importCSV` before any CSV
+  parsing — banks hand out `.txt`/`.sta`/`.xml` interchangeably, and the file
+  input now accepts `.csv,.xml,.940,.mt940,.sta,.txt`. A parsed statement is
+  `{format, currency, entries: [{date, description, type, amount, bankRef}],
+  openingBalance: {amount signed, date}|null, closingBalance: idem}`.
+- **Parsers.** `parseCamt` (DOMParser, namespace-agnostic local-name lookups;
+  accepts camt.053 `Stmt` and camt.052 `Rpt`; OPBD else PRCD as opening, last
+  CLBD as closing; description = counterparty `Nm` + `Ustrd`, falling back to
+  `AddtlNtryInf`; bankRef = `AcctSvcrRef` else non-`NOTPROVIDED` `EndToEndId`).
+  `parseMT940` (unwraps the SWIFT `{4:...-}` envelope, folds continuation
+  lines; `:60F/:62F` balances; `:61:` marks `RC`/`ED` count as money out;
+  `NONREF` customer refs fall back to the `//` bank reference; `:86:`
+  `?20–?29`/`?32–?33` SEPA subfields become "name — remittance").
+- **Same pipeline as CSV.** `buildStatementTransactions(statement, accountId)`
+  returns the identical `{items, stats}` shape via the shared
+  `_stampImportKey` (extracted in this phase), so `#import-preview` and
+  `BATCH_IMPORT_BANK_TRANSACTIONS` are unchanged. Statement dedup is usually
+  `ref:`-based (real bank references).
+- **Details step instead of mapping.** A statement draft (`kind: 'statement'`
+  on `_ImportShared`; CSV drafts now carry `kind: 'csv'`) renders `#import-map`
+  as a "Statement Details" screen: format/currency/balances card, target
+  account select, live preview, and the **opening-balance offer** — shown only
+  when the target account has no non-`opening_balance` transactions
+  (`_ImportShared.canSetOpening`), checked by default, applied at confirm via
+  the existing `UPDATE_ACCOUNT {openingBalance, openingDate}` BEFORE the batch
+  lands. No preset is saved for statements (structure is fixed).
+- **Currency guard (§4):** a warning card on the details step when
+  `statement.currency !== state.currency` (import proceeds; amounts stay
+  plain numbers). Statement balances are formatted with their OWN currency
+  code (`fmtStatementAmount`), never the app symbol.
+- **Reconciliation (§4):** at confirm, `Store.getBalanceAtDate(closingDate,
+  [accountId])` is compared to CLBD — only when currencies agree — and a
+  mismatch appends a localized warning with both figures to the done alert.
+- **i18n:** 8 new `bankImport.*` keys ×5; `others.importDesc` and
+  `manual.others.import.d` updated ×5 to name camt.053/MT940.
+- **Tests:** `tests/unit/statementImport.test.js` (sniffing, both parsers,
+  builder parity, error rows, re-import dedup, OPBD→CLBD reconciliation math)
+  and `tests/e2e/statement_import.spec.js` (MT940 file with a deliberately
+  wrong extension through details → preview → confirm → balances reconcile →
+  re-import dedups on `ref:` keys and the opening offer disappears).
 
 ## 5. Phase 3 — Category rules engine
 

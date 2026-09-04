@@ -3198,7 +3198,7 @@ Object.assign(window.Views, {
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
               ${window.I18n.t('others.importDesc', { columns: '<b>Date, Amount, Type, Account, Category, Note</b>' })}
             </p>
-            <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
+            <input type="file" id="import-csv-file" accept=".csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
             <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${window.I18n.t('others.importCsv')}</button>
           </div>
 
@@ -3424,10 +3424,15 @@ Object.assign(window.Views, {
             window.StackdImport.importCSV(file, state, (result) => {
               // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
               // export) routes to the column-mapping flow instead of the direct
-              // restore path (docs/bank-import-plan.md §3).
-              if (result.kind === 'bank') {
+              // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
+              // and MT940 statements route to the statement-details step of the
+              // same flow (plan §4).
+              if (result.kind === 'bank' || result.kind === 'statement') {
                 if (!state.accounts || state.accounts.length === 0) {
                   alert(window.I18n.t('bankImport.noAccounts'));
+                } else if (result.kind === 'statement') {
+                  window.Views._ImportShared.startStatement(result.statement, file.name, state);
+                  window.Router.navigate('#import-map');
                 } else {
                   window.Views._ImportShared.start(result.csvText, file.name, state);
                   window.Router.navigate('#import-map');
@@ -4874,6 +4879,7 @@ Object.assign(window.Views, {
         ? state.defaultAccountId
         : (accs[0] ? accs[0].id : '');
       this.draft = {
+        kind: 'csv', // v1.00: statement drafts (camt/MT940) carry kind 'statement'
         fileName: fileName,
         analysis: analysis,
         mapping: mapping,
@@ -4885,7 +4891,44 @@ Object.assign(window.Views, {
       };
     },
 
+    // v1.00: camt.053/052 / MT940 — fixed structure, so no column mapping;
+    // #import-map renders as a "statement details" step (account, currency
+    // guard, balances, opening-balance offer) feeding the same preview.
+    startStatement(statement, fileName, state) {
+      const accs = state.accounts || [];
+      const accountId = (state.defaultAccountId && accs.some(a => a.id === state.defaultAccountId))
+        ? state.defaultAccountId
+        : (accs[0] ? accs[0].id : '');
+      this.draft = {
+        kind: 'statement',
+        fileName: fileName,
+        statement: statement,
+        accountId: accountId,
+        setOpening: false, // armed by the details screen when eligible
+        items: null,
+        stats: null,
+        itemsStale: false
+      };
+      this.draft.setOpening = this.canSetOpening(state);
+    },
+
     clear() { this.draft = null; },
+
+    // v1.00: the opening-balance offer only makes sense for an account with no
+    // real activity yet — otherwise OPBD would double-count history.
+    canSetOpening(state) {
+      const d = this.draft;
+      if (!d || d.kind !== 'statement' || !d.statement.openingBalance || !d.accountId) return false;
+      return !(state.transactions || []).some(t => t.accountId === d.accountId && t.type !== 'opening_balance');
+    },
+
+    // v1.00: statement balances keep their OWN currency label — they are the
+    // bank's figures, not app amounts (Store.formatCurrency would stamp the
+    // app symbol on a possibly foreign value).
+    fmtStatementAmount(amount, ccy) {
+      const fmt = new Intl.NumberFormat(window.Store.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return fmt.format(amount) + (ccy ? ' ' + ccy : '');
+    },
 
     // Both import views share the "nothing to resume" guard card (deep link /
     // reload lands here with no draft to show).
@@ -4916,12 +4959,13 @@ Object.assign(window.Views, {
     }
   },
 
-  // ── Column mapping (#import-map) ──────────────────────────────────────────
+  // ── Column mapping / statement details (#import-map) ──────────────────────
   ImportMapView: {
     render(state) {
       const S = window.Views._ImportShared;
       const d = S.draft;
       if (!d) return S.emptyState();
+      if (d.kind === 'statement') return this._renderStatement(state, d); // v1.00
       const m = d.mapping;
       const cols = d.analysis.columns;
 
@@ -5012,10 +5056,65 @@ Object.assign(window.Views, {
       `;
     },
 
+    // v1.00: statement details step for camt/MT940 — no column selects, the
+    // structure is fixed; the user confirms account + currency + balances.
+    _renderStatement(state, d) {
+      const S = window.Views._ImportShared;
+      const st = d.statement;
+      const formatName = st.format === 'camt' ? 'camt.053 (ISO 20022)' : 'MT940';
+      const mismatch = st.currency && st.currency !== state.currency;
+      const canOpen = S.canSetOpening(state);
+
+      const infoRow = (label, value, last) => `
+        <div style="display: flex; justify-content: space-between; gap: var(--space-3); ${last ? '' : 'margin-bottom: var(--space-2);'}">
+          <span style="color: var(--text-secondary); font-size: var(--text-sm);">${label}</span>
+          <span style="font-weight: 600; font-size: var(--text-sm); text-align: right;">${value}</span>
+        </div>`;
+
+      return `
+        <div id="import-map" class="container" style="padding-bottom: 100px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-2);">
+            <h1 class="header-title" style="margin: 0;">${window.I18n.t('bankImport.stmtTitle')}</h1>
+            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+          </div>
+          <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.fileInfo', { count: st.entries.length, file: esc(d.fileName) })}</div>
+          ${mismatch ? `
+          <div class="card" style="display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--color-warning, var(--text-secondary)); font-size: var(--text-xs); line-height: 1.5;">
+            <i data-lucide="alert-triangle" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+            <span>${window.I18n.t('bankImport.currencyMismatch', { statement: esc(st.currency), app: esc(state.currency) })}</span>
+          </div>` : ''}
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            ${infoRow(window.I18n.t('bankImport.stmtFormat'), formatName)}
+            ${st.currency ? infoRow(window.I18n.t('bankImport.stmtCurrency'), esc(st.currency)) : ''}
+            ${st.openingBalance ? infoRow(window.I18n.t('bankImport.openingBalance'), `${S.fmtStatementAmount(st.openingBalance.amount, st.currency)}${st.openingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${st.openingBalance.date}</span>` : ''}`) : ''}
+            ${st.closingBalance ? infoRow(window.I18n.t('bankImport.closingBalance'), `${S.fmtStatementAmount(st.closingBalance.amount, st.currency)}${st.closingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${st.closingBalance.date}</span>` : ''}`, true) : ''}
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <div class="form-group" style="margin-bottom: ${canOpen ? 'var(--space-3)' : '0'};">
+              <label class="form-label" for="imap-account">${window.I18n.t('bankImport.targetAccount')}</label>
+              <select id="imap-account" class="form-control" style="appearance: none;">${createAccountOptions(state.accounts, d.accountId)}</select>
+            </div>
+            <label id="imap-opening-wrap" style="display: ${canOpen ? 'flex' : 'none'}; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer;">
+              <input type="checkbox" id="imap-set-opening" class="import-check" style="margin-top: 2px;" ${d.setOpening ? 'checked' : ''}>
+              <span>${st.openingBalance ? window.I18n.t('bankImport.setOpening', { amount: S.fmtStatementAmount(st.openingBalance.amount, st.currency), date: st.openingBalance.date || '—' }) : ''}</span>
+            </label>
+          </div>
+
+          <div class="section-title">${window.I18n.t('bankImport.livePreview')}</div>
+          <div class="card import-preview-box" id="imap-preview" style="margin-bottom: var(--space-6);"></div>
+
+          <button class="btn btn-primary" id="btn-imap-continue" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.continue')}</button>
+        </div>
+      `;
+    },
+
     attachEvents(container, state) {
       const S = window.Views._ImportShared;
       const d = S.draft;
       if (!d) return;
+      if (d.kind === 'statement') { this._attachStatement(container, state, d); return; } // v1.00
       const m = d.mapping;
       const $ = (id) => container.querySelector('#' + id);
 
@@ -5087,6 +5186,67 @@ Object.assign(window.Views, {
       });
 
       refreshPreview();
+    },
+
+    // v1.00: events for the statement details step. Account choice is the only
+    // real input; changing it re-keys every row (importKeys embed the account),
+    // so it marks any built items stale exactly like a mapping edit does.
+    _attachStatement(container, state, d) {
+      const S = window.Views._ImportShared;
+      const $ = (id) => container.querySelector('#' + id);
+
+      $('imap-close').addEventListener('click', () => { S.clear(); });
+
+      const refreshPreview = () => {
+        const box = $('imap-preview');
+        if (!box) return;
+        const slice = { entries: d.statement.entries.slice(0, 3) };
+        const res = window.StackdImport.buildStatementTransactions(slice, d.accountId);
+        box.innerHTML = res.items.map(it => it.tx ? `
+          <div class="import-preview-row">
+            <span style="color: var(--text-tertiary); flex-shrink: 0;">${it.tx.date}</span>
+            <span class="import-ellipsis" style="flex: 1;">${esc(it.tx.comment) || '—'}</span>
+            <span class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; flex-shrink: 0;">${S.signedAmount(it.tx)}</span>
+          </div>` : `
+          <div class="import-preview-row" style="color: var(--text-tertiary);">
+            <i data-lucide="alert-triangle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+            <span class="import-ellipsis">${S.errorLabel(it.error)}</span>
+          </div>`
+        ).join('') || `<div class="import-preview-row" style="color: var(--text-tertiary);">—</div>`;
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(box);
+      };
+
+      $('imap-account').addEventListener('change', (e) => {
+        d.accountId = e.target.value;
+        d.itemsStale = true;
+        // Eligibility is per-account: re-arm the offer for a fresh account,
+        // hide it for one that already has history.
+        const eligible = S.canSetOpening(window.Store.getState());
+        d.setOpening = eligible;
+        const wrap = $('imap-opening-wrap');
+        if (wrap) wrap.style.display = eligible ? 'flex' : 'none';
+        const cb = $('imap-set-opening');
+        if (cb) cb.checked = eligible;
+        refreshPreview();
+      });
+
+      const openingCb = $('imap-set-opening');
+      if (openingCb) openingCb.addEventListener('change', (e) => { d.setOpening = e.target.checked; });
+
+      $('btn-imap-continue').addEventListener('click', () => {
+        if (!d.accountId) {
+          alert(window.I18n.t('bankImport.noAccounts'));
+          return;
+        }
+        const res = window.StackdImport.buildStatementTransactions(d.statement, d.accountId);
+        res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+        d.items = res.items;
+        d.stats = res.stats;
+        d.itemsStale = false;
+        window.Router.navigate('#import-preview');
+      });
+
+      refreshPreview();
     }
   },
 
@@ -5101,16 +5261,28 @@ Object.assign(window.Views, {
       // reset (correct: they belonged to the old rows); an edit that broke the
       // mapping drops to the no-session guard below.
       if (d && d.items && d.itemsStale) {
-        const m = d.mapping;
-        const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
-        if (m.date >= 0 && m.description >= 0 && amountOk && d.accountId) {
-          const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
-          res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
-          d.items = res.items;
-          d.stats = res.stats;
+        if (d.kind === 'statement') { // v1.00: only the target account can change
+          if (d.accountId) {
+            const res = window.StackdImport.buildStatementTransactions(d.statement, d.accountId);
+            res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+            d.items = res.items;
+            d.stats = res.stats;
+          } else {
+            d.items = null;
+            d.stats = null;
+          }
         } else {
-          d.items = null;
-          d.stats = null;
+          const m = d.mapping;
+          const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
+          if (m.date >= 0 && m.description >= 0 && amountOk && d.accountId) {
+            const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
+            res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+            d.items = res.items;
+            d.stats = res.stats;
+          } else {
+            d.items = null;
+            d.stats = null;
+          }
         }
         d.itemsStale = false;
       }
@@ -5226,15 +5398,45 @@ Object.assign(window.Views, {
           alert(window.I18n.t('bankImport.nothingSelected'));
           return;
         }
+        // v1.00: honour the opening-balance offer BEFORE the batch lands —
+        // eligibility means "no real activity yet", which the import ends.
+        if (d.kind === 'statement' && d.setOpening && S.canSetOpening(window.Store.getState())) {
+          const ob = d.statement.openingBalance;
+          window.Store.dispatch('UPDATE_ACCOUNT', {
+            id: d.accountId,
+            openingBalance: ob.amount,
+            openingDate: ob.date || undefined
+          });
+        }
         // v0.99 review fix: report what the store ACCEPTED, not what was
         // selected — the dispatch's dedup defence may skip rows (state
         // mutates synchronously, so the before/after delta is exact).
         const before = window.Store.getState().transactions.length;
         window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
         const imported = window.Store.getState().transactions.length - before;
-        window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
+        if (d.kind !== 'statement') { // v1.00: presets only exist for mapped CSVs
+          window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
+        }
         const acc = (window.Store.getState().accounts || []).find(a => a.id === d.accountId);
-        alert(window.I18n.t('bankImport.done', { count: imported, account: acc ? acc.name : '' }));
+        let message = window.I18n.t('bankImport.done', { count: imported, account: acc ? acc.name : '' });
+        // v1.00 reconciliation (plan §4): compare the computed balance at the
+        // statement's closing date against the bank's CLBD — only when the
+        // currencies agree (comparing raw numbers across currencies is noise).
+        if (d.kind === 'statement' && d.statement.closingBalance && d.statement.closingBalance.date) {
+          const st = d.statement;
+          const sameCcy = !st.currency || st.currency === window.Store.getState().currency;
+          if (sameCcy) {
+            const appBal = window.Store.getBalanceAtDate(st.closingBalance.date, [d.accountId]);
+            if (Math.abs(appBal - st.closingBalance.amount) > 0.005) {
+              message += '\n\n' + window.I18n.t('bankImport.reconcileMismatch', {
+                bank: S.fmtStatementAmount(st.closingBalance.amount, st.currency),
+                app: window.Store.formatCurrency(appBal),
+                date: st.closingBalance.date
+              });
+            }
+          }
+        }
+        alert(message);
         window.Router.navigate('#settings');
         // v0.99 review fix: clearing synchronously made the coalesced emit
         // repaint this view as the no-session card for a frame before Settings

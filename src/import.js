@@ -686,26 +686,266 @@ window.StackdImport = {
       const bankRef = mapping.bankRef >= 0
         ? String(row[mapping.bankRef] !== undefined ? row[mapping.bankRef] : '').trim()
         : '';
-      let key;
-      if (bankRef) {
-        tx.bankRef = bankRef;
-        // v0.99 review fix: escape the ref inside the key ('%'→'%25','#'→'%23')
-        // so a literal ref ending in '#2' can't collide with a '#n' twin suffix.
-        key = 'ref:' + accountId + '|' + bankRef.replace(/%/g, '%25').replace(/#/g, '%23');
-      } else {
-        const amountCents = Math.round(amount * 100);
-        // v0.99 review fix: final trim AFTER the slice — a cut landing on a word
-        // boundary left a trailing space that every CSV restore trims away,
-        // drifting the key and breaking backup-round-trip dedup for that row.
-        const normDesc = description.toLowerCase()
-          .replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60).trim();
-        key = 'fp:' + accountId + '|' + date + '|' + type + '|' + amountCents + '|' + normDesc;
-      }
-      keyCounts[key] = (keyCounts[key] || 0) + 1;
-      if (keyCounts[key] > 1) key += '#' + keyCounts[key];
-      tx.importKey = key;
+      const duplicate = this._stampImportKey(tx, bankRef, accountId, keyCounts);
+      items.push({ tx: tx, duplicate: duplicate, error: null });
+      if (duplicate) stats.duplicates++;
+      else stats.ok++;
+    });
 
-      const duplicate = window.Store.hasImportKey(key);
+    return { items: items, stats: stats };
+  },
+
+  // v1.00: shared by the CSV and statement builders so both formats produce
+  // byte-identical keys by construction. Stamps tx.importKey (and tx.bankRef
+  // when given) and returns whether the store already holds the key.
+  _stampImportKey(tx, bankRef, accountId, keyCounts) {
+    let key;
+    if (bankRef) {
+      tx.bankRef = bankRef;
+      // v0.99 review fix: escape the ref inside the key ('%'→'%25','#'→'%23')
+      // so a literal ref ending in '#2' can't collide with a '#n' twin suffix.
+      key = 'ref:' + accountId + '|' + bankRef.replace(/%/g, '%25').replace(/#/g, '%23');
+    } else {
+      const amountCents = Math.round(tx.amount * 100);
+      // v0.99 review fix: final trim AFTER the slice — a cut landing on a word
+      // boundary left a trailing space that every CSV restore trims away,
+      // drifting the key and breaking backup-round-trip dedup for that row.
+      const normDesc = String(tx.comment || '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60).trim();
+      key = 'fp:' + accountId + '|' + tx.date + '|' + tx.type + '|' + amountCents + '|' + normDesc;
+    }
+    keyCounts[key] = (keyCounts[key] || 0) + 1;
+    if (keyCounts[key] > 1) key += '#' + keyCounts[key];
+    tx.importKey = key;
+    return window.Store.hasImportKey(key);
+  },
+
+  // ── v1.00 bank statements: camt.053/052 + MT940 (docs/bank-import-plan.md §4) ─
+  // Structured statements skip the column-mapping step — their shape is fixed —
+  // and land on the same preview/dedup pipeline as bank CSVs. A parsed
+  // statement is { format, currency, entries: [{date 'YYYY-MM-DD', description,
+  // type 'income'|'expense', amount (absolute), bankRef}], openingBalance:
+  // {amount signed, date} | null, closingBalance: idem }.
+
+  // sniffFormat(text) → 'camt' | 'mt940' | 'csv'. Content sniff, not extension:
+  // banks hand out .txt/.sta/.xml interchangeably.
+  sniffFormat(text) {
+    const head = String(text || '').replace(/^\uFEFF/, '').slice(0, 4000);
+    if (/^\s*</.test(head) &&
+        (/BkToCstmrStmt|BkToCstmrAcctRpt/.test(head) || /urn:iso:std:iso:20022[^"']*camt/.test(head))) {
+      return 'camt';
+    }
+    // A SWIFT envelope ({1:...) or a :20:/:25: header tag plus any balance/
+    // entry tag; a CSV line can't start with ':60F:' style tags.
+    if ((/^\s*\{1:/.test(head) || /^:2[05][A-Z]?:/m.test(head)) && /^:6[0-2]/m.test(head)) {
+      return 'mt940';
+    }
+    return 'csv';
+  },
+
+  // camt.053 (BkToCstmrStmt > Stmt) and camt.052 (BkToCstmrAcctRpt > Rpt).
+  // Namespace-agnostic descendant lookups — banks ship several camt.05x.001.XX
+  // versions and the local names are stable across them.
+  parseCamt(xmlText) {
+    const doc = new DOMParser().parseFromString(String(xmlText).replace(/^\uFEFF/, ''), 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) throw new Error('invalid camt XML');
+    const kids = (el, name) => Array.prototype.slice.call(el.getElementsByTagNameNS('*', name));
+    const first = (el, name) => el.getElementsByTagNameNS('*', name)[0] || null;
+    const text = (el, name) => { const n = el && first(el, name); return n ? n.textContent.trim() : ''; };
+
+    const blocks = kids(doc, 'Stmt').concat(kids(doc, 'Rpt'));
+    if (!blocks.length) throw new Error('invalid camt XML');
+
+    const entries = [];
+    let currency = '';
+    let opening = null;
+    let closing = null;
+
+    blocks.forEach(stmt => {
+      kids(stmt, 'Bal').forEach(bal => {
+        const cd = text(bal, 'Cd');
+        const amtEl = first(bal, 'Amt');
+        if (!amtEl) return;
+        const amount = parseFloat(amtEl.textContent);
+        if (isNaN(amount)) return;
+        const sign = text(bal, 'CdtDbtInd') === 'DBIT' ? -1 : 1;
+        const dtEl = first(bal, 'Dt');
+        const rec = { amount: sign * amount, date: dtEl ? dtEl.textContent.trim().slice(0, 10) : '' };
+        // PRCD (previously closed booked) doubles as the opening balance in
+        // several bank dialects — accept it only when no true OPBD exists.
+        if (cd === 'OPBD' || (cd === 'PRCD' && !opening)) { if (cd === 'OPBD' || !opening) opening = rec; }
+        else if (cd === 'CLBD') closing = rec; // last CLBD across blocks wins
+        if (!currency && amtEl.getAttribute('Ccy')) currency = amtEl.getAttribute('Ccy');
+      });
+
+      kids(stmt, 'Ntry').forEach(ntry => {
+        // Schema order puts the entry-level Amt/CdtDbtInd before TxDtls, so
+        // the first descendant is the entry's own.
+        const amtEl = first(ntry, 'Amt');
+        const amount = amtEl ? parseFloat(amtEl.textContent) : NaN;
+        const type = text(ntry, 'CdtDbtInd') === 'DBIT' ? 'expense' : 'income';
+        const bookg = first(ntry, 'BookgDt');
+        const val = first(ntry, 'ValDt');
+        const date = ((bookg ? bookg.textContent : (val ? val.textContent : '')) || '').trim().slice(0, 10);
+
+        // Description: counterparty (creditor for money out, debtor for money
+        // in) + unstructured remittance, else the bank's own AddtlNtryInf.
+        const party = type === 'expense' ? text(first(ntry, 'Cdtr'), 'Nm') : text(first(ntry, 'Dbtr'), 'Nm');
+        const ustrd = kids(ntry, 'Ustrd').map(u => u.textContent.trim()).filter(Boolean).join(' ');
+        const description = [party, ustrd].filter(Boolean).join(' — ') || text(ntry, 'AddtlNtryInf');
+
+        // AcctSvcrRef is the bank's per-entry id (best dedup anchor);
+        // EndToEndId is next, but its 'NOTPROVIDED' filler means "none".
+        const svcRef = text(ntry, 'AcctSvcrRef');
+        let e2e = text(ntry, 'EndToEndId');
+        if (/^not\s*provided$/i.test(e2e)) e2e = '';
+        if (!currency && amtEl && amtEl.getAttribute('Ccy')) currency = amtEl.getAttribute('Ccy');
+
+        entries.push({
+          date: date,
+          description: description,
+          type: type,
+          amount: isNaN(amount) ? NaN : Math.abs(amount),
+          bankRef: svcRef || e2e
+        });
+      });
+    });
+
+    return { format: 'camt', currency: currency, entries: entries, openingBalance: opening, closingBalance: closing };
+  },
+
+  // MT940 (SWIFT customer statement). Line-tag parser: :60F:/:60M: opening,
+  // :61: entry, :86: narrative for the preceding :61:, :62F:/:62M: closing.
+  parseMT940(rawText) {
+    let s = String(rawText).replace(/^\uFEFF/, '');
+    // Unwrap SWIFT block 4 when the file carries the {1:...}{2:...}{4:...-} envelope.
+    const block4 = s.match(/\{4:\s*([\s\S]*?)-\}/);
+    if (block4) s = block4[1];
+
+    // Fold continuation lines (anything not starting a :NN: tag) into their tag.
+    const tags = [];
+    s.split(/\r?\n/).forEach(line => {
+      if (/^:[0-9]{2}[A-Z]?:/.test(line)) tags.push(line);
+      else if (tags.length && line.trim() !== '') tags[tags.length - 1] += '\n' + line;
+    });
+
+    const mtDate = (yymmdd) => {
+      const yy = parseInt(yymmdd.slice(0, 2), 10);
+      const year = yy > 79 ? 1900 + yy : 2000 + yy; // statements are 20xx in practice
+      return year + '-' + yymmdd.slice(2, 4) + '-' + yymmdd.slice(4, 6);
+    };
+    // :60F:/:62F: content: (C|D) YYMMDD CCY amount-with-comma-decimal
+    const parseBal = (content) => {
+      const m = content.trim().match(/^(C|D)(\d{6})([A-Z]{3})(\d+(?:,\d{0,2})?)/);
+      if (!m) return null;
+      return {
+        amount: (m[1] === 'D' ? -1 : 1) * parseFloat(m[4].replace(',', '.')),
+        date: mtDate(m[2]),
+        ccy: m[3]
+      };
+    };
+
+    const entries = [];
+    let currency = '';
+    let opening = null;
+    let closing = null;
+    let pending = null; // the last :61: waiting for its :86: narrative
+    const flush = () => { if (pending) { entries.push(pending); pending = null; } };
+
+    tags.forEach(t => {
+      const m = t.match(/^:(\d{2}[A-Z]?):([\s\S]*)$/);
+      if (!m) return;
+      const tag = m[1];
+      const content = m[2];
+
+      if (tag === '60F' || tag === '60M') {
+        const b = parseBal(content);
+        if (b) { if (!opening) opening = { amount: b.amount, date: b.date }; if (!currency) currency = b.ccy; }
+      } else if (tag === '62F' || tag === '62M') {
+        const b = parseBal(content);
+        if (b) { closing = { amount: b.amount, date: b.date }; if (!currency) currency = b.ccy; }
+      } else if (tag === '61') {
+        flush();
+        // :61:YYMMDD[MMDD](mark)[funds]amount[Ntype][ref][//bankref]
+        // Longer marks first — 'RC' must not half-match as 'C'.
+        const lm = content.match(/^(\d{6})(\d{4})?(RC|RD|EC|ED|C|D)([A-Z])?(\d+(?:,\d{0,2})?)([NSF][A-Z0-9]{3})?([\s\S]*)$/);
+        if (!lm) return; // unparseable line: skip rather than poison the file
+        const mark = lm[3];
+        // RC reverses a credit (money back out), ED is an expected debit.
+        const isDebit = mark === 'D' || mark === 'RC' || mark === 'ED';
+        const rest = (lm[7] || '').split('\n')[0];
+        const slash = rest.indexOf('//');
+        let ref = (slash !== -1 ? rest.slice(0, slash) : rest).trim();
+        const bankSide = slash !== -1 ? rest.slice(slash + 2).trim() : '';
+        if (/^NONREF$/i.test(ref)) ref = '';
+        pending = {
+          date: mtDate(lm[1]),
+          description: '',
+          type: isDebit ? 'expense' : 'income',
+          amount: parseFloat(lm[5].replace(',', '.')),
+          bankRef: ref || bankSide
+        };
+      } else if (tag === '86') {
+        if (pending) {
+          pending.description = this._mt940Narrative(content);
+          flush();
+        }
+        // a :86: with no pending :61: is statement-level info — ignore
+      }
+    });
+    flush();
+
+    if (!entries.length && !opening && !closing) throw new Error('invalid MT940 file');
+    return { format: 'mt940', currency: currency, entries: entries, openingBalance: opening, closingBalance: closing };
+  },
+
+  // :86: content. German/Dutch SEPA dialects pack ?NN subfields: ?20–?29 carry
+  // the remittance text, ?32/?33 the counterparty name — everything else
+  // (bank codes, account numbers) is noise for a description.
+  _mt940Narrative(content) {
+    const flat = content.replace(/\r?\n/g, ' ').trim();
+    if (flat.indexOf('?') === -1) return flat;
+    const segs = flat.split(/\?(\d{2})/);
+    const name = [];
+    const remit = [];
+    for (let i = 1; i < segs.length; i += 2) {
+      const code = segs[i];
+      const val = (segs[i + 1] || '').trim();
+      if (!val) continue;
+      if (code === '32' || code === '33') name.push(val);
+      else if (code >= '20' && code <= '29') remit.push(val);
+    }
+    const out = [name.join(' '), remit.join(' ')].filter(Boolean).join(' — ');
+    return out || flat;
+  },
+
+  // Statement → the same { items, stats } shape buildBankTransactions returns,
+  // so #import-preview and BATCH_IMPORT_BANK_TRANSACTIONS work unchanged.
+  buildStatementTransactions(statement, accountId) {
+    const items = [];
+    const stats = { total: statement.entries.length, ok: 0, duplicates: 0, errors: 0 };
+    const keyCounts = {};
+
+    statement.entries.forEach(e => {
+      const fail = (reason) => {
+        items.push({ tx: null, duplicate: false, error: reason });
+        stats.errors++;
+      };
+
+      const date = this._normalizeBankDate(e.date, 'ymd');
+      if (!date) { fail('unrecognised date format'); return; }
+      const amount = Math.abs(Number(e.amount));
+      if (!isFinite(amount) || amount === 0) { fail('invalid amount'); return; }
+
+      const tx = {
+        type: e.type === 'expense' ? 'expense' : 'income',
+        amount: amount,
+        accountId: accountId,
+        categoryId: '',
+        date: date,
+        comment: String(e.description || '').trim()
+      };
+      const duplicate = this._stampImportKey(tx, String(e.bankRef || '').trim(), accountId, keyCounts);
       items.push({ tx: tx, duplicate: duplicate, error: null });
       if (duplicate) stats.duplicates++;
       else stats.ok++;
@@ -761,6 +1001,15 @@ window.StackdImport = {
     reader.onload = (e) => {
       try {
         const csvText = e.target.result;
+        // v1.00: structured statements (camt.053/052 XML, MT940) are sniffed
+        // by CONTENT before any CSV parsing — banks hand out .txt/.sta/.xml
+        // interchangeably, so the extension proves nothing.
+        const fmt = this.sniffFormat(csvText);
+        if (fmt === 'camt' || fmt === 'mt940') {
+          const statement = fmt === 'camt' ? this.parseCamt(csvText) : this.parseMT940(csvText);
+          if (onComplete) onComplete({ kind: 'statement', statement: statement });
+          return;
+        }
         const rows = this.parseCSV(csvText);
         if (this.isLoanRows(rows)) {
           const { loans, stats } = this.buildLoans(rows);
