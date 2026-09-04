@@ -1,41 +1,55 @@
 // import.js - CSV Import Logic
 window.StackdImport = {
+  // v0.99: delimiter detection and the quoted-field row parser are shared
+  // between parseCSV (Stack'd backups) and analyzeBankCSV (arbitrary bank
+  // files) — extracted verbatim so both read a file identically.
+  _detectDelimiter(headerLine) {
+    // v0.99 review fix: a comma-delimited file whose QUOTED header cell
+    // contains ';' used to be mis-detected as semicolon-delimited. Parse the
+    // header with both candidates (quote-aware) and keep the one yielding
+    // more columns; a tie keeps the historical includes(';') preference.
+    const semi = this._parseRow(headerLine, ';').length;
+    const comma = this._parseRow(headerLine, ',').length;
+    if (semi !== comma) return semi > comma ? ';' : ',';
+    return headerLine.includes(';') ? ';' : ',';
+  },
+
+  // Simple CSV parser for quoted fields
+  _parseRow(rowStr, delimiter) {
+    const result = [];
+    let inQuotes = false;
+    let currCol = '';
+    for (let i = 0; i < rowStr.length; i++) {
+      const char = rowStr[i];
+      if (char === '"') {
+        if (inQuotes && rowStr[i + 1] === '"') {
+          currCol += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
+        result.push(currCol.trim());
+        currCol = '';
+      } else {
+        currCol += char;
+      }
+    }
+    result.push(currCol.trim());
+    return result;
+  },
+
   parseCSV(csvText) {
     const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) throw new Error("File is empty or missing headers");
 
-    const delimiter = lines[0].includes(';') ? ';' : ',';
-    
-    // Simple CSV parser for quoted fields
-    const parseRow = (rowStr) => {
-      const result = [];
-      let inQuotes = false;
-      let currCol = '';
-      for (let i = 0; i < rowStr.length; i++) {
-        const char = rowStr[i];
-        if (char === '"') {
-          if (inQuotes && rowStr[i + 1] === '"') {
-            currCol += '"';
-            i++;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (char === delimiter && !inQuotes) {
-          result.push(currCol.trim());
-          currCol = '';
-        } else {
-          currCol += char;
-        }
-      }
-      result.push(currCol.trim());
-      return result;
-    };
+    const delimiter = this._detectDelimiter(lines[0]);
 
     // v0.68: squash case, spaces and punctuation so 'Transfer Ref', 'transfer_ref'
     // and 'TransferRef' all land on the same key.
-    const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    const headers = this._parseRow(lines[0], delimiter).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
     return lines.slice(1).map(line => {
-      const values = parseRow(line);
+      const values = this._parseRow(line, delimiter);
       const row = {};
       headers.forEach((header, index) => {
         row[header] = values[index] !== undefined ? values[index] : '';
@@ -205,6 +219,14 @@ window.StackdImport = {
       const csvRef = String(row['transferref'] || '').trim();
       if (csvRef) tx._csvTransferRef = csvRef;
 
+      // v0.99: a backup of bank-imported rows carries their dedup identity —
+      // restore it verbatim so a later bank re-import still recognises them.
+      // No dedup happens here: restore semantics are unchanged.
+      const importKey = String(row['importkey'] || '').trim();
+      if (importKey) tx.importKey = importKey;
+      const bankRef = String(row['bankref'] || '').trim();
+      if (bankRef) tx.bankRef = bankRef;
+
       const recurrence = this._buildRecurrence(row, date);
       if (recurrence) tx.recurrence = recurrence;
 
@@ -355,6 +377,343 @@ window.StackdImport = {
     return { loans: loans, stats: stats };
   },
 
+  // v0.99 ── bank statements (docs/bank-import-plan.md §3) ──────────────────
+  // An arbitrary bank CSV has no known headers, so nothing here keys rows by
+  // header name — everything is a zero-based column INDEX into the parsed
+  // rows (headers may be empty or duplicated in the wild).
+
+  // Header hint word lists for the mapping guess. Substring-matched against
+  // the squashed (lowercase, alphanumeric-only) header label; the very short
+  // tokens ('af', 'bij', 'ref', 'id') match only as whole squashed labels or
+  // whole words, or they'd fire on half the alphabet.
+  _BANK_DEBIT_HINTS: ['debit', 'dare', 'addebito', 'uscite', 'soll', 'debito', 'cargo', 'af'],
+  _BANK_CREDIT_HINTS: ['credit', 'avere', 'accredito', 'entrate', 'haben', 'credito', 'abono', 'bij'],
+  _BANK_DESC_HINTS: ['description', 'descrizione', 'causale', 'libelle', 'concepto',
+    'descripcion', 'beschreibung', 'omschrijving', 'details', 'narrative', 'memo',
+    'oggetto', 'payee', 'beneficiario'],
+  _BANK_REF_HINTS: ['reference', 'riferimento', 'referencia', 'ref', 'transactionid', 'operazione', 'id'],
+
+  _headerHasHint(label, hints) {
+    const squashed = String(label || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const words = String(label || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    return hints.some(h => h.length <= 3
+      ? (squashed === h || words.indexOf(h) !== -1)
+      : squashed.includes(h));
+  },
+
+  // parseBankAmount(raw, decimal) → Number or null.
+  // decimal: 'comma' (1.234,56), 'dot' (1,234.56) or 'auto'. Strips currency
+  // symbols/letters, every space flavour (regular/NBSP/thin/narrow) and
+  // apostrophe thousands (Swiss 1'234.56). Trailing minus ('123,45-') and
+  // parentheses ('(12,34)') mean negative. Empty/garbage → null.
+  parseBankAmount(raw, decimal) {
+    if (raw === null || raw === undefined) return null;
+    let s = String(raw).trim();
+    if (s === '') return null;
+
+    // v0.99 review fix: some exports use the Unicode minus (U+2212).
+    s = s.replace(/−/g, '-');
+
+    let negative = false;
+    const paren = s.match(/^\((.*)\)$/);
+    if (paren) { negative = true; s = paren[1].trim(); }
+    if (/-\s*$/.test(s)) { negative = true; s = s.replace(/-\s*$/, '').trim(); }
+    if (s.charAt(0) === '-') { negative = true; s = s.slice(1).trim(); }
+    if (s.charAt(0) === '+') { s = s.slice(1).trim(); }
+    // v0.99 review fix: 'EUR -45,90' / '€-45,90' — a minus sitting between a
+    // currency prefix and the digits was stripped along with the symbol below,
+    // silently flipping debits into income. Any '-' before the first digit
+    // counts as the sign.
+    const firstDigit = s.search(/\d/);
+    if (firstDigit > 0 && s.slice(0, firstDigit).indexOf('-') !== -1) { negative = true; }
+
+    // Keep only digits and the two possible separators; this drops currency
+    // symbols, letters, all space variants and apostrophes in one go.
+    s = s.replace(/[^0-9.,]/g, '');
+    if (!/\d/.test(s)) return null;
+
+    const countOf = (str, ch) => str.split(ch).length - 1;
+    let normalized;
+    if (decimal === 'comma') {
+      // Dots (and the already-stripped apostrophes/spaces) are thousands.
+      s = s.replace(/\./g, '');
+      if (countOf(s, ',') > 1) return null;
+      normalized = s.replace(',', '.');
+    } else if (decimal === 'dot') {
+      s = s.replace(/,/g, '');
+      if (countOf(s, '.') > 1) return null;
+      normalized = s;
+    } else {
+      // 'auto': with both separators present the RIGHTMOST is the decimal;
+      // a lone separator is a decimal only when followed by exactly 1-2
+      // trailing digits, otherwise it's a thousands separator.
+      const lastDot = s.lastIndexOf('.');
+      const lastComma = s.lastIndexOf(',');
+      if (lastDot !== -1 && lastComma !== -1) {
+        if (lastDot > lastComma) {
+          s = s.replace(/,/g, '');
+          if (countOf(s, '.') > 1) return null;
+          normalized = s;
+        } else {
+          s = s.replace(/\./g, '');
+          if (countOf(s, ',') > 1) return null;
+          normalized = s.replace(',', '.');
+        }
+      } else if (lastDot !== -1 || lastComma !== -1) {
+        const sep = lastDot !== -1 ? '.' : ',';
+        const isDecimal = countOf(s, sep) === 1 && /[.,]\d{1,2}$/.test(s);
+        normalized = isDecimal
+          ? s.replace(sep, '.')
+          : s.split(sep).join('');
+      } else {
+        normalized = s;
+      }
+    }
+
+    const n = parseFloat(normalized);
+    if (isNaN(n)) return null;
+    return negative ? -n : n;
+  },
+
+  // _normalizeBankDate(raw, fmt) → 'YYYY-MM-DD' or null. Unlike the backup
+  // importer's _normalizeDate this never guesses the token order — the user
+  // picked fmt ('dmy'|'mdy'|'ymd') in the mapping view. 2-digit years → 20xx.
+  _normalizeBankDate(raw, fmt) {
+    if (raw === null || raw === undefined) return null;
+    const str = String(raw).trim().split(/[T ]/)[0];
+    const m = str.match(/^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$/);
+    if (!m) return null;
+
+    let y, mo, d;
+    if (fmt === 'ymd') { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if (fmt === 'mdy') { mo = +m[1]; d = +m[2]; y = +m[3]; }
+    else { d = +m[1]; mo = +m[2]; y = +m[3]; }
+
+    if (y < 100) y += 2000;
+    if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  },
+
+  _looksLikeBankDate(raw) {
+    const str = String(raw).trim().split(/[T ]/)[0];
+    return /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$/.test(str);
+  },
+
+  // analyzeBankCSV(csvText) → { headerLabels, rowsRaw, columns, signature, guess }.
+  // Parses once with the shared quoted-CSV logic, then builds a best-effort
+  // mapping guess (-1 for anything not confidently detected) that the mapping
+  // view presents for correction.
+  analyzeBankCSV(csvText) {
+    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+    if (lines.length < 2) throw new Error("File is empty or missing headers");
+
+    const delimiter = this._detectDelimiter(lines[0]);
+    const headerLabels = this._parseRow(lines[0], delimiter);
+    const rowsRaw = lines.slice(1).map(line => this._parseRow(line, delimiter));
+
+    const columns = headerLabels.map((label, index) => {
+      const samples = [];
+      for (let r = 0; r < rowsRaw.length && samples.length < 3; r++) {
+        const v = rowsRaw[r][index];
+        if (v !== undefined && String(v).trim() !== '') samples.push(v);
+      }
+      return { index: index, label: label, samples: samples };
+    });
+
+    // Same squash as the backup importer's header keys, so a bank's layout is
+    // recognised again regardless of casing/punctuation drift.
+    const signature = headerLabels
+      .map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''))
+      .join('|');
+
+    return {
+      headerLabels: headerLabels,
+      rowsRaw: rowsRaw,
+      columns: columns,
+      signature: signature,
+      guess: this._guessBankMapping(headerLabels, rowsRaw)
+    };
+  },
+
+  _guessBankMapping(headerLabels, rowsRaw) {
+    const guess = {
+      date: -1, description: -1, amountMode: 'single',
+      amount: -1, debit: -1, credit: -1, bankRef: -1,
+      dateFormat: 'dmy', decimal: 'auto'
+    };
+    // Sample the head of the file; enough signal without scanning 10k rows.
+    const sample = rowsRaw.slice(0, 50);
+    const nonEmpty = (colIdx) => sample
+      .map(row => row[colIdx])
+      .filter(v => v !== undefined && String(v).trim() !== '');
+
+    // Date: first column where >= 80% of non-empty sampled values are
+    // date-shaped. Remember every date-shaped column so value/booking date
+    // twins don't get mistaken for amounts below.
+    const dateShaped = [];
+    headerLabels.forEach((label, i) => {
+      const vals = nonEmpty(i);
+      if (!vals.length) return;
+      const hits = vals.filter(v => this._looksLikeBankDate(v)).length;
+      if (hits / vals.length >= 0.8) {
+        dateShaped.push(i);
+        if (guess.date === -1) guess.date = i;
+      }
+    });
+
+    // dateFormat from the guessed date column's tokens: a 4-digit FIRST token
+    // is year-first; a first token > 12 can only be a day; a second token > 12
+    // can only be a day (so month-first); otherwise default 'dmy' — EU app.
+    if (guess.date !== -1) {
+      let firstOver12 = false, secondOver12 = false, yearFirst = false;
+      nonEmpty(guess.date).forEach(v => {
+        const m = String(v).trim().split(/[T ]/)[0].match(/^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$/);
+        if (!m) return;
+        if (m[1].length === 4) yearFirst = true;
+        if (+m[1] > 12) firstOver12 = true;
+        if (+m[2] > 12) secondOver12 = true;
+      });
+      guess.dateFormat = yearFirst ? 'ymd' : (firstOver12 ? 'dmy' : (secondOver12 ? 'mdy' : 'dmy'));
+    }
+
+    // Numeric candidates: >= 80% of non-empty sampled values parse as amounts
+    // (date-shaped columns excluded — '12.03.2026' parses as a number too).
+    const numeric = [];
+    headerLabels.forEach((label, i) => {
+      if (dateShaped.indexOf(i) !== -1) return;
+      const vals = nonEmpty(i);
+      if (!vals.length) return;
+      const parsed = vals.map(v => this.parseBankAmount(v, 'auto'));
+      const hits = parsed.filter(n => n !== null).length;
+      if (hits / vals.length >= 0.8) {
+        numeric.push({
+          index: i,
+          hasNeg: parsed.some(n => n !== null && n < 0),
+          hasPos: parsed.some(n => n !== null && n > 0)
+        });
+      }
+    });
+
+    if (numeric.length === 1) {
+      guess.amountMode = 'single';
+      guess.amount = numeric[0].index;
+    } else if (numeric.length >= 2) {
+      const debitCol = numeric.find(c => this._headerHasHint(headerLabels[c.index], this._BANK_DEBIT_HINTS));
+      const creditCol = numeric.find(c => c !== debitCol && this._headerHasHint(headerLabels[c.index], this._BANK_CREDIT_HINTS));
+      if (debitCol && creditCol) {
+        guess.amountMode = 'split';
+        guess.debit = debitCol.index;
+        guess.credit = creditCol.index;
+      } else {
+        guess.amountMode = 'single';
+        const signed = numeric.find(c => c.hasNeg && c.hasPos);
+        guess.amount = (signed || numeric[0]).index;
+      }
+    }
+
+    // Description: among the remaining columns a header hint wins; otherwise
+    // the longest average text length (bank descriptions dwarf everything else).
+    const taken = [guess.date, guess.amount, guess.debit, guess.credit];
+    const remaining = headerLabels
+      .map((label, i) => i)
+      .filter(i => taken.indexOf(i) === -1);
+    const hinted = remaining.filter(i => this._headerHasHint(headerLabels[i], this._BANK_DESC_HINTS));
+    const pool = hinted.length ? hinted : remaining;
+    let bestAvg = 0;
+    pool.forEach(i => {
+      const vals = nonEmpty(i);
+      if (!vals.length) return;
+      const avg = vals.reduce((sum, v) => sum + String(v).length, 0) / vals.length;
+      if (avg > bestAvg) { bestAvg = avg; guess.description = i; }
+    });
+
+    // Bank reference: only on a strong header hint — guessing wrong here would
+    // silently weaken dedup (a non-unique column becomes the importKey).
+    const refPool = remaining.filter(i => i !== guess.description);
+    const refHit = refPool.find(i => this._headerHasHint(headerLabels[i], this._BANK_REF_HINTS));
+    if (refHit !== undefined) guess.bankRef = refHit;
+
+    return guess;
+  },
+
+  // buildBankTransactions(rowsRaw, mapping, accountId) → { items, stats }.
+  // items preserve row order; each is { tx, duplicate, error } where error
+  // rows have tx: null. Every parseable row gets a deterministic importKey —
+  // 'ref:' when a bank reference is mapped and present, else a fingerprint —
+  // so re-importing the same statement dedups against the store.
+  buildBankTransactions(rowsRaw, mapping, accountId) {
+    const items = [];
+    const stats = { total: rowsRaw.length, ok: 0, duplicates: 0, errors: 0 };
+    // Intra-file twins (same day, amount and description) get '#2', '#3'…
+    // appended in row order — deterministic, so a re-import of the same file
+    // regenerates identical keys and still dedups.
+    const keyCounts = {};
+
+    rowsRaw.forEach(row => {
+      const fail = (reason) => {
+        items.push({ tx: null, duplicate: false, error: reason });
+        stats.errors++;
+      };
+
+      const date = this._normalizeBankDate(row[mapping.date], mapping.dateFormat);
+      if (!date) { fail('unrecognised date format'); return; }
+
+      const description = String(row[mapping.description] !== undefined ? row[mapping.description] : '').trim();
+
+      let type, amount;
+      if (mapping.amountMode === 'split') {
+        const debit = mapping.debit >= 0 ? this.parseBankAmount(row[mapping.debit], mapping.decimal) : null;
+        const credit = mapping.credit >= 0 ? this.parseBankAmount(row[mapping.credit], mapping.decimal) : null;
+        if (debit !== null && debit !== 0) { type = 'expense'; amount = Math.abs(debit); }
+        else if (credit !== null && credit !== 0) { type = 'income'; amount = Math.abs(credit); }
+        else { fail('missing amount'); return; }
+      } else {
+        const parsed = this.parseBankAmount(row[mapping.amount], mapping.decimal);
+        if (parsed === null || parsed === 0) { fail('invalid amount'); return; }
+        type = parsed < 0 ? 'expense' : 'income';
+        amount = Math.abs(parsed);
+      }
+
+      const tx = {
+        type: type,
+        amount: amount,
+        accountId: accountId,
+        categoryId: '',
+        date: date,
+        comment: description
+      };
+
+      const bankRef = mapping.bankRef >= 0
+        ? String(row[mapping.bankRef] !== undefined ? row[mapping.bankRef] : '').trim()
+        : '';
+      let key;
+      if (bankRef) {
+        tx.bankRef = bankRef;
+        // v0.99 review fix: escape the ref inside the key ('%'→'%25','#'→'%23')
+        // so a literal ref ending in '#2' can't collide with a '#n' twin suffix.
+        key = 'ref:' + accountId + '|' + bankRef.replace(/%/g, '%25').replace(/#/g, '%23');
+      } else {
+        const amountCents = Math.round(amount * 100);
+        // v0.99 review fix: final trim AFTER the slice — a cut landing on a word
+        // boundary left a trailing space that every CSV restore trims away,
+        // drifting the key and breaking backup-round-trip dedup for that row.
+        const normDesc = description.toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60).trim();
+        key = 'fp:' + accountId + '|' + date + '|' + type + '|' + amountCents + '|' + normDesc;
+      }
+      keyCounts[key] = (keyCounts[key] || 0) + 1;
+      if (keyCounts[key] > 1) key += '#' + keyCounts[key];
+      tx.importKey = key;
+
+      const duplicate = window.Store.hasImportKey(key);
+      items.push({ tx: tx, duplicate: duplicate, error: null });
+      if (duplicate) stats.duplicates++;
+      else stats.ok++;
+    });
+
+    return { items: items, stats: stats };
+  },
+
   importLoans(file, state, onComplete, onError) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -394,22 +753,43 @@ window.StackdImport = {
   // v0.71: one entry point for the single "Import CSV" button — reads the file
   // once and routes on its shape, so a loans export doesn't get parsed as
   // transactions (which would skip every row for a missing date/amount).
+  // v0.99: a third route — anything that is neither a loans export nor a
+  // Stack'd backup is handed back as a bank statement ({ kind: 'bank' }) for
+  // the column-mapping flow; the file itself is never imported blind.
   importCSV(file, state, onComplete, onError) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const rows = this.parseCSV(e.target.result);
+        const csvText = e.target.result;
+        const rows = this.parseCSV(csvText);
         if (this.isLoanRows(rows)) {
           const { loans, stats } = this.buildLoans(rows);
           loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
           if (onComplete) onComplete({ ...stats, kind: 'loans' });
           return;
         }
-        const { transactions, stats } = this.buildTransactions(rows);
-        if (transactions.length > 0) {
-          window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions });
+        // A Stack'd backup is recognised by its own headers; parseCSV squashed
+        // them, so presence-of-key is the check (values may be empty).
+        const first = rows[0] || {};
+        const isBackup = ['date', 'amount', 'account', 'type']
+          .every(k => Object.prototype.hasOwnProperty.call(first, k));
+        if (isBackup) {
+          const { transactions, stats } = this.buildTransactions(rows);
+          if (transactions.length > 0) {
+            window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions });
+          }
+          if (onComplete) onComplete({ ...stats, kind: 'transactions' });
+          return;
         }
-        if (onComplete) onComplete({ ...stats, kind: 'transactions' });
+        // Bank candidate: needs at least two RAW columns (the squashed row
+        // keys can collapse duplicate/empty headers) and one data row.
+        const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+        const rawCols = this._parseRow(lines[0], this._detectDelimiter(lines[0]));
+        if (rawCols.length >= 2 && rows.length >= 1) {
+          if (onComplete) onComplete({ kind: 'bank', csvText: csvText });
+          return;
+        }
+        if (onError) onError(new Error('unrecognised file'));
       } catch (err) {
         if (onError) onError(err);
       }

@@ -459,6 +459,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'debt-results':
         viewModule = window.Views.DebtResultsView;
         break;
+      case 'import-map': // v0.99: bank-statement import mapping
+        viewModule = window.Views.ImportMapView;
+        break;
+      case 'import-preview': // v0.99: bank-statement import review
+        viewModule = window.Views.ImportPreviewView;
+        break;
       default:
         viewModule = window.Views.DashboardView;
     }

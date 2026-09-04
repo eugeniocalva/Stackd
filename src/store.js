@@ -142,6 +142,13 @@ window.Store = {
     // as isSelectionMode — it must not survive a reload or a tab switch.
     widgetEditMode: false,
 
+    // ── Bank import presets (v0.99, docs/bank-import-plan.md §3) ────────────
+    // Record shape: { id, signature, mapping, createdAt, updatedAt }.
+    // signature = the file's squashed header labels joined with '|', so a
+    // returning bank layout is recognised and its column mapping pre-applied.
+    // Capped at 20 (evict smallest updatedAt) in SAVE_IMPORT_PRESET.
+    importPresets: [],
+
     initialized: false
   },
 
@@ -174,6 +181,7 @@ window.Store = {
     } else {
       this.state.homeWidgets = window.StackdDB.load('homeWidgets', []);
     }
+    this.state.importPresets = window.StackdDB.load('importPresets', []); // v0.99
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -405,6 +413,7 @@ window.Store = {
         if (e.key === 'stackd_v1_language') { this.state.language = window.StackdDB.load('language', 'en'); if (window.I18n) window.I18n.setLang(this.state.language); changed = true; } // v0.86 P8a
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
+        if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -432,6 +441,7 @@ window.Store = {
     // memoized indexes here too (dispatch already does).
     this._openingIdx = null;
     this._budgetSpendIdx = null;
+    this._importKeyIdx = null; // v0.99
   },
 
   // ── Theme State Management & Detection ────────────────────────────────────
@@ -953,6 +963,7 @@ window.Store = {
     // indexes; they rebuild lazily in one O(T) pass on next use.
     this._openingIdx = null;
     this._budgetSpendIdx = null;
+    this._importKeyIdx = null; // v0.99
     let changed = false;
 
     switch (action) {
@@ -1753,6 +1764,66 @@ window.Store = {
         break;
       }
 
+      case 'BATCH_IMPORT_BANK_TRANSACTIONS': {
+        // v0.99: bank-statement import (docs/bank-import-plan.md §3). Unlike
+        // the backup restore above, this is idempotent: every row must carry
+        // an importKey and is dropped when the key already exists — the
+        // preview marks duplicates, but the store is the last line of defence
+        // against a double-tapped Confirm or a stale preview.
+        const idx = this._ensureImportKeyIdx();
+        const importTime = this._getSystemTimeString();
+        const accepted = [];
+        payload.transactions.forEach(t => {
+          if (!t.importKey || idx.has(t.importKey)) return;
+          idx.add(t.importKey); // intra-batch twins already carry '#n' suffixes
+          accepted.push({
+            id: window.StackdDB.generateId(),
+            time: t.time || importTime,
+            ...t,
+            createdAt: t.createdAt || new Date().toISOString()
+          });
+        });
+        if (accepted.length) {
+          this.state.transactions.push(...accepted);
+          this._sortTransactions();
+          window.StackdDB.save('transactions', this.state.transactions);
+          changed = true;
+        }
+        break;
+      }
+
+      case 'SAVE_IMPORT_PRESET': {
+        // v0.99: remember a bank file's column mapping by header signature so
+        // the next statement from the same bank opens pre-mapped.
+        if (!payload || !payload.signature || !payload.mapping) break;
+        const now = new Date().toISOString();
+        const presets = this.state.importPresets || (this.state.importPresets = []);
+        const existing = presets.find(p => p.signature === payload.signature);
+        if (existing) {
+          existing.mapping = payload.mapping;
+          existing.updatedAt = now;
+        } else {
+          presets.push({
+            id: window.StackdDB.generateId(),
+            signature: payload.signature,
+            mapping: payload.mapping,
+            createdAt: now,
+            updatedAt: now
+          });
+          // Cap at 20: evict the least-recently-used layout, not the oldest.
+          while (presets.length > 20) {
+            let oldest = 0;
+            presets.forEach((p, i) => {
+              if ((p.updatedAt || '') < (presets[oldest].updatedAt || '')) oldest = i;
+            });
+            presets.splice(oldest, 1);
+          }
+        }
+        window.StackdDB.save('importPresets', presets);
+        changed = true;
+        break;
+      }
+
       case 'ADD_CATEGORY': {
         const newCategory = {
           id: payload.id || window.StackdDB.generateId(),
@@ -1919,6 +1990,7 @@ window.Store = {
         window.StackdDB.save('transactions', []);
         window.StackdDB.save('budgets', []);
         window.StackdDB.save('loans', []);
+        window.StackdDB.save('importPresets', []); // v0.99
         // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
         // comes back (Recent Activities no longer exists outside the widgets).
         this.state.homeWidgets = this._defaultHomeWidgets();
@@ -2253,6 +2325,24 @@ window.Store = {
     const obDate = this.getAccountOpeningDate(tx.accountId);
     if (!obDate) return false;
     return tx.date < obDate;
+  },
+
+  // v0.99: bank-import dedup index — every non-empty importKey in one Set.
+  // Same lifecycle as _openingIdx/_budgetSpendIdx: dropped on every
+  // dispatch/_sortData, rebuilt lazily in one O(T) pass.
+  _ensureImportKeyIdx() {
+    let idx = this._importKeyIdx;
+    if (!idx) {
+      idx = this._importKeyIdx = new Set();
+      for (const t of this.state.transactions) {
+        if (t.importKey) idx.add(t.importKey);
+      }
+    }
+    return idx;
+  },
+
+  hasImportKey(key) {
+    return this._ensureImportKeyIdx().has(key);
   },
 
   getAccountBalance(accountId) {

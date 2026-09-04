@@ -16,7 +16,9 @@ window.Router = {
     '#edit-category': 'edit-category',
     '#debt': 'debt',
     '#debt-sim': 'debt-sim',
-    '#debt-results': 'debt-results'
+    '#debt-results': 'debt-results',
+    '#import-map': 'import-map', // v0.99: bank-statement column mapping
+    '#import-preview': 'import-preview' // v0.99: bank-statement review & confirm
   },
 
   // Returns query params parsed from the current hash, e.g. { account: 'abc123' }

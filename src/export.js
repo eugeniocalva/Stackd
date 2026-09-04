@@ -91,7 +91,7 @@ window.StackdExport = {
   // reached the store silently broke all of it.
   TX_HEADERS: ['Date', 'Time', 'Type', 'Amount', 'Account', 'Category', 'Note', 'Tags',
     'IsPaid', 'TransferRef', 'SeriesId', 'Interval', 'Frequency', 'StartDate', 'EndDate',
-    'NextDate', 'PropagateTags'],
+    'NextDate', 'PropagateTags', 'ImportKey', 'BankRef'], // v0.99: bank-import dedup identity survives backup round-trips
 
   exportTransactions(state, options = {}) {
     const delimiter = options.delimiter || ',';
@@ -134,7 +134,9 @@ window.StackdExport = {
         // CLAUDE.md. Preserving which member is armed is what keeps a restored
         // series generating from the right slot instead of duplicating.
         this._formatDate(rec.nextDate, dateFormat),
-        rec.seriesId ? (rec.propagateTags === false ? 'false' : 'true') : ''
+        rec.seriesId ? (rec.propagateTags === false ? 'false' : 'true') : '',
+        t.importKey || '', // v0.99
+        t.bankRef || ''
       ], delimiter);
     });
 

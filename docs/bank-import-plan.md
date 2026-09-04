@@ -1,6 +1,7 @@
 # Bank File Import Plan (Option A) — "Works with every bank in Europe"
 
-> Status: **DRAFT — not started.** This is the cold-start reference for the
+> Status: **Phase 1 SHIPPED as v0.99 (2026-09-03)** — see §3f "as built" below.
+> Phases 2–5 not started. This is the cold-start reference for the
 > bank-statement import feature. Read it before touching import code, the same
 > way `docs/debt-rebuild-plan.md` is the reference for loans.
 
@@ -102,6 +103,61 @@ object, not in the store.
   never `transferRef` (phase 5 may pair them later).
 - Store `importKey` and (when available) `bankRef` on the transaction; both
   are inert everywhere else in the app.
+
+### 3f. Phase 1 as built (v0.99, 2026-09-03)
+
+Shipped per §3 with these concrete decisions (the code is the authority;
+this records the deltas and specifics a cold start needs):
+
+- **Mapping is index-based, not header-key-based.** Bank CSVs can have empty
+  or duplicated headers, so a mapping stores zero-based column indexes
+  (`{date, description, amountMode: 'single'|'split', amount, debit, credit,
+  bankRef, dateFormat: 'dmy'|'mdy'|'ymd', decimal: 'auto'|'comma'|'dot'}`,
+  `-1` = unmapped). `StackdImport.analyzeBankCSV(csvText)` returns
+  `{headerLabels, rowsRaw, columns (index/label/samples), signature, guess}`;
+  `buildBankTransactions(rowsRaw, mapping, accountId)` returns
+  `{items: [{tx, duplicate, error}], stats}`. The preset `signature` is the
+  squashed header labels joined with `|`.
+- **importKey exactly as §3.1**, with `type` included in the fingerprint:
+  `fp:<accountId>|<date>|<type>|<amountCents>|<normDesc(60, trimmed after
+  slice)>`, `ref:` when a reference column is mapped (the ref is escaped
+  inside the key — `%`→`%25`, `#`→`%23` — so a literal ref ending in `#2`
+  can't collide with a twin suffix), `#n` ordinals for intra-file twins.
+  Dedup is
+  enforced twice: preview flags duplicates (not selectable — a flagged
+  duplicate cannot be force-imported), and `BATCH_IMPORT_BANK_TRANSACTIONS`
+  skips keys already present (third lazy index `_importKeyIdx`, same
+  lifecycle as `_openingIdx`; public `Store.hasImportKey`).
+- **Routing:** `importCSV` order is loans → Stack'd backup (first row has
+  `date`+`amount`+`account`+`type` headers) → bank (`{kind:'bank', csvText}`
+  to the caller) → error. The backup-restore path is unchanged (no dedup) but
+  round-trips `ImportKey`/`BankRef`, now the last two `TX_HEADERS` columns.
+- **Views:** `Views._ImportShared.draft` (the `_DebtShared` pattern) carries
+  the flow across `#import-map` → `#import-preview`; both views guard a null
+  draft with an empty-state card. Preset hit = exact signature match with
+  per-index validation, falling back to the fresh guess. The preview list is
+  one joined string with a single delegated listener; checkbox toggles patch
+  `items[i].include` and update the summary/confirm labels in place (no
+  dispatch, no re-render). `SAVE_IMPORT_PRESET` upserts by signature, caps
+  the slice at 20 by evicting the smallest `updatedAt`. `RESET_APP` clears
+  `stackd_v1_importPresets`; the slice is cross-tab synced and (house
+  convention) NOT in the CSV backup.
+- **Amount parsing** handles decimal comma/dot with auto-detection
+  (rightmost separator wins when both present; a lone separator is decimal
+  only with 1–2 trailing digits), Swiss `1'234.56`, NBSP/thin spaces,
+  trailing minus, and parentheses negatives. Date-shaped columns are excluded
+  from amount-column guessing; short debit/credit header hints (`af`, `bij`,
+  `ref`, `id`) match whole words only.
+- **i18n:** 45 `bankImport.*` keys + 4 new `terms.*` keys + 7 edited keys, in
+  all five dictionaries; `TERMS_IDS` gained `importAccuracy` (after
+  `notAdvice`) and `thirdParties` (before `changes`); `terms.updatedDate` →
+  September 3, 2026 (§9 landed with this phase, as planned).
+- **Tests:** `tests/unit/bankImport.test.js` (20 tests: parser table, guess
+  heuristics, key formats/ordinals, dispatch dedup, preset upsert/cap,
+  RESET_APP, backup round-trip) and `tests/e2e/bank_import.spec.js` (full
+  mapping→preview→import flow on a semicolon/decimal-comma Italian CSV, then
+  re-import showing both rows as non-selectable duplicates). First
+  `setInputFiles` usage in the e2e suite.
 
 ## 4. Phase 2 — camt.053 / MT940 parsers + balance reconciliation
 

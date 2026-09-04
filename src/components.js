@@ -477,7 +477,7 @@ window.Components = {
   // content; reuses the #active-modal id so Modal.hide() owns the teardown.
   TermsModal: {
     // v0.91 P8f: clause ids only; every heading and body is a dictionary key.
-    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'yourData', 'noWarranty', 'liability', 'changes'],
+    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'importAccuracy', 'yourData', 'noWarranty', 'liability', 'thirdParties', 'changes'], // v0.99: bank-import clauses (imported data accuracy + third-party names)
     PRIVACY_IDS: ['short', 'whatStored', 'whatNot', 'gdpr', 'rights', 'security', 'children', 'contact', 'changes'],
 
     show() {

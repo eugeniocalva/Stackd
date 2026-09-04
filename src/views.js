@@ -10,6 +10,13 @@ function escapeAttr(value) {
   }[c]));
 }
 
+// v0.99: HTML-escaper for element CONTENT — user-derived text (bank statement
+// descriptions, file names) landing in innerHTML. Same table as escapeAttr;
+// the distinct name keeps call sites honest about context.
+function esc(text) {
+  return escapeAttr(text);
+}
+
 function createCategoryOptions(categories, selectedId, includeDefaultOption = true) {
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
@@ -3415,6 +3422,21 @@ Object.assign(window.Views, {
             // v0.71: importCSV routes on the file's shape, so the same button
             // accepts a transactions export or a loans export.
             window.StackdImport.importCSV(file, state, (result) => {
+              // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
+              // export) routes to the column-mapping flow instead of the direct
+              // restore path (docs/bank-import-plan.md §3).
+              if (result.kind === 'bank') {
+                if (!state.accounts || state.accounts.length === 0) {
+                  alert(window.I18n.t('bankImport.noAccounts'));
+                } else {
+                  window.Views._ImportShared.start(result.csvText, file.name, state);
+                  window.Router.navigate('#import-map');
+                }
+                btnImport.textContent = window.I18n.t('others.importCsv');
+                btnImport.disabled = false;
+                fileInput.value = ''; // reset
+                return;
+              }
               // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
               // rows) used to vanish silently — report them.
               let message = result.kind === 'loans'
@@ -4816,6 +4838,409 @@ Object.assign(window.Views, {
           if (window.StackdHydrateIcons) window.StackdHydrateIcons();
         });
       }
+    }
+  },
+
+  // ── Bank statement import (v0.99, docs/bank-import-plan.md §3) ────────────
+  // Shared working draft for the two-step map → preview flow. Mirrors the
+  // _DebtShared.draft pattern: it lives outside the store so wholesale
+  // re-renders can't wipe user input, survives the map ⇄ preview round trip,
+  // and is cleared by either ✕ and after a confirmed import.
+  _ImportShared: {
+    draft: null,
+
+    start(csvText, fileName, state) {
+      const analysis = window.StackdImport.analyzeBankCSV(csvText);
+      let mapping = { ...analysis.guess };
+      let presetApplied = false;
+      // Presets match by exact header signature; a stored mapping is only
+      // trusted when every column index still fits this file's width —
+      // otherwise fall back to the fresh guess.
+      const preset = (state.importPresets || []).find(p => p.signature === analysis.signature);
+      if (preset && preset.mapping) {
+        const n = analysis.headerLabels.length;
+        const okIdx = (v) => Number.isInteger(v) && v >= -1 && v < n;
+        const pm = preset.mapping;
+        if (okIdx(pm.date) && okIdx(pm.description) && okIdx(pm.amount) && okIdx(pm.debit) && okIdx(pm.credit) && okIdx(pm.bankRef)) {
+          mapping = { ...pm };
+          presetApplied = true;
+        }
+      }
+      // v0.99 review fix: a defaultAccountId pointing at a deleted account made
+      // the select LOOK like the first real account while the whole import
+      // landed on the dead id — only trust it when the account still exists.
+      const accs = state.accounts || [];
+      const accountId = (state.defaultAccountId && accs.some(a => a.id === state.defaultAccountId))
+        ? state.defaultAccountId
+        : (accs[0] ? accs[0].id : '');
+      this.draft = {
+        fileName: fileName,
+        analysis: analysis,
+        mapping: mapping,
+        presetApplied: presetApplied,
+        accountId: accountId,
+        items: null,
+        stats: null,
+        itemsStale: false
+      };
+    },
+
+    clear() { this.draft = null; },
+
+    // Both import views share the "nothing to resume" guard card (deep link /
+    // reload lands here with no draft to show).
+    emptyState() {
+      return `
+        <div class="container" style="padding-bottom: 100px;">
+          <div class="card" style="text-align: center; padding: var(--space-6) var(--space-4); margin-top: var(--space-6);">
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.noSession')}</div>
+            <a href="#settings" class="btn btn-secondary" style="text-decoration: none;">${window.I18n.t('bankImport.backToSettings')}</a>
+          </div>
+        </div>`;
+    },
+
+    // Same sign convention as Components.TransactionItem: sign + abs amount.
+    signedAmount(tx) {
+      return (tx.type === 'expense' ? '-' : '+') + window.Store.formatCurrency(tx.amount);
+    },
+
+    // v0.99 review fix: parser reasons are stable English tokens (data layer,
+    // same convention as stats.skipped) — localize them at render time only.
+    errorLabel(reason) {
+      const keys = {
+        'unrecognised date format': 'bankImport.errDate',
+        'invalid amount': 'bankImport.errAmount',
+        'missing amount': 'bankImport.errMissing'
+      };
+      return keys[reason] ? window.I18n.t(keys[reason]) : esc(reason || '');
+    }
+  },
+
+  // ── Column mapping (#import-map) ──────────────────────────────────────────
+  ImportMapView: {
+    render(state) {
+      const S = window.Views._ImportShared;
+      const d = S.draft;
+      if (!d) return S.emptyState();
+      const m = d.mapping;
+      const cols = d.analysis.columns;
+
+      const colLabel = (c) => {
+        const label = c.label ? esc(c.label) : window.I18n.t('bankImport.column', { n: c.index + 1 });
+        return c.samples && c.samples.length ? `${label} — ${esc(c.samples[0])}` : label;
+      };
+      // v0.99: required fields get a hidden blank option instead of "Not in
+      // this file", so an undetected column (-1) shows as blank rather than
+      // silently masquerading as column 0 while the mapping still holds -1.
+      const colOptions = (selected, noneLabel) => {
+        const head = noneLabel != null
+          ? `<option value="-1" ${selected < 0 ? 'selected' : ''}>${noneLabel}</option>`
+          : `<option value="-1" ${selected < 0 ? 'selected' : ''} disabled hidden></option>`;
+        return head + cols.map(c =>
+          `<option value="${c.index}" ${selected === c.index ? 'selected' : ''}>${colLabel(c)}</option>`
+        ).join('');
+      };
+      const colSelect = (id, labelKey, selected, noneLabel, last) => `
+        <div class="form-group"${last ? ' style="margin-bottom: 0;"' : ''}>
+          <label class="form-label" for="${id}">${window.I18n.t(labelKey)}</label>
+          <select id="${id}" class="form-control" style="appearance: none;">${colOptions(selected, noneLabel)}</select>
+        </div>`;
+
+      return `
+        <div id="import-map" class="container" style="padding-bottom: 100px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-2);">
+            <h1 class="header-title" style="margin: 0;">${window.I18n.t('bankImport.mapTitle')}</h1>
+            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+          </div>
+          <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.fileInfo', { count: d.analysis.rowsRaw.length, file: esc(d.fileName) })}</div>
+          ${d.presetApplied ? `
+          <div class="card" style="display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.5;">
+            <i data-lucide="info" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+            <span>${window.I18n.t('bankImport.presetApplied')}</span>
+          </div>` : ''}
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            ${colSelect('imap-col-date', 'bankImport.colDate', m.date)}
+            ${colSelect('imap-col-desc', 'bankImport.colDescription', m.description)}
+            <div class="form-group">
+              <label class="form-label">${window.I18n.t('bankImport.amountMode')}</label>
+              <div class="chart-toggle-group" id="imap-amount-mode">
+                <button type="button" class="chart-toggle-btn ${m.amountMode === 'split' ? '' : 'active'}" data-mode="single">${window.I18n.t('bankImport.amountSingle')}</button>
+                <button type="button" class="chart-toggle-btn ${m.amountMode === 'split' ? 'active' : ''}" data-mode="split">${window.I18n.t('bankImport.amountSplit')}</button>
+              </div>
+            </div>
+            <div id="imap-single-wrap" style="display: ${m.amountMode === 'split' ? 'none' : 'block'};">
+              ${colSelect('imap-col-amount', 'bankImport.colAmount', m.amount)}
+            </div>
+            <div id="imap-split-wrap" style="display: ${m.amountMode === 'split' ? 'block' : 'none'};">
+              ${colSelect('imap-col-debit', 'bankImport.colDebit', m.debit)}
+              ${colSelect('imap-col-credit', 'bankImport.colCredit', m.credit)}
+            </div>
+            ${colSelect('imap-col-bankref', 'bankImport.colBankRef', m.bankRef, window.I18n.t('bankImport.colNone'), true)}
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+              <div class="form-group">
+                <label class="form-label" for="imap-date-format">${window.I18n.t('bankImport.dateFormat')}</label>
+                <select id="imap-date-format" class="form-control" style="appearance: none;">
+                  <option value="dmy" ${m.dateFormat === 'dmy' ? 'selected' : ''}>${window.I18n.t('bankImport.dateDMY')}</option>
+                  <option value="mdy" ${m.dateFormat === 'mdy' ? 'selected' : ''}>${window.I18n.t('bankImport.dateMDY')}</option>
+                  <option value="ymd" ${m.dateFormat === 'ymd' ? 'selected' : ''}>${window.I18n.t('bankImport.dateYMD')}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="imap-decimal">${window.I18n.t('bankImport.decimal')}</label>
+                <select id="imap-decimal" class="form-control" style="appearance: none;">
+                  <option value="auto" ${m.decimal === 'auto' ? 'selected' : ''}>${window.I18n.t('bankImport.decimalAuto')}</option>
+                  <option value="comma" ${m.decimal === 'comma' ? 'selected' : ''}>${window.I18n.t('bankImport.decimalComma')}</option>
+                  <option value="dot" ${m.decimal === 'dot' ? 'selected' : ''}>${window.I18n.t('bankImport.decimalDot')}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="imap-account">${window.I18n.t('bankImport.targetAccount')}</label>
+              <select id="imap-account" class="form-control" style="appearance: none;">${createAccountOptions(state.accounts, d.accountId)}</select>
+            </div>
+          </div>
+
+          <div class="section-title">${window.I18n.t('bankImport.livePreview')}</div>
+          <div class="card import-preview-box" id="imap-preview" style="margin-bottom: var(--space-6);"></div>
+
+          <button class="btn btn-primary" id="btn-imap-continue" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.continue')}</button>
+        </div>
+      `;
+    },
+
+    attachEvents(container, state) {
+      const S = window.Views._ImportShared;
+      const d = S.draft;
+      if (!d) return;
+      const m = d.mapping;
+      const $ = (id) => container.querySelector('#' + id);
+
+      // ✕ discards the in-flight session; the anchor's href performs the nav
+      $('imap-close').addEventListener('click', () => { S.clear(); });
+
+      // Live preview: re-parses the first 3 data rows against the current
+      // mapping after every control change (pure DOM update, no re-render).
+      const refreshPreview = () => {
+        const box = $('imap-preview');
+        if (!box) return;
+        const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw.slice(0, 3), m, d.accountId);
+        box.innerHTML = res.items.map(it => it.tx ? `
+          <div class="import-preview-row">
+            <span style="color: var(--text-tertiary); flex-shrink: 0;">${it.tx.date}</span>
+            <span class="import-ellipsis" style="flex: 1;">${esc(it.tx.comment) || '—'}</span>
+            <span class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; flex-shrink: 0;">${S.signedAmount(it.tx)}</span>
+          </div>` : `
+          <div class="import-preview-row" style="color: var(--text-tertiary);">
+            <i data-lucide="alert-triangle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+            <span class="import-ellipsis">${S.errorLabel(it.error)}</span>
+          </div>`
+        ).join('') || `<div class="import-preview-row" style="color: var(--text-tertiary);">—</div>`;
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(box);
+      };
+
+      // DebtSimView bind pattern: every control writes straight into the draft.
+      // v0.99 review fix: any edit also marks previously built preview items
+      // stale — browser back/forward can reach #import-preview without another
+      // Continue, and it must never import rows built from an older mapping.
+      const touch = () => { d.itemsStale = true; refreshPreview(); };
+      const bindCol = (id, prop) => {
+        const el = $(id);
+        if (el) el.addEventListener('change', () => { m[prop] = parseInt(el.value, 10); touch(); });
+      };
+      bindCol('imap-col-date', 'date');
+      bindCol('imap-col-desc', 'description');
+      bindCol('imap-col-amount', 'amount');
+      bindCol('imap-col-debit', 'debit');
+      bindCol('imap-col-credit', 'credit');
+      bindCol('imap-col-bankref', 'bankRef');
+      $('imap-date-format').addEventListener('change', (e) => { m.dateFormat = e.target.value; touch(); });
+      $('imap-decimal').addEventListener('change', (e) => { m.decimal = e.target.value; touch(); });
+      $('imap-account').addEventListener('change', (e) => { d.accountId = e.target.value; touch(); });
+
+      container.querySelectorAll('#imap-amount-mode .chart-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          m.amountMode = btn.dataset.mode;
+          container.querySelectorAll('#imap-amount-mode .chart-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+          $('imap-single-wrap').style.display = m.amountMode === 'split' ? 'none' : 'block';
+          $('imap-split-wrap').style.display = m.amountMode === 'split' ? 'block' : 'none';
+          touch();
+        });
+      });
+
+      $('btn-imap-continue').addEventListener('click', () => {
+        const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
+        if (!(m.date >= 0 && m.description >= 0 && amountOk && d.accountId)) {
+          alert(window.I18n.t('bankImport.mappingIncomplete'));
+          return;
+        }
+        const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
+        // Only clean rows are includable; duplicates/errors can never be armed
+        res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+        d.items = res.items;
+        d.stats = res.stats;
+        d.itemsStale = false; // v0.99 review fix: freshly built for this mapping
+        window.Router.navigate('#import-preview');
+      });
+
+      refreshPreview();
+    }
+  },
+
+  // ── Review & confirm (#import-preview) ────────────────────────────────────
+  ImportPreviewView: {
+    render(state) {
+      const S = window.Views._ImportShared;
+      const d = S.draft;
+      // v0.99 review fix: browser back/forward can land here after the mapping
+      // or account changed on the map screen — rebuild from the CURRENT draft
+      // instead of importing rows built for an older mapping. Include flags
+      // reset (correct: they belonged to the old rows); an edit that broke the
+      // mapping drops to the no-session guard below.
+      if (d && d.items && d.itemsStale) {
+        const m = d.mapping;
+        const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
+        if (m.date >= 0 && m.description >= 0 && amountOk && d.accountId) {
+          const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
+          res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+          d.items = res.items;
+          d.stats = res.stats;
+        } else {
+          d.items = null;
+          d.stats = null;
+        }
+        d.itemsStale = false;
+      }
+      if (!d || !d.items) return S.emptyState();
+      const stats = d.stats || { total: 0, ok: 0, duplicates: 0, errors: 0 };
+      const cleanCount = d.items.filter(it => it.tx && !it.duplicate && !it.error).length;
+      const selectedCount = d.items.filter(it => it.include).length;
+
+      // Rows render as ONE joined string and share ONE delegated listener —
+      // a statement export can easily hold 1000+ rows.
+      const rowHtml = (it, i) => {
+        if (it.tx && !it.duplicate && !it.error) {
+          return `
+            <label class="import-row">
+              <input type="checkbox" class="import-check import-row-check" data-i="${i}" ${it.include ? 'checked' : ''}>
+              <div class="import-row-main">
+                <div class="import-ellipsis" style="font-weight: 600; font-size: var(--text-sm);">${esc(it.tx.comment) || '—'}</div>
+                <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${it.tx.date}</div>
+              </div>
+              <div class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; font-size: var(--text-sm); flex-shrink: 0;">${S.signedAmount(it.tx)}</div>
+            </label>`;
+        }
+        if (it.tx) { // duplicate: parseable but already imported — dimmed, unselectable
+          return `
+            <div class="import-row import-row-muted">
+              <div class="import-row-main">
+                <div class="import-ellipsis" style="font-weight: 600; font-size: var(--text-sm);">${esc(it.tx.comment) || '—'}</div>
+                <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${it.tx.date}</div>
+              </div>
+              <span class="import-row-badge">${window.I18n.t('bankImport.duplicateBadge')}</span>
+              <div class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; font-size: var(--text-sm); flex-shrink: 0;">${S.signedAmount(it.tx)}</div>
+            </div>`;
+        }
+        return `
+          <div class="import-row import-row-muted">
+            <div class="import-row-main">
+              <div class="import-ellipsis" style="font-size: var(--text-sm);">${S.errorLabel(it.error)}</div>
+            </div>
+            <span class="import-row-badge">${window.I18n.t('bankImport.errorBadge')}</span>
+          </div>`;
+      };
+
+      return `
+        <div id="import-preview" class="container" style="padding-bottom: 100px;">
+          <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); margin-bottom: var(--space-4);">
+            <a href="#import-map" class="touch-target" aria-label="${window.I18n.t('bankImport.mapTitle')}" style="display: flex; align-items: center; color: var(--text-secondary);"><i data-lucide="chevron-left" style="width: 22px; height: 22px;"></i></a>
+            <h1 class="header-title" style="margin: 0; flex: 1;">${window.I18n.t('bankImport.previewTitle')}</h1>
+            <a href="#settings" id="iprev-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <div id="iprev-selected-text" style="font-weight: 700;">${window.I18n.t('bankImport.summary', { count: selectedCount })}</div>
+            ${stats.duplicates > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.duplicates', { count: stats.duplicates })}</div>` : ''}
+            ${stats.errors > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.errors', { count: stats.errors })}</div>` : ''}
+            <label style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--text-sm); font-weight: 600; cursor: pointer;">
+              <input type="checkbox" id="iprev-toggle-all" class="import-check" ${cleanCount > 0 && selectedCount === cleanCount ? 'checked' : ''} ${cleanCount === 0 ? 'disabled' : ''}>
+              ${window.I18n.t('bankImport.toggleAll')}
+            </label>
+          </div>
+
+          <div class="card" style="padding-top: 0; padding-bottom: 0; margin-bottom: var(--space-6);">
+            <div id="iprev-list">${d.items.map((it, i) => rowHtml(it, i)).join('')}</div>
+          </div>
+
+          <button class="btn btn-primary" id="btn-iprev-confirm" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.confirm', { count: selectedCount })}</button>
+        </div>
+      `;
+    },
+
+    attachEvents(container, state) {
+      const S = window.Views._ImportShared;
+      const d = S.draft;
+      if (!d || !d.items) return;
+      const $ = (id) => container.querySelector('#' + id);
+
+      // ✕ discards the session; the back chevron keeps it (href-only nav)
+      $('iprev-close').addEventListener('click', () => { S.clear(); });
+
+      const cleanCount = () => d.items.filter(it => it.tx && !it.duplicate && !it.error).length;
+
+      // In-place summary/confirm refresh — checkbox toggles never dispatch or
+      // re-render, they just patch the three affected texts.
+      const updateSummary = () => {
+        const count = d.items.filter(it => it.include).length;
+        const txt = $('iprev-selected-text');
+        if (txt) txt.textContent = window.I18n.t('bankImport.summary', { count: count });
+        const btn = $('btn-iprev-confirm');
+        if (btn) btn.textContent = window.I18n.t('bankImport.confirm', { count: count });
+        const all = $('iprev-toggle-all');
+        if (all) { const c = cleanCount(); all.checked = c > 0 && count === c; }
+      };
+
+      $('iprev-list').addEventListener('change', (e) => {
+        const cb = e.target && e.target.classList && e.target.classList.contains('import-row-check') ? e.target : null;
+        if (!cb) return;
+        const it = d.items[Number(cb.dataset.i)];
+        if (it) it.include = cb.checked;
+        updateSummary();
+      });
+
+      $('iprev-toggle-all').addEventListener('change', (e) => {
+        const on = e.target.checked;
+        d.items.forEach(it => { if (it.tx && !it.duplicate && !it.error) it.include = on; });
+        container.querySelectorAll('.import-row-check').forEach(cb => { cb.checked = on; });
+        updateSummary();
+      });
+
+      $('btn-iprev-confirm').addEventListener('click', () => {
+        const selected = d.items
+          .filter(it => it.include && it.tx && !it.duplicate && !it.error)
+          .map(it => it.tx);
+        if (selected.length === 0) {
+          alert(window.I18n.t('bankImport.nothingSelected'));
+          return;
+        }
+        // v0.99 review fix: report what the store ACCEPTED, not what was
+        // selected — the dispatch's dedup defence may skip rows (state
+        // mutates synchronously, so the before/after delta is exact).
+        const before = window.Store.getState().transactions.length;
+        window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
+        const imported = window.Store.getState().transactions.length - before;
+        window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
+        const acc = (window.Store.getState().accounts || []).find(a => a.id === d.accountId);
+        alert(window.I18n.t('bankImport.done', { count: imported, account: acc ? acc.name : '' }));
+        window.Router.navigate('#settings');
+        // v0.99 review fix: clearing synchronously made the coalesced emit
+        // repaint this view as the no-session card for a frame before Settings
+        // rendered. The hashchange task is already queued ahead of this timer.
+        setTimeout(() => { S.clear(); }, 0);
+      });
     }
   }
 });

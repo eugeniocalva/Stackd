@@ -2900,3 +2900,74 @@ a:focus-visible,
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
+
+/* ── Bank statement import (v0.99, docs/bank-import-plan.md §3) ─────────── */
+
+/* One-line ellipsis for bank descriptions (map preview + review rows). */
+.import-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Live preview box on the mapping screen: first 3 rows re-parsed per change. */
+.import-preview-box {
+  padding: var(--space-2) var(--space-4);
+}
+
+.import-preview-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--text-xs);
+}
+
+.import-preview-row + .import-preview-row {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Review list rows — plain flex rows, not Components.TransactionItem. */
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.import-row:last-child {
+  border-bottom: none;
+}
+
+.import-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Duplicate / unreadable rows: visible for transparency, never selectable. */
+.import-row-muted {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.import-row-badge {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* Native checkboxes (per-row + select-all), tinted like the FAQ/consent ones. */
+.import-check {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+}
