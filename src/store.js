@@ -1815,6 +1815,59 @@ window.Store = {
         break;
       }
 
+      case 'APPLY_IMPORT_MATCHES': {
+        // v1.03: match/link + transfer pairing from the import preview
+        // (docs/bank-import-plan.md §7). Two payload arrays, both optional:
+        // - links: [{txId, importKey, bankRef?}] — the EXISTING transaction
+        //   absorbs the bank identity so future re-imports dedup against it.
+        //   Identity only: its date, category and any recurrence (including
+        //   nextDate) are NEVER touched here.
+        // - transfers: [{existingTxId, tx}] — inserts the incoming row and
+        //   pairs it with the existing one under a fresh shared transferRef;
+        //   both legs' categories empty per the paired-legs model. Rows that
+        //   are already transfer legs or carry recurrence are refused.
+        const links = (payload && payload.links) || [];
+        const pairs = (payload && payload.transfers) || [];
+        const idx = this._ensureImportKeyIdx();
+        const importTime = this._getSystemTimeString();
+        let touched = 0;
+
+        links.forEach(l => {
+          const t = this.state.transactions.find(x => x.id === l.txId);
+          if (!t || t.importKey || !l.importKey || idx.has(l.importKey)) return;
+          t.importKey = l.importKey;
+          if (l.bankRef) t.bankRef = l.bankRef;
+          idx.add(l.importKey);
+          touched++;
+        });
+
+        pairs.forEach(p => {
+          const target = this.state.transactions.find(x => x.id === p.existingTxId);
+          if (!target || target.transferRef || target.recurrence) return;
+          if (!p.tx || !p.tx.importKey || idx.has(p.tx.importKey)) return;
+          const ref = window.StackdDB.generateId();
+          target.transferRef = ref;
+          target.categoryId = '';
+          this.state.transactions.push({
+            id: window.StackdDB.generateId(),
+            time: p.tx.time || importTime,
+            ...p.tx,
+            categoryId: '',
+            transferRef: ref,
+            createdAt: new Date().toISOString()
+          });
+          idx.add(p.tx.importKey);
+          touched++;
+        });
+
+        if (touched) {
+          this._sortTransactions();
+          window.StackdDB.save('transactions', this.state.transactions);
+          changed = true;
+        }
+        break;
+      }
+
       case 'SAVE_IMPORT_PRESET': {
         // v0.99: remember a bank file's column mapping by header signature so
         // the next statement from the same bank opens pre-mapped.

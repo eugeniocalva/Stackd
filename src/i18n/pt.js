@@ -468,6 +468,20 @@ window.I18n.dicts.pt = {
   'bankImport.currencyMismatch': "Este extrato está em {statement}, mas a conta selecionada usa {app}. Os montantes são importados como simples números — não é feita qualquer conversão.", // v1.02: account, not app
   'bankImport.setOpening': "Definir o saldo inicial desta conta a partir do extrato ({amount} em {date})",
   'bankImport.reconcileMismatch': "Atenção: o seu banco indicou {bank} em {date}, mas o Stack'd mostra agora {app} para esta conta. Podem faltar movimentos mais antigos, ou entradas manuais sobrepõem-se às importadas.",
+  // v1.03: match/link + transfer suggestions (plan §7)
+  'bankImport.matchNote': "Corresponde a um movimento existente: {desc} · {date}",
+  'bankImport.transferNote': "Parece uma transferência com {account} · {date}",
+  'bankImport.actionLink': "Associar ao existente",
+  'bankImport.actionNew': "Importar como novo",
+  'bankImport.actionPair': "Emparelhar como transferência",
+  'bankImport.matchedSummary.one': "{count} linha corresponde a um movimento existente — será associada, não duplicada.",
+  'bankImport.matchedSummary.other': "{count} linhas correspondem a movimentos existentes — serão associadas, não duplicadas.",
+  'bankImport.transferSummary.one': "{count} linha parece uma transferência entre as suas contas.",
+  'bankImport.transferSummary.other': "{count} linhas parecem transferências entre as suas contas.",
+  'bankImport.doneLinked.one': "{count} linha associada a um movimento existente.",
+  'bankImport.doneLinked.other': "{count} linhas associadas a movimentos existentes.",
+  'bankImport.donePaired.one': "{count} linha emparelhada como transferência.",
+  'bankImport.donePaired.other': "{count} linhas emparelhadas como transferências.",
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Escolher categoria",
   'bankImport.alwaysUse': "Memorizar para “{match}”",

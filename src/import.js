@@ -966,6 +966,73 @@ window.StackdImport = {
     return { items: items, stats: stats };
   },
 
+  // ── v1.03 match/link + transfer detection (docs/bank-import-plan.md §7) ───
+  // Annotates clean, non-duplicate preview items with suggestions; nothing is
+  // applied without explicit user confirmation on the preview screen.
+  // - it.match: an existing NON-IMPORTED transaction in the SAME account with
+  //   the same type and amount within ±3 days — the default action is to LINK
+  //   (the existing row absorbs importKey/bankRef; its date and any recurrence
+  //   are NEVER touched). This is how a materialized recurring occurrence
+  //   meets its real bank booking without duplication.
+  // - it.transfer: an existing row in a DIFFERENT same-currency account with
+  //   the OPPOSITE type and same amount within ±2 days — the default action is
+  //   to PAIR as a transfer (fresh shared transferRef, both categories empty).
+  //   Rows already in a transfer and recurring rows are never offered (pairing
+  //   would entangle series semantics).
+  // A same-account match wins over a transfer suggestion; each existing row is
+  // claimed by at most one incoming item (deterministic: closest date first).
+  annotateImportMatches(items, accountId) {
+    const state = window.Store.getState();
+    const accCcy = window.Store.getAccountCurrency(accountId);
+    const day = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86400000;
+
+    // One O(T) pass: candidates bucketed by amount|type.
+    const byKey = Object.create(null);
+    state.transactions.forEach(t => {
+      if (t.type !== 'income' && t.type !== 'expense') return;
+      const key = t.amount.toFixed(2) + '|' + t.type;
+      (byKey[key] = byKey[key] || []).push(t);
+    });
+
+    const claimed = new Set();
+    const closest = (cands, itDay) => cands.sort((a, b) =>
+      (Math.abs(day(a.date) - itDay) - Math.abs(day(b.date) - itDay)) ||
+      a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
+
+    items.forEach(it => {
+      if (!it.tx || it.duplicate || it.error) return;
+      const itDay = day(it.tx.date);
+      const amt = it.tx.amount.toFixed(2);
+
+      const sameCands = (byKey[amt + '|' + it.tx.type] || []).filter(t =>
+        t.accountId === accountId && !t.importKey && !claimed.has(t.id) &&
+        t.type !== 'opening_balance' &&
+        Math.abs(day(t.date) - itDay) <= 3);
+      if (sameCands.length) {
+        const m = closest(sameCands, itDay);
+        claimed.add(m.id);
+        it.match = { txId: m.id, comment: m.comment || '', date: m.date };
+        it.matchAction = 'link';
+        return;
+      }
+
+      const oppType = it.tx.type === 'expense' ? 'income' : 'expense';
+      const pairCands = (byKey[amt + '|' + oppType] || []).filter(t =>
+        t.accountId !== accountId && !t.transferRef && !t.recurrence &&
+        !claimed.has(t.id) &&
+        window.Store.getAccountCurrency(t.accountId) === accCcy &&
+        Math.abs(day(t.date) - itDay) <= 2);
+      if (pairCands.length) {
+        const p = closest(pairCands, itDay);
+        claimed.add(p.id);
+        const acc = state.accounts.find(a => a.id === p.accountId);
+        it.transfer = { txId: p.id, accountName: acc ? acc.name : '', date: p.date };
+        it.transferAction = 'pair';
+      }
+    });
+    return items;
+  },
+
   // ── v1.01 import-rules CSV (backup parity for the rules slice, plan §5) ───
   // Recognised by Match+Category headers WITHOUT the transaction columns —
   // checked before the bank-CSV fallback, or a rules file would open the

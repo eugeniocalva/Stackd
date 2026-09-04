@@ -468,6 +468,20 @@ window.I18n.dicts.fr = {
   'bankImport.currencyMismatch': "Ce relevé est en {statement}, mais le compte sélectionné utilise {app}. Les montants sont importés comme de simples nombres — aucune conversion n'est effectuée.", // v1.02: account, not app
   'bankImport.setOpening': "Définir le solde initial de ce compte à partir du relevé ({amount} au {date})",
   'bankImport.reconcileMismatch': "Attention : votre banque a indiqué {bank} au {date}, mais Stack'd affiche maintenant {app} pour ce compte. Des opérations plus anciennes manquent peut-être, ou des saisies manuelles chevauchent celles importées.",
+  // v1.03: match/link + transfer suggestions (plan §7)
+  'bankImport.matchNote': "Correspond à une entrée existante : {desc} · {date}",
+  'bankImport.transferNote': "Ressemble à un virement avec {account} · {date}",
+  'bankImport.actionLink': "Lier à l'existante",
+  'bankImport.actionNew': "Importer comme nouvelle",
+  'bankImport.actionPair': "Apparier comme virement",
+  'bankImport.matchedSummary.one': "{count} ligne correspond à une entrée existante — elle sera liée, pas dupliquée.",
+  'bankImport.matchedSummary.other': "{count} lignes correspondent à des entrées existantes — elles seront liées, pas dupliquées.",
+  'bankImport.transferSummary.one': "{count} ligne ressemble à un virement entre vos comptes.",
+  'bankImport.transferSummary.other': "{count} lignes ressemblent à des virements entre vos comptes.",
+  'bankImport.doneLinked.one': "{count} ligne liée à une entrée existante.",
+  'bankImport.doneLinked.other': "{count} lignes liées à des entrées existantes.",
+  'bankImport.donePaired.one': "{count} ligne appariée comme virement.",
+  'bankImport.donePaired.other': "{count} lignes appariées comme virements.",
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Choisir une catégorie",
   'bankImport.alwaysUse': "Mémoriser pour « {match} »",

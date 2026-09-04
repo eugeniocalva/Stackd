@@ -3002,3 +3002,15 @@ a:focus-visible,
   font-weight: 600;
   margin-left: var(--space-2);
 }
+
+/* v1.03: match/transfer suggestion note on preview rows (plan §7). The action
+   pill reuses .import-row-rule styling with the .import-row-action marker. */
+.import-row-suggest {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}

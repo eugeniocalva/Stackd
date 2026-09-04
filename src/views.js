@@ -4966,6 +4966,22 @@ Object.assign(window.Views, {
 
     clear() { this.draft = null; },
 
+    // v1.03: single build path — construct rows, arm include flags, annotate
+    // match/transfer suggestions (plan §7). Used by both Continue buttons and
+    // the preview's stale rebuild, so suggestions always reflect the CURRENT
+    // account and mapping.
+    rebuildItems(d) {
+      const res = d.kind === 'statement'
+        ? window.StackdImport.buildStatementTransactions(d.statement, d.accountId)
+        : window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, d.mapping, d.accountId);
+      // Only clean rows are includable; duplicates/errors can never be armed
+      res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
+      window.StackdImport.annotateImportMatches(res.items, d.accountId);
+      d.items = res.items;
+      d.stats = res.stats;
+      d.itemsStale = false;
+    },
+
     // v1.00: the opening-balance offer only makes sense for an account with no
     // real activity yet — otherwise OPBD would double-count history.
     canSetOpening(state) {
@@ -5239,12 +5255,7 @@ Object.assign(window.Views, {
           alert(window.I18n.t('bankImport.mappingIncomplete'));
           return;
         }
-        const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
-        // Only clean rows are includable; duplicates/errors can never be armed
-        res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
-        d.items = res.items;
-        d.stats = res.stats;
-        d.itemsStale = false; // v0.99 review fix: freshly built for this mapping
+        S.rebuildItems(d); // v1.03: build + include flags + match/transfer suggestions
         window.Router.navigate('#import-preview');
       });
 
@@ -5312,11 +5323,7 @@ Object.assign(window.Views, {
           alert(window.I18n.t('bankImport.noAccounts'));
           return;
         }
-        const res = window.StackdImport.buildStatementTransactions(d.statement, d.accountId);
-        res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
-        d.items = res.items;
-        d.stats = res.stats;
-        d.itemsStale = false;
+        S.rebuildItems(d); // v1.03
         window.Router.navigate('#import-preview');
       });
 
@@ -5337,10 +5344,7 @@ Object.assign(window.Views, {
       if (d && d.items && d.itemsStale) {
         if (d.kind === 'statement') { // v1.00: only the target account can change
           if (d.accountId) {
-            const res = window.StackdImport.buildStatementTransactions(d.statement, d.accountId);
-            res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
-            d.items = res.items;
-            d.stats = res.stats;
+            S.rebuildItems(d); // v1.03
           } else {
             d.items = null;
             d.stats = null;
@@ -5349,10 +5353,7 @@ Object.assign(window.Views, {
           const m = d.mapping;
           const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
           if (m.date >= 0 && m.description >= 0 && amountOk && d.accountId) {
-            const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, m, d.accountId);
-            res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
-            d.items = res.items;
-            d.stats = res.stats;
+            S.rebuildItems(d); // v1.03
           } else {
             d.items = null;
             d.stats = null;
@@ -5375,7 +5376,13 @@ Object.assign(window.Views, {
               <div class="import-row-main">
                 <div class="import-ellipsis" style="font-weight: 600; font-size: var(--text-sm);">${esc(it.tx.comment) || '—'}</div>
                 <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${it.tx.date}</div>
-                <button type="button" class="import-row-cat" data-i="${i}">${S.catChipInner(it.tx)}</button>
+                <button type="button" class="import-row-cat" data-i="${i}" style="display: ${(it.match && it.matchAction === 'link') || (it.transfer && it.transferAction === 'pair') ? 'none' : ''};">${S.catChipInner(it.tx)}</button>
+                ${it.match ? `
+                <div class="import-row-suggest">${window.I18n.t('bankImport.matchNote', { desc: esc(it.match.comment) || '—', date: it.match.date })}</div>
+                <button type="button" class="import-row-rule import-row-action" data-i="${i}" data-kind="match">${window.I18n.t(it.matchAction === 'link' ? 'bankImport.actionLink' : 'bankImport.actionNew')}</button>` : ''}
+                ${!it.match && it.transfer ? `
+                <div class="import-row-suggest">${window.I18n.t('bankImport.transferNote', { account: esc(it.transfer.accountName), date: it.transfer.date })}</div>
+                <button type="button" class="import-row-rule import-row-action" data-i="${i}" data-kind="transfer">${window.I18n.t(it.transferAction === 'pair' ? 'bankImport.actionPair' : 'bankImport.actionNew')}</button>` : ''}
               </div>
               <div class="${it.tx.type === 'income' ? 'text-income' : 'text-expense'}" style="font-weight: 700; font-size: var(--text-sm); flex-shrink: 0;">${S.signedAmount(it.tx)}</div>
             </label>`;
@@ -5412,6 +5419,12 @@ Object.assign(window.Views, {
             <div id="iprev-selected-text" style="font-weight: 700;">${window.I18n.t('bankImport.summary', { count: selectedCount })}</div>
             ${stats.duplicates > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.duplicates', { count: stats.duplicates })}</div>` : ''}
             ${stats.errors > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.errors', { count: stats.errors })}</div>` : ''}
+            ${(() => { // v1.03: match/transfer suggestion counts
+              const matched = d.items.filter(x => x.match).length;
+              const transfers = d.items.filter(x => !x.match && x.transfer).length;
+              return (matched > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.matchedSummary', { count: matched })}</div>` : '')
+                + (transfers > 0 ? `<div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${window.I18n.t('bankImport.transferSummary', { count: transfers })}</div>` : '');
+            })()}
             <label style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--text-sm); font-weight: 600; cursor: pointer;">
               <input type="checkbox" id="iprev-toggle-all" class="import-check" ${cleanCount > 0 && selectedCount === cleanCount ? 'checked' : ''} ${cleanCount === 0 ? 'disabled' : ''}>
               ${window.I18n.t('bankImport.toggleAll')}
@@ -5461,6 +5474,28 @@ Object.assign(window.Views, {
       // v1.01: category chip → picker; "Remember" pill → teach a rule and
       // apply it to every other uncategorized row of the same merchant.
       $('iprev-list').addEventListener('click', (e) => {
+        // v1.03: the link/pair action pill (checked FIRST — it also carries
+        // the .import-row-rule class for its styling).
+        const actionBtn = e.target && e.target.closest ? e.target.closest('.import-row-action') : null;
+        if (actionBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const it2 = d.items[Number(actionBtn.dataset.i)];
+          if (!it2) return;
+          if (actionBtn.dataset.kind === 'match') {
+            it2.matchAction = it2.matchAction === 'link' ? 'new' : 'link';
+            actionBtn.textContent = window.I18n.t(it2.matchAction === 'link' ? 'bankImport.actionLink' : 'bankImport.actionNew');
+          } else {
+            it2.transferAction = it2.transferAction === 'pair' ? 'new' : 'pair';
+            actionBtn.textContent = window.I18n.t(it2.transferAction === 'pair' ? 'bankImport.actionPair' : 'bankImport.actionNew');
+          }
+          // the category chip only matters when importing as new
+          const row = actionBtn.closest('.import-row');
+          const chipEl = row ? row.querySelector('.import-row-cat') : null;
+          const linking = (it2.match && it2.matchAction === 'link') || (it2.transfer && it2.transferAction === 'pair');
+          if (chipEl) chipEl.style.display = linking ? 'none' : '';
+          return;
+        }
         const chip = e.target && e.target.closest ? e.target.closest('.import-row-cat') : null;
         const pill = e.target && e.target.closest ? e.target.closest('.import-row-rule') : null;
         if (!chip && !pill) return;
@@ -5515,13 +5550,21 @@ Object.assign(window.Views, {
       });
 
       $('btn-iprev-confirm').addEventListener('click', () => {
-        const selected = d.items
-          .filter(it => it.include && it.tx && !it.duplicate && !it.error)
-          .map(it => it.tx);
-        if (selected.length === 0) {
+        const chosen = d.items.filter(it => it.include && it.tx && !it.duplicate && !it.error);
+        if (chosen.length === 0) {
           alert(window.I18n.t('bankImport.nothingSelected'));
           return;
         }
+        // v1.03 (plan §7): split the selection — LINK absorbs the bank
+        // identity into an existing row, PAIR inserts + joins a transfer,
+        // everything else inserts as new.
+        const isLink = (it) => it.match && it.matchAction === 'link';
+        const isPair = (it) => !isLink(it) && it.transfer && it.transferAction === 'pair';
+        const links = chosen.filter(isLink).map(it => ({
+          txId: it.match.txId, importKey: it.tx.importKey, bankRef: it.tx.bankRef
+        }));
+        const pairs = chosen.filter(isPair).map(it => ({ existingTxId: it.transfer.txId, tx: it.tx }));
+        const selected = chosen.filter(it => !isLink(it) && !isPair(it)).map(it => it.tx);
         // v1.00: honour the opening-balance offer BEFORE the batch lands —
         // eligibility means "no real activity yet", which the import ends.
         if (d.kind === 'statement' && d.setOpening && S.canSetOpening(window.Store.getState())) {
@@ -5536,13 +5579,21 @@ Object.assign(window.Views, {
         // selected — the dispatch's dedup defence may skip rows (state
         // mutates synchronously, so the before/after delta is exact).
         const before = window.Store.getState().transactions.length;
-        window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
+        if (links.length || pairs.length) {
+          window.Store.dispatch('APPLY_IMPORT_MATCHES', { links: links, transfers: pairs }); // v1.03
+        }
+        if (selected.length) {
+          window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
+        }
+        // total new rows = plain inserts + pair legs; links add none
         const imported = window.Store.getState().transactions.length - before;
         if (d.kind !== 'statement') { // v1.00: presets only exist for mapped CSVs
           window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
         }
         const acc = (window.Store.getState().accounts || []).find(a => a.id === d.accountId);
         let message = window.I18n.t('bankImport.done', { count: imported, account: acc ? acc.name : '' });
+        if (links.length) message += '\n' + window.I18n.t('bankImport.doneLinked', { count: links.length }); // v1.03
+        if (pairs.length) message += '\n' + window.I18n.t('bankImport.donePaired', { count: pairs.length });
         // v1.00 reconciliation (plan §4): compare the computed balance at the
         // statement's closing date against the bank's CLBD — only when the
         // currencies agree (comparing raw numbers across currencies is noise).

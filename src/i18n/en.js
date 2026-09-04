@@ -475,6 +475,20 @@ window.I18n.dicts.en = {
   'bankImport.currencyMismatch': "This statement is in {statement}, but the selected account uses {app}. Amounts are imported as plain numbers — nothing is converted.", // v1.02: account, not app
   'bankImport.setOpening': "Set this account's opening balance from the statement ({amount} on {date})",
   'bankImport.reconcileMismatch': "Heads up: your bank reported {bank} on {date}, but Stack'd now shows {app} for this account. Older transactions may be missing, or manual entries may overlap the imported ones.",
+  // v1.03: match/link + transfer suggestions (plan §7)
+  'bankImport.matchNote': "Matches an existing entry: {desc} · {date}",
+  'bankImport.transferNote': "Looks like a transfer with {account} · {date}",
+  'bankImport.actionLink': "Link to existing",
+  'bankImport.actionNew': "Import as new",
+  'bankImport.actionPair': "Pair as transfer",
+  'bankImport.matchedSummary.one': "{count} row matches an existing entry — it will be linked, not duplicated.",
+  'bankImport.matchedSummary.other': "{count} rows match existing entries — they will be linked, not duplicated.",
+  'bankImport.transferSummary.one': "{count} row looks like a transfer between your accounts.",
+  'bankImport.transferSummary.other': "{count} rows look like transfers between your accounts.",
+  'bankImport.doneLinked.one': "Linked {count} row to an existing entry.",
+  'bankImport.doneLinked.other': "Linked {count} rows to existing entries.",
+  'bankImport.donePaired.one': "Paired {count} row as a transfer.",
+  'bankImport.donePaired.other': "Paired {count} rows as transfers.",
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Choose category",
   'bankImport.alwaysUse': "Remember for “{match}”",

@@ -468,6 +468,20 @@ window.I18n.dicts.es = {
   'bankImport.currencyMismatch': "Este extracto está en {statement}, pero la cuenta seleccionada usa {app}. Los importes se importan como números sin más — no se realiza ninguna conversión.", // v1.02: account, not app
   'bankImport.setOpening': "Establecer el saldo inicial de esta cuenta a partir del extracto ({amount} el {date})",
   'bankImport.reconcileMismatch': "Atención: tu banco indicó {bank} el {date}, pero Stack'd ahora muestra {app} para esta cuenta. Puede que falten movimientos anteriores o que haya entradas manuales que se solapen con las importadas.",
+  // v1.03: match/link + transfer suggestions (plan §7)
+  'bankImport.matchNote': "Coincide con un movimiento existente: {desc} · {date}",
+  'bankImport.transferNote': "Parece una transferencia con {account} · {date}",
+  'bankImport.actionLink': "Vincular al existente",
+  'bankImport.actionNew': "Importar como nuevo",
+  'bankImport.actionPair': "Emparejar como transferencia",
+  'bankImport.matchedSummary.one': "{count} fila coincide con un movimiento existente — se vinculará, no se duplicará.",
+  'bankImport.matchedSummary.other': "{count} filas coinciden con movimientos existentes — se vincularán, no se duplicarán.",
+  'bankImport.transferSummary.one': "{count} fila parece una transferencia entre tus cuentas.",
+  'bankImport.transferSummary.other': "{count} filas parecen transferencias entre tus cuentas.",
+  'bankImport.doneLinked.one': "{count} fila vinculada a un movimiento existente.",
+  'bankImport.doneLinked.other': "{count} filas vinculadas a movimientos existentes.",
+  'bankImport.donePaired.one': "{count} fila emparejada como transferencia.",
+  'bankImport.donePaired.other': "{count} filas emparejadas como transferencias.",
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Elegir categoría",
   'bankImport.alwaysUse': "Recordar para «{match}»",

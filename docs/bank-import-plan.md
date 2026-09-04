@@ -1,12 +1,12 @@
 # Bank File Import Plan (Option A) — "Works with every bank in Europe"
 
-> Status: **Phases 1–4 SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f), phase 2
-> (camt.053/MT940 + reconciliation) as v1.00 (2026-09-04, §4a), phase 3
-> (category rules) as v1.01 (2026-09-04, §5a), phase 4 (per-account currency)
-> as v1.02 (2026-09-04, §6a). Phase 5 not started. This is the cold-start
-> reference for the bank-statement import feature. Read it before touching
-> import code, the same way `docs/debt-rebuild-plan.md` is the reference for
-> loans.
+> Status: **ALL FIVE PHASES SHIPPED** — phase 1 as v0.99 (2026-09-03, §3f),
+> phase 2 (camt.053/MT940 + reconciliation) as v1.00 (§4a), phase 3 (category
+> rules) as v1.01 (§5a), phase 4 (per-account currency) as v1.02 (§6a), phase
+> 5 (match/link + transfer detection) as v1.03 (2026-09-04, §7a). This is the
+> cold-start reference for the bank-statement import feature. Read it before
+> touching import code, the same way `docs/debt-rebuild-plan.md` is the
+> reference for loans.
 
 ## 1. Context and goal
 
@@ -407,6 +407,41 @@ double-counting it.
   category empties like any transfer leg).
 - Both are suggestions with explicit user confirmation on the preview screen —
   no silent merging.
+
+### 7a. Phase 5 as built (v1.03, 2026-09-04)
+
+Shipped per §7 with these concrete decisions:
+
+- **Annotation, not application:** `StackdImport.annotateImportMatches(items,
+  accountId)` runs inside `_ImportShared.rebuildItems` (the single build path
+  now shared by both Continue buttons and the preview's stale rebuild), so
+  suggestions always reflect the current account/mapping. Each existing row
+  is claimed by at most one incoming item (deterministic: closest date, then
+  date/id tiebreak); a same-account match wins over a transfer candidate.
+- **Match (link):** same account, same type+amount, ±3 days, target has no
+  `importKey`. Default action LINK; the pill toggles to "Import as new". On
+  confirm `APPLY_IMPORT_MATCHES` stamps `importKey`/`bankRef` onto the
+  existing row and NOTHING else — date, category, and recurrence (incl.
+  `nextDate`) are never touched, and §3.1's "bank date optionally absorbed"
+  was resolved as NO (recurring members' dates must never shift). A linked
+  row makes future re-imports dedup against it.
+- **Transfer (pair):** the plan's intra-batch pairing is impossible — imports
+  target ONE account — so detection runs against existing rows: opposite
+  type, same amount, ±2 days, DIFFERENT account with the SAME currency
+  (v1.02 synergy: cross-currency amounts aren't comparable), target not a
+  transfer leg and NOT recurring (pairing a series member would entangle
+  chain semantics — deliberate refusal, enforced again in the dispatch). On
+  confirm the incoming row inserts and both legs share a fresh
+  `transferRef` with emptied categories, so analytics excludes the pair.
+- **UI:** matched/paired rows show a note + an action pill under the row (the
+  category chip hides while linking/pairing — it only matters for "as new");
+  summary lines count suggestions; the done alert reports inserted, linked
+  and paired separately (inserted = store delta, which includes pair legs).
+- **Tests:** `tests/unit/importMatching.test.js` (candidate rules, claiming,
+  precedence, recurrence/foreign-currency refusals, link immutability, pair
+  legs + analytics exclusion, re-import dedup through a linked row) and
+  `tests/e2e/import_matching.spec.js` (link + pair + plain insert in one
+  batch, pill toggling, then a full re-import dedup pass).
 
 ## 8. Testing strategy
 
