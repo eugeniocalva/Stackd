@@ -395,7 +395,7 @@ window.I18n.dicts.fr = {
   'others.userManual': "Manuel d'utilisation",
   'others.openManualAria': "Ouvrir le manuel d'utilisation",
   'others.sendFeedback': 'Envoyer un commentaire',
-  'others.feedbackAlert': 'Merci d’essayer Stackd ! Envoyez vos commentaires à hi@stackd.com',
+  'others.feedbackAlert': 'Merci d’essayer Stackd ! Envoyez vos commentaires à hi@stackdplatform.com',
   'others.rateApp': "Noter l'application",
   'others.rateAlert': 'La notation sur l’App Store arrive bientôt.',
   'others.terms': 'Conditions générales',
@@ -928,7 +928,7 @@ window.I18n.dicts.fr = {
   'terms.privacy.children.h': 'Enfants',
   'terms.privacy.children.d': "Stack'd ne collecte aucune donnée de qui que ce soit, y compris des enfants. L'application n'a aucune fonctionnalité soumise à un âge minimum ni aucun moyen d'identifier ses utilisateurs.",
   'terms.privacy.contact.h': 'Contact',
-  'terms.privacy.contact.d': "Si vous envoyez des commentaires à hi@stackd.com, votre adresse e-mail et votre message servent uniquement à vous répondre et ne sont jamais ajoutés à une liste de diffusion. Les questions relatives à la protection des données peuvent être envoyées à la même adresse.",
+  'terms.privacy.contact.d': "Si vous envoyez des commentaires à hi@stackdplatform.com, votre adresse e-mail et votre message servent uniquement à vous répondre et ne sont jamais ajoutés à une liste de diffusion. Les questions relatives à la protection des données peuvent être envoyées à la même adresse.",
   'terms.privacy.changes.h': 'Modifications de cette politique',
   'terms.privacy.changes.d': "Si une future version de l'application modifie la façon dont les données sont traitées (par exemple une sauvegarde cloud optionnelle), cette politique sera mise à jour au préalable et le changement sera clairement annoncé dans l'application avant que quoi que ce soit ne quitte votre appareil.",
 

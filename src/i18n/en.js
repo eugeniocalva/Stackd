@@ -402,7 +402,7 @@ window.I18n.dicts.en = {
   'others.userManual': 'User Manual',
   'others.openManualAria': 'Open user manual',
   'others.sendFeedback': 'Send a Feedback',
-  'others.feedbackAlert': 'Thank you for trying Stackd! Send feedback to hi@stackd.com',
+  'others.feedbackAlert': 'Thank you for trying Stackd! Send feedback to hi@stackdplatform.com',
   'others.rateApp': 'Rate the App',
   'others.rateAlert': 'App Store rating flow coming soon.',
   'others.terms': 'Terms and Conditions',
@@ -947,7 +947,7 @@ window.I18n.dicts.en = {
   'terms.privacy.children.h': 'Children',
   'terms.privacy.children.d': "Stack'd collects no data from anyone, including children. The app has no age-gated features and no way to identify its users.",
   'terms.privacy.contact.h': 'Contact',
-  'terms.privacy.contact.d': 'If you email feedback to hi@stackd.com, your email address and message are used only to respond to you and are never added to any marketing list. Data-protection questions can be sent to the same address.',
+  'terms.privacy.contact.d': 'If you email feedback to hi@stackdplatform.com, your email address and message are used only to respond to you and are never added to any marketing list. Data-protection questions can be sent to the same address.',
   'terms.privacy.changes.h': 'Changes to this policy',
   'terms.privacy.changes.d': 'If a future version of the app ever changes how data is handled (for example, an optional cloud backup), this policy will be updated first and the change will be clearly announced in the app before anything leaves your device.',
 
