@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @font-face { font-family: 'Manrope'; font-weight: 400 800; font-display: block;
+    src: url('../../../StackdSite/fonts/manrope-latin.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 400 700; font-display: block;
+    src: url('../../../StackdSite/fonts/inter-latin.woff2') format('woff2'); }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1200px; height: 630px; overflow: hidden; background: #0b0f19; color: #f8fafc;
+         font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+  .card { position: relative; width: 1200px; height: 630px; display: grid;
+          grid-template-columns: 700px 500px; isolation: isolate; }
+
+  /* a single soft sky wash anchored behind the phone, no gradient on the type */
+  .wash { position: absolute; right: -80px; top: -140px; width: 620px; height: 620px;
+          border-radius: 50%; background: rgba(56, 189, 248, 0.13); filter: blur(90px); z-index: 0; }
+
+  .left { position: relative; z-index: 1; padding: 66px 0 66px 72px; display: flex;
+          flex-direction: column; justify-content: space-between; }
+
+  .brand { display: flex; align-items: center; gap: 13px; }
+  .brand svg { width: 34px; height: 34px; color: #f8fafc; }
+  .brand .name { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 25px; letter-spacing: -0.02em; }
+  .brand .studio { font-size: 15px; color: #94a3b8; letter-spacing: 0.01em; }
+
+  h1 { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 62px; line-height: 1.04;
+       letter-spacing: -0.035em; max-width: 9.2em; }
+  .sub { margin-top: 24px; font-size: 24px; line-height: 1.45; color: #cbd5e1; white-space: nowrap; }
+
+  .facts { display: flex; gap: 34px; padding-top: 26px; border-top: 1px solid rgba(51,65,85,0.75);
+           font-size: 17px; color: #94a3b8; }
+  .facts b { color: #f8fafc; font-weight: 600; }
+
+  /* phone: same bezel treatment as the site, bleeding off the bottom edge */
+  .right { position: relative; z-index: 1; }
+  .phone { position: absolute; top: 74px; left: 80px; width: 340px; height: 736px;
+           background: #1f293d; border-radius: 46px; padding: 11px;
+           box-shadow: 0 40px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05); }
+  .phone::before { content: ""; position: absolute; top: 23px; left: 50%; transform: translateX(-50%);
+                   width: 104px; height: 29px; border-radius: 15px; background: #0b0f19; z-index: 2; }
+  .phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 36px; display: block; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="wash"></div>
+
+    <div class="left">
+      <div class="brand">
+        <svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">
+          <polygon points="17,6 28,12 17,18 6,12"/>
+          <path d="M6 17 L11 14.5 L17 18 L23 14.5 L28 17 L17 23 Z"/>
+          <path d="M4 22 L10 19 L17 23 L24 19 L30 22 L17 29 Z"/>
+          <rect x="36" y="16" width="5" height="22"/>
+          <polygon points="38.5,4 45,16 32,16"/>
+        </svg>
+        <span class="name">Stack'd</span>
+        <span class="studio">Development Studio</span>
+      </div>
+
+      <div>
+        <h1>Money tracking that never leaves your phone.</h1>
+        <p class="sub">No accounts. No cloud. No tracking.</p>
+      </div>
+
+      <div class="facts">
+        <span><b>0</b> servers</span>
+        <span><b>5</b> languages</span>
+        <span><b>CSV</b> in and out</span>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="phone">
+        <img src="../../../StackdSite/img/home-dark.webp" alt="">
+      </div>
+    </div>
+  </div>
+</body>
+</html>
