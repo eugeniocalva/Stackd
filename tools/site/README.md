@@ -12,6 +12,7 @@ next to this one.
 |---|---|
 | `screens.cjs` | `home-*.webp`, `history-*.webp`, `debt-*.webp` — real app screens at 390×844 @2x, light and dark |
 | `make-og.cjs` | `og.png` — the 1200×630 link-preview image, rendered from `og.html` |
+| `sitemap.cjs` | `sitemap.xml` — writes to the site root, not `img/` |
 
 ## Screenshots
 
@@ -43,3 +44,17 @@ node tools/site/make-og.cjs
 `og.html` is a fixed 1200×630 layout using the site's own fonts, palette and
 `home-dark.webp`. It is rendered at 2x and downsampled so the type stays crisp.
 Re-run it after a headline change or a new hero screenshot.
+
+## Sitemap
+
+```bash
+node tools/site/sitemap.cjs
+```
+
+Each `<lastmod>` is the commit date of that page in the site repo, so the dates
+are true by construction. Google ignores `<priority>` and `<changefreq>` and
+distrusts `<lastmod>` when it is wrong, so only `<lastmod>` is emitted. The URLs
+are extensionless because Cloudflare Pages 308-redirects `/privacy.html` to
+`/privacy`.
+
+Run it after committing a content change, then commit the regenerated file.
