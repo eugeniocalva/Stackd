@@ -8,6 +8,11 @@
 > the settled decisions; §2–§6 already reflect them.
 > Relationship to `docs/import-ux-plan.md`: independent; recommended order is
 > U2 (success modal) → C1–C5 → the rest of the UX plan.
+> **Companion (2026-09-06):** `docs/bank-connect-ux-plan.md` is the client
+> UX spec + build sequence (B0–B7, screens, touch-list, open decisions
+> D-C9–D-C16). Step 0 progress lives in its §0: domain
+> (`stackdplatform.com`) and the Android appId flip are DONE; the
+> GoCardless account and the store products are still open.
 
 ## 1. The decision, and why B was superseded
 
