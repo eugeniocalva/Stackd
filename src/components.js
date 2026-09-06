@@ -3962,3 +3962,224 @@ window.Components = {
 };
 
 
+
+// ── Bank Connect sheets (v1.05, docs/bank-connect-ux-plan.md §3.3/§3.5/§3.9) ─
+// Custom sheets in the ImportRulesModal shape: own backdrop id (they must not
+// be torn down by a Modal.hide() from elsewhere), own close, own icon
+// hydration on their root (modals render outside #router-view).
+Object.assign(window.Components, {
+  _bankSheet(id, innerHtml) {
+    const existing = document.getElementById(id);
+    if (existing) existing.remove();
+    const container = document.getElementById('modal-container');
+    if (!container) return null;
+    const div = document.createElement('div');
+    div.innerHTML = `
+      <div class="modal-backdrop" id="${id}" role="dialog" aria-modal="true" aria-labelledby="${id}-title">
+        <div class="modal-content">
+          <div class="modal-handle"></div>
+          ${innerHtml}
+        </div>
+      </div>`;
+    container.appendChild(div.firstElementChild);
+    const backdrop = document.getElementById(id);
+    backdrop._close = () => { backdrop.classList.remove('open'); setTimeout(() => backdrop.remove(), 300); };
+    if (window.StackdHydrateIcons) window.StackdHydrateIcons(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('open'));
+    return backdrop;
+  },
+
+  // First toggle-on (and again after a terms revision): consent before any
+  // network call. Decline reverts the toggle.
+  BankDisclosureModal: {
+    show(options) {
+      const opts = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const point = (icon, key) => `
+        <div style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+          <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="${icon}"></i></div>
+          <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.55; padding-top: 6px;">${t(key)}</div>
+        </div>`;
+      const backdrop = window.Components._bankSheet('bank-disclosure-modal', `
+        <h2 id="bank-disclosure-modal-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('bank.disclosureTitle')}</h2>
+        ${point('lock', 'bank.disclosure1')}
+        ${point('shield-check', 'bank.disclosure2')}
+        ${point('refresh-cw', 'bank.disclosure3')}
+        ${point('badge-check', 'bank.disclosure4')}
+        <button type="button" id="bank-disclosure-terms" style="background: none; border: none; padding: 0; margin: var(--space-1) 0 var(--space-4); color: var(--color-accent); font-weight: 600; font-size: var(--text-sm); cursor: pointer;">${t('others.terms')}</button>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="bank-disclosure-accept">${t('bank.continue')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-disclosure-decline">${t('bank.notNow')}</button>
+        </div>`);
+      if (!backdrop) return;
+      let decided = false;
+      const decline = () => { if (decided) return; decided = true; backdrop._close(); if (opts.onDecline) opts.onDecline(); };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) decline(); });
+      backdrop.querySelector('#bank-disclosure-decline').addEventListener('click', decline);
+      backdrop.querySelector('#bank-disclosure-accept').addEventListener('click', () => {
+        if (decided) return;
+        decided = true;
+        backdrop._close();
+        if (opts.onAccept) opts.onAccept();
+      });
+      // TermsModal owns #modal-container's innerHTML, so reading the terms
+      // means leaving this sheet: treat it as "not now" and let the user
+      // flip the toggle again afterwards.
+      backdrop.querySelector('#bank-disclosure-terms').addEventListener('click', () => {
+        decline();
+        setTimeout(() => window.Components.TermsModal.show(), 320);
+      });
+    }
+  },
+
+  // Defaults for NEW connections + subscription facts (UX plan §3.9).
+  BankSettingsModal: {
+    show() {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const state = window.Store.getState();
+      const p = BC.prefs(state);
+      const ent = BC.entitlement(state);
+      const daysLabel = (d) => d === 0 ? t('bank.maximum') : t('bank.daysOption', { count: d });
+      const opts = (values, current) => values.map(v => `<option value="${v}" ${v === current ? 'selected' : ''}>${daysLabel(v)}</option>`).join('');
+      const subLine = ent.active
+        ? t('bank.subActive', { date: BC.formatDate(ent.expiresAt) })
+        : t('bank.subNone');
+      const supportId = BC.supportId(state);
+      const readRow = (label, valueHtml, id) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border-color);">
+          <div style="font-size: var(--text-sm); color: var(--text-secondary);">${label}</div>
+          <div id="${id}" style="font-size: var(--text-sm); font-weight: 600; text-align: right;">${valueHtml}</div>
+        </div>`;
+      const field = (id, labelKey, helpKey, control) => `
+        <div class="form-group">
+          <label class="form-label" for="${id}">${t(labelKey)}</label>
+          ${control}
+          <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 6px; line-height: 1.5;">${t(helpKey)}</div>
+        </div>`;
+
+      const backdrop = window.Components._bankSheet('bank-settings-modal', `
+        <h2 id="bank-settings-modal-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('bank.settingsTitle')}</h2>
+        <div style="max-height: 60vh; overflow-y: auto;">
+          ${field('bank-set-history', 'bank.historyDepth', 'bank.historyDepthHelp', `<select id="bank-set-history" class="form-control" style="appearance: none;">${opts(BC.HISTORY_OPTIONS, p.historyDays)}</select>`)}
+          ${field('bank-set-validity', 'bank.validity', 'bank.validityHelp', `<select id="bank-set-validity" class="form-control" style="appearance: none;">${opts(BC.VALIDITY_OPTIONS, p.validityDays)}</select>`)}
+          ${field('bank-set-from', 'bank.importFrom', 'bank.importFromHelp', `<input id="bank-set-from" class="form-control" type="date" value="${BC.esc(p.importFrom || '')}">`)}
+          ${readRow(t('bank.subscription'), BC.esc(subLine), 'bank-set-sub')}
+          ${readRow(t('bank.supportId'), supportId ? `<span style="font-family: monospace;">${BC.esc(supportId)}</span> <button type="button" id="bank-set-copy" class="touch-target" aria-label="${t('bank.copied')}" style="background: none; border: none; cursor: pointer; color: var(--color-accent); vertical-align: middle; padding: 4px;"><i data-lucide="copy" style="width: 16px; height: 16px;"></i></button>` : '—', 'bank-set-support')}
+          <button type="button" class="btn btn-secondary" id="bank-set-restore" style="width: 100%; margin-top: var(--space-3);">${t('bank.restore')}</button>
+        </div>
+        <div style="margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="bank-set-save">${t('common.save')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-set-cancel">${t('common.cancel')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const close = backdrop._close;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#bank-set-cancel').addEventListener('click', close);
+      backdrop.querySelector('#bank-set-save').addEventListener('click', () => {
+        window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+          historyDays: Number(backdrop.querySelector('#bank-set-history').value),
+          validityDays: Number(backdrop.querySelector('#bank-set-validity').value),
+          importFrom: backdrop.querySelector('#bank-set-from').value || null
+        });
+        close();
+      });
+      const copy = backdrop.querySelector('#bank-set-copy');
+      if (copy) {
+        copy.addEventListener('click', () => {
+          const text = BC.supportId(window.Store.getState());
+          if (navigator.clipboard && text) navigator.clipboard.writeText(text).catch(() => {});
+          copy.innerHTML = `<span style="font-size: var(--text-xs);">${t('bank.copied')}</span>`;
+        });
+      }
+      backdrop.querySelector('#bank-set-restore').addEventListener('click', async () => {
+        const ent2 = await BC.restorePurchase();
+        if (!ent2) { alert(t('bank.storeUnavailable')); return; }
+        const e2 = BC.entitlement(window.Store.getState());
+        const el = backdrop.querySelector('#bank-set-sub');
+        if (el) el.textContent = e2.active ? t('bank.subActive', { date: BC.formatDate(e2.expiresAt) }) : t('bank.subNone');
+      });
+    }
+  },
+
+  // Shown only when the user taps Connect without a valid entitlement, or on
+  // a 402 from the broker (B4/B5). One product, monthly + yearly (D-C9).
+  PaywallModal: {
+    show(options) {
+      const opts = options || {};
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const prices = BC.prices();
+      let plan = 'yearly';
+      const perk = (key, params) => `
+        <div style="display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.5;">
+          <i data-lucide="check" style="width: 16px; height: 16px; color: var(--color-income); flex-shrink: 0; margin-top: 2px;"></i>
+          <span>${t(key, params)}</span>
+        </div>`;
+      const planCard = (id, labelKey, price, sub) => `
+        <button type="button" class="bank-plan" data-plan="${id}" aria-pressed="${plan === id ? 'true' : 'false'}" style="flex: 1; text-align: left; background: var(--bg-surface); border: 1px solid ${plan === id ? 'var(--color-accent)' : 'var(--color-border)'}; box-shadow: ${plan === id ? '0 0 0 1px var(--color-accent)' : 'none'}; border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); cursor: pointer; color: var(--text-primary);">
+          <div style="font-size: var(--text-xs); color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">${t(labelKey)}</div>
+          <div style="font-family: var(--font-family-display); font-weight: 700; font-size: var(--text-lg); margin-top: 2px;">${BC.esc(price)}</div>
+          ${sub ? `<div style="font-size: var(--text-xs); color: var(--text-tertiary);">${BC.esc(sub)}</div>` : ''}
+        </button>`;
+      const plansHtml = prices
+        ? `<div id="bank-paywall-plans" style="display: flex; gap: var(--space-3); margin: var(--space-4) 0;">
+             ${planCard('monthly', 'bank.planMonthly', prices.monthly.price, '')}
+             ${planCard('yearly', 'bank.planYearly', prices.yearly.price, prices.yearly.perMonth ? t('bank.perMonthEquiv', { amount: prices.yearly.perMonth }) : '')}
+           </div>`
+        : `<div id="bank-paywall-noprices" style="font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-4) 0; line-height: 1.5;">${t('bank.pricesUnavailable')}</div>`;
+
+      const backdrop = window.Components._bankSheet('bank-paywall', `
+        <h2 id="bank-paywall-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('bank.paywallTitle')}</h2>
+        ${opts.reason ? `<div style="font-size: var(--text-sm); color: var(--color-expense); margin-bottom: var(--space-2);">${BC.esc(opts.reason)}</div>` : ''}
+        ${opts.bankName ? `<div id="bank-paywall-bank" style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-4);">${t('bank.worksWith', { bank: BC.esc(opts.bankName) })}</div>` : '<div style="margin-bottom: var(--space-3);"></div>'}
+        ${perk('bank.perkAuto')}
+        ${perk('bank.perkBanks', { count: BC.MAX_CONNECTIONS })}
+        ${perk('bank.perkReview')}
+        ${plansHtml}
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="bank-paywall-subscribe" ${prices ? '' : 'disabled'}>${t('bank.subscribe')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-paywall-restore">${t('bank.restore')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-paywall-close">${t('common.close')}</button>
+        </div>
+        <p style="font-size: var(--text-xs); color: var(--text-secondary); text-align: center; margin: var(--space-4) 0 var(--space-2);">${t('bank.optionalNote')}</p>
+        <p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: 0 0 var(--space-2);">${t('bank.storeNote')}</p>
+        <button type="button" id="bank-paywall-terms" style="display: block; margin: 0 auto; background: none; border: none; padding: 4px; color: var(--color-accent); font-weight: 600; font-size: var(--text-xs); cursor: pointer;">${t('others.terms')}</button>`);
+      if (!backdrop) return;
+      const close = backdrop._close;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#bank-paywall-close').addEventListener('click', close);
+      backdrop.querySelectorAll('.bank-plan').forEach(btn => {
+        btn.addEventListener('click', () => {
+          plan = btn.dataset.plan;
+          backdrop.querySelectorAll('.bank-plan').forEach(b => {
+            const on = b.dataset.plan === plan;
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            b.style.borderColor = on ? 'var(--color-accent)' : 'var(--color-border)';
+            b.style.boxShadow = on ? '0 0 0 1px var(--color-accent)' : 'none';
+          });
+        });
+      });
+      const finish = (ent) => {
+        if (ent && ent.active) {
+          close();
+          if (opts.onEntitled) opts.onEntitled();
+        }
+      };
+      backdrop.querySelector('#bank-paywall-subscribe').addEventListener('click', async () => {
+        const ent = await BC.purchase(plan);
+        if (!ent) { alert(t('bank.storeUnavailable')); return; }
+        finish(ent);
+      });
+      backdrop.querySelector('#bank-paywall-restore').addEventListener('click', async () => {
+        const ent = await BC.restorePurchase();
+        if (!ent) { alert(t('bank.storeUnavailable')); return; }
+        finish(ent);
+      });
+      backdrop.querySelector('#bank-paywall-terms').addEventListener('click', () => {
+        close();
+        setTimeout(() => window.Components.TermsModal.show(), 320);
+      });
+    }
+  }
+});

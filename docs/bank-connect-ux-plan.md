@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **DECISIONS SETTLED 2026-09-06 — B2 in progress.**
+> Status: **B2 SHIPPED 2026-09-06 (v1.05) — next: B1 broker, then B3.** See §9.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -19,7 +19,7 @@
 |---|---|
 | Domain | **Done** — `stackdplatform.com` bought and on Cloudflare 2026-09-05 (site on Pages). |
 | Android `applicationId` → `com.stackd.finance` | **Done** — commit `6f17b07`, 2026-09-04. |
-| GoCardless Bank Account Data account | **Open** — needed for B1; the sandbox institution is enough for staging. Read the commercial terms at signup: they set the price (D-C9) and `MAX_CONNECTIONS`. |
+| GoCardless Bank Account Data account | **Done** — the account exists (2026-09-06); B1 needs its `secret_id`/`secret_key` as wrangler secrets, and the subscriptions/agreements listing there is the ops view for connected users. Read the commercial terms for the price (D-C9) and `MAX_CONNECTIONS`. |
 | Store subscription products | **Open** — needs Play Console and App Store Connect (Apple Developer enrollment is still pending per the launch checklist). Blocks B5 only. |
 | Broker host | **Proposal (D-C11):** `api.stackdplatform.com` as a Worker custom domain. The D-C2 web cookie needs the web app on the same registrable domain, e.g. `app.stackdplatform.com`. Both `.well-known` files are served by the broker host. |
 
@@ -356,3 +356,56 @@ The user took the recommendation on all eight. The GoCardless account
 | D-C14 | Bank logos | **GoCardless logo URLs** (only after the toggle is on) with an **initials fallback**. |
 | D-C15 | Secure storage | **`@aparajita/capacitor-secure-storage`**. |
 | D-C16 | Settings section | **"Bank data"**, holding *Online banking* and *Import bank statement*. |
+
+## 9. B2 as built — v1.05, 2026-09-06
+
+Client shell landed: §3.1, §3.2, §3.3, §3.4, §3.9 and the paywall UI of
+§3.5, plus the start of §3.6 (the requisition is created and the bank page
+opened; the return leg is B3). Files: `src/bank-connect.js` (new global,
+loaded after `import.js`), `src/store.js` (slices + 4 actions),
+`src/views.js` (`_BankShared`, `BankConnectHubView`, `BankPickerView`,
+OthersView section), `src/components.js` (`_bankSheet`,
+`BankDisclosureModal`, `BankSettingsModal`, `PaywallModal`), `src/router.js`,
+`src/main.js` (2 cases, 4 fallback icons), 86 keys ×5 dictionaries
+(`bank.*` + `others.bankData`), `tests/unit/bankConnect.test.js` (21 cases),
+`tests/e2e/bank_connect.spec.js` (2 flows through the stub).
+
+Deviations from §3, all deliberate:
+
+- **Paused keeps the cards.** With the toggle off and connections present
+  the hub renders the connection cards with a *Paused* chip and the
+  Settings row reads *Paused*; the explainer card is only for the
+  never-connected state. (§3.2's table implied the explainer whenever off.)
+- **House chrome over the reference's.** The bank settings sheet uses the
+  bottom Save / Cancel pair like every other sheet, not the X / ✓ header;
+  the hub's back link reads *Others* (the DebtHub pattern).
+- **Terms from the disclosure = "Not now".** `TermsModal` owns
+  `#modal-container`, so opening it closes the disclosure sheet and reverts
+  the toggle; the user flips it again after reading.
+- **Consent is versioned** by the English `terms.updatedDate`
+  (`bankConnect.consentVersion`); a terms bump re-shows the disclosure with
+  no new key.
+- **Web build** renders the mobile-only state (toggle disabled, no CTA)
+  unless `window.__STACKD_BROKER_STUB__` is present; C5 lifts this.
+- **Entitlement plumbing is stub-only until B5.** `BankConnect.prices()`
+  returns null without a store, the paywall's Subscribe is disabled and
+  Restore alerts *Purchases are available in the mobile app*. A successful
+  purchase from the paywall closes it and starts the connect leg
+  immediately (the user's intent was Connect).
+- **Broker URL** is `https://api.stackdplatform.com` with a
+  `window.__STACKD_BROKER_URL__` override for staging.
+- **Store actions `ADD/UPDATE/REMOVE_BANK_CONNECTION` shipped now** so B3
+  only wires the flow; `startConnect` already persists `pendingRef` +
+  `pendingInstitution` for the cold-start resume of §3.6.
+
+Verified: lint clean, 66 unit files / 640 tests green, the two e2e flows
+green, and a manual walk of Settings → hub → disclosure → picker → paywall
+→ settings sheet in the mobile viewport.
+
+Next: **B1** (the broker, `broker/`) is now the critical path — B3 cannot
+start without `/v1/connect/*` on staging. B2's stub documents the exact
+request/response shapes B1 must honour: `GET /v1/institutions?country=`
+(GoCardless institution shape, `transaction_total_days` /
+`max_access_valid_for_days`), `POST /v1/connect/start` with
+`{country, institutionId, historyDays, validityDays}` → `{ref,
+bankRedirectUrl}`.

@@ -3224,8 +3224,22 @@ Object.assign(window.Views, {
             </div>
           </div>
 
-          <div class="section-title">${window.I18n.t('others.dataImport')}</div>
+          <!-- v1.05 Bank Connect (D-C16): the "Data Import" section becomes
+               "Bank data" and gains the Online banking row above the file
+               import. Row subtitle = BankConnect.settingsSubtitle (status
+               line once enabled). -->
+          <div class="section-title">${window.I18n.t('others.bankData')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            <div id="btn-open-bank-connect" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('bank.title')}">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;"><i data-lucide="landmark"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title">${window.I18n.t('bank.title')}</div>
+                  <div class="list-item-subtitle" id="bank-settings-subtitle" style="white-space: normal; line-height: 1.4;">${window.BankConnect ? window.BankConnect.settingsSubtitle(state) : window.I18n.t('bank.settingsDesc')}</div>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
+            </div>
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
               ${window.I18n.t('others.importDesc', { columns: '<b>Date, Amount, Type, Account, Category, Note</b>' })}
             </p>
@@ -3283,6 +3297,13 @@ Object.assign(window.Views, {
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+      // v1.05: Online banking hub entry
+      const bankBtn = document.getElementById('btn-open-bank-connect');
+      if (bankBtn) {
+        const openBank = () => window.Router.navigate('#bank-connect');
+        bankBtn.addEventListener('click', openBank);
+        bankBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBank(); } });
+      }
       const faqBtn = document.getElementById('btn-open-faq');
       if (faqBtn) {
         const openFaq = () => window.Components.FaqModal.show();
@@ -5632,6 +5653,391 @@ Object.assign(window.Views, {
         // rendered. The hashchange task is already queued ahead of this timer.
         setTimeout(() => { S.clear(); }, 0);
       });
+    }
+  }
+});
+
+// -------------------------
+// BANK CONNECT (v1.05, docs/bank-connect-ux-plan.md B2)
+// -------------------------
+// Hub (#bank-connect) + bank picker (#bank-connect-add). Every broker call
+// goes through window.BankConnect and only after BankConnect.isEnabled(state)
+// — the master toggle is the network consent switch (D-C10). The connect
+// return leg, account mapping and fetch land in B3.
+Object.assign(window.Views, {
+  _BankShared: {
+    // Transient picker state that must survive the wholesale re-render the
+    // store's emit triggers (the DOM is replaced; this object is not).
+    picker: null,
+    resetPicker() {
+      this.picker = { country: null, query: '', selectedId: null, institutions: null, loading: false, error: null, seq: 0 };
+      return this.picker;
+    },
+    getPicker() {
+      return this.picker || this.resetPicker();
+    },
+
+    chip(kind, days) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const map = {
+        active: { key: 'bank.chipActive', color: 'var(--color-income)' },
+        expiring: { key: 'bank.chipExpiring', color: 'var(--color-accent)' },
+        expired: { key: 'bank.chipExpired', color: 'var(--color-expense)' },
+        subscription: { key: 'bank.chipSubscription', color: 'var(--color-accent)' },
+        paused: { key: 'bank.chipPaused', color: 'var(--text-tertiary)' }
+      };
+      const m = map[kind] || map.active;
+      const label = kind === 'expiring' ? t(m.key, { count: Math.max(0, days || 0) }) : t(m.key);
+      return `<span class="bank-chip bank-chip-${escapeAttr(kind)}" style="display: inline-block; font-size: var(--text-xs); font-weight: 600; color: ${m.color}; background: var(--bg-surface-sunken); border-radius: 999px; padding: 2px 10px; white-space: nowrap; flex-shrink: 0;">${label}</span>`;
+    },
+
+    connectionCard(state, conn) {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const kind = BC.connectionStatus(state, conn);
+      const days = BC.daysUntil(conn.expiresAt);
+      const accounts = (conn.accounts || []).map(a => {
+        const acc = (state.accounts || []).find(x => x.id === a.stackdAccountId);
+        const target = acc ? esc(acc.name) : `<span style="color: var(--text-tertiary);">${t('bank.accountUnlinked')}</span>`;
+        const cur = a.currency && a.currency !== state.currency ? ` <span style="color: var(--text-tertiary);">· ${esc(a.currency)}</span>` : '';
+        return `<div style="display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary);"><span>•••• ${esc(a.ibanTail || '')}</span><span aria-hidden="true">→</span><span style="color: var(--text-primary); font-weight: 500;">${target}</span>${cur}</div>`;
+      }).join('');
+      const synced = conn.lastFetchAt
+        ? t('bank.lastSyncedOn', { date: BC.formatDate(conn.lastFetchAt) })
+        : t('bank.neverSynced');
+      return `
+        <div class="card bank-conn-card" data-ref="${escapeAttr(conn.ref)}" style="margin-bottom: var(--space-3);">
+          <div style="display: flex; align-items: center; gap: var(--space-3); ${accounts ? 'margin-bottom: var(--space-3);' : ''}">
+            ${BC.logoHtml({ name: conn.institutionName || conn.institutionId, logo: conn.logo })}
+            <div style="flex: 1; min-width: 0;">
+              <div class="list-item-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(conn.institutionName || conn.institutionId)}</div>
+              <div class="list-item-subtitle">${synced}</div>
+            </div>
+            ${this.chip(kind, days)}
+          </div>
+          ${accounts ? `<div style="display: flex; flex-direction: column; gap: 6px;">${accounts}</div>` : ''}
+        </div>`;
+    },
+
+    institutionRow(inst, selected) {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      return `
+        <div class="list-item bank-inst-row" data-id="${escapeAttr(inst.id)}" role="button" tabindex="0" aria-pressed="${selected ? 'true' : 'false'}" style="gap: var(--space-3); ${selected ? 'border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent);' : ''}">
+          ${BC.logoHtml(inst)}
+          <div class="list-item-content" style="flex: 1; min-width: 0;">
+            <div class="list-item-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(inst.name)}</div>
+            <div class="list-item-subtitle">${t('bank.instMeta', { days: inst.historyDays, consent: inst.maxValidityDays })}</div>
+          </div>
+          ${selected ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-accent); flex-shrink: 0;"></i>' : ''}
+        </div>`;
+    },
+
+    renderInstList() {
+      const P = this.getPicker();
+      const t = (k, p) => window.I18n.t(k, p);
+      if (P.loading) {
+        return `<div class="card" id="bank-inst-loading" style="text-align: center; color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-6) var(--space-4);">${t('bank.loading')}</div>`;
+      }
+      if (P.error) {
+        return `
+          <div class="card" id="bank-inst-error" style="text-align: center; padding: var(--space-5) var(--space-4);">
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-3); line-height: 1.5;">${t('bank.loadError')}</div>
+            <button type="button" class="btn btn-secondary" id="bank-inst-retry">${t('bank.retry')}</button>
+          </div>`;
+      }
+      const all = P.institutions || [];
+      const q = String(P.query || '').trim().toLowerCase();
+      const list = q ? all.filter(i => String(i.name).toLowerCase().includes(q)) : all;
+      if (!list.length) {
+        return `
+          <div class="card" id="bank-inst-empty" style="text-align: center; padding: var(--space-5) var(--space-4); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">
+            ${t('bank.noResults')}<br>
+            <a href="#settings" id="bank-go-import" style="color: var(--color-accent); font-weight: 600;">${t('bank.goToImport')}</a>
+          </div>`;
+      }
+      return list.map(i => this.institutionRow(i, i.id === P.selectedId)).join('');
+    }
+  },
+
+  // ── Hub (#bank-connect) ───────────────────────────────────────────────────
+  BankConnectHubView: {
+    render(state) {
+      const BC = window.BankConnect;
+      const S = window.Views._BankShared;
+      const t = (k, p) => window.I18n.t(k, p);
+      const available = !!(BC && BC.isAvailable());
+      const enabled = !!(BC && BC.isEnabled(state));
+      const conns = BC ? BC.connections(state) : [];
+      const atCap = !!BC && conns.length >= BC.MAX_CONNECTIONS;
+
+      const topCard = `
+        <div class="card card-elevated" style="margin-bottom: var(--space-4); padding: var(--space-4) var(--space-5);">
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; ${available ? '' : 'opacity: 0.5;'}">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="landmark"></i></div>
+              <div>
+                <div class="list-item-title" id="label-bank-toggle">${t('bank.toggleLabel')}</div>
+                <div class="list-item-subtitle" id="bank-toggle-subtitle">${enabled ? t('bank.toggleOn') : t('bank.toggleOff')}</div>
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="bank-toggle" ${enabled ? 'checked' : ''} ${available ? '' : 'disabled'} aria-labelledby="label-bank-toggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div id="bank-open-settings" class="touch-target" role="button" tabindex="0" aria-label="${t('bank.openSettingsAria')}" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-top: 1px solid var(--border-color); padding-top: var(--space-4); margin-top: var(--space-4); width: 100%; ${available ? '' : 'opacity: 0.5;'}">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="settings"></i></div>
+              <div class="list-item-title">${t('bank.settings')}</div>
+            </div>
+            <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
+          </div>
+        </div>`;
+
+      let body;
+      if (!available) {
+        body = `<div class="card" id="bank-mobile-only" style="text-align: center; padding: var(--space-6) var(--space-4); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.mobileOnly')}</div>`;
+      } else if (!enabled && !conns.length) {
+        body = `
+          <div class="card" id="bank-explainer" style="padding: var(--space-5);">
+            <div style="font-weight: 700; margin-bottom: var(--space-2);">${t('bank.explainerTitle')}</div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.explainerBody')}</div>
+          </div>`;
+      } else if (!conns.length) {
+        body = `
+          <div class="card" id="bank-empty" style="text-align: center; padding: var(--space-6) var(--space-4);">
+            <div style="font-weight: 600; margin-bottom: var(--space-1);">${t('bank.emptyTitle')}</div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.emptyBody')}</div>
+          </div>`;
+      } else {
+        body = `<div id="bank-conn-list">${conns.map(c => S.connectionCard(state, c)).join('')}</div>`;
+      }
+
+      const footer = available
+        ? `<p id="bank-powered-by" style="text-align: center; color: var(--text-tertiary); font-size: var(--text-xs); margin: var(--space-5) 0;">${t('bank.poweredBy')}</p>`
+        : '';
+      const cta = available
+        ? `<button type="button" class="btn btn-primary" id="bank-add" style="width: 100%;" ${enabled ? '' : 'disabled'} ${atCap ? 'hidden' : ''}>${conns.length ? t('bank.addAnother') : t('bank.addBank')}</button>`
+        : '';
+
+      return `
+        <div id="bank-connect" class="container" style="padding-bottom: 100px;">
+          <a href="#settings" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${t('bank.backAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${t('others.title')}</a>
+          <h1 class="page-header-title" style="margin-bottom: var(--space-4);">${t('bank.title')}</h1>
+          ${topCard}
+          ${body}
+          ${footer}
+          ${cta}
+        </div>`;
+    },
+
+    attachEvents(container, state) {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const toggle = container.querySelector('#bank-toggle');
+      if (toggle && BC) {
+        toggle.addEventListener('change', () => {
+          if (toggle.checked) {
+            if (BC.needsDisclosure(state)) {
+              window.Components.BankDisclosureModal.show({
+                onAccept: () => window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+                  enabled: true,
+                  consentAt: new Date().toISOString(),
+                  consentVersion: BC.termsVersion()
+                }),
+                onDecline: () => { toggle.checked = false; }
+              });
+            } else {
+              window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: true });
+            }
+            return;
+          }
+          // Off: pausing never revokes (D-C10). With live connections, confirm.
+          if (BC.connections(state).length) {
+            toggle.checked = true; // the dispatch re-renders unchecked on confirm
+            window.Components.Modal.show({
+              title: t('bank.pauseTitle'),
+              content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.pauseBody')}</p>`,
+              saveText: t('bank.pause'),
+              onSave: (closeModal) => {
+                window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: false });
+                closeModal();
+              }
+            });
+          } else {
+            window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: false });
+          }
+        });
+      }
+
+      const settingsRow = container.querySelector('#bank-open-settings');
+      if (settingsRow && BC && BC.isAvailable()) {
+        const open = () => window.Components.BankSettingsModal.show();
+        settingsRow.addEventListener('click', open);
+        settingsRow.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      }
+
+      const add = container.querySelector('#bank-add');
+      if (add) {
+        add.addEventListener('click', () => {
+          window.Views._BankShared.resetPicker();
+          window.Router.navigate('#bank-connect-add');
+        });
+      }
+
+      if (BC) BC.attachLogoFallbacks(container);
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+    }
+  },
+
+  // ── Bank picker (#bank-connect-add) ───────────────────────────────────────
+  BankPickerView: {
+    render(state) {
+      const BC = window.BankConnect;
+      const S = window.Views._BankShared;
+      const t = (k, p) => window.I18n.t(k, p);
+      const P = S.getPicker();
+      const back = `<a href="#bank-connect" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${t('bank.backToHubAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${t('bank.title')}</a>`;
+
+      if (!BC || !BC.isAvailable() || !BC.isEnabled(state)) {
+        return `
+          <div id="bank-picker" class="container" style="padding-bottom: 100px;">
+            ${back}
+            <h1 class="page-header-title" style="margin-bottom: var(--space-4);">${t('bank.pickerTitle')}</h1>
+            <div class="card" id="bank-picker-disabled" style="text-align: center; padding: var(--space-6) var(--space-4); color: var(--text-secondary); font-size: var(--text-sm);">${BC && BC.isAvailable() ? t('bank.enableFirst') : t('bank.mobileOnly')}</div>
+          </div>`;
+      }
+
+      if (!P.country) P.country = BC.countryFromLocale();
+      const countries = BC.COUNTRIES
+        .map(code => ({ code, label: BC.countryLabel(code) }))
+        .sort((a, b) => a.label.localeCompare(b.label, window.Store.getLocale()));
+      const options = countries.map(c => `<option value="${c.code}" ${c.code === P.country ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+      const selected = (P.institutions || []).find(i => i.id === P.selectedId) || null;
+
+      return `
+        <div id="bank-picker" class="container" style="padding-bottom: 100px;">
+          ${back}
+          <h1 class="page-header-title" style="margin-bottom: var(--space-4);">${t('bank.pickerTitle')}</h1>
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <div class="form-group">
+              <label class="form-label" for="bank-country">${t('bank.country')}</label>
+              <select id="bank-country" class="form-control" style="appearance: none;">${options}</select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="bank-search">${t('bank.searchLabel')}</label>
+              <input id="bank-search" class="form-control" type="search" placeholder="${t('bank.searchPlaceholder')}" value="${escapeAttr(P.query)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+            </div>
+          </div>
+          <div id="bank-inst-list">${S.renderInstList()}</div>
+          <div style="position: sticky; bottom: var(--space-3); padding-top: var(--space-3); background: linear-gradient(to top, var(--bg-app, transparent) 60%, transparent);">
+            <button type="button" class="btn btn-primary" id="bank-connect-cta" style="width: 100%;" ${selected ? '' : 'disabled'}>${selected ? t('bank.connectTo', { bank: esc(selected.name) }) : t('bank.selectBank')}</button>
+          </div>
+        </div>`;
+    },
+
+    attachEvents(container, state) {
+      const BC = window.BankConnect;
+      const S = window.Views._BankShared;
+      const t = (k, p) => window.I18n.t(k, p);
+      if (!BC || !BC.isAvailable() || !BC.isEnabled(state)) {
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+        return;
+      }
+      const P = S.getPicker();
+      const listEl = container.querySelector('#bank-inst-list');
+      const cta = container.querySelector('#bank-connect-cta');
+      const selectedInst = () => (P.institutions || []).find(i => i.id === P.selectedId) || null;
+
+      const updateCta = () => {
+        const sel = selectedInst();
+        cta.disabled = !sel;
+        cta.textContent = sel ? t('bank.connectTo', { bank: sel.name }) : t('bank.selectBank');
+      };
+
+      const bindRows = () => {
+        listEl.querySelectorAll('.bank-inst-row').forEach(row => {
+          const pick = () => { P.selectedId = row.dataset.id; refresh(); };
+          row.addEventListener('click', pick);
+          row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+        });
+        const retry = listEl.querySelector('#bank-inst-retry');
+        if (retry) retry.addEventListener('click', () => { P.institutions = null; load(); });
+      };
+
+      const refresh = () => {
+        listEl.innerHTML = S.renderInstList();
+        bindRows();
+        BC.attachLogoFallbacks(listEl);
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(listEl);
+        updateCta();
+      };
+
+      const load = async () => {
+        const seq = ++P.seq;
+        P.loading = true;
+        P.error = null;
+        refresh();
+        try {
+          const list = await BC.listInstitutions(P.country);
+          if (seq !== P.seq) return; // superseded by a newer load or a view exit
+          P.institutions = list;
+          P.loading = false;
+        } catch (e) {
+          if (seq !== P.seq) return;
+          P.loading = false;
+          P.error = 'load';
+        }
+        refresh();
+      };
+
+      const country = container.querySelector('#bank-country');
+      if (country) {
+        country.addEventListener('change', () => {
+          P.country = country.value;
+          P.selectedId = null;
+          P.institutions = null;
+          load();
+        });
+      }
+      const search = container.querySelector('#bank-search');
+      if (search) {
+        search.addEventListener('input', () => { P.query = search.value; refresh(); });
+      }
+
+      const connect = async (inst) => {
+        cta.disabled = true;
+        cta.textContent = t('bank.opening');
+        try {
+          await BC.startConnect(window.Store.getState(), inst, P.country);
+        } catch (e) {
+          alert(t('bank.connectError'));
+        } finally {
+          updateCta();
+        }
+      };
+
+      cta.addEventListener('click', () => {
+        const inst = selectedInst();
+        if (!inst) return;
+        if (!BC.entitlement(window.Store.getState()).active) {
+          window.Components.PaywallModal.show({ bankName: inst.name, onEntitled: () => connect(inst) });
+          return;
+        }
+        connect(inst);
+      });
+
+      bindRows();
+      BC.attachLogoFallbacks(listEl);
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+      if (!P.institutions && !P.loading) load();
+    },
+
+    destroy() {
+      const S = window.Views._BankShared;
+      if (S.picker) S.picker.seq++; // drop any in-flight load
+      S.resetPicker();
     }
   }
 });

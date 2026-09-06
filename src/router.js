@@ -18,7 +18,9 @@ window.Router = {
     '#debt-sim': 'debt-sim',
     '#debt-results': 'debt-results',
     '#import-map': 'import-map', // v0.99: bank-statement column mapping
-    '#import-preview': 'import-preview' // v0.99: bank-statement review & confirm
+    '#import-preview': 'import-preview', // v0.99: bank-statement review & confirm
+    '#bank-connect': 'bank-connect', // v1.05: online banking hub
+    '#bank-connect-add': 'bank-connect-add' // v1.05: bank picker
   },
 
   // Returns query params parsed from the current hash, e.g. { account: 'abc123' }

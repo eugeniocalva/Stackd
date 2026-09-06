@@ -152,11 +152,43 @@ window.Store = {
     // substring), categoryId, createdAt}. First match wins; newest rules sit
     // at the front (ADD_IMPORT_RULE prepends and dedupes by match).
     importRules: [],
+    // v1.05 Bank Connect (docs/bank-connect-ux-plan.md B2). `bankConnect` =
+    // per-device prefs + cached entitlement (see _bankConnectDefaults);
+    // `bankConnections` = {ref, institutionId, institutionName, logo,
+    // accounts: [{bankAccountId, stackdAccountId, ibanTail, currency}],
+    // connectedAt, lastFetchAt, expiresAt, historyLimitDays, status}.
+    // Opaque ids only. Both slices are per-device and deliberately OUTSIDE
+    // the CSV backup; the device token itself never enters state.
+    bankConnect: null,
+    bankConnections: [],
 
     initialized: false
   },
 
   listeners: [],
+
+  // v1.05: fresh defaults every call — callers merge, never mutate a shared object.
+  _bankConnectDefaults() {
+    return {
+      enabled: false,          // D-C10: the network consent switch
+      consentAt: null,
+      consentVersion: null,    // en 'terms.updatedDate' at consent time
+      historyDays: 90,         // D-C8 default; 0 = institution maximum
+      validityDays: 180,
+      importFrom: null,        // one-shot override for the next fetch
+      pendingRef: null,        // requisition awaiting the App Link return
+      pendingInstitution: null,
+      ownerId: null,           // opaque broker owner id (support id tail)
+      entitlement: { active: false, expiresAt: null }
+    };
+  },
+
+  _loadBankConnect() {
+    const d = this._bankConnectDefaults();
+    const saved = window.StackdDB.load('bankConnect', null);
+    if (!saved || typeof saved !== 'object') return d;
+    return Object.assign(d, saved, { entitlement: Object.assign(d.entitlement, saved.entitlement || {}) });
+  },
 
   init() {
     this.state.accounts = window.StackdDB.load('accounts', []);
@@ -187,6 +219,8 @@ window.Store = {
     }
     this.state.importPresets = window.StackdDB.load('importPresets', []); // v0.99
     this.state.importRules = window.StackdDB.load('importRules', []); // v1.01
+    this.state.bankConnect = this._loadBankConnect(); // v1.05
+    this.state.bankConnections = window.StackdDB.load('bankConnections', []); // v1.05
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -426,6 +460,8 @@ window.Store = {
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
         if (e.key === 'stackd_v1_importRules') { this.state.importRules = window.StackdDB.load('importRules', []); changed = true; } // v1.01
+        if (e.key === 'stackd_v1_bankConnect') { this.state.bankConnect = this._loadBankConnect(); changed = true; } // v1.05
+        if (e.key === 'stackd_v1_bankConnections') { this.state.bankConnections = window.StackdDB.load('bankConnections', []); changed = true; } // v1.05
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -2094,6 +2130,12 @@ window.Store = {
         window.StackdDB.save('loans', []);
         window.StackdDB.save('importPresets', []); // v0.99
         window.StackdDB.save('importRules', []); // v1.01
+        // v1.05: connections are per-device state; B4 revokes them at the
+        // broker (best effort) before this runs.
+        this.state.bankConnect = this._bankConnectDefaults();
+        window.StackdDB.save('bankConnect', this.state.bankConnect);
+        this.state.bankConnections = [];
+        window.StackdDB.save('bankConnections', []);
         // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
         // comes back (Recent Activities no longer exists outside the widgets).
         this.state.homeWidgets = this._defaultHomeWidgets();
@@ -2211,6 +2253,53 @@ window.Store = {
         this.state.enableTimeInput = !!payload;
         window.StackdDB.save('enableTimeInput', this.state.enableTimeInput);
         changed = true;
+        break;
+      }
+
+      // ── Bank Connect (v1.05, docs/bank-connect-ux-plan.md) ────────────────
+
+      // Shallow merge of the prefs object; `entitlement` merges one level
+      // deeper so a partial {active} update keeps expiresAt.
+      case 'SET_BANK_CONNECT_PREFS': {
+        const cur = this.state.bankConnect || this._bankConnectDefaults();
+        const p = payload || {};
+        const next = Object.assign({}, cur, p);
+        if (p.entitlement) next.entitlement = Object.assign({}, cur.entitlement, p.entitlement);
+        this.state.bankConnect = next;
+        window.StackdDB.save('bankConnect', next);
+        changed = true;
+        break;
+      }
+
+      case 'ADD_BANK_CONNECTION': {
+        if (!payload || !payload.ref) break;
+        const list = (this.state.bankConnections || []).filter(c => c.ref !== payload.ref);
+        list.push(Object.assign({ accounts: [], connectedAt: new Date().toISOString(), lastFetchAt: null, status: 'LN' }, payload));
+        this.state.bankConnections = list;
+        window.StackdDB.save('bankConnections', list);
+        changed = true;
+        break;
+      }
+
+      case 'UPDATE_BANK_CONNECTION': {
+        if (!payload || !payload.ref) break;
+        const list = this.state.bankConnections || [];
+        const idx = list.findIndex(c => c.ref === payload.ref);
+        if (idx === -1) break;
+        list[idx] = Object.assign({}, list[idx], payload);
+        this.state.bankConnections = [...list];
+        window.StackdDB.save('bankConnections', this.state.bankConnections);
+        changed = true;
+        break;
+      }
+
+      case 'REMOVE_BANK_CONNECTION': {
+        const before = (this.state.bankConnections || []).length;
+        this.state.bankConnections = (this.state.bankConnections || []).filter(c => c.ref !== payload);
+        if (this.state.bankConnections.length !== before) {
+          window.StackdDB.save('bankConnections', this.state.bankConnections);
+          changed = true;
+        }
         break;
       }
 
