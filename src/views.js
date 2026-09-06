@@ -141,14 +141,27 @@ window.Views = {
       const prevNet = prevSummary.net;
       const prevBalance = window.Store.getBalanceAtDate(prevPeriod.type === 'custom' ? prevPeriod.end : window.Store._getPeriodBounds(prevPeriod.type, prevPeriod.value).end, filters.accounts);
       
-      const pct = prevNet !== 0 ? ((delta - prevNet) / Math.abs(prevNet)) * 100 : (delta !== 0 ? 100 : 0);
-      
-      // We'll define isPositive based on the NET FLOW being positive for this period
+      // v1.04: when prevNet is 0 the ratio is undefined, so fall back to ±100% —
+      // signed by the direction of `delta`, not a bare +100 (a -500 net flow
+      // against a flat previous period is a fall, not a rise).
+      const pct = prevNet !== 0 ? ((delta - prevNet) / Math.abs(prevNet)) * 100 : (delta !== 0 ? (delta > 0 ? 100 : -100) : 0);
+
+      // The NET CHANGE tile reports this period's own net flow, so its sign and
+      // colour follow `delta`.
       const isPositive = delta >= 0;
       const sign = isPositive ? '+' : '';
       const color = isPositive ? 'var(--color-income-val)' : 'var(--color-expense)';
-      const bgColor = isPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
-      const textColor = isPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
+
+      // v1.04: the badge reports `pct` — the change AGAINST the previous period —
+      // which is a different quantity and can have the opposite sign. Driving the
+      // badge's sign from `delta` printed "+-2.5%" whenever net flow was positive
+      // but below last period's, because `pct.toFixed` already carries the minus.
+      // Sign, arrow and colour all follow `pct` so the pill reads consistently:
+      // up and green means better than last period, down and red means worse.
+      const pctPositive = pct >= 0;
+      const pctSign = pctPositive ? '+' : '';
+      const bgColor = pctPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
+      const textColor = pctPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
       
       const deltaLabel = window.I18n.t(`analytics.${clampToToday ? 'vsLastToDate' : 'vsLast'}.${activePeriod.type}`);
 
@@ -230,8 +243,8 @@ window.Views = {
 
             <!-- DYNAMIC DELTA BADGE -->
             <div style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 6px 12px; border-radius: 20px; background: ${bgColor}; color: ${textColor}; font-weight: 700; font-size: 0.85rem; margin-bottom: var(--space-6);">
-              <i data-lucide="${isPositive ? 'trending-up' : 'trending-down'}" style="width: 14px; height: 14px;"></i>
-              <span>${sign}${pct.toFixed(1)}%</span>
+              <i data-lucide="${pctPositive ? 'trending-up' : 'trending-down'}" style="width: 14px; height: 14px;"></i>
+              <span>${pctSign}${pct.toFixed(1)}%</span>
               <span style="opacity: 0.8; font-weight: 500; margin-left: 2px;">${deltaLabel}</span>
             </div>
             ${balanceModeToggleHtml}
