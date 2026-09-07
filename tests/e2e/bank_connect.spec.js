@@ -11,6 +11,7 @@ test.describe('Bank Connect (B2) E2E flow', () => {
       calls: [],
       opened: null,
       prices: { monthly: { price: '€2.99' }, yearly: { price: '€29.99', perMonth: '€2.50' } },
+      linked: false,
       async request(path, opts) {
         this.calls.push({ path, opts });
         if (path.startsWith('/v1/institutions')) {
@@ -19,7 +20,28 @@ test.describe('Bank Connect (B2) E2E flow', () => {
             { id: 'OTHER_BANK', name: 'Other Savings', logo: '', transaction_total_days: 90, max_access_valid_for_days: 90 }
           ];
         }
+        if (path === '/v1/entitlement/verify') return { ownerId: 'owner_abcdefgh', deviceToken: 'stub.devicetoken', active: true, expiresAt: null };
         if (path === '/v1/connect/start') return { ref: 'req_e2e', bankRedirectUrl: 'https://bank.example/sca' };
+        // v1.07 B3: the bank confirmed → the broker's connection record
+        const connection = {
+          ref: 'req_e2e', status: this.linked ? 'LN' : 'CR', institutionId: 'TEST_BANK', institutionName: 'Test Bank', institutionLogo: '',
+          accounts: this.linked ? [
+            { id: 'acc_1', ibanTail: '1234', currency: 'USD', name: 'Current' },
+            { id: 'acc_2', ibanTail: '', currency: 'EUR', name: 'Savings' }
+          ] : [],
+          historyDays: 90, validityDays: 180, createdAt: '2026-09-07T10:00:00.000Z', linkedAt: this.linked ? '2026-09-07T10:01:00.000Z' : null,
+          expiresAt: this.linked ? new Date(Date.now() + 180 * 86400000).toISOString() : null, lastError: null
+        };
+        if (path.startsWith('/v1/connect/status')) return connection;
+        if (path === '/v1/connections') return { connections: this.linked ? [connection] : [] };
+        if (path === '/v1/accounts/acc_1/balances') return { balances: [{ balance_amount: { amount: '2804.10', currency: 'USD' }, balance_type: 'CLBD', reference_date: '2026-09-06' }] };
+        if (path.startsWith('/v1/accounts/acc_1/transactions')) {
+          return { transactions: [
+            { entry_reference: 'e1', booking_date: '2026-08-20', status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '45.90', currency: 'USD' }, creditor: { name: 'SUPERMERCATO ROSSI' }, remittance_information: ['Card purchase'] },
+            { entry_reference: 'e2', booking_date: '2026-08-27', status: 'BOOK', credit_debit_indicator: 'CRDT', transaction_amount: { amount: '1850.00', currency: 'USD' }, debtor: { name: 'ACME' }, remittance_information: ['Salary'] },
+            { booking_date: '2026-09-06', status: 'PDNG', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '9.99', currency: 'USD' } }
+          ], truncated: false };
+        }
         throw new Error('unexpected broker path ' + path);
       },
       async purchase(plan) {
@@ -42,6 +64,10 @@ test.describe('Bank Connect (B2) E2E flow', () => {
     await page.reload();
     await page.waitForSelector('#bottom-nav');
     await page.waitForFunction(() => !!window.Store && !!window.BankConnect);
+    // v1.07 B3: mapping needs a same-currency target (the app default is USD).
+    await page.evaluate(() => {
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 1000, openingDate: '2020-01-01' });
+    });
   };
 
   const openHub = async (page) => {
@@ -120,6 +146,55 @@ test.describe('Bank Connect (B2) E2E flow', () => {
     expect(after.prefs.pendingRef).toBe('req_e2e');
     expect(after.prefs.ownerId).toBe('owner_abcdefgh');
     await expect(page.locator('#bank-paywall')).toHaveCount(0);
+
+    // ── v1.07 B3: the bank confirms → return → mapping → first fetch ──────
+    await page.evaluate(() => { window.__STACKD_BROKER_STUB__.linked = true; });
+    await page.evaluate(() => window.BankConnect.handleReturn('stackd://connect/return?ref=req_e2e'));
+    await page.waitForSelector('#bank-map');
+    await expect(page.locator('.bank-map-row')).toHaveCount(2);
+    const mainId = await page.evaluate(() => window.Store.getState().accounts.find(a => a.name === 'Main').id);
+    await expect(page.locator('#bank-map-sel-0')).toHaveValue(mainId); // USD → the existing USD account
+    await expect(page.locator('#bank-map-sel-1')).toHaveValue('new');  // EUR → nothing matches → Create
+    expect(await page.evaluate(() => window.Store.getState().bankConnect.pendingRef)).toBeNull();
+    await page.selectOption('#bank-map-sel-1', 'skip');
+    await page.click('#bank-map-import');
+
+    // The fetch lands in the statement details step, then the usual preview.
+    await page.waitForSelector('#import-map');
+    await expect(page.locator('#import-map')).toContainText('Online banking');
+    await expect(page.locator('#import-map')).toContainText('Test Bank •••• 1234');
+    await page.click('#btn-imap-continue');
+    await page.waitForSelector('#import-preview');
+    await expect(page.locator('.import-row')).toHaveCount(2); // the pending row is dropped (D-C4)
+    await expect(page.locator('.import-row').nth(0)).toContainText('SUPERMERCATO ROSSI');
+    await page.click('#btn-iprev-confirm');
+    await page.waitForSelector('#import-success-modal.open');
+    await expect(page.locator('#import-success-imported')).toContainText('Imported 2 transactions into Main');
+    await expect(page.locator('#import-success-verdict')).toHaveAttribute('data-ok', 'true'); // 1000 − 45.90 + 1850 = 2804.10
+    await page.click('#import-success-done');
+
+    const imported = await page.evaluate(() => {
+      const s = window.Store.getState();
+      return {
+        keys: s.transactions.filter(t => t.importKey).map(t => t.importKey).sort(),
+        conn: s.bankConnections[0]
+      };
+    });
+    // importKeys are account-scoped bank references: ref:<accountId>|<entry_reference>
+    expect(imported.keys).toHaveLength(2);
+    expect(imported.keys[0]).toBe(`ref:${mainId}|e1`);
+    expect(imported.keys[1]).toBe(`ref:${mainId}|e2`);
+    expect(imported.conn.accounts[0].stackdAccountId).toBe(mainId);
+    expect(imported.conn.accounts[1].stackdAccountId).toBeNull();
+    expect(imported.conn.lastFetchAt).toBeTruthy();
+
+    // The hub card: synced line, Import on the mapped account, Link on the other.
+    await page.evaluate(() => { location.hash = '#bank-connect'; });
+    await page.waitForSelector('.bank-conn-card[data-ref="req_e2e"]');
+    await expect(page.locator('.bank-conn-card')).toContainText('Last synced');
+    await expect(page.locator('.bank-acc-import')).toHaveCount(1);
+    await expect(page.locator('.bank-acc-link')).toHaveCount(1);
+    await expect(page.locator('.bank-chip-active')).toBeVisible();
 
     expect(dialogs).toEqual([]);
     expect(errors).toEqual([]);

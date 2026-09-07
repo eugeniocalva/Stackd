@@ -5193,7 +5193,7 @@ Object.assign(window.Views, {
     _renderStatement(state, d) {
       const S = window.Views._ImportShared;
       const st = d.statement;
-      const formatName = st.format === 'camt' ? 'camt.053 (ISO 20022)' : 'MT940';
+      const formatName = st.format === 'camt' ? 'camt.053 (ISO 20022)' : (st.format === 'connect' ? window.I18n.t('bank.formatConnect') : 'MT940'); // v1.07: Bank Connect fetches share this step
       // v1.02: the guard compares against the TARGET ACCOUNT's currency —
       // importing a SEK statement into a SEK account is now the happy path.
       const accCcy = window.Store.getAccountCurrency(d.accountId);
@@ -5717,11 +5717,18 @@ Object.assign(window.Views, {
       const t = (k, p) => window.I18n.t(k, p);
       const kind = BC.connectionStatus(state, conn);
       const days = BC.daysUntil(conn.expiresAt);
+      const canFetch = kind === 'active' || kind === 'expiring';
       const accounts = (conn.accounts || []).map(a => {
         const acc = (state.accounts || []).find(x => x.id === a.stackdAccountId);
         const target = acc ? esc(acc.name) : `<span style="color: var(--text-tertiary);">${t('bank.accountUnlinked')}</span>`;
         const cur = a.currency && a.currency !== state.currency ? ` <span style="color: var(--text-tertiary);">· ${esc(a.currency)}</span>` : '';
-        return `<div style="display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary);"><span>•••• ${esc(a.ibanTail || '')}</span><span aria-hidden="true">→</span><span style="color: var(--text-primary); font-weight: 500;">${target}</span>${cur}</div>`;
+        // v1.07 B3: the mock bank has no IBAN — fall back to the account name.
+        const label = a.ibanTail ? `•••• ${esc(a.ibanTail)}` : esc(a.name || t('bank.accountUnnamed'));
+        // v1.07 B3: per-account action — Import (mapped) or Link (unmapped).
+        const action = !canFetch ? '' : (acc
+          ? `<button type="button" class="btn btn-secondary bank-acc-import" data-ref="${escapeAttr(conn.ref)}" data-acc="${escapeAttr(a.bankAccountId)}" style="margin-left: auto; padding: 4px 12px; min-height: 0; height: 28px; font-size: var(--text-xs); width: auto; white-space: nowrap;">${t('bank.importAction')}</button>`
+          : `<button type="button" class="btn btn-secondary bank-acc-link" data-ref="${escapeAttr(conn.ref)}" style="margin-left: auto; padding: 4px 12px; min-height: 0; height: 28px; font-size: var(--text-xs); width: auto; white-space: nowrap;">${t('bank.linkAction')}</button>`);
+        return `<div style="display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary);"><span>${label}</span><span aria-hidden="true">→</span><span style="color: var(--text-primary); font-weight: 500;">${target}</span>${cur}${action}</div>`;
       }).join('');
       const synced = conn.lastFetchAt
         ? t('bank.lastSyncedOn', { date: BC.formatDate(conn.lastFetchAt) })
@@ -5907,6 +5914,37 @@ Object.assign(window.Views, {
         });
       }
 
+      // v1.07 B3: per-account Import / Link actions on the connection cards.
+      container.querySelectorAll('.bank-acc-import').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const conn = BC.findConnection(window.Store.getState(), btn.dataset.ref);
+          if (!conn) return;
+          btn.disabled = true;
+          btn.textContent = t('bank.fetching');
+          try {
+            await BC.startImport(conn, btn.dataset.acc, window.Store.getState());
+          } catch (e) {
+            const key = BC.fetchErrorKey(e);
+            if (key === 'bank.consentExpiredMsg') window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, status: 'EX' });
+            alert(t(key, { bank: conn.institutionName }));
+            btn.disabled = false;
+            btn.textContent = t('bank.importAction');
+          }
+        });
+      });
+      container.querySelectorAll('.bank-acc-link').forEach(btn => {
+        btn.addEventListener('click', () => window.Router.navigate('#bank-connect-map?ref=' + encodeURIComponent(btn.dataset.ref)));
+      });
+
+      // v1.07 B3: a connection the bank confirmed while we were away (web
+      // return, cold start without the App Link) resumes from pendingRef;
+      // a reinstalled device rebuilds its list from the broker once.
+      if (BC && BC.isEnabled(state)) {
+        const pending = BC.prefs(state).pendingRef;
+        if (pending) BC.resumeConnection(pending).catch(() => {});
+        else BC.syncConnections(state).catch(() => {});
+      }
+
       if (BC) BC.attachLogoFallbacks(container);
       if (window.StackdHydrateIcons) window.StackdHydrateIcons();
     }
@@ -6059,6 +6097,131 @@ Object.assign(window.Views, {
       const S = window.Views._BankShared;
       if (S.picker) S.picker.seq++; // drop any in-flight load
       S.resetPicker();
+    }
+  },
+
+  // ── Account mapping (#bank-connect-map?ref=) — v1.07 B3, UX plan §3.7 ────
+  // One row per bank account: an existing Stack'd account (same currency),
+  // "Create …" (type Account, currency from the bank — the v1.02 slot), or
+  // Skip. Import starts for the first mapped account right away; the rest
+  // import from the hub card.
+  BankMapView: {
+    _selection: null, // {ref, choices: {bankAccountId: 'skip'|'new'|<stackdAccountId>}} — survives re-renders
+
+    render(state) {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const ref = (window.Router.getParams && window.Router.getParams().ref) || '';
+      const conn = BC ? BC.findConnection(state, ref) : null;
+      const back = `<a href="#bank-connect" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${t('bank.backToHubAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${t('bank.title')}</a>`;
+      if (!conn) {
+        return `
+          <div id="bank-map" class="container" style="padding-bottom: 100px;">
+            ${back}
+            <h1 class="page-header-title" style="margin-bottom: var(--space-4);">${t('bank.mapTitle')}</h1>
+            <div class="card" id="bank-map-none" style="text-align: center; padding: var(--space-6) var(--space-4); color: var(--text-secondary); font-size: var(--text-sm);">${t('bank.mapNone')}</div>
+          </div>`;
+      }
+      if (!this._selection || this._selection.ref !== ref) this._selection = { ref, choices: {} };
+      const choices = this._selection.choices;
+      const accounts = state.accounts || [];
+      const used = new Set(BC.connections(state).flatMap(c => (c.accounts || []).map(a => a.stackdAccountId)).filter(Boolean));
+
+      const rows = (conn.accounts || []).map((a, i) => {
+        const ccy = a.currency || state.currency;
+        const candidates = accounts.filter(x => (window.Store.getAccountCurrency(x.id) === ccy));
+        if (!(a.bankAccountId in choices)) {
+          const existing = a.stackdAccountId || (candidates.find(x => !used.has(x.id)) || {}).id;
+          choices[a.bankAccountId] = existing || 'new';
+        }
+        const sel = choices[a.bankAccountId];
+        const label = a.ibanTail ? `•••• ${esc(a.ibanTail)}` : esc(a.name || t('bank.accountUnnamed'));
+        const options = [
+          ...candidates.map(x => `<option value="${escapeAttr(x.id)}" ${sel === x.id ? 'selected' : ''}>${esc(x.name)}</option>`),
+          `<option value="new" ${sel === 'new' ? 'selected' : ''}>${esc(t('bank.mapCreate', { name: BC.accountLabel(conn, a) }))}</option>`,
+          `<option value="skip" ${sel === 'skip' ? 'selected' : ''}>${esc(t('bank.mapSkip'))}</option>`
+        ].join('');
+        return `
+          <div class="card bank-map-row" data-acc="${escapeAttr(a.bankAccountId)}" style="margin-bottom: var(--space-3);">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3);">
+              <div style="font-weight: 600;">${label}${a.name && a.ibanTail ? ` <span style="color: var(--text-tertiary); font-weight: 400;">· ${esc(a.name)}</span>` : ''}</div>
+              <div style="color: var(--text-tertiary); font-size: var(--text-xs);">${esc(ccy)}</div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="bank-map-sel-${i}">${t('bank.mapTarget')}</label>
+              <select id="bank-map-sel-${i}" class="form-control bank-map-select" data-acc="${escapeAttr(a.bankAccountId)}" style="appearance: none;">${options}</select>
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div id="bank-map" class="container" style="padding-bottom: 100px;">
+          ${back}
+          <h1 class="page-header-title" style="margin-bottom: var(--space-1);">${t('bank.mapTitle')}</h1>
+          <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+            ${BC.logoHtml({ name: conn.institutionName, logo: conn.logo }, 32)}
+            <div style="color: var(--text-secondary); font-size: var(--text-sm);">${t('bank.mapIntro', { bank: esc(conn.institutionName) })}</div>
+          </div>
+          ${rows}
+          <div id="bank-map-error" role="alert" style="color: var(--color-expense); font-size: var(--text-sm); text-align: center; margin-bottom: var(--space-3);" hidden></div>
+          <button type="button" class="btn btn-primary" id="bank-map-import" style="width: 100%;">${t('bank.mapImport')}</button>
+        </div>`;
+    },
+
+    attachEvents(container, state) {
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const sel = this._selection;
+      container.querySelectorAll('.bank-map-select').forEach(el => {
+        el.addEventListener('change', () => { if (sel) sel.choices[el.dataset.acc] = el.value; });
+      });
+      const btn = container.querySelector('#bank-map-import');
+      if (btn && BC && sel) {
+        btn.addEventListener('click', async () => {
+          const conn = BC.findConnection(window.Store.getState(), sel.ref);
+          if (!conn) return;
+          const err = container.querySelector('#bank-map-error');
+          const mapped = (conn.accounts || []).map(a => {
+            const choice = sel.choices[a.bankAccountId] || 'skip';
+            if (choice === 'skip') return { ...a, stackdAccountId: null };
+            if (choice === 'new') {
+              const ccy = a.currency || window.Store.getState().currency;
+              window.Store.dispatch('ADD_ACCOUNT', { name: BC.accountLabel(conn, a), openingBalance: 0, currency: ccy });
+              const created = window.Store.getState().accounts.slice(-1)[0];
+              return { ...a, stackdAccountId: created ? created.id : null };
+            }
+            // v1.02 guard: the target must be in the bank account's currency
+            const ccy = a.currency || window.Store.getState().currency;
+            if (window.Store.getAccountCurrency(choice) !== ccy) {
+              if (err) { err.textContent = t('bank.mapCurrencyMismatch', { currency: ccy }); err.hidden = false; }
+              throw new Error('currency_mismatch');
+            }
+            return { ...a, stackdAccountId: choice };
+          });
+          if (!mapped.some(a => a.stackdAccountId)) {
+            if (err) { err.textContent = t('bank.mapNothing'); err.hidden = false; }
+            return;
+          }
+          window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, accounts: mapped });
+          btn.disabled = true;
+          btn.textContent = t('bank.fetching');
+          const first = mapped.find(a => a.stackdAccountId);
+          try {
+            await BC.startImport(BC.findConnection(window.Store.getState(), conn.ref), first.bankAccountId, window.Store.getState());
+          } catch (e) {
+            if (e && e.message === 'currency_mismatch') { btn.disabled = false; btn.textContent = t('bank.mapImport'); return; }
+            if (err) { err.textContent = t(BC.fetchErrorKey(e), { bank: conn.institutionName }); err.hidden = false; }
+            btn.disabled = false;
+            btn.textContent = t('bank.mapImport');
+          }
+        });
+      }
+      if (BC) BC.attachLogoFallbacks(container);
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+    },
+
+    destroy() {
+      this._selection = null;
     }
   }
 });

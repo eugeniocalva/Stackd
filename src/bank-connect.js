@@ -1,15 +1,20 @@
-// bank-connect.js — v1.05 Bank Connect client (docs/bank-connect-ux-plan.md, B2)
+// bank-connect.js — Bank Connect client (docs/bank-connect-ux-plan.md)
+//   v1.05 B2: hub / picker / settings / paywall shell, broker transport.
+//   v1.07 B3: device identity, the return leg (App Link or stackd://), account
+//             mapping, the first fetch → normalizer → the statement pipeline.
 //
 // Thin client for the Stack'd broker (docs/bank-connect-plan.md §2). Loaded
-// after import.js because later phases (B3) feed fetched statements into
-// Views._ImportShared. Holds NO bank data: only the broker base URL, the
-// institutions cache and the helpers the hub / picker / sheets share.
+// after import.js because fetches feed Views._ImportShared.startStatement.
+// Holds NO bank data: only the broker base URL, the institutions cache and
+// the helpers the hub / picker / mapping / sheets share.
 //
-// Two rules that keep the privacy story honest:
+// Rules that keep the privacy story honest:
 //  - Nothing here is called while state.bankConnect.enabled is false — the
 //    master toggle is the network consent switch (D-C10). Every caller must
-//    check `isEnabled(state)` before `request()`; the institutions list is
-//    the only unauthenticated endpoint and is still behind the toggle.
+//    check `isEnabled(state)` before `request()`.
+//  - The device token never enters `stackd_v1_*` (not mirrored, not in the
+//    CSV backup): native SecureStorage when a plugin is present, otherwise a
+//    plain localStorage key OUTSIDE the prefix (web build / dev).
 //  - The web build has no session mode until C5, so on web the feature
 //    renders its "mobile only" state unless the e2e stub is present.
 //
@@ -17,17 +22,22 @@
 // `purchase()` / `openSca()` are delegated to it so Playwright can drive the
 // flow without a network. Never set in production code.
 window.BankConnect = {
-  BROKER_URL: 'https://api.stackdplatform.com', // D-C11
+  BROKER_URL: 'https://api-staging.stackdplatform.com', // D-C11 (staging until B6; production = api.)
   CLIENT_ID: 'stackd-web',
   MAX_CONNECTIONS: 3, // D-C9: one product, up to 3 banks
   // Settings-sheet options. 0 = "Maximum" (the institution's own limit).
   HISTORY_OPTIONS: [30, 90, 180, 365, 0],
   VALIDITY_OPTIONS: [90, 180],
-  // GoCardless Bank Account Data coverage (EEA + UK). Alpha-2 codes; labels
-  // come from Intl.DisplayNames at render time so they follow the language.
+  // Aggregator coverage (EEA + UK). Alpha-2 codes; labels come from
+  // Intl.DisplayNames at render time so they follow the language.
   COUNTRIES: ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB'],
+  TOKEN_KEY: 'stackd_device_token', // deliberately NOT stackd_v1_
+  REFRESH_OVERLAP_DAYS: 7, // §4: subsequent fetches re-read a week (dedup absorbs it)
 
   _instCache: {},
+  _token: null,
+  _resuming: null,
+  _listSynced: false,
 
   stub() {
     return window.__STACKD_BROKER_STUB__ || null;
@@ -90,6 +100,85 @@ window.BankConnect = {
     return (state && state.bankConnections) || [];
   },
 
+  findConnection(state, ref) {
+    return this.connections(state).find(c => c.ref === ref) || null;
+  },
+
+  // ── Device identity (v1.07 B3) ────────────────────────────────────────────
+
+  _secureStorage() {
+    const cap = window.Capacitor;
+    const plugins = cap && cap.Plugins;
+    if (!this.isNative() || !plugins) return null;
+    // @aparajita/capacitor-secure-storage (D-C15) or capacitor-secure-storage-plugin
+    return plugins.SecureStorage || plugins.SecureStoragePlugin || null;
+  },
+
+  async tokenGet() {
+    if (this._token) return this._token;
+    const ss = this._secureStorage();
+    try {
+      if (ss && typeof ss.get === 'function') {
+        const r = await ss.get(ss === window.Capacitor.Plugins.SecureStoragePlugin ? { key: this.TOKEN_KEY } : this.TOKEN_KEY);
+        const v = r && typeof r === 'object' ? (r.value || r.data || null) : r;
+        this._token = typeof v === 'string' && v ? v : null;
+        return this._token;
+      }
+      const v = localStorage.getItem(this.TOKEN_KEY);
+      this._token = v || null;
+    } catch (e) {
+      this._token = null;
+    }
+    return this._token;
+  },
+
+  async tokenSet(token) {
+    this._token = token || null;
+    const ss = this._secureStorage();
+    try {
+      if (ss && typeof ss.set === 'function') {
+        if (ss === window.Capacitor.Plugins.SecureStoragePlugin) await ss.set({ key: this.TOKEN_KEY, value: token || '' });
+        else await ss.set(this.TOKEN_KEY, token || '');
+        return;
+      }
+      if (token) localStorage.setItem(this.TOKEN_KEY, token);
+      else localStorage.removeItem(this.TOKEN_KEY);
+    } catch (e) { /* storage unavailable: the in-memory copy still serves this session */ }
+  },
+
+  async tokenClear() {
+    await this.tokenSet(null);
+  },
+
+  // First contact mints the owner + device token at the broker (UX plan §3.5,
+  // architecture §2). Re-used for every later call; a 401 clears it.
+  async ensureDevice() {
+    const existing = await this.tokenGet();
+    if (existing) return existing;
+    const res = await this.request('/v1/entitlement/verify', { method: 'POST', body: { kind: this.isNative() ? 'native' : 'web' }, auth: false });
+    if (!res || !res.deviceToken) throw new Error('no_device_token');
+    await this.tokenSet(res.deviceToken);
+    window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+      ownerId: res.ownerId || null,
+      entitlement: { active: !!res.active, expiresAt: res.expiresAt || null }
+    });
+    return res.deviceToken;
+  },
+
+  // Re-checks the cached entitlement with the broker (open mode on staging
+  // makes every device entitled; B5 sends store receipts here).
+  async verifyEntitlement() {
+    await this.ensureDevice();
+    const res = await this.request('/v1/entitlement/verify', { method: 'POST', body: {} });
+    if (res) {
+      window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+        ownerId: res.ownerId || this.prefs(window.Store.getState()).ownerId,
+        entitlement: { active: !!res.active, expiresAt: res.expiresAt || null }
+      });
+    }
+    return res;
+  },
+
   // ── Broker transport ──────────────────────────────────────────────────────
 
   async request(path, options) {
@@ -97,17 +186,23 @@ window.BankConnect = {
     const stub = this.stub();
     if (stub && typeof stub.request === 'function') return stub.request(path, opts);
     const headers = { 'Content-Type': 'application/json', 'X-Stackd-Client': this.CLIENT_ID };
-    if (opts.token) headers.Authorization = 'Bearer ' + opts.token;
+    const token = opts.auth === false ? null : (opts.token || await this.tokenGet());
+    if (token) headers.Authorization = 'Bearer ' + token;
     const res = await fetch(this.brokerUrl() + path, {
       method: opts.method || 'GET',
       headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined
     });
     if (!res.ok) {
-      const err = new Error('broker_' + res.status);
+      let code = 'broker_' + res.status;
+      try { const b = await res.json(); if (b && b.error) code = b.error; } catch (e) { /* no body */ }
+      if (res.status === 401 && code === 'invalid_device_token') await this.tokenClear();
+      const err = new Error(code);
       err.status = res.status;
+      err.code = code;
       throw err;
     }
+    if (res.status === 204) return null;
     return res.json();
   },
 
@@ -116,7 +211,7 @@ window.BankConnect = {
   async listInstitutions(country) {
     const c = String(country || '').toUpperCase();
     if (this._instCache[c]) return this._instCache[c];
-    const list = await this.request('/v1/institutions?country=' + encodeURIComponent(c));
+    const list = await this.request('/v1/institutions?country=' + encodeURIComponent(c), { auth: false });
     const norm = (Array.isArray(list) ? list : []).map(i => ({
       id: i.id,
       name: i.name || i.id,
@@ -128,7 +223,7 @@ window.BankConnect = {
     return norm;
   },
 
-  // ── Connect leg (B3 completes the return handling) ────────────────────────
+  // ── Connect leg ───────────────────────────────────────────────────────────
 
   // Per-connection agreement parameters, clamped to the institution (D-C8).
   agreementParams(state, inst) {
@@ -139,6 +234,7 @@ window.BankConnect = {
   },
 
   async startConnect(state, inst, country) {
+    await this.ensureDevice();
     const params = this.agreementParams(state, inst);
     const res = await this.request('/v1/connect/start', {
       method: 'POST',
@@ -159,6 +255,255 @@ window.BankConnect = {
       return Browser.open({ url });
     }
     window.location.assign(url);
+  },
+
+  async closeSca() {
+    const cap = window.Capacitor;
+    const Browser = cap && cap.Plugins && cap.Plugins.Browser;
+    if (this.isNative() && Browser && typeof Browser.close === 'function') {
+      try { await Browser.close(); } catch (e) { /* already closed */ }
+    }
+  },
+
+  // The bank sends the user back through the broker: an https App Link on a
+  // verified install, the stackd:// scheme from the hand-off page otherwise.
+  parseReturnUrl(url) {
+    if (!url) return null;
+    try {
+      const u = new URL(String(url));
+      const isReturn = /\/connect\/return$/.test(u.pathname) || u.host === 'connect' || u.pathname.startsWith('//connect/return') || /connect\/return/.test(String(url));
+      if (!isReturn) return null;
+      const ref = u.searchParams.get('ref') || u.searchParams.get('state') || '';
+      return /^[0-9a-f]{16}_[0-9a-f]{16}$/.test(ref) || /^[\w-]{3,64}$/.test(ref) ? ref : null;
+    } catch (e) {
+      const m = /[?&](?:ref|state)=([\w-]+)/.exec(String(url));
+      return m && /connect\/return/.test(String(url)) ? m[1] : null;
+    }
+  },
+
+  // Entry point for appUrlOpen / getLaunchUrl (main.js) and the hub's resume.
+  async handleReturn(url) {
+    const state = window.Store.getState();
+    const ref = this.parseReturnUrl(url) || this.prefs(state).pendingRef;
+    if (!ref) return false;
+    await this.closeSca();
+    return this.resumeConnection(ref);
+  },
+
+  // Polls the broker for the connection's outcome (the aggregator exchange
+  // happens on the return, so it is usually decided at once), records the
+  // connection and routes to mapping — or shows the error sheet.
+  async resumeConnection(ref) {
+    if (this._resuming) return this._resuming;
+    const run = async () => {
+      let status = null;
+      for (let i = 0; i < 6; i++) {
+        status = await this.request('/v1/connect/status?ref=' + encodeURIComponent(ref));
+        if (!status || status.status !== 'CR') break;
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      const clearPending = () => window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingRef: null, pendingInstitution: null });
+      if (window.Components.BankWaitingModal) window.Components.BankWaitingModal.hide();
+      if (status && status.status === 'LN') {
+        clearPending();
+        this.recordConnection(status);
+        window.Router.navigate('#bank-connect-map?ref=' + encodeURIComponent(ref));
+        return true;
+      }
+      if (status && status.status !== 'CR') clearPending();
+      window.Router.navigate('#bank-connect');
+      if (window.Components.BankConnectErrorModal) {
+        window.Components.BankConnectErrorModal.show({ status: status ? status.status : 'RJ', institutionName: status && status.institutionName });
+      }
+      return false;
+    };
+    this._resuming = run().finally(() => { this._resuming = null; });
+    return this._resuming;
+  },
+
+  // Broker connection (public shape) → local record. Existing local mappings
+  // (stackdAccountId) are preserved when the same ref is re-recorded.
+  recordConnection(pub) {
+    const state = window.Store.getState();
+    const existing = this.findConnection(state, pub.ref);
+    const prior = existing ? existing.accounts || [] : [];
+    const accounts = (pub.accounts || []).map(a => {
+      const old = prior.find(x => x.bankAccountId === a.id);
+      return { bankAccountId: a.id, stackdAccountId: old ? old.stackdAccountId : null, ibanTail: a.ibanTail || '', currency: a.currency || null, name: a.name || null };
+    });
+    const rec = {
+      ref: pub.ref,
+      institutionId: pub.institutionId,
+      institutionName: pub.institutionName,
+      logo: pub.institutionLogo || null,
+      accounts,
+      connectedAt: existing ? existing.connectedAt : (pub.linkedAt || pub.createdAt || new Date().toISOString()),
+      lastFetchAt: existing ? existing.lastFetchAt : null,
+      expiresAt: pub.expiresAt || null,
+      historyLimitDays: pub.historyDays || null,
+      status: pub.status || 'LN'
+    };
+    window.Store.dispatch(existing ? 'UPDATE_BANK_CONNECTION' : 'ADD_BANK_CONNECTION', rec);
+    return rec;
+  },
+
+  // Rebuilds the local list from the broker (reinstall / restored device).
+  // Once per session; never while the toggle is off.
+  async syncConnections(state) {
+    if (this._listSynced || !this.isEnabled(state)) return;
+    const token = await this.tokenGet();
+    if (!token) return;
+    this._listSynced = true;
+    const res = await this.request('/v1/connections');
+    const list = (res && res.connections) || [];
+    list.filter(c => c.status === 'LN' || c.status === 'EX').forEach(c => this.recordConnection(c));
+    const brokerRefs = new Set(list.map(c => c.ref));
+    this.connections(window.Store.getState()).forEach(c => {
+      if (!brokerRefs.has(c.ref)) window.Store.dispatch('REMOVE_BANK_CONNECTION', c.ref);
+    });
+  },
+
+  async revoke(ref) {
+    try {
+      await this.request('/v1/connections/' + encodeURIComponent(ref), { method: 'DELETE' });
+    } catch (e) {
+      if (!(e && e.status === 404)) throw e;
+    }
+    window.Store.dispatch('REMOVE_BANK_CONNECTION', ref);
+  },
+
+  // ── Fetch → normalize → the statement pipeline (v1.07 B3, UX plan §3.8) ──
+
+  _isoDay(ms) {
+    return new Date(ms).toISOString().slice(0, 10);
+  },
+
+  _addDays(iso, days) {
+    const t = Date.parse(iso + 'T12:00:00Z');
+    return this._isoDay(t + days * 86400000);
+  },
+
+  newestImportedDate(state, stackdAccountId) {
+    let newest = null;
+    for (const t of (state.transactions || [])) {
+      if (t.accountId === stackdAccountId && t.importKey && t.date && (!newest || t.date > newest)) newest = t.date;
+    }
+    return newest;
+  },
+
+  // D-C8: first fetch = historyDays back, clamped to the institution, never
+  // before the day after the account's newest imported row; a one-shot
+  // `importFrom` override widens/narrows it. Later fetches re-read a
+  // 7-day overlap before lastFetchAt (importKeys dedup the overlap).
+  fetchWindow(state, conn, stackdAccountId, now) {
+    const today = this._isoDay(now || Date.now());
+    const p = this.prefs(state);
+    let from;
+    if (p.importFrom && /^\d{4}-\d{2}-\d{2}$/.test(p.importFrom)) {
+      from = p.importFrom;
+    } else if (conn.lastFetchAt) {
+      from = this._addDays(String(conn.lastFetchAt).slice(0, 10), -this.REFRESH_OVERLAP_DAYS);
+    } else {
+      const prefDays = p.historyDays > 0 ? p.historyDays : Infinity;
+      const days = Math.min(prefDays, conn.historyLimitDays || prefDays, 730);
+      from = this._addDays(today, -(isFinite(days) ? days : 730));
+      const newest = this.newestImportedDate(state, stackdAccountId);
+      if (newest) {
+        const after = this._addDays(newest, 1);
+        if (after > from) from = after;
+      }
+    }
+    if (from > today) from = today;
+    return { dateFrom: from, dateTo: today, overrode: !!p.importFrom };
+  },
+
+  _counterparty(t) {
+    const dbit = t.credit_debit_indicator === 'DBIT';
+    const party = dbit ? (t.creditor && t.creditor.name) : (t.debtor && t.debtor.name);
+    return party || (dbit ? (t.debtor && t.debtor.name) : (t.creditor && t.creditor.name)) || '';
+  },
+
+  // Enable Banking transaction/balance JSON (UX plan §11) → the statement
+  // shape the v1.00 pipeline consumes. Booked only (D-C4); pending rows lack
+  // stable ids. Amounts are absolute + a type, like the camt/MT940 parsers.
+  normalize(txJson, balJson, fallbackCurrency) {
+    const list = (txJson && Array.isArray(txJson.transactions)) ? txJson.transactions : [];
+    const entries = [];
+    let currency = fallbackCurrency || null;
+    list.forEach(t => {
+      if (t.status && t.status !== 'BOOK') return;
+      const amt = t.transaction_amount || {};
+      const amount = Math.abs(Number(amt.amount));
+      if (!isFinite(amount)) return;
+      if (!currency && amt.currency) currency = amt.currency;
+      const date = t.booking_date || t.value_date || t.transaction_date || '';
+      const remittance = Array.isArray(t.remittance_information) ? t.remittance_information.filter(Boolean).join(' ') : (t.remittance_information || '');
+      const party = this._counterparty(t);
+      const btc = t.bank_transaction_code && t.bank_transaction_code.description;
+      const description = [party, remittance].filter(Boolean).join(' — ') || btc || 'Bank transaction';
+      const dbit = t.credit_debit_indicator === 'DBIT' || (t.credit_debit_indicator == null && Number(amt.amount) < 0);
+      entries.push({
+        date,
+        description: String(description).replace(/\s+/g, ' ').trim().slice(0, 200),
+        type: dbit ? 'expense' : 'income',
+        amount,
+        bankRef: String(t.entry_reference || t.transaction_id || '').trim()
+      });
+    });
+    const balances = (balJson && Array.isArray(balJson.balances)) ? balJson.balances : [];
+    const pref = ['CLBD', 'CLAV', 'ITAV', 'XPCD', 'OTHR'];
+    const chosen = balances.slice().sort((a, b) => {
+      const ia = pref.indexOf(String(a.balance_type || '').toUpperCase()); const ib = pref.indexOf(String(b.balance_type || '').toUpperCase());
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    })[0];
+    let closingBalance = null;
+    if (chosen && chosen.balance_amount && isFinite(Number(chosen.balance_amount.amount))) {
+      closingBalance = { amount: Number(chosen.balance_amount.amount), date: chosen.reference_date || this._isoDay(Date.now()) };
+      if (!currency && chosen.balance_amount.currency) currency = chosen.balance_amount.currency;
+    }
+    return { format: 'connect', currency, entries, openingBalance: null, closingBalance };
+  },
+
+  async fetchStatement(conn, bankAccount, state, now) {
+    await this.ensureDevice();
+    const win = this.fetchWindow(state, conn, bankAccount.stackdAccountId, now);
+    const q = '?date_from=' + win.dateFrom + '&date_to=' + win.dateTo;
+    const [bal, tx] = await Promise.all([
+      this.request('/v1/accounts/' + encodeURIComponent(bankAccount.bankAccountId) + '/balances'),
+      this.request('/v1/accounts/' + encodeURIComponent(bankAccount.bankAccountId) + '/transactions' + q)
+    ]);
+    return { statement: this.normalize(tx, bal, bankAccount.currency), window: win };
+  },
+
+  accountLabel(conn, a) {
+    const t = (k, p) => window.I18n.t(k, p);
+    if (a.ibanTail) return t('bank.newAccountName', { bank: conn.institutionName, tail: a.ibanTail });
+    return a.name ? `${conn.institutionName} · ${a.name}` : conn.institutionName;
+  },
+
+  // Fetch one mapped account and hand the statement to the import pipeline
+  // (details step → preview → confirm → the U2 success sheet).
+  async startImport(conn, bankAccountId, state) {
+    const a = (conn.accounts || []).find(x => x.bankAccountId === bankAccountId);
+    if (!a || !a.stackdAccountId) throw new Error('unmapped_account');
+    const { statement, window: win } = await this.fetchStatement(conn, a, state);
+    window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, lastFetchAt: new Date().toISOString() });
+    if (win.overrode) window.Store.dispatch('SET_BANK_CONNECT_PREFS', { importFrom: null }); // one-shot
+    const fresh = window.Store.getState();
+    window.Views._ImportShared.startStatement(statement, this.accountLabel(conn, a), fresh);
+    window.Views._ImportShared.draft.accountId = a.stackdAccountId; // the mapping wins over defaultAccountId
+    window.Views._ImportShared.draft.connectRef = conn.ref;
+    window.Router.navigate('#import-map');
+    return statement;
+  },
+
+  // User-facing message for a failed fetch (UX plan §3.10 / §3.11).
+  fetchErrorKey(err) {
+    const code = err && (err.code || err.message) || '';
+    if (code === 'account_rate_limited') return 'bank.rateLimited';
+    if (code === 'consent_expired') return 'bank.consentExpiredMsg';
+    if (code === 'subscription_required') return 'bank.chipSubscription';
+    return 'bank.fetchError';
   },
 
   // ── Entitlement (B5 wires the store plugin; the stub stands in until then) ─
@@ -196,7 +541,7 @@ window.BankConnect = {
     const loc = window.Store && window.Store.getLocale ? window.Store.getLocale() : 'en-US';
     const region = (loc.split('-')[1] || '').toUpperCase();
     if (this.COUNTRIES.includes(region)) return region;
-    return 'GB'; // en-US: GoCardless has no US coverage; UK is the closest English market
+    return 'GB'; // en-US: no US coverage; UK is the closest English market
   },
 
   _displayNames: null,

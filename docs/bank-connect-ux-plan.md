@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B2 SHIPPED (v1.05); B1 broker LIVE + VERIFIED on staging 2026-09-07 with Enable Banking (§11) — next: B3.** See §9–§11.
+> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 client shell (v1.05) and B3 connect/mapping/first fetch (v1.07) SHIPPED — next: B4 refresh lifecycle.** See §9–§12.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -311,7 +311,7 @@ Native plugins (D-C12, D-C15 pick the exact packages):
 | B0 | — | GoCardless account (sandbox institution first), commercial terms → price + `MAX_CONNECTIONS`; DNS `api.` → Worker; store products when the developer accounts exist. | Apple enrollment (blocks products only) |
 | B1 | — | `broker/` v1 on staging: institutions, connect start/return/status, accounts proxy, revoke, ownership DO, bearer sessions, rate limits, staging-only open entitlement; unit tests with mocked GoCardless. | B0 sandbox credentials |
 | B2 | v1.05 | Client shell: 3.1, 3.2, 3.3, 3.4, 3.9, the paywall UI reading the cached entitlement; `bankConnect` prefs slice; i18n; stub + e2e. Runs against the stub or staging. | — |
-| B3 | v1.06 | Connect leg + data: 3.6, 3.7, 3.8; `bankConnections` slice; Android App Links; normalizer; D-C8 window. | B1, B2, U2 |
+| B3 | v1.07 | Connect leg + data: 3.6, 3.7, 3.8; `bankConnections` slice; normalizer; D-C8 window. **Shipped 2026-09-07 (§12); Android App Links intent filter + iOS Associated Domains are the native-build follow-up.** | B1, B2, U2 |
 | B4 | v1.07 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. | B3 |
 | B5 | v1.08 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. | B0 products |
 | B6 | v1.09 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Gate for any public build carrying B2+.** | — |
@@ -511,3 +511,64 @@ developer's signed-in browser. **For B3:** the mock account has no IBAN
 (`ibanTail` empty → show the account name instead), `balance_type` was
 `ITAV` (accept ITAV/CLAV/CLBD, prefer CLBD when several), `expiresAt` comes
 back with microseconds (`…21.124000Z`, Date.parse copes).
+
+## 12. B3 as built — v1.07, 2026-09-07
+
+Connect leg, account mapping and the first fetch, on top of the U2 success
+sheet (import-ux-plan §3a). Files: `src/bank-connect.js` (v2),
+`src/views.js` (`BankMapView`, hub card actions + resume/sync, the
+"Online banking" format label on the statement details step),
+`src/components.js` (`BankWaitingModal`, `BankConnectErrorModal`),
+`src/router.js` (`#bank-connect-map`), `src/main.js` (`appUrlOpen` +
+`getLaunchUrl` → `BankConnect.handleReturn`), 25 keys ×5,
+`tests/unit/bankConnectB3.test.js` (12 cases), the bank_connect e2e spec now
+runs return → mapping → details → preview → confirm → success sheet → hub
+card through the stub.
+
+How it works, and where it deviates from §3:
+
+- **Device identity is lazy.** `BankConnect.ensureDevice()` mints the owner +
+  device token at the first `connect/start` (POST `/v1/entitlement/verify`
+  without a bearer), caches `ownerId` + entitlement in the prefs slice and
+  keeps the token in native SecureStorage when a plugin is present
+  (`SecureStorage` / `SecureStoragePlugin`), else in the localStorage key
+  `stackd_device_token` — deliberately outside `stackd_v1_` (not mirrored,
+  not in the backup). A broker 401 `invalid_device_token` clears it.
+- **The return leg is a read.** With Enable Banking the code exchange
+  happens at the broker's return URL (§11), so `resumeConnection(ref)` only
+  polls `/v1/connect/status` (up to 6 × 1.5 s while `CR`), records the
+  connection (`recordConnection`, preserving any existing
+  `stackdAccountId` mapping) and routes to `#bank-connect-map?ref=`; RJ /
+  UA / EX open `BankConnectErrorModal` (Try again → picker). Entry points:
+  `appUrlOpen` and the launch URL on native (App Link or `stackd://`), and
+  the hub's attach when `pendingRef` is set (web return, cold start without
+  the link). `parseReturnUrl` accepts both URL shapes.
+- **Mapping (§3.7) as specified,** with two refinements: a bank account
+  without an IBAN (the mock bank) is labelled by its name, and the created
+  account is named `{bank} •••• {tail}` or `{bank} · {name}`; the v1.02
+  currency guard is an inline error. **Import starts for the first mapped
+  account only**; every other mapped account gets an *Import* button on the
+  hub card (unmapped ones get *Link* back to this screen). That replaces
+  §3.8's implicit "all accounts at once" — the pipeline is per account.
+- **Fetch window (D-C8)** in `fetchWindow`: first fetch = `historyDays`
+  (0 = maximum) clamped to the connection's limit and 730, floored at the
+  day after the account's newest imported row; `importFrom` is a one-shot
+  override cleared after use; later fetches start 7 days before
+  `lastFetchAt`. Never in the future.
+- **Normalizer** (`normalize`): booked rows only; `entry_reference` /
+  `transaction_id` → `bankRef` (→ `ref:<accountId>|<ref>` importKeys);
+  description = counterparty (creditor for debits, debtor for credits) +
+  remittance, else the bank transaction code; closing balance prefers
+  CLBD > CLAV > ITAV; `format: 'connect'` so the details step says
+  "Online banking". Then `_ImportShared.startStatement` with the mapping's
+  account forced onto the draft, `#import-map` → preview → the U2 sheet.
+- **Broker list sync** (`syncConnections`): once per session on the hub
+  when a device token exists — a reinstalled device rebuilds
+  `bankConnections` from `GET /v1/connections` and drops refs the broker no
+  longer has. The broker is the authority on which connections exist; the
+  device is the authority on mappings.
+- **Not done here:** the Android App Links intent filter and iOS Associated
+  Domains (native build work, with the release fingerprint), the refresh
+  lifecycle (B4: refresh-on-open, insights, reconnect, disconnect, pause
+  semantics beyond the toggle), and the SecureStorage plugin install (the
+  localStorage fallback carries the dev/web build).

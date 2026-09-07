@@ -21,6 +21,7 @@ const makeStub = () => ({
   async request(path, opts) {
     this.calls.push({ path, opts });
     if (path.startsWith('/v1/institutions')) return RAW_INSTITUTIONS;
+    if (path === '/v1/entitlement/verify') return { ownerId: 'owner_abcdefgh', deviceToken: 'stub.token', active: true, expiresAt: null }; // v1.07 B3: startConnect mints the device first
     if (path === '/v1/connect/start') return { ref: 'req_1', bankRedirectUrl: 'https://bank.example/sca' };
     throw new Error('unexpected ' + path);
   },

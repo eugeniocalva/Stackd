@@ -4237,5 +4237,55 @@ Object.assign(window.Components, {
         window.Router.navigate(o.accountId ? `#transactions?account=${encodeURIComponent(o.accountId)}` : '#transactions');
       });
     }
+  },
+
+  // v1.07 B3 (UX plan §3.6): shown while the bank's page is open in the
+  // system browser. Cancel deletes the pending requisition at the broker.
+  BankWaitingModal: {
+    show(options) {
+      const o = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const BC = window.BankConnect;
+      const backdrop = window.Components._bankSheet('bank-waiting-modal', `
+        <h2 id="bank-waiting-modal-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem;">${t('bank.waitingTitle', { bank: BC.esc(o.bankName || '') })}</h2>
+        <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-4);">${t('bank.waitingBody')}</p>
+        <button type="button" class="btn btn-secondary" id="bank-waiting-cancel">${t('common.cancel')}</button>`);
+      if (!backdrop) return;
+      backdrop.querySelector('#bank-waiting-cancel').addEventListener('click', async () => {
+        backdrop._close();
+        if (o.ref) {
+          try { await BC.revoke(o.ref); } catch (e) { /* best effort */ }
+          window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingRef: null, pendingInstitution: null });
+        }
+      });
+    },
+    hide() {
+      const el = document.getElementById('bank-waiting-modal');
+      if (el && el._close) el._close();
+    }
+  },
+
+  // v1.07 B3 (UX plan §3.6): the bank leg failed — one sheet per outcome.
+  BankConnectErrorModal: {
+    show(options) {
+      const o = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const titleKey = o.status === 'UA' ? 'bank.errCancelledTitle' : (o.status === 'EX' ? 'bank.errExpiredTitle' : 'bank.errRejectedTitle');
+      const backdrop = window.Components._bankSheet('bank-connect-error', `
+        <h2 id="bank-connect-error-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem;">${t(titleKey)}</h2>
+        <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-4);">${t('bank.errBody')}</p>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="bank-connect-error-retry">${t('bank.tryAgain')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-connect-error-close">${t('common.close')}</button>
+        </div>`);
+      if (!backdrop) return;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+      backdrop.querySelector('#bank-connect-error-close').addEventListener('click', () => backdrop._close());
+      backdrop.querySelector('#bank-connect-error-retry').addEventListener('click', () => {
+        backdrop._close();
+        if (window.Views._BankShared) window.Views._BankShared.resetPicker();
+        window.Router.navigate('#bank-connect-add');
+      });
+    }
   }
 });

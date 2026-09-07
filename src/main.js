@@ -374,6 +374,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Access the Capacitor App plugin via its global namespace (set by the native bridge)
     const CapacitorApp = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
     if (CapacitorApp) {
+      // v1.07 B3: the bank's return (App Link on a verified install, the
+      // stackd:// scheme from the broker's hand-off page otherwise) — warm
+      // via appUrlOpen, cold via the launch URL.
+      if (window.BankConnect) {
+        CapacitorApp.addListener('appUrlOpen', (ev) => {
+          if (ev && ev.url) window.BankConnect.handleReturn(ev.url).catch(() => {});
+        });
+        if (typeof CapacitorApp.getLaunchUrl === 'function') {
+          CapacitorApp.getLaunchUrl().then(r => { if (r && r.url) return window.BankConnect.handleReturn(r.url); }).catch(() => {});
+        }
+      }
       CapacitorApp.addListener('backButton', ({ canGoBack }) => {
         const state = window.Store.getState();
         if (state.activeView !== 'dashboard') {
@@ -478,6 +489,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
       case 'bank-connect-add': // v1.05: bank picker
         viewModule = window.Views.BankPickerView;
+        break;
+      case 'bank-connect-map': // v1.07: account mapping
+        viewModule = window.Views.BankMapView;
         break;
       default:
         viewModule = window.Views.DashboardView;
