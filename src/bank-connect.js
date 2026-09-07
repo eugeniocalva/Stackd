@@ -33,11 +33,19 @@ window.BankConnect = {
   COUNTRIES: ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB'],
   TOKEN_KEY: 'stackd_device_token', // deliberately NOT stackd_v1_
   REFRESH_OVERLAP_DAYS: 7, // §4: subsequent fetches re-read a week (dedup absorbs it)
+  REFRESH_AFTER_MS: 6 * 60 * 60 * 1000, // §3.10: refresh on open once the last fetch is older
+  REFRESH_RECHECK_MS: 30 * 60 * 1000,   // a foreground return re-arms the check at most this often
 
   _instCache: {},
   _token: null,
   _resuming: null,
   _listSynced: false,
+  // v1.08 B4: fetched-but-unreviewed statements, in MEMORY only (never
+  // persisted — nothing lands in the store until the user confirms the
+  // preview). Key = `${ref}|${bankAccountId}`.
+  _pending: {},
+  _refreshing: null,
+  _lastRefreshCheck: 0,
 
   stub() {
     return window.__STACKD_BROKER_STUB__ || null;
@@ -191,7 +199,8 @@ window.BankConnect = {
     const res = await fetch(this.brokerUrl() + path, {
       method: opts.method || 'GET',
       headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      keepalive: !!opts.keepalive // factory reset revokes right before a reload
     });
     if (!res.ok) {
       let code = 'broker_' + res.status;
@@ -302,12 +311,21 @@ window.BankConnect = {
         if (!status || status.status !== 'CR') break;
         await new Promise(r => setTimeout(r, 1500));
       }
-      const clearPending = () => window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingRef: null, pendingInstitution: null });
+      const clearPending = () => window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingRef: null, pendingInstitution: null, pendingReplaceRef: null });
       if (window.Components.BankWaitingModal) window.Components.BankWaitingModal.hide();
       if (status && status.status === 'LN') {
+        // v1.08 B4: a reconnect (§3.11) replaces the expired connection —
+        // mappings carry over by IBAN tail / name, the old ref is revoked.
+        const replaceRef = this.prefs(window.Store.getState()).pendingReplaceRef;
         clearPending();
-        this.recordConnection(status);
-        window.Router.navigate('#bank-connect-map?ref=' + encodeURIComponent(ref));
+        const rec = this.recordConnection(status, replaceRef && replaceRef !== ref ? replaceRef : null);
+        if (replaceRef && replaceRef !== ref) {
+          this.clearPending(replaceRef);
+          window.Store.dispatch('REMOVE_BANK_CONNECTION', replaceRef);
+          this.request('/v1/connections/' + encodeURIComponent(replaceRef), { method: 'DELETE' }).catch(() => {});
+        }
+        const allMapped = rec.accounts.length > 0 && rec.accounts.every(a => a.stackdAccountId);
+        window.Router.navigate(allMapped ? '#bank-connect' : '#bank-connect-map?ref=' + encodeURIComponent(ref));
         return true;
       }
       if (status && status.status !== 'CR') clearPending();
@@ -323,12 +341,17 @@ window.BankConnect = {
 
   // Broker connection (public shape) → local record. Existing local mappings
   // (stackdAccountId) are preserved when the same ref is re-recorded.
-  recordConnection(pub) {
+  recordConnection(pub, carryFromRef) {
     const state = window.Store.getState();
     const existing = this.findConnection(state, pub.ref);
     const prior = existing ? existing.accounts || [] : [];
+    // v1.08 B4: on a reconnect the bank issues NEW account ids — carry the
+    // old mappings over by IBAN tail, else by name + currency.
+    const carry = carryFromRef ? this.findConnection(state, carryFromRef) : null;
+    const carried = carry ? (carry.accounts || []) : [];
     const accounts = (pub.accounts || []).map(a => {
-      const old = prior.find(x => x.bankAccountId === a.id);
+      const old = prior.find(x => x.bankAccountId === a.id)
+        || carried.find(x => x.stackdAccountId && ((a.ibanTail && x.ibanTail === a.ibanTail) || (!a.ibanTail && a.name && x.name === a.name && x.currency === (a.currency || null))));
       return { bankAccountId: a.id, stackdAccountId: old ? old.stackdAccountId : null, ibanTail: a.ibanTail || '', currency: a.currency || null, name: a.name || null };
     });
     const rec = {
@@ -369,7 +392,150 @@ window.BankConnect = {
     } catch (e) {
       if (!(e && e.status === 404)) throw e;
     }
+    this.clearPending(ref);
     window.Store.dispatch('REMOVE_BANK_CONNECTION', ref);
+  },
+
+  // Factory reset (§3.11): best-effort revocation of every connection at the
+  // broker before the slices are wiped. `keepalive` lets the requests outlive
+  // the reload that follows.
+  async revokeAll(state, keepalive) {
+    const refs = this.connections(state).map(c => c.ref);
+    this.clearPending();
+    await Promise.all(refs.map(ref => this.request('/v1/connections/' + encodeURIComponent(ref), { method: 'DELETE', keepalive: !!keepalive }).catch(() => {})));
+    return refs.length;
+  },
+
+  // ── Refresh lifecycle (v1.08 B4, UX plan §3.10 / §3.11) ──────────────────
+
+  pendingKey(ref, bankAccountId) {
+    return ref + '|' + bankAccountId;
+  },
+
+  pendingFor(ref, bankAccountId) {
+    return this._pending[this.pendingKey(ref, bankAccountId)] || null;
+  },
+
+  clearPending(ref) {
+    Object.keys(this._pending).forEach(k => { if (!ref || k.startsWith(ref + '|')) delete this._pending[k]; });
+  },
+
+  // What the dashboard insight and the hub badges read: rows waiting for review.
+  pendingSummary(state) {
+    const banks = [];
+    let total = 0;
+    this.connections(state).forEach(conn => {
+      let count = 0;
+      (conn.accounts || []).forEach(a => {
+        const p = this.pendingFor(conn.ref, a.bankAccountId);
+        if (p && p.newCount > 0) count += p.newCount;
+      });
+      if (count > 0) {
+        banks.push({ ref: conn.ref, name: conn.institutionName, count });
+        total += count;
+      }
+    });
+    return { total, banks };
+  },
+
+  // The rows the pipeline would actually insert (importKey dedup-aware).
+  countNew(statement, stackdAccountId) {
+    try {
+      return window.StackdImport.buildStatementTransactions(statement, stackdAccountId).stats.ok;
+    } catch (e) {
+      return (statement && statement.entries ? statement.entries.length : 0);
+    }
+  },
+
+  _accountsDue(state, conn, now, force) {
+    if (!conn || conn.status !== 'LN') return [];
+    const kind = this.connectionStatus(state, conn);
+    if (kind === 'expired' || kind === 'paused' || kind === 'subscription') return [];
+    const stale = force || !conn.lastFetchAt || (now - Date.parse(conn.lastFetchAt)) > this.REFRESH_AFTER_MS;
+    if (!stale) return [];
+    return (conn.accounts || []).filter(a => a.stackdAccountId && (force || !this.pendingFor(conn.ref, a.bankAccountId)));
+  },
+
+  async _refreshAccount(conn, a, state, now) {
+    const at = new Date(now).toISOString();
+    try {
+      const { statement } = await this.fetchStatement(conn, a, state, now);
+      const newCount = this.countNew(statement, a.stackdAccountId);
+      this._pending[this.pendingKey(conn.ref, a.bankAccountId)] = { statement, newCount, fetchedAt: now };
+      window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, lastFetchAt: at, lastError: null, lastErrorAt: null });
+      return newCount;
+    } catch (e) {
+      const code = (e && (e.code || e.message)) || 'fetch_failed';
+      const patch = { ref: conn.ref, lastError: code, lastErrorAt: at };
+      if (code === 'consent_expired') patch.status = 'EX';
+      window.Store.dispatch('UPDATE_BANK_CONNECTION', patch);
+      throw e;
+    }
+  },
+
+  // Refresh-on-open (§3.10): every mapped account of every live connection
+  // whose last fetch is older than 6h, one at a time, never auto-committing —
+  // results wait in memory until the user reviews them. Never mints a device
+  // and never runs while the toggle is off.
+  async refreshDue(state, options) {
+    const opts = options || {};
+    const now = opts.now || Date.now();
+    if (this._refreshing) return this._refreshing;
+    if (!this.isEnabled(state) || !this.isAvailable()) return { fetched: 0, newTotal: 0, failed: 0 };
+    const run = async () => {
+      if (!(await this.tokenGet())) return { fetched: 0, newTotal: 0, failed: 0 };
+      let fetched = 0, newTotal = 0, failed = 0;
+      for (const conn of this.connections(state)) {
+        if (opts.ref && conn.ref !== opts.ref) continue;
+        for (const a of this._accountsDue(state, conn, now, !!opts.force)) {
+          try {
+            newTotal += await this._refreshAccount(conn, a, window.Store.getState(), now);
+            fetched++;
+          } catch (e) {
+            failed++; // recorded on the connection; keep going
+          }
+        }
+      }
+      if (fetched) window.Store.emit(); // pending lives outside state → repaint the insight/badges
+      return { fetched, newTotal, failed };
+    };
+    this._refreshing = run().finally(() => { this._refreshing = null; });
+    return this._refreshing;
+  },
+
+  refreshNow(conn, state) {
+    return this.refreshDue(state, { ref: conn.ref, force: true });
+  },
+
+  // main.js: after boot (off the critical path) and on foreground returns.
+  refreshOnOpen() {
+    const now = Date.now();
+    if (now - this._lastRefreshCheck < this.REFRESH_RECHECK_MS) return null;
+    this._lastRefreshCheck = now;
+    const state = window.Store.getState();
+    if (!this.isEnabled(state) || !this.connections(state).length) return null;
+    return this.refreshDue(state).catch(() => null);
+  },
+
+  // Review from the insight / hub badge: reuse the cached statement.
+  async startImportFromPending(conn, bankAccountId, state) {
+    const p = this.pendingFor(conn.ref, bankAccountId);
+    if (!p) return this.startImport(conn, bankAccountId, state);
+    delete this._pending[this.pendingKey(conn.ref, bankAccountId)];
+    return this.startImport(conn, bankAccountId, state, p.statement);
+  },
+
+  // §3.11 reconnect: a new authorization for the same institution; the
+  // mappings carry over on the return (resumeConnection → recordConnection).
+  async reconnect(conn, state) {
+    const country = (String(conn.institutionId || '').split(':')[0] || this.countryFromLocale()).toUpperCase();
+    let inst = null;
+    try {
+      inst = (await this.listInstitutions(country)).find(i => i.id === conn.institutionId) || null;
+    } catch (e) { /* offline or unlisted: synthesize from the record */ }
+    if (!inst) inst = { id: conn.institutionId, name: conn.institutionName, logo: conn.logo || null, historyDays: conn.historyLimitDays || 365, maxValidityDays: 180 };
+    window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingReplaceRef: conn.ref });
+    return this.startConnect(state, inst, country);
   },
 
   // ── Fetch → normalize → the statement pipeline (v1.07 B3, UX plan §3.8) ──
@@ -483,11 +649,17 @@ window.BankConnect = {
 
   // Fetch one mapped account and hand the statement to the import pipeline
   // (details step → preview → confirm → the U2 success sheet).
-  async startImport(conn, bankAccountId, state) {
+  async startImport(conn, bankAccountId, state, cachedStatement) {
     const a = (conn.accounts || []).find(x => x.bankAccountId === bankAccountId);
     if (!a || !a.stackdAccountId) throw new Error('unmapped_account');
-    const { statement, window: win } = await this.fetchStatement(conn, a, state);
-    window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, lastFetchAt: new Date().toISOString() });
+    // v1.08 B4: a background refresh may already hold the statement.
+    const fetched = cachedStatement
+      ? { statement: cachedStatement, window: { overrode: false } }
+      : await this.fetchStatement(conn, a, state);
+    const statement = fetched.statement;
+    const win = fetched.window;
+    delete this._pending[this.pendingKey(conn.ref, bankAccountId)];
+    window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, lastFetchAt: new Date().toISOString(), lastError: null, lastErrorAt: null });
     if (win.overrode) window.Store.dispatch('SET_BANK_CONNECT_PREFS', { importFrom: null }); // one-shot
     const fresh = window.Store.getState();
     window.Views._ImportShared.startStatement(statement, this.accountLabel(conn, a), fresh);

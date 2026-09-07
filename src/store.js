@@ -178,6 +178,7 @@ window.Store = {
       importFrom: null,        // one-shot override for the next fetch
       pendingRef: null,        // requisition awaiting the App Link return
       pendingInstitution: null,
+      pendingReplaceRef: null, // v1.08 B4: the expired connection a reconnect replaces
       ownerId: null,           // opaque broker owner id (support id tail)
       entitlement: { active: false, expiresAt: null }
     };

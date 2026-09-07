@@ -35,6 +35,7 @@ test.describe('Bank Connect (B2) E2E flow', () => {
         if (path.startsWith('/v1/connect/status')) return connection;
         if (path === '/v1/connections') return { connections: this.linked ? [connection] : [] };
         if (path === '/v1/accounts/acc_1/balances') return { balances: [{ balance_amount: { amount: '2804.10', currency: 'USD' }, balance_type: 'CLBD', reference_date: '2026-09-06' }] };
+        if (path === '/v1/connections/req_e2e' && (opts || {}).method === 'DELETE') { this.linked = false; return { ok: true, ref: 'req_e2e' }; }
         if (path.startsWith('/v1/accounts/acc_1/transactions')) {
           return { transactions: [
             { entry_reference: 'e1', booking_date: '2026-08-20', status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '45.90', currency: 'USD' }, creditor: { name: 'SUPERMERCATO ROSSI' }, remittance_information: ['Card purchase'] },
@@ -195,6 +196,77 @@ test.describe('Bank Connect (B2) E2E flow', () => {
     await expect(page.locator('.bank-acc-import')).toHaveCount(1);
     await expect(page.locator('.bank-acc-link')).toHaveCount(1);
     await expect(page.locator('.bank-chip-active')).toBeVisible();
+
+    expect(dialogs).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  // v1.08 B4: a linked device comes back — background refresh → insight →
+  // Review → import; Refresh now; Manage → Disconnect.
+  test('refresh lifecycle: background fetch → insight → review, Refresh now, disconnect', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+    const dialogs = [];
+    page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+
+    await bootstrap(page);
+    await page.evaluate(() => {
+      window.__STACKD_BROKER_STUB__.linked = true;
+      localStorage.setItem('stackd_device_token', 'stub.devicetoken');
+      const mainId = window.Store.getState().accounts.find(a => a.name === 'Main').id;
+      window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: true, consentAt: new Date().toISOString(), consentVersion: window.BankConnect.termsVersion(), entitlement: { active: true, expiresAt: null } });
+      window.Store.dispatch('ADD_BANK_CONNECTION', {
+        ref: 'req_e2e', institutionId: 'TEST_BANK', institutionName: 'Test Bank', logo: null,
+        accounts: [{ bankAccountId: 'acc_1', stackdAccountId: mainId, ibanTail: '1234', currency: 'USD', name: 'Current' }],
+        connectedAt: '2026-09-01T00:00:00.000Z', lastFetchAt: null, expiresAt: new Date(Date.now() + 100 * 86400000).toISOString(), historyLimitDays: 90, status: 'LN'
+      });
+    });
+
+    // Background refresh (what refreshOnOpen does after boot) → the dashboard insight.
+    const r = await page.evaluate(() => window.BankConnect.refreshDue(window.Store.getState()));
+    expect(r).toEqual({ fetched: 1, newTotal: 2, failed: 0 });
+    await page.evaluate(() => { location.hash = '#dashboard'; });
+    await page.waitForSelector('.insight-card[data-insight="bankNew"]');
+    await expect(page.locator('.insight-card[data-insight="bankNew"]')).toContainText('new transactions from');
+    await expect(page.locator('.insight-card[data-insight="bankNew"] .insight-value')).toHaveText('2');
+    await page.click('.insight-card[data-insight="bankNew"]');
+    await page.waitForSelector('#bank-connect');
+    await expect(page.locator('.bank-new-badge')).toHaveText('2 new');
+    await expect(page.locator('.bank-acc-review')).toHaveText('Review 2 new');
+
+    // Review → the cached statement lands in the pipeline (no second fetch).
+    const callsBefore = await page.evaluate(() => window.__STACKD_BROKER_STUB__.calls.length);
+    await page.click('.bank-acc-review');
+    await page.waitForSelector('#import-map');
+    expect(await page.evaluate(() => window.__STACKD_BROKER_STUB__.calls.length)).toBe(callsBefore);
+    await page.click('#btn-imap-continue');
+    await page.waitForSelector('#import-preview');
+    await expect(page.locator('.import-row')).toHaveCount(2);
+    await page.click('#btn-iprev-confirm');
+    await page.waitForSelector('#import-success-modal.open');
+    await page.click('#import-success-done');
+
+    // Refresh now: everything is already imported → nothing new, "Up to date".
+    await page.evaluate(() => { location.hash = '#bank-connect'; });
+    await page.waitForSelector('.bank-conn-refresh');
+    await expect(page.locator('.bank-new-badge')).toHaveCount(0);
+    await page.click('.bank-conn-refresh');
+    await expect(page.locator('.bank-conn-refresh')).toHaveText('Up to date');
+    await expect(page.locator('.bank-acc-review')).toHaveCount(0);
+    await expect(page.locator('.bank-acc-import')).toHaveCount(1);
+
+    // Manage → Disconnect → confirm → revoked at the broker, card gone.
+    await page.click('.bank-conn-manage');
+    await page.waitForSelector('#bank-manage-modal.open');
+    await expect(page.locator('#bank-manage-modal')).toContainText('1 account linked');
+    await page.click('#bank-manage-disconnect');
+    await page.waitForSelector('#active-modal.open');
+    await expect(page.locator('#modal-title')).toHaveText('Disconnect Test Bank?');
+    await page.click('#modal-delete-btn');
+    await expect(page.locator('.bank-conn-card')).toHaveCount(0);
+    await expect(page.locator('#bank-empty')).toBeVisible();
+    expect(await page.evaluate(() => window.__STACKD_BROKER_STUB__.calls.some(c => c.path === '/v1/connections/req_e2e' && c.opts && c.opts.method === 'DELETE'))).toBe(true);
+    expect(await page.evaluate(() => window.Store.getState().bankConnections.length)).toBe(0);
 
     expect(dialogs).toEqual([]);
     expect(errors).toEqual([]);

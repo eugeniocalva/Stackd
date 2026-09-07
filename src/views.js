@@ -3601,6 +3601,9 @@ Object.assign(window.Views, {
             showDelete: true,
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
+              // v1.08 B4 (§3.11): revoke every bank connection at the broker,
+              // best effort, before the slices are wiped and the page reloads.
+              if (window.BankConnect) window.BankConnect.revokeAll(window.Store.getState(), true).catch(() => {});
               window.Store.dispatch('RESET_APP');
               closeModal();
               window.location.reload();
@@ -5725,14 +5728,35 @@ Object.assign(window.Views, {
         // v1.07 B3: the mock bank has no IBAN — fall back to the account name.
         const label = a.ibanTail ? `•••• ${esc(a.ibanTail)}` : esc(a.name || t('bank.accountUnnamed'));
         // v1.07 B3: per-account action — Import (mapped) or Link (unmapped).
+        // v1.08 B4: "Review N new" when a background refresh holds rows.
+        const pending = BC.pendingFor(conn.ref, a.bankAccountId);
+        const small = 'margin-left: auto; padding: 4px 12px; min-height: 0; height: 28px; font-size: var(--text-xs); width: auto; white-space: nowrap;';
         const action = !canFetch ? '' : (acc
-          ? `<button type="button" class="btn btn-secondary bank-acc-import" data-ref="${escapeAttr(conn.ref)}" data-acc="${escapeAttr(a.bankAccountId)}" style="margin-left: auto; padding: 4px 12px; min-height: 0; height: 28px; font-size: var(--text-xs); width: auto; white-space: nowrap;">${t('bank.importAction')}</button>`
-          : `<button type="button" class="btn btn-secondary bank-acc-link" data-ref="${escapeAttr(conn.ref)}" style="margin-left: auto; padding: 4px 12px; min-height: 0; height: 28px; font-size: var(--text-xs); width: auto; white-space: nowrap;">${t('bank.linkAction')}</button>`);
+          ? (pending && pending.newCount > 0
+            ? `<button type="button" class="btn btn-primary bank-acc-review" data-ref="${escapeAttr(conn.ref)}" data-acc="${escapeAttr(a.bankAccountId)}" style="${small}">${t('bank.reviewNew', { count: pending.newCount })}</button>`
+            : `<button type="button" class="btn btn-secondary bank-acc-import" data-ref="${escapeAttr(conn.ref)}" data-acc="${escapeAttr(a.bankAccountId)}" style="${small}">${t('bank.importAction')}</button>`)
+          : `<button type="button" class="btn btn-secondary bank-acc-link" data-ref="${escapeAttr(conn.ref)}" style="${small}">${t('bank.linkAction')}</button>`);
         return `<div style="display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary);"><span>${label}</span><span aria-hidden="true">→</span><span style="color: var(--text-primary); font-weight: 500;">${target}</span>${cur}${action}</div>`;
       }).join('');
-      const synced = conn.lastFetchAt
+      const syncedText = conn.lastFetchAt
         ? t('bank.lastSyncedOn', { date: BC.formatDate(conn.lastFetchAt) })
         : t('bank.neverSynced');
+      // v1.08 B4 degradation (§3.10): a failed refresh turns the line amber
+      // and changes nothing else. Consent expiry has its own chip.
+      const synced = conn.lastError && conn.lastError !== 'consent_expired'
+        ? `<span class="bank-sync-failed" style="color: var(--color-accent);">${conn.lastFetchAt ? t('bank.syncFailed', { date: BC.formatDate(conn.lastFetchAt) }) : t('bank.syncFailedNever')}</span>`
+        : syncedText;
+      const pendingTotal = (conn.accounts || []).reduce((s, a) => { const p = BC.pendingFor(conn.ref, a.bankAccountId); return s + (p && p.newCount > 0 ? p.newCount : 0); }, 0);
+      const actionsRow = canFetch || kind === 'expired' ? `
+          <div class="bank-conn-actions" style="display: flex; gap: var(--space-2); margin-top: var(--space-3);">
+            ${kind === 'expired'
+              ? `<button type="button" class="btn btn-primary bank-conn-reconnect" data-ref="${escapeAttr(conn.ref)}" style="flex: 1; padding: 8px 12px; min-height: 0; height: 36px; font-size: var(--text-sm);">${t('bank.reconnect')}</button>`
+              : `<button type="button" class="btn btn-primary bank-conn-refresh" data-ref="${escapeAttr(conn.ref)}" style="flex: 1; padding: 8px 12px; min-height: 0; height: 36px; font-size: var(--text-sm);">${t('bank.refreshNow')}</button>`}
+            <button type="button" class="btn btn-secondary bank-conn-manage" data-ref="${escapeAttr(conn.ref)}" style="flex: 1; padding: 8px 12px; min-height: 0; height: 36px; font-size: var(--text-sm);">${t('bank.manage')}</button>
+          </div>` : `
+          <div class="bank-conn-actions" style="display: flex; gap: var(--space-2); margin-top: var(--space-3);">
+            <button type="button" class="btn btn-secondary bank-conn-manage" data-ref="${escapeAttr(conn.ref)}" style="flex: 1; padding: 8px 12px; min-height: 0; height: 36px; font-size: var(--text-sm);">${t('bank.manage')}</button>
+          </div>`;
       return `
         <div class="card bank-conn-card" data-ref="${escapeAttr(conn.ref)}" style="margin-bottom: var(--space-3);">
           <div style="display: flex; align-items: center; gap: var(--space-3); ${accounts ? 'margin-bottom: var(--space-3);' : ''}">
@@ -5741,9 +5765,11 @@ Object.assign(window.Views, {
               <div class="list-item-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(conn.institutionName || conn.institutionId)}</div>
               <div class="list-item-subtitle">${synced}</div>
             </div>
+            ${pendingTotal ? `<span class="bank-new-badge" style="display: inline-block; font-size: var(--text-xs); font-weight: 700; color: var(--color-income); background: var(--color-income-bg); border-radius: 999px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0;">${t('bank.newCount', { count: pendingTotal })}</span>` : ''}
             ${this.chip(kind, days)}
           </div>
           ${accounts ? `<div style="display: flex; flex-direction: column; gap: 6px;">${accounts}</div>` : ''}
+          ${actionsRow}
         </div>`;
     },
 
@@ -5889,11 +5915,13 @@ Object.assign(window.Views, {
               content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.pauseBody')}</p>`,
               saveText: t('bank.pause'),
               onSave: (closeModal) => {
+                BC.clearPending(); // v1.08 B4: paused = nothing waits for review either
                 window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: false });
                 closeModal();
               }
             });
           } else {
+            BC.clearPending();
             window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: false });
           }
         });
@@ -5934,6 +5962,61 @@ Object.assign(window.Views, {
       });
       container.querySelectorAll('.bank-acc-link').forEach(btn => {
         btn.addEventListener('click', () => window.Router.navigate('#bank-connect-map?ref=' + encodeURIComponent(btn.dataset.ref)));
+      });
+
+      // v1.08 B4: Review (cached statement), Refresh now, Reconnect, Manage.
+      container.querySelectorAll('.bank-acc-review').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const conn = BC.findConnection(window.Store.getState(), btn.dataset.ref);
+          if (!conn) return;
+          btn.disabled = true;
+          try {
+            await BC.startImportFromPending(conn, btn.dataset.acc, window.Store.getState());
+          } catch (e) {
+            alert(t(BC.fetchErrorKey(e), { bank: conn.institutionName }));
+            btn.disabled = false;
+          }
+        });
+      });
+      container.querySelectorAll('.bank-conn-refresh').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const conn = BC.findConnection(window.Store.getState(), btn.dataset.ref);
+          if (!conn) return;
+          btn.disabled = true;
+          btn.textContent = t('bank.fetching');
+          const res = await BC.refreshNow(conn, window.Store.getState());
+          // The fetch stamps lastFetchAt → the card has been re-rendered by
+          // now, so feedback goes to the NEW button; a subscription lapse
+          // gets the paywall.
+          const fresh = BC.findConnection(window.Store.getState(), conn.ref);
+          if (fresh && fresh.lastError === 'subscription_required' && window.Components.PaywallModal) {
+            window.Components.PaywallModal.show({ reason: t('bank.subscriptionEnded', { date: BC.formatDate(BC.entitlement(window.Store.getState()).expiresAt || new Date().toISOString()) }) });
+          }
+          const live = container.querySelector(`.bank-conn-refresh[data-ref="${conn.ref}"]`) || btn;
+          live.disabled = false;
+          if (res && !res.failed && res.newTotal === 0) {
+            live.textContent = t('bank.upToDate');
+            setTimeout(() => { if (live.isConnected) live.textContent = t('bank.refreshNow'); }, 2000);
+          } else {
+            live.textContent = t('bank.refreshNow');
+          }
+        });
+      });
+      container.querySelectorAll('.bank-conn-reconnect').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const conn = BC.findConnection(window.Store.getState(), btn.dataset.ref);
+          if (!conn) return;
+          btn.disabled = true;
+          try {
+            await BC.reconnect(conn, window.Store.getState());
+          } catch (e) {
+            alert(t('bank.connectError'));
+            btn.disabled = false;
+          }
+        });
+      });
+      container.querySelectorAll('.bank-conn-manage').forEach(btn => {
+        btn.addEventListener('click', () => window.Components.BankManageModal.show({ ref: btn.dataset.ref }));
       });
 
       // v1.07 B3: a connection the bank confirmed while we were away (web

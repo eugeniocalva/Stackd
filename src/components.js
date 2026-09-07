@@ -4287,5 +4287,74 @@ Object.assign(window.Components, {
         window.Router.navigate('#bank-connect-add');
       });
     }
+  },
+
+  // v1.08 B4 (UX plan §3.2 "Manage"): consent dates, history limit, the
+  // linked accounts, Link accounts / Reconnect, and Disconnect (danger).
+  BankManageModal: {
+    show(options) {
+      const o = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const BC = window.BankConnect;
+      const state = window.Store.getState();
+      const conn = BC.findConnection(state, o.ref);
+      if (!conn) return;
+      const kind = BC.connectionStatus(state, conn);
+      const linked = (conn.accounts || []).filter(a => a.stackdAccountId).length;
+      const row = (label, value) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border-color);">
+          <div style="font-size: var(--text-sm); color: var(--text-secondary);">${label}</div>
+          <div style="font-size: var(--text-sm); font-weight: 600; text-align: right;">${value}</div>
+        </div>`;
+      const consent = kind === 'expired'
+        ? `<span style="color: var(--color-expense);">${conn.expiresAt ? t('bank.consentExpiredOn', { date: BC.formatDate(conn.expiresAt) }) : t('bank.chipExpired')}</span>`
+        : (conn.expiresAt ? t('bank.consentUntil', { date: BC.formatDate(conn.expiresAt) }) : '—');
+      const backdrop = window.Components._bankSheet('bank-manage-modal', `
+        <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);">
+          ${BC.logoHtml({ name: conn.institutionName, logo: conn.logo }, 36)}
+          <h2 id="bank-manage-modal-title" class="header-title" style="margin: 0; font-size: 1.1rem;">${BC.esc(conn.institutionName)}</h2>
+        </div>
+        ${row(t('bank.consentLabel'), consent)}
+        ${row(t('bank.historyDepth'), conn.historyLimitDays ? t('bank.daysOption', { count: conn.historyLimitDays }) : '—')}
+        ${row(t('bank.accountsLabel'), BC.esc(t('bank.accountsLinked', { count: linked })))}
+        ${kind === 'expired' || kind === 'expiring' ? `<p style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin: var(--space-2) 0 0;">${t('bank.reconnectHint')}</p>` : ''}
+        <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4);">
+          ${kind === 'expired' || kind === 'expiring' ? `<button type="button" class="btn btn-primary" id="bank-manage-reconnect">${t('bank.reconnect')}</button>` : ''}
+          <button type="button" class="btn btn-secondary" id="bank-manage-link">${t('bank.linkAccounts')}</button>
+          <button type="button" class="btn btn-danger" id="bank-manage-disconnect">${t('bank.disconnect')}</button>
+          <button type="button" class="btn btn-secondary" id="bank-manage-close">${t('common.close')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const close = backdrop._close;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#bank-manage-close').addEventListener('click', close);
+      backdrop.querySelector('#bank-manage-link').addEventListener('click', () => {
+        close();
+        window.Router.navigate('#bank-connect-map?ref=' + encodeURIComponent(conn.ref));
+      });
+      const rec = backdrop.querySelector('#bank-manage-reconnect');
+      if (rec) rec.addEventListener('click', async () => {
+        rec.disabled = true;
+        try { await BC.reconnect(conn, window.Store.getState()); close(); } catch (e) { alert(t('bank.connectError')); rec.disabled = false; }
+      });
+      backdrop.querySelector('#bank-manage-disconnect').addEventListener('click', () => {
+        close();
+        // Modal.show owns #modal-container's innerHTML → this sheet is gone by then.
+        setTimeout(() => {
+          window.Components.Modal.show({
+            title: t('bank.disconnectTitle', { bank: conn.institutionName }),
+            content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.disconnectBody')}</p>`,
+            saveText: t('common.cancel'),
+            showDelete: true,
+            onSave: (closeModal) => closeModal(),
+            onDelete: async (closeModal) => {
+              try { await BC.revoke(conn.ref); } catch (e) { alert(t('bank.fetchError')); }
+              closeModal();
+            }
+          });
+        }, 320);
+      });
+      BC.attachLogoFallbacks(backdrop);
+    }
   }
 });

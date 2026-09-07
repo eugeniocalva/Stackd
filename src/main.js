@@ -599,6 +599,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // splash dismissal below relies on the first render having happened.
   window.Store.emit({ sync: true });
 
+  // v1.08 B4 (bank-connect-ux-plan §3.10): background refresh of linked
+  // banks — after boot, off the critical path, and whenever the app returns
+  // to the foreground. Results wait for review; nothing is auto-committed.
+  if (window.BankConnect) {
+    setTimeout(() => window.BankConnect.refreshOnOpen(), 2000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') window.BankConnect.refreshOnOpen();
+    });
+  }
+
   // ── Splash dismissal (v0.81) ────────────────────────────────────────────
   // Readiness-gated instead of blind timers: the first render just happened
   // synchronously (emit above), so we wait only for the fonts (≤1.5s cap),

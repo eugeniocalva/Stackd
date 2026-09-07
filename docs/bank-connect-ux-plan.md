@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 client shell (v1.05) and B3 connect/mapping/first fetch (v1.07) SHIPPED — next: B4 refresh lifecycle.** See §9–§12.
+> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 (v1.05), B3 (v1.07) and B4 refresh lifecycle (v1.08) SHIPPED — next: B5 store entitlement, then B6 legal (gates any public build).** See §9–§13.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -312,7 +312,7 @@ Native plugins (D-C12, D-C15 pick the exact packages):
 | B1 | — | `broker/` v1 on staging: institutions, connect start/return/status, accounts proxy, revoke, ownership DO, bearer sessions, rate limits, staging-only open entitlement; unit tests with mocked GoCardless. | B0 sandbox credentials |
 | B2 | v1.05 | Client shell: 3.1, 3.2, 3.3, 3.4, 3.9, the paywall UI reading the cached entitlement; `bankConnect` prefs slice; i18n; stub + e2e. Runs against the stub or staging. | — |
 | B3 | v1.07 | Connect leg + data: 3.6, 3.7, 3.8; `bankConnections` slice; normalizer; D-C8 window. **Shipped 2026-09-07 (§12); Android App Links intent filter + iOS Associated Domains are the native-build follow-up.** | B1, B2, U2 |
-| B4 | v1.07 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. | B3 |
+| B4 | v1.08 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. **Shipped 2026-09-07 (§13).** | B3 |
 | B5 | v1.08 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. | B0 products |
 | B6 | v1.09 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Gate for any public build carrying B2+.** | — |
 | B7 | later | C5 web session + pairing (3.12), iOS Associated Domains in the Mac handoff. | B5, production domain (done) |
@@ -572,3 +572,51 @@ How it works, and where it deviates from §3:
   lifecycle (B4: refresh-on-open, insights, reconnect, disconnect, pause
   semantics beyond the toggle), and the SecureStorage plugin install (the
   localStorage fallback carries the dev/web build).
+
+## 13. B4 as built — v1.08, 2026-09-07
+
+The refresh lifecycle (§3.10, §3.11). Files: `src/bank-connect.js` (v3),
+`src/insights.js` (two rules + per-card targets), `src/views.js` (hub card
+actions and states, factory-reset revoke), `src/components.js`
+(`BankManageModal`), `src/main.js` (boot + foreground hook), `src/store.js`
+(`pendingReplaceRef` default), 30 keys ×5, `tests/unit/bankConnectB4.test.js`
+(10 cases), a third bank_connect e2e test (background fetch → insight →
+Review → import; Refresh now; Manage → Disconnect).
+
+- **Background refresh never commits.** `BankConnect.refreshDue` fetches
+  every mapped account of every live connection whose `lastFetchAt` is
+  older than 6 h (one at a time, never minting a device, never while the
+  toggle is off) and parks the normalized statement in
+  `BankConnect._pending` — memory only, keyed `ref|bankAccountId`, with
+  `newCount` = the rows the pipeline would insert (importKey dedup-aware).
+  Nothing reaches the store until the user reviews the preview. main.js calls
+  `refreshOnOpen()` 2 s after boot and on every foreground return, throttled
+  to one check per 30 min.
+- **Surfaces (D-C13):** the `bankNew` Smart Insight (priority 0, value = the
+  count, taps go to the hub — cards gained a `data-href`), an *N new* badge
+  on the hub card, and the per-account button becoming *Review N new*, which
+  imports from the cached statement without a second fetch. *Refresh now*
+  forces a fetch for one connection and reads *Up to date* for 2 s when
+  nothing new came back.
+- **Expiry (§3.11):** the `bankReconnect` insight (expiring ≤ 14 days with
+  the days left, or expired), the card's *Reconnect* button replacing
+  *Refresh now* when expired, and the same in the Manage sheet.
+  `BankConnect.reconnect` starts a new authorization for the same
+  institution with `pendingReplaceRef` set; on the return the mappings carry
+  over by IBAN tail (else name + currency), the old ref is removed locally and
+  revoked at the broker, and the flow skips the mapping screen when every
+  account carried over. `consent_expired` from a fetch flips the record to
+  `EX` on its own.
+- **Lapse (§3.11):** a `subscription_required` failure on *Refresh now* opens
+  the paywall with the grace copy; the chip already said *Subscription
+  needed*.
+- **Disconnect:** Manage sheet (consent dates, history limit, linked-account
+  count, *Link accounts*, *Reconnect* when relevant, *Disconnect* in the
+  danger style) → house confirm modal → `BankConnect.revoke` (DELETE at the
+  broker, drop pending, remove locally). Factory reset calls `revokeAll` with
+  `keepalive` right before `RESET_APP`.
+- **Degradation:** a failed refresh records `lastError`/`lastErrorAt` on the
+  connection and turns the *Last synced* line amber; nothing else changes.
+  Pausing the toggle clears pending statements as well.
+- **Not done:** the SecureStorage plugin and native App Links (device build),
+  the real store entitlement (B5), and the legal/store rework (B6).

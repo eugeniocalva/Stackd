@@ -55,6 +55,20 @@ window.Insights = {
     incomeSource: (p) => ({
       text: window.I18n.t('insight.incomeSource', p),
       value: `${p.pct}%`
+    }),
+    // v1.08 B4 (bank-connect-ux-plan §3.10/§3.11): the two Bank Connect
+    // cards. Count-bearing sentences use whole-sentence plural keys.
+    bankNew: (p) => ({
+      text: window.I18n.t('insight.bankNew', { count: Number(p.count), bank: p.bank }),
+      value: `${p.count}`
+    }),
+    bankExpiring: (p) => ({
+      text: window.I18n.t('insight.bankExpiring', p),
+      value: window.I18n.t('insight.bankDays', { count: Number(p.days) })
+    }),
+    bankExpired: (p) => ({
+      text: window.I18n.t('insight.bankExpired', p),
+      value: window.I18n.t('insight.bankExpiredValue')
     })
   },
 
@@ -63,6 +77,41 @@ window.Insights = {
   // when its data is insufficient (fresh installs naturally show fewer or no
   // cards). tone: 'income' | 'expense' | 'neutral' → value color class.
   rules: [
+    {
+      // 0a) v1.08 B4: bank transactions fetched in the background and waiting
+      // for review (in memory only — see BankConnect._pending). No network.
+      id: 'bankNew',
+      priority: 0,
+      compute(state) {
+        const BC = window.BankConnect;
+        if (!BC || !BC.isEnabled(state)) return null;
+        const s = BC.pendingSummary(state);
+        if (!s.total) return null;
+        const first = s.banks[0];
+        return {
+          stringId: 'bankNew',
+          icon: 'landmark',
+          tone: 'income',
+          params: { count: s.total, bank: s.banks.length > 1 ? window.I18n.t('insight.bankSeveral', { count: s.banks.length }) : first.name },
+          href: '#bank-connect'
+        };
+      }
+    },
+    {
+      // 0b) v1.08 B4: a bank consent that expired or expires within 14 days.
+      id: 'bankReconnect',
+      priority: 0.5,
+      compute(state) {
+        const BC = window.BankConnect;
+        if (!BC || !BC.isEnabled(state)) return null;
+        const conns = BC.connections(state);
+        const expired = conns.find(c => BC.connectionStatus(state, c) === 'expired');
+        if (expired) return { stringId: 'bankExpired', icon: 'unplug', tone: 'expense', params: { bank: expired.institutionName }, href: '#bank-connect' };
+        const expiring = conns.find(c => BC.connectionStatus(state, c) === 'expiring');
+        if (expiring) return { stringId: 'bankExpiring', icon: 'refresh-cw', tone: 'neutral', params: { bank: expiring.institutionName, days: Math.max(0, BC.daysUntil(expiring.expiresAt) || 0) }, href: '#bank-connect' };
+        return null;
+      }
+    },
     {
       // 1) Money placement: how concentrated the positive balances are.
       id: 'accountMix',
@@ -202,7 +251,7 @@ window.Insights = {
         : card.tone === 'expense' ? 'text-expense' : '';
       const iconStyle = card.iconColor ? ` style="color: ${this._esc(card.iconColor)};"` : '';
       return `
-        <div class="insight-card card card-elevated touch-target" data-insight="${this._esc(card.stringId)}"
+        <div class="insight-card card card-elevated touch-target" data-insight="${this._esc(card.stringId)}"${card.href ? ` data-href="${this._esc(card.href)}"` : ''}
              role="button" tabindex="0" aria-label="${window.I18n.t('insight.cardAria', { value: s.value, text: s.text.replace(/<[^>]+>/g, '') })}">
           <div class="insight-icon"${iconStyle}><i data-lucide="${this._esc(card.icon)}"></i></div>
           <span class="insight-value ${toneClass}">${s.value}</span>
@@ -239,7 +288,8 @@ window.Insights = {
   attachSection(root) {
     root.querySelectorAll('.insight-card').forEach(el => {
       el.addEventListener('click', () => {
-        window.Router.navigate('#analytics');
+        // v1.08 B4: a card may carry its own target (the Bank Connect cards → the hub)
+        window.Router.navigate(el.dataset.href || '#analytics');
       });
     });
   }
