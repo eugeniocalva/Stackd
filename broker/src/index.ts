@@ -295,7 +295,11 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
     const minted = mintToken();
     ownerId = minted.ownerId;
     owner = new OwnerClient(c.env, ownerId);
-    record = await owner.addDevice(await sha256Hex(minted.secret), body.kind === 'web' ? 'web' : 'native');
+    // v1.11 B7: `kind` is the auth mode — a bearer device is always native;
+    // `web` devices only ever come from a pairing claim (cookie session).
+    // The app's body.kind is ignored: the dev-server web build used to mint
+    // a 'web' bearer device that then listed itself as a paired browser.
+    record = await owner.addDevice(await sha256Hex(minted.secret), 'native');
     deviceToken = minted.token;
   }
 

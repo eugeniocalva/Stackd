@@ -926,8 +926,13 @@ from `localhost:3000` for cookies (cross-site).
    yet); `--env production` later. `ALLOWED_ORIGINS` (production) already
    lists `https://app.stackdplatform.com`; `PUBLIC_WEB_URL` is in both
    environments' `[vars]`.
-3. One real pairing: dev server + `wrangler dev` per §16.4, then the same
-   against staging once a staging web build exists.
+3. ~~One real pairing: dev server + `wrangler dev` per §16.4~~ — **done
+   2026-09-07** (Chrome on Windows: code → cookie → reload keeps the
+   session → phone lists the browser → logout → `401 no_session`). It
+   caught one thing: the dev-server web build minted its bearer device as
+   kind `web` and listed itself as a paired browser; a bearer device is
+   now always `native`. Still to do: the same against staging once a
+   staging web build exists.
 4. Nothing at Enable Banking: the redirect URL is unchanged (the broker's).
 
 ### 16.6 Decisions taken (as recommended in the plan)

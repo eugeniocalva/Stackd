@@ -687,6 +687,10 @@ describe('Stack\'d broker (Enable Banking)', () => {
       expect((await req('/v1/connections', { cookie: b.cookie })).data).toEqual({ error: 'invalid_session' });
       expect((await req(`/v1/devices/${list[0].id}`, { method: 'DELETE', token })).status).toBe(404);
       expect((await req('/v1/devices/xyz', { method: 'DELETE', token })).status).toBe(404);
+      // A bearer device minted with body.kind 'web' (the dev-server web build
+      // before B7) is native: it must not list itself as a paired browser.
+      const dev = await req('/v1/entitlement/verify', { body: { kind: 'web' }, ip: '198.51.100.44' });
+      expect((await req('/v1/devices', { token: dev.data.deviceToken })).data.devices).toEqual([]);
       // A browser sees itself as `current` and cannot mint pairing codes.
       const c2 = await pair(token, '198.51.100.3');
       expect((await req('/v1/devices', { cookie: c2.cookie })).data.devices[0].current).toBe(true);
