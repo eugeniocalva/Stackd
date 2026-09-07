@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B2 SHIPPED 2026-09-06 (v1.05); B1 broker BUILT + on staging 2026-09-07 with Enable Banking (GoCardless closed, §11) — next: Enable Banking app registration, smoke, then B3.** See §9–§11.
+> Status: **B2 SHIPPED (v1.05); B1 broker LIVE + VERIFIED on staging 2026-09-07 with Enable Banking (§11) — next: B3.** See §9–§11.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -499,7 +499,15 @@ not fit a one-person app.
 `debtor.name`, `bank_transaction_code`. Balances: `balances[].balance_amount`
 with `balance_type` (prefer CLBD, else the first).
 
-**Status:** deployed to `api-staging.stackdplatform.com`; the GoCardless
-secrets were removed from the worker. Waiting on the Enable Banking sandbox
-application (app id → `EB_APP_ID` in `wrangler.toml`, PEM → `EB_PRIVATE_KEY`
-secret), then the smoke test against "Mock ASPSP".
+**Status: VERIFIED end to end on staging, 2026-09-07.** Sandbox application
+`463906ef-…` registered (redirects for `api-staging` and `localhost:8787`),
+key uploaded, `scripts/smoke.mjs` → Mock ASPSP consent → broker return →
+`status` = `LN` with one account, balance 87.83 EUR, one booked transaction
+proxied. Two lessons: (1) the authorization link is short-lived — a link
+relayed through chat expired (`server_error`, `invalid_grant`); run the
+smoke script and click within seconds; (2) the Mock ASPSP authenticates with
+the Enable Banking control-panel login, so the flow must run in the
+developer's signed-in browser. **For B3:** the mock account has no IBAN
+(`ibanTail` empty → show the account name instead), `balance_type` was
+`ITAV` (accept ITAV/CLAV/CLBD, prefer CLBD when several), `expiresAt` comes
+back with microseconds (`…21.124000Z`, Date.parse copes).
