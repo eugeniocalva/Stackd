@@ -94,10 +94,16 @@ test.describe('MT940 statement import E2E flow', () => {
     await page.click('#btn-iprev-confirm');
     await page.waitForSelector('#btn-import-csv'); // back on Settings
 
-    const done = dialogs[dialogs.length - 1];
-    expect(done).toContain('Imported 2 transactions into Main');
-    // Balances reconcile exactly → no "Heads up" warning appended.
-    expect(done).not.toContain('Heads up');
+    // v1.06 U2: success sheet with the reconciliation verdict as a visual state.
+    await page.waitForSelector('#import-success-modal.open');
+    await expect(page.locator('#import-success-imported')).toContainText('Imported 2 transactions into Main');
+    // Balances reconcile exactly → the green "match" verdict, not the mismatch.
+    await expect(page.locator('#import-success-verdict')).toHaveAttribute('data-ok', 'true');
+    await expect(page.locator('#import-success-verdict')).toContainText('Balances match your bank');
+    await expect(page.locator('#import-success-verdict')).not.toContainText('Heads up');
+    await page.click('#import-success-done');
+    await expect(page.locator('#import-success-modal')).toHaveCount(0);
+    expect(dialogs).toEqual([]);
 
     const state = await page.evaluate(() => {
       const s = window.Store.getState();

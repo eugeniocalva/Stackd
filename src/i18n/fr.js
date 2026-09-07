@@ -483,6 +483,11 @@ window.I18n.dicts.fr = {
   'bankImport.doneLinked.other': "{count} lignes liées à des entrées existantes.",
   'bankImport.donePaired.one': "{count} ligne appariée comme virement.",
   'bankImport.donePaired.other': "{count} lignes appariées comme virements.",
+  // v1.06 U2: import success sheet
+  'bankImport.successTitle': 'Import terminé',
+  'bankImport.reconcileTitle': 'Vérification du solde',
+  'bankImport.reconcileOk': 'Les soldes correspondent à votre banque ({amount} le {date}).',
+  'bankImport.viewTransactions': 'Voir les transactions',
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Choisir une catégorie",
   'bankImport.alwaysUse': "Mémoriser pour « {match} »",

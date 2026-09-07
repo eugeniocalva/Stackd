@@ -89,10 +89,18 @@ test.describe('Import matching E2E flow', () => {
     await page.click('#btn-iprev-confirm');
     await page.waitForSelector('#btn-import-csv');
 
-    const done = dialogs[dialogs.length - 1];
-    expect(done).toContain('Imported 2 transactions'); // pair leg + plain row
-    expect(done).toContain('Linked 1 row to an existing entry.');
-    expect(done).toContain('Paired 1 row as a transfer.');
+    // v1.06 U2: the success sheet lists imported / linked / paired as rows.
+    await page.waitForSelector('#import-success-modal.open');
+    await expect(page.locator('#import-success-imported')).toContainText('Imported 2 transactions'); // pair leg + plain row
+    await expect(page.locator('#import-success-linked')).toHaveText('Linked 1 row to an existing entry.');
+    await expect(page.locator('#import-success-paired')).toHaveText('Paired 1 row as a transfer.');
+    // "View transactions" deep-links to History filtered on the account.
+    await page.click('#import-success-view');
+    // The hash flips first; the router's hashchange task then replaces the
+    // History filters with the account (v0.94 semantics) — wait for the state.
+    await page.waitForFunction(() => location.hash.startsWith('#transactions?account=') && window.Store.getState().historyFilters.accounts.length === 1);
+    expect(dialogs).toEqual([]);
+    await goToSettings(page); // the re-import below needs the file input on Settings
 
     const state = await page.evaluate(() => {
       const s = window.Store.getState();

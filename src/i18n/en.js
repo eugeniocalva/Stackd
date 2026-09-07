@@ -490,6 +490,11 @@ window.I18n.dicts.en = {
   'bankImport.doneLinked.other': "Linked {count} rows to existing entries.",
   'bankImport.donePaired.one': "Paired {count} row as a transfer.",
   'bankImport.donePaired.other': "Paired {count} rows as transfers.",
+  // v1.06 U2: import success sheet
+  'bankImport.successTitle': 'Import complete',
+  'bankImport.reconcileTitle': 'Balance check',
+  'bankImport.reconcileOk': 'Balances match your bank ({amount} on {date}).',
+  'bankImport.viewTransactions': 'View transactions',
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Choose category",
   'bankImport.alwaysUse': "Remember for “{match}”",

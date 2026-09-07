@@ -4181,5 +4181,61 @@ Object.assign(window.Components, {
         setTimeout(() => window.Components.TermsModal.show(), 320);
       });
     }
+  },
+
+  // v1.06 U2 (docs/import-ux-plan.md §3): the import's ending. Shown over
+  // Settings right after Confirm; counts as rows, the reconciliation verdict
+  // as a visual state, and the "View transactions" deep link (the wallet
+  // tile's ?account= filter). Also the landing surface for Bank Connect
+  // fetches (B3). Uses the shared sheet helper (`_bankSheet`).
+  ImportSuccessModal: {
+    show(options) {
+      const o = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      const row = (icon, text, id) => `
+        <div id="${id}" style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+          <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="${icon}"></i></div>
+          <div style="font-size: var(--text-sm); color: var(--text-primary); line-height: 1.5; padding-top: 6px;">${text}</div>
+        </div>`;
+      let rows = row('circle-check', esc(t('bankImport.done', { count: Number(o.imported) || 0, account: o.accountName || '' })), 'import-success-imported');
+      if (o.linked) rows += row('link-2', esc(t('bankImport.doneLinked', { count: o.linked })), 'import-success-linked');
+      if (o.paired) rows += row('arrow-left-right', esc(t('bankImport.donePaired', { count: o.paired })), 'import-success-paired');
+
+      let verdictHtml = '';
+      if (o.verdict) {
+        const ok = !!o.verdict.ok;
+        const color = ok ? 'var(--color-income)' : 'var(--color-accent)';
+        const bg = ok ? 'var(--color-income-bg)' : 'var(--bg-surface-sunken)';
+        const text = ok
+          ? t('bankImport.reconcileOk', { amount: o.verdict.bank, date: o.verdict.date })
+          : t('bankImport.reconcileMismatch', { bank: o.verdict.bank, app: o.verdict.app, date: o.verdict.date });
+        verdictHtml = `
+          <div id="import-success-verdict" data-ok="${ok ? 'true' : 'false'}" style="display: flex; align-items: flex-start; gap: var(--space-3); background: ${bg}; border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin: var(--space-2) 0 var(--space-4);">
+            <i data-lucide="${ok ? 'circle-check' : 'alert-triangle'}" style="width: 20px; height: 20px; color: ${color}; flex-shrink: 0; margin-top: 2px;"></i>
+            <div>
+              <div style="font-weight: 600; font-size: var(--text-sm); color: ${color};">${t('bankImport.reconcileTitle')}</div>
+              <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.5;">${esc(text)}</div>
+            </div>
+          </div>`;
+      }
+
+      const backdrop = window.Components._bankSheet('import-success-modal', `
+        <h2 id="import-success-modal-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('bankImport.successTitle')}</h2>
+        ${rows}
+        ${verdictHtml}
+        <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2);">
+          <button type="button" class="btn btn-primary" id="import-success-view">${t('bankImport.viewTransactions')}</button>
+          <button type="button" class="btn btn-secondary" id="import-success-done">${t('common.done')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const close = backdrop._close;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#import-success-done').addEventListener('click', close);
+      backdrop.querySelector('#import-success-view').addEventListener('click', () => {
+        close();
+        window.Router.navigate(o.accountId ? `#transactions?account=${encodeURIComponent(o.accountId)}` : '#transactions');
+      });
+    }
   }
 });

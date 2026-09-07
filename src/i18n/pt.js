@@ -483,6 +483,11 @@ window.I18n.dicts.pt = {
   'bankImport.doneLinked.other': "{count} linhas associadas a movimentos existentes.",
   'bankImport.donePaired.one': "{count} linha emparelhada como transferência.",
   'bankImport.donePaired.other': "{count} linhas emparelhadas como transferências.",
+  // v1.06 U2: import success sheet
+  'bankImport.successTitle': 'Importação concluída',
+  'bankImport.reconcileTitle': 'Verificação do saldo',
+  'bankImport.reconcileOk': 'Os saldos coincidem com o seu banco ({amount} em {date}).',
+  'bankImport.viewTransactions': 'Ver transações',
   // v1.01: category rules for imported rows (plan §5)
   'bankImport.noCategory': "Escolher categoria",
   'bankImport.alwaysUse': "Memorizar para “{match}”",

@@ -5032,6 +5032,26 @@ Object.assign(window.Views, {
       return fmt.format(amount) + (ccy ? ' ' + ccy : '');
     },
 
+    // v1.06 U2: the reconciliation verdict as DATA for the success sheet.
+    // null = nothing to compare (mapped CSV, no closing balance, or a
+    // foreign-currency statement — raw numbers across currencies are noise).
+    // Call it AFTER the import dispatches: the app balance must include the
+    // rows that just landed. Compares against the bank's closing balance at
+    // the statement's closing date (plan §4).
+    reconcileVerdict(d) {
+      if (!d || d.kind !== 'statement' || !d.statement || !d.statement.closingBalance || !d.statement.closingBalance.date) return null;
+      const st = d.statement;
+      const accCcy = window.Store.getAccountCurrency(d.accountId); // v1.02: account, not app
+      if (st.currency && st.currency !== accCcy) return null;
+      const appBal = window.Store.getBalanceAtDate(st.closingBalance.date, [d.accountId]);
+      return {
+        ok: Math.abs(appBal - st.closingBalance.amount) <= 0.005,
+        date: st.closingBalance.date,
+        bank: this.fmtStatementAmount(st.closingBalance.amount, st.currency),
+        app: window.Store.formatCurrency(appBal, accCcy)
+      };
+    },
+
     // Both import views share the "nothing to resume" guard card (deep link /
     // reload lands here with no draft to show).
     emptyState() {
@@ -5163,6 +5183,7 @@ Object.assign(window.Views, {
           <div class="card import-preview-box" id="imap-preview" style="margin-bottom: var(--space-6);"></div>
 
           <button class="btn btn-primary" id="btn-imap-continue" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.continue')}</button>
+          <div id="imap-error" role="alert" style="color: var(--color-expense); font-size: var(--text-sm); text-align: center; margin-top: var(--space-3);" hidden></div>
         </div>
       `;
     },
@@ -5219,6 +5240,7 @@ Object.assign(window.Views, {
           <div class="card import-preview-box" id="imap-preview" style="margin-bottom: var(--space-6);"></div>
 
           <button class="btn btn-primary" id="btn-imap-continue" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.continue')}</button>
+          <div id="imap-error" role="alert" style="color: var(--color-expense); font-size: var(--text-sm); text-align: center; margin-top: var(--space-3);" hidden></div>
         </div>
       `;
     },
@@ -5286,7 +5308,9 @@ Object.assign(window.Views, {
       $('btn-imap-continue').addEventListener('click', () => {
         const amountOk = m.amountMode === 'split' ? (m.debit >= 0 && m.credit >= 0) : m.amount >= 0;
         if (!(m.date >= 0 && m.description >= 0 && amountOk && d.accountId)) {
-          alert(window.I18n.t('bankImport.mappingIncomplete'));
+          // v1.06 U2: inline error under the button instead of alert()
+          const err = $('imap-error');
+          if (err) { err.textContent = window.I18n.t('bankImport.mappingIncomplete'); err.hidden = false; }
           return;
         }
         S.rebuildItems(d); // v1.03: build + include flags + match/transfer suggestions
@@ -5470,6 +5494,7 @@ Object.assign(window.Views, {
           </div>
 
           <button class="btn btn-primary" id="btn-iprev-confirm" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('bankImport.confirm', { count: selectedCount })}</button>
+          <div id="iprev-error" role="alert" style="color: var(--color-expense); font-size: var(--text-sm); text-align: center; margin-top: var(--space-3);" hidden></div>
         </div>
       `;
     },
@@ -5493,6 +5518,8 @@ Object.assign(window.Views, {
         if (txt) txt.textContent = window.I18n.t('bankImport.summary', { count: count });
         const btn = $('btn-iprev-confirm');
         if (btn) btn.textContent = window.I18n.t('bankImport.confirm', { count: count });
+        const err = $('iprev-error'); // v1.06 U2: the inline error clears once something is selected
+        if (err && count > 0) err.hidden = true;
         const all = $('iprev-toggle-all');
         if (all) { const c = cleanCount(); all.checked = c > 0 && count === c; }
       };
@@ -5586,7 +5613,9 @@ Object.assign(window.Views, {
       $('btn-iprev-confirm').addEventListener('click', () => {
         const chosen = d.items.filter(it => it.include && it.tx && !it.duplicate && !it.error);
         if (chosen.length === 0) {
-          alert(window.I18n.t('bankImport.nothingSelected'));
+          // v1.06 U2: inline error under the button instead of alert()
+          const err = $('iprev-error');
+          if (err) { err.textContent = window.I18n.t('bankImport.nothingSelected'); err.hidden = false; }
           return;
         }
         // v1.03 (plan §7): split the selection — LINK absorbs the bank
@@ -5625,29 +5654,21 @@ Object.assign(window.Views, {
           window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
         }
         const acc = (window.Store.getState().accounts || []).find(a => a.id === d.accountId);
-        let message = window.I18n.t('bankImport.done', { count: imported, account: acc ? acc.name : '' });
-        if (links.length) message += '\n' + window.I18n.t('bankImport.doneLinked', { count: links.length }); // v1.03
-        if (pairs.length) message += '\n' + window.I18n.t('bankImport.donePaired', { count: pairs.length });
-        // v1.00 reconciliation (plan §4): compare the computed balance at the
-        // statement's closing date against the bank's CLBD — only when the
-        // currencies agree (comparing raw numbers across currencies is noise).
-        if (d.kind === 'statement' && d.statement.closingBalance && d.statement.closingBalance.date) {
-          const st = d.statement;
-          const accCcy = window.Store.getAccountCurrency(d.accountId); // v1.02: account, not app
-          const sameCcy = !st.currency || st.currency === accCcy;
-          if (sameCcy) {
-            const appBal = window.Store.getBalanceAtDate(st.closingBalance.date, [d.accountId]);
-            if (Math.abs(appBal - st.closingBalance.amount) > 0.005) {
-              message += '\n\n' + window.I18n.t('bankImport.reconcileMismatch', {
-                bank: S.fmtStatementAmount(st.closingBalance.amount, st.currency),
-                app: window.Store.formatCurrency(appBal, accCcy),
-                date: st.closingBalance.date
-              });
-            }
-          }
-        }
-        alert(message);
+        // v1.06 U2 (docs/import-ux-plan.md §3): the ending is a success sheet
+        // over Settings instead of an alert() chain — counts as rows, the
+        // v1.00 reconciliation verdict as a visual state, and a "View
+        // transactions" deep link. The sheet lives in #modal-container,
+        // outside the router's innerHTML swap, so it survives the navigation.
+        const verdict = S.reconcileVerdict(d);
         window.Router.navigate('#settings');
+        window.Components.ImportSuccessModal.show({
+          imported: imported,
+          linked: links.length,
+          paired: pairs.length,
+          accountId: d.accountId,
+          accountName: acc ? acc.name : '',
+          verdict: verdict
+        });
         // v0.99 review fix: clearing synchronously made the coalesced emit
         // repaint this view as the no-session card for a frame before Settings
         // rendered. The hashchange task is already queued ahead of this timer.

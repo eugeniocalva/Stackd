@@ -1,6 +1,6 @@
 # Bank Import UX Plan — making the feature findable, guided, and habitual
 
-> Status: **DRAFT — not started.** This is the cold-start reference for the
+> Status: **U2 SHIPPED 2026-09-07 (v1.06) — U1, U3–U5 not started; §9 D3 taken as recommended, the other §9 decisions still open.** This is the cold-start reference for the
 > import UX work. The underlying LOGIC is complete (v0.99–v1.03, see
 > `docs/bank-import-plan.md` §3f–§7a — read that first); this plan is about
 > how a user DISCOVERS, TRUSTS, and RETURNS to it. Written 2026-09-04 for
@@ -67,6 +67,35 @@ the rules sheet), but the journey around them is an afterthought:
   new keys for the modal chrome ×5.
 - E2E updates: bank_import / statement_import / import_matching specs assert
   the modal instead of dialogs (drop the dialog-accept handlers for confirm).
+
+### 3a. U2 as built — v1.06, 2026-09-07
+
+Pulled forward ahead of U1 because Bank Connect B3 lands its first fetch on
+this ending (docs/bank-connect-ux-plan.md §3.8).
+
+- `Components.ImportSuccessModal.show({imported, linked, paired, accountId,
+  accountName, verdict})` — a sheet on the shared `_bankSheet` helper,
+  shown right after `Router.navigate('#settings')` (it lives in
+  `#modal-container`, outside the router's innerHTML swap). Rows:
+  `#import-success-imported` / `-linked` / `-paired` (existing
+  `bankImport.done*` keys). Verdict block `#import-success-verdict` with
+  `data-ok`: green `circle-check` + `bankImport.reconcileOk`, or amber
+  `alert-triangle` + the existing `reconcileMismatch` text; absent for
+  mapped CSVs, missing closing balances and foreign-currency statements.
+  Buttons: `#import-success-view` → `#transactions?account=<id>` (the v0.94
+  replace-filters deep link), `#import-success-done`.
+- `Views._ImportShared.reconcileVerdict(d)` computes the verdict as data
+  (called AFTER the dispatches so the app balance includes the new rows);
+  unit-tested in `tests/unit/importSuccess.test.js`.
+- The two validation alerts became inline errors under their buttons:
+  `#imap-error` (mappingIncomplete, both the CSV and statement renderings of
+  `#import-map`) and `#iprev-error` (nothingSelected; clears once a row is
+  selected). `bankImport.noAccounts` and the file-level failures in
+  OthersView still alert — out of scope here.
+- 4 keys ×5 (`bankImport.successTitle`, `reconcileTitle`, `reconcileOk`,
+  `viewTransactions`); 2 fallback icons (`circle-check`,
+  `arrow-left-right`). The three import e2e specs assert the sheet and the
+  inline error and now require `dialogs` to stay empty.
 
 ## 4. Phase U3 — Provenance in History
 

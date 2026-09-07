@@ -97,7 +97,14 @@ test.describe('Bank statement import E2E flow', () => {
     // ── First pass: confirm ────────────────────────────────────────────────
     await page.click('#btn-iprev-confirm');
     await page.waitForSelector('#btn-import-csv'); // back on Settings
-    expect(dialogs.some(m => m.includes('Imported 2 transactions'))).toBe(true);
+    // v1.06 U2: the success sheet replaces the alert() — no verdict block for
+    // a mapped CSV (nothing to reconcile against).
+    await page.waitForSelector('#import-success-modal.open');
+    await expect(page.locator('#import-success-imported')).toContainText('Imported 2 transactions into Main');
+    await expect(page.locator('#import-success-verdict')).toHaveCount(0);
+    await page.click('#import-success-done');
+    await expect(page.locator('#import-success-modal')).toHaveCount(0);
+    expect(dialogs).toEqual([]);
 
     const imported = await page.evaluate(() => {
       const txs = window.Store.getState().transactions.filter(t => t.importKey);
@@ -145,7 +152,10 @@ test.describe('Bank statement import E2E flow', () => {
     await expect(page.locator('#btn-iprev-confirm')).toHaveText('Import 0 transactions');
 
     await page.click('#btn-iprev-confirm');
-    expect(dialogs[dialogs.length - 1]).toBe('Select at least one transaction to import.');
+    // v1.06 U2: inline error under the button, no dialog
+    await expect(page.locator('#iprev-error')).toBeVisible();
+    await expect(page.locator('#iprev-error')).toHaveText('Select at least one transaction to import.');
+    expect(dialogs).toEqual([]);
     expect(await page.evaluate(() =>
       window.Store.getState().transactions.filter(t => t.importKey).length
     )).toBe(2);
