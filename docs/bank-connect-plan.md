@@ -8,6 +8,7 @@
 > the settled decisions; §2–§6 already reflect them.
 > Relationship to `docs/import-ux-plan.md`: independent; recommended order is
 > U2 (success modal) → C1–C5 → the rest of the UX plan.
+> **Built (2026-09-07):** the broker exists in `broker/` (B1, see the UX plan §10 and `broker/README.md`); staging deploy pending login + secrets.
 > **Companion (2026-09-06):** `docs/bank-connect-ux-plan.md` is the client
 > UX spec + build sequence (B0–B7, screens, touch-list, open decisions
 > D-C9–D-C16). Step 0 progress lives in its §0: domain
@@ -103,6 +104,7 @@ device (Stack'd app)  ←→  broker (Cloudflare Workers, EU)  ←→  GoCardles
 | `POST /v1/connect/start` | device, entitled | body: country, institutionId → end-user agreement + requisition at GoCardless, returns `{ref, bankRedirectUrl}` |
 | `GET  /v1/connect/return?ref=` | none | GoCardless redirect target: sets the web session cookie when the flow started on web, then redirects to the App Link / web app |
 | `GET  /v1/connect/status?ref=` | device | requisition state + linked bank accounts (id, IBAN tail, currency, institution history limit) |
+| `GET  /v1/connections` | device | the owner's requisitions in the same public shape (B1 addition: lets a reinstalled device rebuild its local list) |
 | `GET  /v1/accounts/:id/transactions?date_from=` | device, entitled | proxied booked transactions (ownership-checked) |
 | `GET  /v1/accounts/:id/balances` | device, entitled | proxied balances |
 | `DELETE /v1/connections/:ref` | device | revoke: deletes the requisition at GoCardless + the mapping |

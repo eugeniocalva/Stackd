@@ -171,6 +171,18 @@ Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries
 
 A separate Expo / React Native (expo-router) scaffold for a future iOS app. It is essentially an empty starter (`app/` is unpopulated) and shares no code with the root web app. Its own commands (`expo start`, etc.) run from inside `mobile_apple/`. The root web app is the one in active development.
 
+## Third project: `broker/` (v1.05+, Bank Connect)
+
+The Bank Connect broker — a TypeScript Cloudflare Worker with Durable Objects
+that sits between the app and GoCardless (`docs/bank-connect-plan.md`,
+`docs/bank-connect-ux-plan.md`). Own `package.json`/`tsconfig`/`vitest`/
+`wrangler.toml`; run its commands from inside `broker/` (`npm run check` =
+typecheck + tests + dry-run build). Nothing under `broker/` is loaded by
+`index.html`, and the root `npm run lint/test` never touch it. Secrets are
+wrangler secrets only — never a committed `.dev.vars`. The app side talks to
+it through `window.BankConnect` (`src/bank-connect.js`), and only while the
+user's Online banking toggle is on. `broker/README.md` is the reference.
+
 ## Working conventions in this repo
 
 - The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added.

@@ -1,0 +1,4 @@
+# Copy to .dev.vars for `wrangler dev` ONLY. .dev.vars is git-ignored; never
+# commit real values. Deployed workers get these via `wrangler secret put`.
+GC_SECRET_ID=
+GC_SECRET_KEY=

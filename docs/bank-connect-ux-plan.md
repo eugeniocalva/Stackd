@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B2 SHIPPED 2026-09-06 (v1.05) — next: B1 broker, then B3.** See §9.
+> Status: **B2 SHIPPED 2026-09-06 (v1.05); B1 broker BUILT 2026-09-07, staging deploy pending login + secrets — next: deploy, smoke, then B3.** See §9–§10.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -409,3 +409,40 @@ request/response shapes B1 must honour: `GET /v1/institutions?country=`
 `max_access_valid_for_days`), `POST /v1/connect/start` with
 `{country, institutionId, historyDays, validityDays}` → `{ref,
 bankRedirectUrl}`.
+
+## 10. B1 as built — the broker, 2026-09-07
+
+`broker/` is a self-contained Cloudflare Worker (own `package.json`,
+`tsconfig`, `vitest`, `wrangler.toml`; root tooling untouched, D-C6).
+`broker/README.md` is its reference: layout, the endpoint table, error
+codes, the threat-model notes and the deploy runbook. 27 tests on in-memory
+Durable Object fakes and a fake GoCardless — including THE ownership test
+(owner B reads nothing of owner A) — the typecheck, and a
+`wrangler deploy --dry-run` all pass locally; `wrangler dev` boots the real
+runtime with the three Durable Object classes.
+
+Deviations from the architecture plan (§2), all deliberate:
+
+- **No KV.** The 24h aggregator token, the circuit breaker and the global
+  connection count live in a singleton `SystemDO`; the institutions list is
+  edge-cached through the Cache API (24h). One fewer resource to provision;
+  KV can come back if the institutions cache ever needs to be global.
+- **`GET /v1/connections`** was added: a device that lost its
+  `stackd_v1_bankConnections` slice (reinstall, restore from the file
+  mirror) rebuilds it from the broker in B3.
+- **Refs embed the owner id** (`<ownerId>_<random>`) so the C5 web return
+  can find the owner without a global index; refs stay opaque to the bank.
+- **Per-account 429s pass through** as `account_rate_limited` (the bank's
+  daily budget) and never trip the global breaker; only aggregator-level
+  429s pause everyone for 10 minutes.
+- **Grace revoke is a DO alarm** (store mode): `active → inactive` arms it
+  14 days out; firing revokes every requisition at GoCardless.
+- **Open mode is refused on the production host** whatever `[vars]` say
+  (`PUBLIC_URL` check in `parseConfig`).
+- **Local `wrangler dev` has no jurisdictions** (workerd throws "not
+  implemented"); `ownerNamespace()` falls back to the unpinned namespace for
+  that exact error only, so a deployed worker can never lose the EU pin.
+
+Not yet done: the staging deploy itself needs a one-time `wrangler login`
+and the two GoCardless secrets from the user's terminal (README runbook),
+then `scripts/smoke.mjs` drives the sandbox institution end to end.

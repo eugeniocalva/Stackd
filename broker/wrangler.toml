@@ -1,0 +1,71 @@
+# Stack'd Bank Connect broker — docs/bank-connect-plan.md §2 (D-C1, D-C6).
+# Top level = STAGING (workers.dev). `--env production` = api.stackdplatform.com.
+#
+# Secrets (never here, never in a committed .dev.vars):
+#   wrangler secret put GC_SECRET_ID
+#   wrangler secret put GC_SECRET_KEY
+#   (production: add --env production)
+
+name = "stackd-broker-staging"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[observability]
+enabled = true
+
+# Ownership + entitlement live in Durable Objects pinned to the EU (D-C1).
+# The jurisdiction is chosen in code (`env.OWNER_DO.jurisdiction('eu')`), not here.
+[durable_objects]
+bindings = [
+  { name = "OWNER_DO", class_name = "OwnerDO" },
+  { name = "SYSTEM_DO", class_name = "SystemDO" },
+  { name = "RATE_DO", class_name = "RateDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OwnerDO", "SystemDO", "RateDO"]
+
+[vars]
+# "open" = every device is entitled (STAGING ONLY, so B2–B4 can be exercised
+# before the store products exist). Production is "store" and must never be
+# flipped — src/env.ts refuses "open" when the worker name lacks "staging".
+ENTITLEMENT_MODE = "open"
+CLIENT_ID = "stackd-web"
+MAX_CONNECTIONS = "50"
+OWNER_MAX_CONNECTIONS = "3"
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+GC_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
+APP_SCHEME = "stackd"
+ANDROID_PACKAGE = "com.stackd.finance"
+ANDROID_SHA256_FINGERPRINTS = ""
+IOS_APP_ID = ""
+PUBLIC_URL = ""
+
+[env.production]
+name = "stackd-broker"
+workers_dev = false
+routes = [
+  { pattern = "api.stackdplatform.com", custom_domain = true }
+]
+
+[env.production.durable_objects]
+bindings = [
+  { name = "OWNER_DO", class_name = "OwnerDO" },
+  { name = "SYSTEM_DO", class_name = "SystemDO" },
+  { name = "RATE_DO", class_name = "RateDO" }
+]
+
+[env.production.vars]
+ENTITLEMENT_MODE = "store"
+CLIENT_ID = "stackd-web"
+MAX_CONNECTIONS = "500"
+OWNER_MAX_CONNECTIONS = "3"
+ALLOWED_ORIGINS = "https://app.stackdplatform.com"
+GC_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
+APP_SCHEME = "stackd"
+ANDROID_PACKAGE = "com.stackd.finance"
+ANDROID_SHA256_FINGERPRINTS = ""
+IOS_APP_ID = ""
+PUBLIC_URL = "https://api.stackdplatform.com"
