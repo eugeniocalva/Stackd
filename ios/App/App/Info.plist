@@ -20,6 +20,20 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- v1.12 B8: custom-scheme fallback for the Bank Connect return
+	     (stackd://connect/return?ref=...); the primary path is the Universal
+	     Link in App.entitlements (applinks:api.stackdplatform.com). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.stackd.finance</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>stackd</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

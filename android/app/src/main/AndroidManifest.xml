@@ -18,6 +18,36 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- v1.12 B8 (docs/bank-connect-ux-plan.md §3.6, D-C7): the bank sends
+                 the user back to the broker's /v1/connect/return; a verified App
+                 Link opens the app straight from it (appUrlOpen / getLaunchUrl in
+                 main.js -> BankConnect.handleReturn). The broker serves
+                 /.well-known/assetlinks.json from ANDROID_SHA256_FINGERPRINTS, so
+                 the signing certificate's SHA-256 must be set there per
+                 environment. One filter per host: before Android 12 a filter is
+                 verified as a whole, and staging must not drag production down. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="api.stackdplatform.com" android:path="/v1/connect/return" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="api-staging.stackdplatform.com" android:path="/v1/connect/return" />
+            </intent-filter>
+            <!-- Fallback when the link is not verified (unknown install, some
+                 browsers): the broker's hand-off page opens
+                 stackd://connect/return?ref=... (BankConnect.parseReturnUrl). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="stackd" android:host="connect" />
+            </intent-filter>
         </activity>
 
         <provider
