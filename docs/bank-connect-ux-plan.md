@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2–B5 (v1.05–v1.09) and B6 legal/store rework (v1.10) SHIPPED 2026-09-07. What remains before a public build is outside the code: Enable Banking production access (contract + KYB, or restricted mode), the store products + secrets (§14 runbook), the native wiring (App Links, SecureStorage, `cap sync`), and a legal read-through of §15.** See §9–§15.
+> Status: **B1–B6 SHIPPED 2026-09-07 (broker live on staging; app v1.05–v1.10). B7 (C5 web session + pairing) is PLANNED in §16 and not started — a new session should cold-start from §16 + `broker/README.md`. B8 (native wiring) is listed in §16 too.** See §9–§16.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -315,7 +315,8 @@ Native plugins (D-C12, D-C15 pick the exact packages):
 | B4 | v1.08 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. **Shipped 2026-09-07 (§13).** | B3 |
 | B5 | v1.09 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. **Shipped 2026-09-07 (§14); live store checks pending the products.** | B0 products |
 | B6 | v1.10 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Shipped 2026-09-07 (§15).** Gate for any public build carrying B2+. | — |
-| B7 | later | C5 web session + pairing (3.12), iOS Associated Domains in the Mac handoff. | B5, production domain (done) |
+| B7 | v1.11 | C5 web session + pairing (3.12). **Planned, §16.** | B5 (done), a deployed web build at `app.stackdplatform.com` |
+| B8 | native | Android App Links intent filter, SecureStorage plugin, `npx cap sync` for the purchase plugin; iOS Associated Domains in the Mac handoff. **Planned, §16.** | an Android build environment (see the gradle quirks memory) |
 
 B2–B4 are testable end to end on an internal Android build against the
 staging broker with entitlement open; nothing ships publicly before B5 and
@@ -745,3 +746,141 @@ Enable Banking production route (contract + KYB vs restricted mode — §14
 and store-listing §5); the App Store privacy label's "linked" column at
 submission; localized versions of the marketing site pages (the site is
 English-only today).
+
+## 16. B7 plan — C5 web session + pairing (v1.11) — NOT STARTED
+
+Cold-start reading order for a new session: this section, then
+`broker/README.md` (endpoints + runbook), then `src/bank-connect.js` (the
+client) and `broker/src/index.ts` (sessions live in `requireDevice`). Every
+decision below is already settled by D-C2 / D-C3 / D-C11 / architecture §2;
+nothing here is open except what §16.6 lists.
+
+### 16.1 What it is
+
+The web build (Vite output of this repo, one HTML file) can use Bank Connect
+too, but only when **paired with a phone that holds the subscription**
+(D-C2/D-C3: no web payment path). The pairing gives the browser a broker
+session cookie that resolves to the SAME owner as the phone, so the
+subscription and the existing connections become visible in the browser.
+Until then the web build shows §3.2's "mobile only" state (shipped in B2).
+
+### 16.2 Broker (`broker/`)
+
+- **Web session = a device of kind `web` on the owner record**, exactly like
+  a native device but authenticated by a cookie instead of a bearer:
+  `stackd_session=<ownerId>.<secret>`; `HttpOnly; Secure; SameSite=Lax;
+  Path=/; Max-Age=90d`, set by the broker host (`api.stackdplatform.com`).
+  Same-site with `app.stackdplatform.com` (one registrable domain, D-C11),
+  so Lax cookies ride on the app's `fetch(..., {credentials: 'include'})`.
+  The DO stores `sha256(secret)` as it does for native devices.
+- **CSRF:** the claim response also returns a `csrf` token (random, stored
+  hashed on the web device entry); every non-GET request from a cookie
+  session must carry it as `X-Stackd-CSRF`. GETs are safe (no state change).
+- `requireDevice`: bearer first, else cookie (+ CSRF on POST/DELETE) →
+  `{ownerId, record, owner, kind}`. The per-owner rate limit is shared.
+- **Endpoints (architecture §2 table, already reserved):**
+  - `POST /v1/pair/code` — native, entitled → `{code, expiresAt}`. Code =
+    8 chars from an unambiguous alphabet (no 0/O/1/I), **single-use, 5-min
+    TTL**, stored on the OwnerDO (`pairCodes: [{hash, expiresAt}]`) AND in a
+    `PairDO` (or the SystemDO) map `codeHash → ownerId` so `claim` can find
+    the owner without knowing it. Rate: 5 codes / hour / owner.
+  - `POST /v1/pair/claim` — web, body `{code}` → looks up the owner, adds a
+    `web` device, sets the cookie, returns `{ownerId, csrf, active,
+    expiresAt}`. Rate: 10 / hour / IP; a wrong code burns nothing but counts.
+  - `POST /v1/session/logout` — web (cookie + CSRF) → removes the web device
+    from the owner, clears the cookie.
+  - `GET /v1/session` — web → `{ownerId, active, expiresAt, csrf}` (the app's
+    boot check; a fresh CSRF each time is fine).
+- **CORS with credentials:** `Access-Control-Allow-Credentials: true` and the
+  exact origin (never `*`) for origins in `ALLOWED_ORIGINS`; add
+  `x-stackd-csrf` to the allowed headers. Staging keeps
+  `http://localhost:3000` — note cookies are then cross-site (localhost →
+  api-staging) and Lax will NOT send them; local development of B7 needs
+  either `wrangler dev` on `localhost:8787` (same-site with localhost:3000?
+  no — different ports are same-site, so yes it works) or the e2e stub.
+- **Connect from a web session:** `ReqRecord.kind = 'web'`; the return page
+  (`/v1/connect/return`) redirects to `PUBLIC_WEB_URL + '#bank-connect'`
+  instead of rendering the stackd:// hand-off when the ref's record is
+  `web`. New var `PUBLIC_WEB_URL` (`https://app.stackdplatform.com`;
+  staging: whatever hosts the staging web build, or `http://localhost:3000`).
+- **Threat model additions (README):** cookie never readable by JS; CSRF on
+  mutations; pairing codes single-use + short-lived + rate-limited per IP;
+  logout removes only the web device; a phone can list and revoke its web
+  sessions (nice-to-have: `GET /v1/devices` + `DELETE /v1/devices/:hash`).
+- **Tests:** claim → cookie → same owner reads the phone's connections; code
+  single-use + TTL + wrong code; CSRF missing → 403 on POST, GET fine;
+  cookie never in a body; logout; web return redirect; rate limits.
+
+### 16.3 App (`src/bank-connect.js`, views, components)
+
+- **Availability:** `isAvailable()` becomes: native, or the stub, or **web
+  session mode** = `window.__STACKD_WEB_SESSION__ === true` (set by the
+  deployed web build — put it in `index.html` behind a build-time flag, or
+  detect `location.origin === 'https://app.stackdplatform.com'`). On web the
+  transport uses `credentials: 'include'` and the CSRF header; there is no
+  device token and `ensureDevice()` throws `web_unpaired` when `GET
+  /v1/session` says no session.
+- **Hub on web without a session (§3.12):** the pairing screen replaces the
+  mobile-only card — an 8-char code field, *Pair* button, and the line
+  *"On your phone: Online banking → Settings → Pair a browser"*. Success →
+  `syncConnections()` (already exists) rebuilds the list from
+  `GET /v1/connections`.
+- **Native settings sheet:** a *Pair a browser* row → `POST /v1/pair/code`
+  → shows the code large with a 5-minute countdown and *Done*. Entitled
+  only (the button is hidden otherwise).
+- **Web settings sheet:** a *Log out of this browser* row.
+- **Paywall on web:** no Subscribe/Restore; the body says *subscribe on your
+  phone, then pair this browser* with a *Pair* button that opens the pairing
+  screen.
+- **Return on web:** the browser comes back to `#bank-connect`; the hub's
+  existing `pendingRef` resume handles the rest (B3).
+- i18n ~15 keys ×5 (`bank.pairTitle`, `bank.pairIntro`, `bank.pairCode`,
+  `bank.pairButton`, `bank.pairInvalid`, `bank.pairExpired`,
+  `bank.pairBrowser`, `bank.pairShow`, `bank.pairCountdown.one/other`,
+  `bank.logoutBrowser`, `bank.webPaywall`, …).
+- Tests: unit (transport in web mode, pairing view, settings rows), e2e via
+  the stub (`stub.session` + `stub.claim(code)`), plus one real-broker
+  manual check from `localhost:3000` against `wrangler dev`.
+
+### 16.4 Deployment prerequisites (owner)
+
+1. **A deployed web build at `https://app.stackdplatform.com`:** a second
+   Cloudflare Pages project (`stackd-app`) building this repo with
+   `npm run build` (output `dist/`, single file) and the custom domain
+   `app.stackdplatform.com`. Cheap; the marketing site already lives on Pages.
+2. `ALLOWED_ORIGINS` += `https://app.stackdplatform.com` (production) and
+   `PUBLIC_WEB_URL` in both environments.
+3. Nothing at Enable Banking: the redirect URL is unchanged (the broker's).
+
+### 16.5 Order of work (~1 day)
+
+1. Broker sessions + pairing endpoints + tests → deploy staging.
+2. App transport (web mode, credentials, CSRF) + pairing screen + settings
+   rows + i18n → unit tests.
+3. e2e through the stub; manual pass against `wrangler dev`.
+4. Pages project for the web build; ALLOWED_ORIGINS/PUBLIC_WEB_URL; a real
+   pairing between the dev server and staging.
+5. Docs: §16 → "as built", README threat-model additions.
+
+### 16.6 Open before starting (owner answers)
+
+- **D-C18** Should the web build exist publicly at all before the native app
+  ships? (Recommendation: build B7 now — the code is small — but only
+  create the Pages project when the native app is in TestFlight/Play
+  testing; until then test against `wrangler dev`.)
+- **D-C19** Session lifetime: 90 days sliding (recommended) vs 30 days fixed.
+- **D-C20** Show paired browsers on the phone with a revoke action in v1
+  (recommended, small) or defer.
+
+### 16.7 B8 — native wiring (needs the Android build environment)
+
+Not Bank Connect logic, but required before a public build; listed here so
+it is not lost: `npx cap sync` (pulls `cordova-plugin-purchase` and, once
+added, `@aparajita/capacitor-secure-storage` into `android/`); the App
+Links intent filter for `https://api.stackdplatform.com/v1/connect/return`
+(and `api-staging.` for internal builds) with `autoVerify` + the release
+keystore's SHA-256 in the broker's `ANDROID_SHA256_FINGERPRINTS`; the
+`stackd://` scheme as fallback; `Browser` plugin (`@capacitor/browser`)
+for the SCA page; iOS Associated Domains in the Mac handoff. Then a device
+walk of §3.6 with a cold start from the link. The gradle/emulator quirks are
+in the Android build memory.
