@@ -5,6 +5,9 @@
 //   v1.11 B7: web session mode (UX plan §16) — the deployed web build pairs
 //             with the phone through a code and talks to the broker with an
 //             HttpOnly cookie + CSRF header instead of a device token.
+//   v1.12 B8: native wiring (UX plan §16.7) — the token adapter talks to the
+//             SecureStorage plugin's real native methods; App Links / the
+//             stackd:// scheme live in android/ and ios/.
 //
 // Thin client for the Stack'd broker (docs/bank-connect-plan.md §2). Loaded
 // after import.js because fetches feed Views._ImportShared.startStatement.
@@ -141,24 +144,77 @@ window.BankConnect = {
     return this.connections(state).find(c => c.ref === ref) || null;
   },
 
-  // ── Device identity (v1.07 B3) ────────────────────────────────────────────
+  // ── Device identity (v1.07 B3, v1.12 B8) ─────────────────────────────────
+
+  // Native Keystore / Keychain for the device token (D-C15). The app has no
+  // bundler, so a plugin's JS wrapper is never loaded: we talk to the native
+  // methods on the bridge proxy directly. `@aparajita/capacitor-secure-storage`
+  // exposes internalGetItem / internalSetItem / internalRemoveItem (its
+  // wrapper prefixes keys with 'capacitor-storage_' and JSON-encodes values —
+  // mirrored here so the wrapper would read the same item); the older
+  // `capacitor-secure-storage-plugin` exposes get / set / remove natively.
+  SECURE_PREFIX: 'capacitor-storage_',
 
   _secureStorage() {
     const cap = window.Capacitor;
     const plugins = cap && cap.Plugins;
     if (!this.isNative() || !plugins) return null;
-    // @aparajita/capacitor-secure-storage (D-C15) or capacitor-secure-storage-plugin
     return plugins.SecureStorage || plugins.SecureStoragePlugin || null;
+  },
+
+  _secureKind(ss) {
+    if (!ss) return null;
+    if (typeof ss.internalGetItem === 'function' && typeof ss.internalSetItem === 'function') return 'aparajita';
+    if (typeof ss.get === 'function' && typeof ss.set === 'function') return 'legacy';
+    return null;
+  },
+
+  async _secureRead(ss, kind) {
+    if (kind === 'aparajita') {
+      const r = await ss.internalGetItem({ prefixedKey: this.SECURE_PREFIX + this.TOKEN_KEY });
+      const raw = r && typeof r === 'object' ? r.data : r;
+      if (typeof raw !== 'string' || !raw) return null;
+      try {
+        const v = JSON.parse(raw);
+        return typeof v === 'string' && v ? v : null;
+      } catch (e) {
+        return raw; // not JSON: a value written by something else — take it as is
+      }
+    }
+    const r = await ss.get({ key: this.TOKEN_KEY });
+    const v = r && typeof r === 'object' ? (r.value || r.data || null) : r;
+    return typeof v === 'string' && v ? v : null;
+  },
+
+  async _secureWrite(ss, kind, token) {
+    if (kind === 'aparajita') {
+      if (token) await ss.internalSetItem({ prefixedKey: this.SECURE_PREFIX + this.TOKEN_KEY, data: JSON.stringify(token) });
+      else await ss.internalRemoveItem({ prefixedKey: this.SECURE_PREFIX + this.TOKEN_KEY });
+      return;
+    }
+    if (token) await ss.set({ key: this.TOKEN_KEY, value: token });
+    else if (typeof ss.remove === 'function') await ss.remove({ key: this.TOKEN_KEY });
+    else await ss.set({ key: this.TOKEN_KEY, value: '' });
   },
 
   async tokenGet() {
     if (this._token) return this._token;
     const ss = this._secureStorage();
+    const kind = this._secureKind(ss);
     try {
-      if (ss && typeof ss.get === 'function') {
-        const r = await ss.get(ss === window.Capacitor.Plugins.SecureStoragePlugin ? { key: this.TOKEN_KEY } : this.TOKEN_KEY);
-        const v = r && typeof r === 'object' ? (r.value || r.data || null) : r;
-        this._token = typeof v === 'string' && v ? v : null;
+      if (kind) {
+        let v = await this._secureRead(ss, kind);
+        // v1.12 B8: a pre-B8 native build kept the token in localStorage —
+        // move it into the keystore once, then forget the plain copy.
+        if (!v) {
+          const legacy = localStorage.getItem(this.TOKEN_KEY);
+          if (legacy) {
+            await this._secureWrite(ss, kind, legacy);
+            localStorage.removeItem(this.TOKEN_KEY);
+            v = legacy;
+          }
+        }
+        this._token = v || null;
         return this._token;
       }
       const v = localStorage.getItem(this.TOKEN_KEY);
@@ -172,10 +228,10 @@ window.BankConnect = {
   async tokenSet(token) {
     this._token = token || null;
     const ss = this._secureStorage();
+    const kind = this._secureKind(ss);
     try {
-      if (ss && typeof ss.set === 'function') {
-        if (ss === window.Capacitor.Plugins.SecureStoragePlugin) await ss.set({ key: this.TOKEN_KEY, value: token || '' });
-        else await ss.set(this.TOKEN_KEY, token || '');
+      if (kind) {
+        await this._secureWrite(ss, kind, token || null);
         return;
       }
       if (token) localStorage.setItem(this.TOKEN_KEY, token);

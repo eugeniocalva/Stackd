@@ -187,3 +187,18 @@ its own secret (`wrangler secret put EB_PRIVATE_KEY --env production`, from a
 production application). Fill `ANDROID_SHA256_FINGERPRINTS` (release keystore)
 and `IOS_APP_ID` (`TEAMID.com.stackd.finance`) before any public build so the
 App Links / Universal Links verify. B6 (legal) must land first.
+
+The fingerprint is the signing certificate's SHA-256, colon-separated, as
+`keytool` prints it (several may be listed, comma-separated — e.g. the Play
+App Signing key and the upload key). Staging takes the debug keystore so
+internal builds verify against `api-staging`:
+
+```powershell
+keytool -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android | Select-String SHA256
+keytool -list -v -keystore <release>.jks -alias <alias> | Select-String SHA256
+```
+
+Then redeploy and check `https://api-staging.stackdplatform.com/.well-known/assetlinks.json`
+shows it; on the device `adb shell pm get-app-links com.stackd.finance` must
+say `verified` for the host (Android 12+: `adb shell pm verify-app-links
+--re-verify com.stackd.finance` after a reinstall).

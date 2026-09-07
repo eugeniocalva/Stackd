@@ -186,6 +186,14 @@ web build (v1.11 B7, UX plan §16) has no token at all — it pairs with the
 phone through a code and rides an HttpOnly cookie + `X-Stackd-CSRF`, and
 `BankConnect.isWebSession()` / `hasWebSession()` decide between the pairing
 screen and the list. `broker/README.md` is the reference.
+Native wiring (v1.12 B8, UX plan §16.7): `@capacitor/browser` (the bank's
+SCA page), `@aparajita/capacitor-secure-storage` (the device token — called
+through its NATIVE methods `internalGetItem`/`internalSetItem`, since no
+plugin JS wrapper is ever bundled) and `cordova-plugin-purchase`; the App
+Links + `stackd://` intent filters are in `android/.../AndroidManifest.xml`,
+the Universal Links entitlement in `ios/App/App/App.entitlements`. After
+`npm install`, `npx cap sync android` regenerates the gitignored
+`android/capacitor-cordova-android-plugins/` and `assets/public`.
 
 ## Working conventions in this repo
 

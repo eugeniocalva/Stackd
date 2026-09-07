@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- v1.12 B8 (docs/bank-connect-ux-plan.md §3.6, D-C7): Universal Links on
+	     the broker hosts. The broker serves /.well-known/apple-app-site-association
+	     from IOS_APP_ID (TEAMID.com.stackd.finance); the Associated Domains
+	     capability must also be enabled on the App ID in the developer account. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:api.stackdplatform.com</string>
+		<string>applinks:api-staging.stackdplatform.com</string>
+	</array>
+</dict>
+</plist>
