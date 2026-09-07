@@ -33,10 +33,13 @@ export interface AccountRecord {
   name: string | null;
 }
 
+// One "connection" = one aggregator authorization (→ session once the bank
+// confirms). Status codes are the broker's own: CR created (bank not yet
+// confirmed), LN linked, EX expired, RJ rejected/failed, UA user cancelled.
 export interface ReqRecord {
   ref: string;
-  requisitionId: string;
-  agreementId: string;
+  authorizationId: string;
+  sessionId: string | null;
   institutionId: string;
   institutionName: string;
   institutionLogo: string | null;
@@ -47,6 +50,7 @@ export interface ReqRecord {
   validityDays: number;
   expiresAt: string | null;
   linkedAt: string | null;
+  lastError: string | null;
 }
 
 export interface OwnerRecord {
@@ -184,7 +188,7 @@ export class OwnerDO {
   }
 
   // Grace expiry (store mode): the subscription lapsed ≥ 14 days ago →
-  // revoke every requisition at GoCardless so aggregator billing stops.
+  // revoke every session at the aggregator so its billing stops.
   // Imported data on the device is untouched — the user owns it.
   async alarm(): Promise<void> {
     const r = await this.load();
@@ -194,13 +198,14 @@ export class OwnerDO {
       await this.state.storage.setAlarm(Date.parse(r.entitlement.lapsedAt) + GRACE_MS);
       return;
     }
-    const { GoCardless } = await import('./gocardless');
+    const { EnableBanking } = await import('./enable-banking');
     const { parseConfig } = await import('./env');
-    const gc = new GoCardless(this.env, parseConfig(this.env), (i, init) => fetch(i, init));
+    const agg = new EnableBanking(this.env, parseConfig(this.env), (i, init) => fetch(i, init));
     const system = new SystemClient(this.env);
     for (const ref of Object.keys(r.requisitions)) {
       try {
-        await gc.deleteRequisition(r.requisitions[ref].requisitionId);
+        const sessionId = r.requisitions[ref].sessionId;
+        if (sessionId) await agg.deleteSession(sessionId);
         delete r.requisitions[ref];
         await system.release();
       } catch {

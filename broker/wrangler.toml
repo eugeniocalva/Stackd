@@ -2,14 +2,19 @@
 # Top level = STAGING (workers.dev). `--env production` = api.stackdplatform.com.
 #
 # Secrets (never here, never in a committed .dev.vars):
-#   wrangler secret put GC_SECRET_ID
-#   wrangler secret put GC_SECRET_KEY
+#   wrangler secret put EB_PRIVATE_KEY   (the PEM from the Enable Banking Control Panel)
 #   (production: add --env production)
 
 name = "stackd-broker-staging"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 workers_dev = true
+# Staging hostname on our own zone: workers.dev is blocked on some networks
+# (TLS alert from the edge for the whole domain), and App Links need a stable
+# host anyway. Wrangler creates the DNS record + certificate on deploy.
+routes = [
+  { pattern = "api-staging.stackdplatform.com", custom_domain = true }
+]
 
 [observability]
 enabled = true
@@ -36,12 +41,13 @@ CLIENT_ID = "stackd-web"
 MAX_CONNECTIONS = "50"
 OWNER_MAX_CONNECTIONS = "3"
 ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
-GC_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
+EB_BASE_URL = "https://api.enablebanking.com"
+EB_APP_ID = ""   # the Enable Banking application UUID (not secret)
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = ""
-PUBLIC_URL = ""
+PUBLIC_URL = "https://api-staging.stackdplatform.com"
 
 [env.production]
 name = "stackd-broker"
@@ -63,7 +69,8 @@ CLIENT_ID = "stackd-web"
 MAX_CONNECTIONS = "500"
 OWNER_MAX_CONNECTIONS = "3"
 ALLOWED_ORIGINS = "https://app.stackdplatform.com"
-GC_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
+EB_BASE_URL = "https://api.enablebanking.com"
+EB_APP_ID = ""   # the Enable Banking application UUID (not secret)
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""

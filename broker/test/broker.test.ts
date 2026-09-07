@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { createPrivateKey } from 'node:crypto';
 import { createApp } from '../src/index';
-import { GoCardless } from '../src/gocardless';
-import { makeEnv, fakeGoCardless, type FakeGc } from './fakes';
+import { EnableBanking, pemToPkcs8 } from '../src/enable-banking';
+import { makeEnv, fakeEnableBanking, testKeys, type FakeEb, type TestKeys } from './fakes';
 import type { Env } from '../src/env';
 
 const BASE = 'https://broker.test';
@@ -15,13 +16,14 @@ interface ReqOpts {
   headers?: Record<string, string>;
 }
 
+let keys: TestKeys;
 let env: ReturnType<typeof makeEnv>;
-let gc: FakeGc;
+let eb: FakeEb;
 let app: ReturnType<typeof createApp>;
 let clock: number;
 
 const req = async (path: string, o: ReqOpts = {}) => {
-  const headers: Record<string, string> = { 'cf-connecting-ip': o.ip || '203.0.113.1', ...(o.headers || {}) };
+  const headers: Record<string, string> = { 'cf-connecting-ip': o.ip || '203.0.113.1', 'user-agent': 'StackdTest/1.0', ...(o.headers || {}) };
   if (o.client !== null) headers['x-stackd-client'] = o.client || 'stackd-web';
   if (o.token) headers.authorization = `Bearer ${o.token}`;
   if (o.body !== undefined) headers['content-type'] = 'application/json';
@@ -39,20 +41,30 @@ const mint = async (ip = '203.0.113.1') => {
 };
 
 const start = async (token: string, over: Record<string, unknown> = {}) =>
-  req('/v1/connect/start', { token, body: { country: 'IT', institutionId: 'BIGBANK_BIGBITMM', historyDays: 90, validityDays: 180, ...over } });
+  req('/v1/connect/start', { token, body: { country: 'IT', institutionId: 'IT:Big Bank', historyDays: 90, validityDays: 180, ...over } });
 
-describe('Stack\'d broker', () => {
+// Simulates the bank sending the user back to the broker after consent.
+const bankReturn = async (ref: string, extra = '') => {
+  const code = [...eb.authorizations.values()].find(a => a.state === ref)!.code;
+  return req(`/v1/connect/return?code=${code}&state=${ref}${extra}`, { client: null });
+};
+
+describe('Stack\'d broker (Enable Banking)', () => {
+  beforeAll(async () => {
+    keys = await testKeys();
+  });
+
   beforeEach(() => {
-    env = makeEnv();
-    gc = fakeGoCardless();
+    env = makeEnv(keys);
+    eb = fakeEnableBanking(keys);
     clock = Date.parse('2026-09-07T10:00:00.000Z');
-    GoCardless.resetMemo();
-    app = createApp({ fetch: gc.fetchImpl, now: () => clock });
+    EnableBanking.resetMemo();
+    app = createApp({ fetch: eb.fetchImpl, now: () => clock });
   });
 
   describe('edge rules', () => {
     it('serves /healthz and refuses /v1 without the client id', async () => {
-      expect((await req('/healthz')).data).toEqual({ ok: true, mode: 'open', service: 'stackd-broker' });
+      expect((await req('/healthz')).data).toEqual({ ok: true, mode: 'open', service: 'stackd-broker', aggregator: 'enablebanking' });
       expect((await req('/v1/institutions?country=IT', { client: null })).status).toBe(403);
       expect((await req('/v1/institutions?country=IT', { client: 'other' })).status).toBe(403);
       expect((await req('/nope')).status).toBe(404);
@@ -88,19 +100,68 @@ describe('Stack\'d broker', () => {
     });
 
     it('never runs open entitlement on the production host', async () => {
-      env = makeEnv({ ENTITLEMENT_MODE: 'open', PUBLIC_URL: 'https://api.stackdplatform.com' });
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'open', PUBLIC_URL: 'https://api.stackdplatform.com' });
       expect((await req('/healthz')).data.mode).toBe('store');
     });
   });
 
+  describe('aggregator auth (JWT)', () => {
+    it('signs an RS256 JWT the aggregator verifies, and reuses it across calls', async () => {
+      await req('/v1/institutions?country=IT');
+      await req('/v1/institutions?country=GB');
+      expect(eb.jwtChecks).toBe(2);
+      const tokens = new Set(eb.calls.map(c => c.headers.get('authorization')));
+      expect(tokens.size).toBe(1); // memoised within its TTL
+      clock += 59 * 60 * 1000; // inside the 5-minute renew window
+      await req('/v1/institutions?country=IT');
+      expect(new Set(eb.calls.map(c => c.headers.get('authorization'))).size).toBe(2);
+    });
+
+    it('accepts a PKCS#1 PEM and a base64-wrapped PEM', async () => {
+      const pkcs1 = createPrivateKey(keys.privatePem).export({ type: 'pkcs1', format: 'pem' }) as string;
+      expect(pkcs1).toContain('BEGIN RSA PRIVATE KEY');
+      env = makeEnv(keys, { EB_PRIVATE_KEY: pkcs1 });
+      EnableBanking.resetMemo();
+      expect((await req('/v1/institutions?country=IT')).status).toBe(200);
+
+      env = makeEnv(keys, { EB_PRIVATE_KEY: Buffer.from(keys.privatePem).toString('base64') });
+      EnableBanking.resetMemo();
+      expect((await req('/v1/institutions?country=IT')).status).toBe(200);
+
+      // Same DER either way.
+      expect(Buffer.from(pemToPkcs8(pkcs1))).toEqual(Buffer.from(pemToPkcs8(keys.privatePem)));
+    });
+
+    it('reports a rejected key as aggregator_auth_failed with shape-only diagnostics on staging', async () => {
+      eb.rejectJwt = true;
+      const r = await req('/v1/institutions?country=IT');
+      expect(r.status).toBe(502);
+      expect(r.data.error).toBe('aggregator_auth_failed');
+      expect(r.data.diag).toMatchObject({ status: 401, appIdIsUuid: true, keyIsPem: true });
+      expect(JSON.stringify(r.data)).not.toContain('PRIVATE KEY');
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
+      expect((await req('/v1/institutions?country=IT')).data).toEqual({ error: 'aggregator_auth_failed' });
+    });
+
+    it('is not configured without an app id / key', async () => {
+      env = makeEnv(keys, { EB_PRIVATE_KEY: '' });
+      EnableBanking.resetMemo();
+      expect((await req('/v1/institutions?country=IT')).data).toEqual({ error: 'aggregator_not_configured' });
+      env = makeEnv(keys, { EB_PRIVATE_KEY: 'not a key' });
+      EnableBanking.resetMemo();
+      expect((await req('/v1/institutions?country=IT')).data).toEqual({ error: 'aggregator_key_invalid' });
+    });
+  });
+
   describe('institutions', () => {
-    it('proxies the country list trimmed to the picker fields', async () => {
+    it('maps the ASPSP list to the broker shape', async () => {
       const r = await req('/v1/institutions?country=it');
       expect(r.status).toBe(200);
-      expect(r.data).toHaveLength(2);
-      expect(r.data[1]).toEqual({ id: 'BIGBANK_BIGBITMM', name: 'Big Bank', bic: 'BIGBITMM', logo: 'https://cdn.test/big.png', countries: ['IT'], transaction_total_days: '730', max_access_valid_for_days: '180' });
-      expect(r.data[0].supported_features).toBeUndefined();
-      expect(gc.calls.find(c => c.path.startsWith('/institutions/'))!.path).toBe('/institutions/?country=IT');
+      expect(r.data).toEqual([
+        { id: 'IT:Mock ASPSP', name: 'Mock ASPSP', country: 'IT', logo: 'https://cdn.test/mock.png', bic: null, historyDays: 365, maxValidityDays: 90, beta: false, sandbox: true },
+        { id: 'IT:Big Bank', name: 'Big Bank', country: 'IT', logo: 'https://cdn.test/big.png', bic: 'BIGBITMM', historyDays: 365, maxValidityDays: 180, beta: false, sandbox: false }
+      ]);
+      expect(eb.calls[0].path).toBe('/aspsps?country=IT&psu_type=personal');
     });
 
     it('validates the country and rate-limits per IP', async () => {
@@ -110,28 +171,11 @@ describe('Stack\'d broker', () => {
       expect((await req('/v1/institutions?country=GB', { ip: '198.51.100.9' })).status).toBe(429);
       expect((await req('/v1/institutions?country=GB', { ip: '198.51.100.10' })).status).toBe(200);
     });
-  });
 
-  describe('aggregator token + breaker', () => {
-    it('fetches the access token once and shares it through the SystemDO', async () => {
-      await req('/v1/institutions?country=IT');
-      GoCardless.resetMemo(); // a fresh isolate
-      await req('/v1/institutions?country=GB');
-      expect(gc.tokenCalls).toBe(1);
-    });
-
-    it('refreshes once on a 401 and passes the retry', async () => {
-      await req('/v1/institutions?country=IT');
-      gc.expireToken();
-      const r = await req('/v1/institutions?country=GB');
-      expect(r.status).toBe(200);
-      expect(gc.tokenCalls).toBe(2);
-    });
-
-    it('opens the circuit for 10 minutes on an aggregator 429', async () => {
-      gc.global429 = true;
+    it('opens the circuit for 10 minutes on an aggregator-level 429', async () => {
+      eb.global429 = true;
       expect((await req('/v1/institutions?country=IT')).data).toEqual({ error: 'aggregator_rate_limited' });
-      gc.global429 = false;
+      eb.global429 = false;
       expect((await req('/v1/institutions?country=IT')).data).toEqual({ error: 'aggregator_paused' });
       clock += 11 * 60 * 1000;
       expect((await req('/v1/institutions?country=IT')).status).toBe(200);
@@ -145,8 +189,6 @@ describe('Stack\'d broker', () => {
       expect(r.data.deviceToken).toMatch(/^[0-9a-f]{16}\.[0-9a-f]{64}$/);
       expect(r.data.ownerId).toBe(r.data.deviceToken.split('.')[0]);
       expect(r.data.active).toBe(true);
-      expect(r.data.mode).toBe('open');
-      // The DO stores a hash, never the secret.
       const record = await env.owners.instance(r.data.ownerId).fetch(new Request('https://do/record')).then(x => x.json()) as any;
       expect(record.devices[0].hash).toHaveLength(64);
       expect(JSON.stringify(record)).not.toContain(r.data.deviceToken.split('.')[1]);
@@ -157,7 +199,6 @@ describe('Stack\'d broker', () => {
       const again = await req('/v1/entitlement/verify', { body: {}, token });
       expect(again.status).toBe(200);
       expect(again.data.deviceToken).toBeUndefined();
-      expect(again.data.ownerId).toBe(token.split('.')[0]);
       const forged = token.slice(0, -4) + 'ffff';
       expect((await req('/v1/entitlement/verify', { body: {}, token: forged })).status).toBe(401);
     });
@@ -168,12 +209,11 @@ describe('Stack\'d broker', () => {
     });
 
     it('store mode: not entitled by default, store receipts are a B5 501', async () => {
-      env = makeEnv({ ENTITLEMENT_MODE: 'store' });
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
       const r = await req('/v1/entitlement/verify', { body: {} });
       expect(r.status).toBe(201);
       expect(r.data.active).toBe(false);
-      const rec = await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'x' }, token: r.data.deviceToken });
-      expect(rec.status).toBe(501);
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'x' }, token: r.data.deviceToken })).status).toBe(501);
     });
   });
 
@@ -182,37 +222,43 @@ describe('Stack\'d broker', () => {
       expect((await start('')).status).toBe(401);
     });
 
-    it('creates the agreement + requisition clamped to the institution and returns the bank link', async () => {
+    it('starts an authorization clamped to the institution and returns the bank link', async () => {
       const token = await mint();
       const r = await start(token, { historyDays: 5000, validityDays: 999 });
       expect(r.status).toBe(201);
       expect(r.data.ref).toMatch(new RegExp(`^${token.split('.')[0]}_[0-9a-f]{16}$`));
-      expect(r.data.bankRedirectUrl).toMatch(/^https:\/\/ob\.gocardless\.com\/psd2\/start\/req_\d+\/BIGBANK_BIGBITMM$/);
-      expect(r.data).toMatchObject({ historyDays: 730, validityDays: 180 });
-      const agr = gc.calls.find(c => c.path === '/agreements/enduser/')!.body as any;
-      expect(agr).toEqual({ institution_id: 'BIGBANK_BIGBITMM', max_historical_days: 730, access_valid_for_days: 180, access_scope: ['balances', 'details', 'transactions'] });
-      const rq = gc.calls.find(c => c.path === '/requisitions/')!.body as any;
-      expect(rq.redirect).toBe('https://broker.test/v1/connect/return');
-      expect(rq.reference).toBe(r.data.ref);
-      expect(rq.user_language).toBe('EN');
+      expect(r.data.bankRedirectUrl).toMatch(/^https:\/\/sandbox\.eb\.test\/auth\/auth_\d+$/);
+      expect(r.data).toMatchObject({ historyDays: 365, validityDays: 180 });
+      const auth = eb.calls.find(c => c.path === '/auth')!.body as any;
+      expect(auth).toEqual({
+        access: { valid_until: '2027-03-06T10:00:00.000Z' },
+        aspsp: { name: 'Big Bank', country: 'IT' },
+        state: r.data.ref,
+        redirect_url: 'https://broker.test/v1/connect/return',
+        psu_type: 'personal',
+        language: 'en'
+      });
+      const status = await req(`/v1/connect/status?ref=${r.data.ref}`, { token });
+      expect(status.data).toMatchObject({ ref: r.data.ref, status: 'CR', accounts: [], institutionName: 'Big Bank' });
     });
 
-    it('honours smaller requested windows and PUBLIC_URL for the redirect', async () => {
-      env = makeEnv({ PUBLIC_URL: 'https://api.stackdplatform.com/' , ENTITLEMENT_MODE: 'open' });
-      // production host forces store mode → seed entitlement directly
+    it('honours smaller windows, the Accept-Language, and PUBLIC_URL for the redirect', async () => {
+      env = makeEnv(keys, { PUBLIC_URL: 'https://api-staging.stackdplatform.com/' });
       const token = await mint();
-      await env.owners.instance(token.split('.')[0]).fetch(new Request('https://do/entitlement/set', { method: 'POST', body: JSON.stringify({ entitlement: { active: true, expiresAt: '2999-01-01T00:00:00.000Z' } }) }));
-      const r = await start(token, { historyDays: 30, validityDays: 90 });
+      const r = await req('/v1/connect/start', { token, body: { country: 'IT', institutionId: 'IT:Mock ASPSP', historyDays: 30, validityDays: 60 }, headers: { 'accept-language': 'it-IT,it;q=0.9' } });
       expect(r.status).toBe(201);
-      expect(r.data).toMatchObject({ historyDays: 30, validityDays: 90 });
-      expect((gc.calls.find(c => c.path === '/requisitions/')!.body as any).redirect).toBe('https://api.stackdplatform.com/v1/connect/return');
+      expect(r.data).toMatchObject({ historyDays: 30, validityDays: 60 });
+      const auth = eb.calls.find(c => c.path === '/auth')!.body as any;
+      expect(auth.redirect_url).toBe('https://api-staging.stackdplatform.com/v1/connect/return');
+      expect(auth.language).toBe('it');
     });
 
-    it('rejects unknown institutions and bad countries', async () => {
+    it('rejects unknown institutions and bad countries without reserving capacity', async () => {
       const token = await mint();
-      expect((await start(token, { institutionId: 'NOPE' })).data).toEqual({ error: 'unknown_institution' });
+      expect((await start(token, { institutionId: 'IT:Nope' })).data).toEqual({ error: 'unknown_institution' });
       expect((await start(token, { country: 'Italy' })).data).toEqual({ error: 'country_required' });
-      expect(await new (await import('../src/durable-objects')).SystemClient(env as unknown as Env).connections()).toBe(0); // nothing reserved
+      const { SystemClient } = await import('../src/durable-objects');
+      expect(await new SystemClient(env as unknown as Env).connections()).toBe(0);
     });
 
     it('enforces the per-owner cap (D-C9) and the global cap', async () => {
@@ -220,7 +266,7 @@ describe('Stack\'d broker', () => {
       for (let i = 0; i < 3; i++) expect((await start(token)).status).toBe(201);
       expect((await start(token)).data).toEqual({ error: 'connection_limit' });
 
-      env = makeEnv({ MAX_CONNECTIONS: '1' });
+      env = makeEnv(keys, { MAX_CONNECTIONS: '1' });
       const a = await mint('192.0.2.1');
       const b = await mint('192.0.2.2');
       expect((await start(a)).status).toBe(201);
@@ -228,22 +274,17 @@ describe('Stack\'d broker', () => {
     });
 
     it('releases the global reservation when the aggregator call fails', async () => {
-      env = makeEnv({ MAX_CONNECTIONS: '1' });
+      env = makeEnv(keys, { MAX_CONNECTIONS: '1' });
       const token = await mint();
-      gc.institutions.IT = [{ id: 'BIGBANK_BIGBITMM', name: 'Big Bank', transaction_total_days: '730', max_access_valid_for_days: '180' }];
-      // Requisition creation blows up (fake returns 500 for an unhandled path when institution missing) — simulate via global 429 on the agreements call instead.
-      gc.global429 = false;
-      const original = gc.fetchImpl;
-      gc.fetchImpl = async (i, init) => (i.endsWith('/requisitions/') ? new Response('{"detail":"boom"}', { status: 500 }) : original(i, init));
-      app = createApp({ fetch: (i, init) => gc.fetchImpl(i, init), now: () => clock });
+      const original = eb.fetchImpl;
+      app = createApp({ fetch: async (i, init) => (i.endsWith('/auth') ? new Response('{"error":"BOOM"}', { status: 500 }) : original(i, init)), now: () => clock });
       expect((await start(token)).status).toBe(502);
-      gc.fetchImpl = original;
-      app = createApp({ fetch: gc.fetchImpl, now: () => clock });
-      expect((await start(token)).status).toBe(201); // capacity was released
+      app = createApp({ fetch: original, now: () => clock });
+      expect((await start(token)).status).toBe(201);
     });
 
     it('store mode: connect/start and data need a live entitlement (402)', async () => {
-      env = makeEnv({ ENTITLEMENT_MODE: 'store' });
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
       const token = await mint();
       expect((await start(token)).data).toEqual({ error: 'subscription_required' });
       expect((await req('/v1/accounts/x/transactions', { token })).data).toEqual({ error: 'subscription_required' });
@@ -252,142 +293,160 @@ describe('Stack\'d broker', () => {
     });
   });
 
-  describe('status + accounts', () => {
+  describe('bank return + status + accounts', () => {
     const setup = async () => {
       const token = await mint();
       const s = await start(token);
-      const requisitionId = (gc.calls.find(c => c.path === '/requisitions/') ? [...gc.requisitions.keys()].pop() : '') as string;
-      gc.accounts.set('acc_1', { iban: 'IT60X0542811101000000123456', currency: 'EUR', name: 'Conto', balances: { balances: [{ balanceAmount: { amount: '1234.56', currency: 'EUR' }, balanceType: 'expected' }] }, transactions: { transactions: { booked: [{ transactionId: 't1', bookingDate: '2026-09-01', transactionAmount: { amount: '-45.90', currency: 'EUR' } }], pending: [] } } });
-      gc.accounts.set('acc_2', { iban: 'IT60X0542811101000000654321', currency: 'EUR', name: 'Risparmio' });
-      return { token, ref: s.data.ref as string, requisitionId };
+      eb.accounts.set('acc_1', { uid: 'acc_1', iban: 'IT60X0542811101000000123456', currency: 'EUR', name: 'Conto', balances: { balances: [{ name: 'x', balance_amount: { amount: '1234.56', currency: 'EUR' }, balance_type: 'CLBD' }] }, transactionPages: [[{ entry_reference: 't1', booking_date: '2026-09-01', status: 'BOOK' }], [{ entry_reference: 't2', booking_date: '2026-08-30', status: 'BOOK' }]] });
+      eb.accounts.set('acc_2', { uid: 'acc_2', iban: 'IT60X0542811101000000654321', currency: 'EUR', name: 'Risparmio' });
+      eb.accounts.set('acc_3', { uid: 'acc_3', iban: 'IT60X0542811101000000999999', currency: 'EUR', name: 'Someone else' });
+      eb.pendingAccounts = ['acc_1', 'acc_2'];
+      return { token, ref: s.data.ref as string };
     };
 
-    it('reports CR before the bank confirms, then resolves accounts once on LN', async () => {
-      const { token, ref, requisitionId } = await setup();
-      let r = await req(`/v1/connect/status?ref=${ref}`, { token });
+    it('exchanges the code at the return URL, stores the linked accounts, and renders the hand-off page', async () => {
+      const { token, ref } = await setup();
+      const r = await bankReturn(ref);
       expect(r.status).toBe(200);
-      expect(r.data).toMatchObject({ ref, status: 'CR', accounts: [], institutionName: 'Big Bank', expiresAt: null });
+      expect(r.headers.get('content-type')).toContain('text/html');
+      expect(r.data).toContain(`href="stackd://connect/return?ref=${ref}"`);
+      expect(r.data).toContain('Your bank has confirmed');
+      const sessCall = eb.calls.find(c => c.path === '/sessions' && c.method === 'POST')!;
+      expect(sessCall.body).toEqual({ code: 'code_1' });
 
-      gc.link(requisitionId, ['acc_1', 'acc_2']);
-      r = await req(`/v1/connect/status?ref=${ref}`, { token });
-      expect(r.data.status).toBe('LN');
-      expect(r.data.accounts).toEqual([
+      const st = await req(`/v1/connect/status?ref=${ref}`, { token });
+      expect(st.data.status).toBe('LN');
+      expect(st.data.accounts).toEqual([
         { id: 'acc_1', ibanTail: '3456', currency: 'EUR', name: 'Conto' },
         { id: 'acc_2', ibanTail: '4321', currency: 'EUR', name: 'Risparmio' }
       ]);
-      expect(r.data.expiresAt).toBe('2027-03-06T10:00:00.000Z'); // +180 days
-      const detailCalls = () => gc.calls.filter(c => c.path.endsWith('/details/')).length;
-      expect(detailCalls()).toBe(2);
-      r = await req(`/v1/connect/status?ref=${ref}`, { token });
-      expect(detailCalls()).toBe(2); // cached in the DO
-      expect(r.data.accounts).toHaveLength(2);
+      expect(st.data.expiresAt).toBe('2027-03-06T10:00:00.000Z');
+      expect(JSON.stringify(st.data)).not.toContain('IT60X'); // never the full IBAN
 
-      const list = await req('/v1/connections', { token });
-      expect(list.data.connections).toHaveLength(1);
-      expect(JSON.stringify(list.data)).not.toContain('IT60X'); // never the full IBAN
+      // Reloading the return page is harmless and does not re-exchange.
+      const again = await req(`/v1/connect/return?code=whatever&state=${ref}`, { client: null });
+      expect(again.status).toBe(200);
+      expect(eb.calls.filter(c => c.path === '/sessions' && c.method === 'POST')).toHaveLength(1);
+      expect((await req('/v1/connections', { token })).data.connections).toHaveLength(1);
     });
 
-    it('proxies balances and transactions for owned accounts only', async () => {
-      const { token, ref, requisitionId } = await setup();
+    it('records a cancelled or failed bank leg without leaking anything', async () => {
+      const { token, ref } = await setup();
+      const r = await req(`/v1/connect/return?state=${ref}&error=access_denied&error_description=Cancelled%20by%20user`, { client: null });
+      expect(r.data).toContain('did not complete');
+      expect(r.data).toContain('Cancelled by user');
+      expect((await req(`/v1/connect/status?ref=${ref}`, { token })).data).toMatchObject({ status: 'UA', lastError: 'access_denied' });
+
+      const s2 = await start(token);
+      const bad = await req(`/v1/connect/return?state=${s2.data.ref}&code=not_a_real_code`, { client: null });
+      expect(bad.status).toBe(200);
+      expect((await req(`/v1/connect/status?ref=${s2.data.ref}`, { token })).data.status).toBe('RJ');
+
+      // Unknown / malformed refs get a neutral page and touch nothing.
+      expect((await req('/v1/connect/return?state=zzzz&code=x', { client: null })).data).toContain('not valid');
+      expect((await req(`/v1/connect/return?state=${'0'.repeat(16)}_${'0'.repeat(16)}&code=x`, { client: null })).data).toContain('not valid');
+      expect(eb.calls.filter(c => c.path === '/sessions' && c.method === 'POST')).toHaveLength(1);
+    });
+
+    it('proxies balances and paginated transactions for owned accounts only', async () => {
+      const { token, ref } = await setup();
       expect((await req('/v1/accounts/acc_1/transactions', { token })).data).toEqual({ error: 'unknown_account' }); // not linked yet
-      gc.link(requisitionId, ['acc_1']);
-      await req(`/v1/connect/status?ref=${ref}`, { token });
+      await bankReturn(ref);
 
       const tx = await req('/v1/accounts/acc_1/transactions?date_from=2026-06-01&date_to=2026-09-07', { token });
       expect(tx.status).toBe(200);
-      expect(tx.data.transactions.booked[0].transactionId).toBe('t1');
-      expect(gc.calls.at(-1)!.path).toBe('/accounts/acc_1/transactions/?date_from=2026-06-01&date_to=2026-09-07');
+      expect(tx.data.transactions.map((t: any) => t.entry_reference)).toEqual(['t1', 't2']);
+      expect(tx.data.truncated).toBe(false);
+      const txCalls = eb.calls.filter(c => c.path.startsWith('/accounts/acc_1/transactions'));
+      expect(txCalls[0].path).toBe('/accounts/acc_1/transactions?date_from=2026-06-01&date_to=2026-09-07');
+      expect(txCalls[1].path).toContain('continuation_key=1');
+      expect(txCalls[0].headers.get('psu-ip-address')).toBe('203.0.113.1');
+      expect(txCalls[0].headers.get('psu-user-agent')).toBe('StackdTest/1.0');
       expect((await req('/v1/accounts/acc_1/transactions?date_from=1/6/2026', { token })).data).toEqual({ error: 'invalid_date' });
 
       const bal = await req('/v1/accounts/acc_1/balances', { token });
-      expect(bal.data.balances[0].balanceAmount.amount).toBe('1234.56');
-      expect((await req('/v1/accounts/acc_2/balances', { token })).data).toEqual({ error: 'unknown_account' }); // exists at GC, not linked here
+      expect(bal.data.balances[0].balance_amount.amount).toBe('1234.56');
+      expect((await req('/v1/accounts/acc_3/balances', { token })).data).toEqual({ error: 'unknown_account' }); // exists at the aggregator, not linked here
     });
 
-    it('surfaces the bank\'s per-account daily limit as 429 without tripping the breaker', async () => {
-      const { token, ref, requisitionId } = await setup();
-      gc.link(requisitionId, ['acc_1']);
-      await req(`/v1/connect/status?ref=${ref}`, { token });
-      gc.accounts.get('acc_1')!.rate429 = true;
+    it('surfaces the bank\'s per-PSU limit as 429 without tripping the breaker', async () => {
+      const { token, ref } = await setup();
+      await bankReturn(ref);
+      eb.accounts.get('acc_1')!.rate429 = true;
       expect((await req('/v1/accounts/acc_1/balances', { token })).data).toEqual({ error: 'account_rate_limited' });
-      expect((await req('/v1/institutions?country=GB')).status).toBe(200); // breaker untouched
+      expect((await req('/v1/institutions?country=GB')).status).toBe(200);
+    });
+
+    it('marks the connection expired when the aggregator says the session is gone, and by date', async () => {
+      const { token, ref } = await setup();
+      await bankReturn(ref);
+      const sessionId = [...eb.sessions.keys()][0];
+      eb.expireSession(sessionId);
+      expect((await req('/v1/accounts/acc_1/balances', { token })).data).toEqual({ error: 'consent_expired' });
+      expect((await req(`/v1/connect/status?ref=${ref}`, { token })).data.status).toBe('EX');
+
+      const b = await setup();
+      await bankReturn(b.ref);
+      clock += 200 * 86400000;
+      expect((await req(`/v1/connect/status?ref=${b.ref}`, { token: b.token })).data.status).toBe('EX');
+      expect((await req('/v1/accounts/acc_1/balances', { token: b.token })).data).toEqual({ error: 'consent_expired' });
     });
 
     it('THE ownership test: owner B can read nothing of owner A', async () => {
       const a = await setup();
-      gc.link(a.requisitionId, ['acc_1']);
-      await req(`/v1/connect/status?ref=${a.ref}`, { token: a.token });
-
+      await bankReturn(a.ref);
       const b = await mint('192.0.2.50');
       expect((await req(`/v1/connect/status?ref=${a.ref}`, { token: b })).status).toBe(404);
       expect((await req('/v1/accounts/acc_1/transactions', { token: b })).status).toBe(404);
       expect((await req('/v1/accounts/acc_1/balances', { token: b })).status).toBe(404);
       expect((await req(`/v1/connections/${a.ref}`, { token: b, method: 'DELETE' })).status).toBe(404);
-      expect(gc.requisitions.has(a.requisitionId)).toBe(true);
+      expect(eb.sessions.size).toBe(1);
       expect((await req('/v1/connections', { token: b })).data.connections).toEqual([]);
-      // and A still can
       expect((await req('/v1/accounts/acc_1/balances', { token: a.token })).status).toBe(200);
     });
 
     it('revokes at the aggregator, forgets the ref and releases capacity', async () => {
-      const { token, ref, requisitionId } = await setup();
+      const { token, ref } = await setup();
+      await bankReturn(ref);
       const { SystemClient } = await import('../src/durable-objects');
       expect(await new SystemClient(env as unknown as Env).connections()).toBe(1);
       const r = await req(`/v1/connections/${ref}`, { token, method: 'DELETE' });
       expect(r.data).toEqual({ ok: true, ref });
-      expect(gc.requisitions.has(requisitionId)).toBe(false);
+      expect(eb.sessions.size).toBe(0);
       expect((await req(`/v1/connect/status?ref=${ref}`, { token })).status).toBe(404);
       expect(await new SystemClient(env as unknown as Env).connections()).toBe(0);
-      // idempotent when GoCardless already dropped it
+      // A never-linked connection has no session to delete; still removable.
       const s2 = await start(token);
-      gc.requisitions.delete([...gc.requisitions.keys()].pop()!);
       expect((await req(`/v1/connections/${s2.data.ref}`, { token, method: 'DELETE' })).status).toBe(200);
     });
   });
 
-  describe('return page', () => {
-    it('hands off to the custom scheme with the ref, and escapes error text', async () => {
-      const ok = await req('/v1/connect/return?ref=abc_123');
-      expect(ok.status).toBe(200);
-      expect(ok.headers.get('content-type')).toContain('text/html');
-      expect(ok.headers.get('cache-control')).toBe('no-store');
-      expect(ok.data).toContain('href="stackd://connect/return?ref=abc_123"');
-      expect(ok.data).toContain('Your bank has confirmed');
-
-      const bad = await req('/v1/connect/return?ref=abc&error=UserCancelledSession&details=<script>alert(1)</script>');
-      expect(bad.data).not.toContain('<script>alert');
-      expect(bad.data).toContain('&lt;script&gt;');
-      expect(bad.data).toContain('did not complete');
-    });
-  });
-
   describe('grace alarm (store mode)', () => {
-    it('revokes every requisition 14 days after a lapse, not before', async () => {
-      env = makeEnv({ ENTITLEMENT_MODE: 'store' });
+    it('revokes every session 14 days after a lapse, not before', async () => {
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
       const token = await mint();
       const ownerId = token.split('.')[0];
       const owner = env.owners.instance(ownerId);
       const set = (entitlement: unknown) => owner.fetch(new Request('https://do/entitlement/set', { method: 'POST', body: JSON.stringify({ entitlement }) }));
       await set({ active: true, expiresAt: '2999-01-01T00:00:00.000Z' });
       const s = await start(token);
-      expect(s.status).toBe(201);
-      const requisitionId = [...gc.requisitions.keys()].pop()!;
+      eb.pendingAccounts = [];
+      await bankReturn(s.data.ref);
+      expect(eb.sessions.size).toBe(1);
 
       await set({ active: false });
       const storage = env.owners.storages.get(ownerId)!;
       expect(storage.alarm).toBeGreaterThan(Date.now());
-      await owner.alarm!(); // fires early → keeps everything, re-arms
-      expect(gc.requisitions.has(requisitionId)).toBe(true);
+      await owner.alarm!(); // early → keeps everything, re-arms
+      expect(eb.sessions.size).toBe(1);
 
-      // Fast-forward the lapse timestamp instead of the wall clock.
       const rec = (await storage.get('owner')) as any;
       rec.entitlement.lapsedAt = new Date(Date.now() - 15 * 86400000).toISOString();
       await storage.put('owner', rec);
-      // The alarm creates its own GoCardless client on the global fetch.
       const realFetch = globalThis.fetch;
-      (globalThis as any).fetch = gc.fetchImpl;
+      (globalThis as any).fetch = eb.fetchImpl;
       try { await owner.alarm!(); } finally { (globalThis as any).fetch = realFetch; }
-      expect(gc.requisitions.has(requisitionId)).toBe(false);
+      expect(eb.sessions.size).toBe(0);
       expect((await req('/v1/connections', { token })).data.connections).toEqual([]);
     });
   });

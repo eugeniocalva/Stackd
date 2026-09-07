@@ -1,4 +1,8 @@
 # Copy to .dev.vars for `wrangler dev` ONLY. .dev.vars is git-ignored; never
-# commit real values. Deployed workers get these via `wrangler secret put`.
-GC_SECRET_ID=
-GC_SECRET_KEY=
+# commit real values. Deployed workers get the key via `wrangler secret put`.
+#
+# EB_PRIVATE_KEY = the PEM the Enable Banking Control Panel downloaded when the
+# application was created (file named <application-id>.pem). Either paste the
+# PEM (multi-line values need double quotes) or its base64 on one line:
+#   PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\Downloads\<app-id>.pem"))
+EB_PRIVATE_KEY=

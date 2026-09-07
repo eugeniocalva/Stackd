@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B2 SHIPPED 2026-09-06 (v1.05); B1 broker BUILT 2026-09-07, staging deploy pending login + secrets — next: deploy, smoke, then B3.** See §9–§10.
+> Status: **B2 SHIPPED 2026-09-06 (v1.05); B1 broker BUILT + on staging 2026-09-07 with Enable Banking (GoCardless closed, §11) — next: Enable Banking app registration, smoke, then B3.** See §9–§11.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -19,9 +19,9 @@
 |---|---|
 | Domain | **Done** — `stackdplatform.com` bought and on Cloudflare 2026-09-05 (site on Pages). |
 | Android `applicationId` → `com.stackd.finance` | **Done** — commit `6f17b07`, 2026-09-04. |
-| GoCardless Bank Account Data account | **Done** — the account exists (2026-09-06); B1 needs its `secret_id`/`secret_key` as wrangler secrets, and the subscriptions/agreements listing there is the ops view for connected users. Read the commercial terms for the price (D-C9) and `MAX_CONNECTIONS`. |
+| Aggregator account | **Changed 2026-09-07 (§11):** GoCardless Bank Account Data is closed to new sign-ups (the existing GoCardless login is the payments product). Now **Enable Banking**: sandbox application registered by the user, `EB_APP_ID` var + `EB_PRIVATE_KEY` secret. Production needs a contract + company KYB (or restricted mode). |
 | Store subscription products | **Open** — needs Play Console and App Store Connect (Apple Developer enrollment is still pending per the launch checklist). Blocks B5 only. |
-| Broker host | **Proposal (D-C11):** `api.stackdplatform.com` as a Worker custom domain. The D-C2 web cookie needs the web app on the same registrable domain, e.g. `app.stackdplatform.com`. Both `.well-known` files are served by the broker host. |
+| Broker host | **Staging live:** `api-staging.stackdplatform.com` (Worker custom domain; `workers.dev` is blocked on the developer's network — TLS alert for the whole domain, `wrangler tail` included). Production: `api.stackdplatform.com` (D-C11). Both `.well-known` files are served by the broker host. |
 
 ## 1. The reference app, screen by screen
 
@@ -446,3 +446,60 @@ Deviations from the architecture plan (§2), all deliberate:
 Not yet done: the staging deploy itself needs a one-time `wrangler login`
 and the two GoCardless secrets from the user's terminal (README runbook),
 then `scripts/smoke.mjs` drives the sandbox institution end to end.
+
+## 11. Aggregator pivot — Enable Banking, 2026-09-07 (D-C17)
+
+**What happened.** The first staging smoke test returned a 401 from
+GoCardless. The user's GoCardless login is the *payments* product
+(`manage.gocardless.com`); **Bank Account Data** (ex-Nordigen) is a separate
+login whose sign-up page now says *"New signups for Bank Account Data are
+currently disabled"*. Access is a sales conversation aimed at larger
+customers. The user chose to switch (D-C17) rather than wait.
+
+**Decision D-C17 — Enable Banking** as the aggregator. Self-serve sign-up,
+free sandbox (activates automatically; "Mock ASPSP" test bank), EU-wide
+coverage incl. Italy, consent up to 180 days for most banks, at least a year
+of history for most banks. **Caveats to carry into B6:** production access
+requires a signed contract + company KYB (or *"Activate by linking
+accounts"* — restricted mode limited to the developer's own accounts, fine
+for TestFlight/internal builds); pricing is volume-based with a monthly
+minimum and quote-only. Salt Edge is the fallback if the contract terms do
+not fit a one-person app.
+
+**What changed in the broker** (`broker/README.md` is current):
+
+- `src/gocardless.ts` → `src/enable-banking.ts`: RS256 JWT signed in the
+  Worker with the application's PEM (PKCS#8, PKCS#1 or base64-of-PEM all
+  accepted; `kid` = application id, 1h TTL, memoised per isolate). No token
+  cache in the SystemDO any more.
+- **The return URL does the work.** The bank sends `code` + `state` (= our
+  ref) to `/v1/connect/return`; the broker exchanges the code for a session
+  there, stores `{id, ibanTail, currency, name}` per account and only then
+  hands off to the app. `/v1/connect/status` is now a read of the owner
+  record (no aggregator call), with `EX` derived from `expiresAt` and from
+  `SESSION_EXPIRED`-class aggregator errors (410 `consent_expired`).
+- Institution shape is now the broker's own:
+  `{id: "IT:Name", name, country, logo, bic, historyDays, maxValidityDays,
+  beta, sandbox}`. B2's normalizer already accepted `historyDays` /
+  `maxValidityDays`, so the app needs no change; `historyDays` is a default
+  (365) because Enable Banking exposes no per-bank history limit.
+- Transactions are returned as ONE list per window (`continuation_key`
+  pages merged, `truncated` flag after 25 pages); PSU-online headers
+  (`Psu-Ip-Address`, `Psu-User-Agent`) are forwarded from the device request
+  so banks apply their online limits rather than the 4-per-day background one.
+- Record fields: `requisitionId`/`agreementId` → `authorizationId` /
+  `sessionId` (+ `lastError`). Revoke = `DELETE /sessions/{id}`.
+- 31 tests; the fake aggregator verifies the real RS256 signature against a
+  generated key pair, so the JWT path is covered end to end.
+
+**Transaction shape for B3's normalizer** (Enable Banking): `entry_reference`
+/ `transaction_id` (→ `bankRef`), `transaction_amount {amount, currency}`,
+`credit_debit_indicator` CRDT/DBIT, `status` BOOK/PDNG (booked only, D-C4),
+`booking_date`, `value_date`, `remittance_information[]`, `creditor.name` /
+`debtor.name`, `bank_transaction_code`. Balances: `balances[].balance_amount`
+with `balance_type` (prefer CLBD, else the first).
+
+**Status:** deployed to `api-staging.stackdplatform.com`; the GoCardless
+secrets were removed from the worker. Waiting on the Enable Banking sandbox
+application (app id → `EB_APP_ID` in `wrangler.toml`, PEM → `EB_PRIVATE_KEY`
+secret), then the smoke test against "Mock ASPSP".

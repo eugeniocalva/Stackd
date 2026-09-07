@@ -5,9 +5,13 @@ export interface Env {
   SYSTEM_DO: DurableObjectNamespace;
   RATE_DO: DurableObjectNamespace;
 
-  GC_SECRET_ID: string;
-  GC_SECRET_KEY: string;
-  GC_BASE_URL: string;
+  // Enable Banking application (docs/bank-connect-ux-plan.md §11):
+  // EB_APP_ID is the application UUID (a [vars] value, not secret);
+  // EB_PRIVATE_KEY is the PEM the Control Panel downloaded (wrangler secret;
+  // PKCS#8 or PKCS#1, or the base64 of the PEM).
+  EB_APP_ID: string;
+  EB_PRIVATE_KEY: string;
+  EB_BASE_URL: string;
 
   ENTITLEMENT_MODE: string; // 'open' (staging only) | 'store'
   CLIENT_ID: string;
@@ -19,7 +23,6 @@ export interface Env {
   ANDROID_SHA256_FINGERPRINTS: string;
   IOS_APP_ID: string;
   PUBLIC_URL: string;
-  WORKER_NAME?: string;
 }
 
 export interface Config {
@@ -28,7 +31,7 @@ export interface Config {
   maxConnections: number;
   ownerMaxConnections: number;
   allowedOrigins: string[];
-  gcBaseUrl: string;
+  ebBaseUrl: string;
   appScheme: string;
   androidPackage: string;
   androidFingerprints: string[];
@@ -60,7 +63,7 @@ export function parseConfig(env: Env): Config {
     maxConnections: int(env.MAX_CONNECTIONS, 50),
     ownerMaxConnections: int(env.OWNER_MAX_CONNECTIONS, 3),
     allowedOrigins: list(env.ALLOWED_ORIGINS),
-    gcBaseUrl: (env.GC_BASE_URL || 'https://bankaccountdata.gocardless.com/api/v2').replace(/\/$/, ''),
+    ebBaseUrl: (env.EB_BASE_URL || 'https://api.enablebanking.com').replace(/\/$/, ''),
     appScheme: env.APP_SCHEME || 'stackd',
     androidPackage: env.ANDROID_PACKAGE || 'com.stackd.finance',
     androidFingerprints: list(env.ANDROID_SHA256_FINGERPRINTS),
@@ -72,6 +75,6 @@ export function parseConfig(env: Env): Config {
   };
 }
 
-// Requisitions live at GoCardless for `access_valid_for_days`; the broker keeps
-// them for this long after a subscription lapses, then revokes (D-C3).
+// Sessions live at the aggregator for `valid_until`; the broker keeps them
+// for this long after a subscription lapses, then revokes (D-C3).
 export const GRACE_MS = 14 * 24 * 60 * 60 * 1000;

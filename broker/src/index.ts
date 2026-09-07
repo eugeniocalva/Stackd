@@ -1,13 +1,18 @@
 // Stack'd Bank Connect broker — worker entry (docs/bank-connect-plan.md §2).
 //
-// Pass-through by design: nothing that comes back from GoCardless is stored
-// or logged; only ownership + entitlement state lives in the Durable
+// Pass-through by design: nothing that comes back from the aggregator is
+// stored or logged; only ownership + entitlement state lives in the Durable
 // Objects. Every data endpoint is ownership-checked against the caller's
 // owner record, and unknown refs/accounts are 404 — never 403 — so a probe
 // cannot distinguish "not yours" from "does not exist".
+//
+// Aggregator = Enable Banking (src/enable-banking.ts, the only file that
+// knows about it). The bank redirects the user to /v1/connect/return with
+// `code` + `state`; the broker exchanges the code for a session right there,
+// so the app's later /v1/connect/status is a read of the owner record.
 import type { Env, Config } from './env';
 import { parseConfig } from './env';
-import { GoCardless, GcError, type GcInstitution } from './gocardless';
+import { EnableBanking, AggregatorError, type Institution, type PsuContext } from './enable-banking';
 import { mintToken, parseBearer, sha256Hex, randomHex } from './auth';
 import { OwnerClient, SystemClient, RateClient, type OwnerRecord, type ReqRecord, type Entitlement } from './durable-objects';
 import { returnPage } from './html';
@@ -34,7 +39,7 @@ interface Session {
 interface Ctx {
   env: Env;
   cfg: Config;
-  gc: GoCardless;
+  agg: EnableBanking;
   system: SystemClient;
   rate: RateClient;
   now: () => number;
@@ -47,6 +52,7 @@ const json = (data: unknown, status = 200, extra?: Record<string, string>): Resp
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 const DAY_MS = 86400000;
+const REF_RE = /^([0-9a-f]{16})_[0-9a-f]{16}$/;
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -99,27 +105,15 @@ async function requireDevice(request: Request, c: Ctx): Promise<Session> {
 
 const COUNTRY_RE = /^[A-Za-z]{2}$/;
 
-function trimInstitution(i: GcInstitution): GcInstitution {
-  return {
-    id: i.id,
-    name: i.name,
-    bic: i.bic,
-    logo: i.logo,
-    countries: i.countries,
-    transaction_total_days: i.transaction_total_days,
-    max_access_valid_for_days: i.max_access_valid_for_days
-  };
-}
-
-async function institutionsFor(country: string, c: Ctx): Promise<GcInstitution[]> {
+async function institutionsFor(country: string, c: Ctx): Promise<Institution[]> {
   const key = `${c.origin}/v1/institutions?country=${country}`;
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
     const hit = await cache.match(key);
-    if (hit) return (await hit.json()) as GcInstitution[];
+    if (hit) return (await hit.json()) as Institution[];
   }
-  const list = (await c.gc.institutions(country)).map(trimInstitution);
-  if (cache) {
+  const list = await c.agg.institutions(country);
+  if (cache && list.length) {
     await cache.put(key, new Response(JSON.stringify(list), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } }));
   }
   return list;
@@ -192,63 +186,111 @@ const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.m
 function userLanguage(request: Request): string {
   const al = request.headers.get('accept-language') || '';
   const m = /^([a-z]{2})/i.exec(al.trim());
-  return m ? m[1].toUpperCase() : 'EN';
+  return m ? m[1].toLowerCase() : 'en';
+}
+
+function returnUrl(c: Ctx): string {
+  return `${c.cfg.publicUrl || c.origin}/v1/connect/return`;
 }
 
 async function handleConnectStart(request: Request, session: Session, c: Ctx): Promise<Response> {
   requireEntitled(session, c);
   const body = await readJson(request);
   const country = String(body.country || '').toUpperCase();
-  const institutionId = String(body.institutionId || '');
+  const institutionId = String(body.institutionId || '').trim();
   if (!COUNTRY_RE.test(country)) throw new HttpError(400, 'country_required');
-  if (!institutionId || institutionId.length > 100) throw new HttpError(400, 'institution_required');
+  if (!institutionId || institutionId.length > 200) throw new HttpError(400, 'institution_required');
   if (Object.keys(session.record.requisitions).length >= c.cfg.ownerMaxConnections) throw new HttpError(409, 'connection_limit');
 
-  const inst = (await institutionsFor(country, c)).find(i => i.id === instId(institutionId));
+  const inst = (await institutionsFor(country, c)).find(i => i.id === institutionId);
   if (!inst) throw new HttpError(400, 'unknown_institution');
-  const instHistory = Number(inst.transaction_total_days || 90) || 90;
-  const instValidity = Number(inst.max_access_valid_for_days || 90) || 90;
-  const historyDays = clamp(Number(body.historyDays) || 90, 1, instHistory);
-  const validityDays = clamp(Number(body.validityDays) || instValidity, 1, instValidity);
+  const historyDays = clamp(Number(body.historyDays) || 90, 1, inst.historyDays);
+  const validityDays = clamp(Number(body.validityDays) || inst.maxValidityDays, 1, inst.maxValidityDays);
 
   const reserved = await c.system.reserve(c.cfg.maxConnections);
   if (!reserved.ok) throw new HttpError(503, 'capacity');
 
   try {
-    const agreement = await c.gc.createAgreement({ institutionId: inst.id, historyDays, validityDays });
     const ref = `${session.ownerId}_${randomHex(8)}`;
-    const redirect = `${c.cfg.publicUrl || c.origin}/v1/connect/return`;
-    const req = await c.gc.createRequisition({ redirect, institutionId: inst.id, agreementId: agreement.id, reference: ref, userLanguage: userLanguage(request) });
-    if (!req.link) throw new HttpError(502, 'aggregator_no_link');
+    const auth = await c.agg.startAuth({
+      name: inst.name,
+      country: inst.country,
+      validUntil: iso(c.now() + validityDays * DAY_MS),
+      state: ref,
+      redirectUrl: returnUrl(c),
+      language: userLanguage(request)
+    });
     const rec: ReqRecord = {
       ref,
-      requisitionId: req.id,
-      agreementId: agreement.id,
+      authorizationId: auth.authorizationId,
+      sessionId: null,
       institutionId: inst.id,
       institutionName: inst.name,
-      institutionLogo: inst.logo || null,
+      institutionLogo: inst.logo,
       createdAt: iso(c.now()),
-      status: req.status || 'CR',
+      status: 'CR',
       accounts: null,
       historyDays,
       validityDays,
       expiresAt: null,
-      linkedAt: null
+      linkedAt: null,
+      lastError: null
     };
     await session.owner.addRequisition(rec);
-    return json({ ref, bankRedirectUrl: req.link, historyDays, validityDays }, 201);
+    return json({ ref, bankRedirectUrl: auth.url, historyDays, validityDays }, 201);
   } catch (e) {
     await c.system.release();
     throw e;
   }
 }
 
-const instId = (s: string): string => s.trim();
+// The bank sends the user back here (App Link on a verified install, else the
+// hand-off page). No device auth: `state` is our ref, which embeds the owner
+// id and must match a CR record; the code is single-use and short-lived.
+async function handleConnectReturn(url: URL, c: Ctx): Promise<Response> {
+  const ref = url.searchParams.get('state') || url.searchParams.get('ref') || '';
+  const code = url.searchParams.get('code') || '';
+  const error = url.searchParams.get('error') || '';
+  const details = url.searchParams.get('error_description') || url.searchParams.get('details') || '';
+  const page = (p: { error?: string; details?: string }) => returnPage({ scheme: c.cfg.appScheme, ref, error: p.error || '', details: p.details || '' });
 
-function publicRequisition(rec: ReqRecord): Record<string, unknown> {
+  const m = REF_RE.exec(ref);
+  if (!m) return page({ error: 'invalid_ref', details: 'This link is not valid.' });
+  const owner = new OwnerClient(c.env, m[1]);
+  const record = await owner.record();
+  const rec = record ? record.requisitions[ref] : undefined;
+  if (!rec) return page({ error: 'invalid_ref', details: 'This link is not valid.' });
+  if (rec.status === 'LN') return page({}); // idempotent: reload of the return page
+
+  if (error || !code) {
+    const cancelled = /cancel/i.test(details) || /access_denied/i.test(error) && /cancel/i.test(details);
+    await owner.updateRequisition(ref, { status: cancelled ? 'UA' : 'RJ', lastError: (error || 'no_code').slice(0, 100) });
+    return page({ error: error || 'no_code', details: details || 'The bank did not return an authorization.' });
+  }
+
+  try {
+    const s = await c.agg.createSession(code);
+    const accounts = (s.accounts || []).map(a => ({
+      id: a.uid,
+      ibanTail: String((a.account_id && a.account_id.iban) || '').slice(-4),
+      currency: a.currency || null,
+      name: a.name || a.product || null
+    }));
+    const expiresAt = s.access && s.access.valid_until ? s.access.valid_until : iso(c.now() + rec.validityDays * DAY_MS);
+    await owner.updateRequisition(ref, { status: 'LN', sessionId: s.session_id, accounts, linkedAt: iso(c.now()), expiresAt, lastError: null });
+    return page({});
+  } catch (e) {
+    const codeStr = e instanceof AggregatorError ? e.code : 'internal';
+    await owner.updateRequisition(ref, { status: 'RJ', lastError: codeStr });
+    return page({ error: codeStr, details: 'The connection could not be completed. Please try again.' });
+  }
+}
+
+function publicRequisition(rec: ReqRecord, now: number): Record<string, unknown> {
+  const expired = rec.status === 'LN' && rec.expiresAt && Date.parse(rec.expiresAt) <= now;
   return {
     ref: rec.ref,
-    status: rec.status,
+    status: expired ? 'EX' : rec.status,
     institutionId: rec.institutionId,
     institutionName: rec.institutionName,
     institutionLogo: rec.institutionLogo,
@@ -257,7 +299,8 @@ function publicRequisition(rec: ReqRecord): Record<string, unknown> {
     validityDays: rec.validityDays,
     createdAt: rec.createdAt,
     linkedAt: rec.linkedAt,
-    expiresAt: rec.expiresAt
+    expiresAt: rec.expiresAt,
+    lastError: rec.lastError || null
   };
 }
 
@@ -265,52 +308,42 @@ async function handleConnectStatus(url: URL, session: Session, c: Ctx): Promise<
   const ref = url.searchParams.get('ref') || '';
   const rec = session.record.requisitions[ref];
   if (!rec) throw new HttpError(404, 'unknown_ref');
-
-  const gcReq = await c.gc.getRequisition(rec.requisitionId);
-  const status = gcReq.status || rec.status;
-  const patch: Partial<ReqRecord> = {};
-  if (status !== rec.status) patch.status = status;
-
-  if (status === 'LN' && !rec.accounts) {
-    // Resolve the linked accounts once; details calls count against the
-    // bank's per-account daily budget, so the tails are kept in the DO.
-    const accounts = [];
-    for (const id of gcReq.accounts || []) {
-      const d = await c.gc.accountDetails(id);
-      const a = (d && d.account) || {};
-      accounts.push({ id, ibanTail: String(a.iban || '').slice(-4), currency: a.currency || null, name: a.name || a.product || null });
-    }
-    patch.accounts = accounts;
-    patch.linkedAt = iso(c.now());
-    patch.expiresAt = iso(c.now() + rec.validityDays * DAY_MS);
-  }
-  if (Object.keys(patch).length) await session.owner.updateRequisition(ref, patch);
-  return json(publicRequisition({ ...rec, ...patch }));
+  return json(publicRequisition(rec, c.now()));
 }
 
 function findAccount(record: OwnerRecord, accountId: string): ReqRecord | null {
   for (const rec of Object.values(record.requisitions)) {
-    if (rec.accounts && rec.accounts.some(a => a.id === accountId)) return rec;
+    if (rec.status === 'LN' && rec.accounts && rec.accounts.some(a => a.id === accountId)) return rec;
   }
   return null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-async function handleAccountData(kind: 'transactions' | 'balances', accountId: string, url: URL, session: Session, c: Ctx): Promise<Response> {
+async function handleAccountData(kind: 'transactions' | 'balances', accountId: string, url: URL, request: Request, session: Session, c: Ctx): Promise<Response> {
   requireEntitled(session, c);
-  if (!findAccount(session.record, accountId)) throw new HttpError(404, 'unknown_account');
-  if (kind === 'balances') return json(await c.gc.balances(accountId));
-  const from = url.searchParams.get('date_from') || undefined;
-  const to = url.searchParams.get('date_to') || undefined;
-  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) throw new HttpError(400, 'invalid_date');
-  return json(await c.gc.transactions(accountId, from, to));
+  const rec = findAccount(session.record, accountId);
+  if (!rec) throw new HttpError(404, 'unknown_account');
+  if (rec.expiresAt && Date.parse(rec.expiresAt) <= c.now()) throw new HttpError(410, 'consent_expired');
+  const psu: PsuContext = { ip: c.ip, userAgent: request.headers.get('user-agent') };
+  try {
+    if (kind === 'balances') return json(await c.agg.balances(accountId, psu));
+    const from = url.searchParams.get('date_from') || undefined;
+    const to = url.searchParams.get('date_to') || undefined;
+    if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) throw new HttpError(400, 'invalid_date');
+    return json(await c.agg.transactions(accountId, from, to, psu));
+  } catch (e) {
+    if (e instanceof AggregatorError && e.status === 410) {
+      await session.owner.updateRequisition(rec.ref, { status: 'EX', lastError: e.code });
+    }
+    throw e;
+  }
 }
 
 async function handleRevoke(ref: string, session: Session, c: Ctx): Promise<Response> {
   const rec = session.record.requisitions[ref];
   if (!rec) throw new HttpError(404, 'unknown_ref');
-  await c.gc.deleteRequisition(rec.requisitionId);
+  if (rec.sessionId) await c.agg.deleteSession(rec.sessionId);
   await session.owner.removeRequisition(ref);
   await c.system.release();
   return json({ ok: true, ref });
@@ -338,17 +371,10 @@ async function route(request: Request, url: URL, c: Ctx): Promise<Response> {
   const path = url.pathname;
   const method = request.method.toUpperCase();
 
-  if (path === '/healthz' && method === 'GET') return json({ ok: true, mode: c.cfg.mode, service: 'stackd-broker' });
+  if (path === '/healthz' && method === 'GET') return json({ ok: true, mode: c.cfg.mode, service: 'stackd-broker', aggregator: 'enablebanking' });
   if (path === '/.well-known/assetlinks.json' && method === 'GET') return assetLinks(c.cfg);
   if (path === '/.well-known/apple-app-site-association' && method === 'GET') return appleAssociation(c.cfg);
-  if (path === '/v1/connect/return' && method === 'GET') {
-    return returnPage({
-      scheme: c.cfg.appScheme,
-      ref: url.searchParams.get('ref') || '',
-      error: url.searchParams.get('error') || '',
-      details: url.searchParams.get('details') || ''
-    });
-  }
+  if (path === '/v1/connect/return' && method === 'GET') return handleConnectReturn(url, c);
   if (!path.startsWith('/v1/')) throw new HttpError(404, 'not_found');
 
   // Build-time client id: worthless against extraction, filters lazy
@@ -362,10 +388,10 @@ async function route(request: Request, url: URL, c: Ctx): Promise<Response> {
   if (path === '/v1/connect/start' && method === 'POST') return handleConnectStart(request, session, c);
   if (path === '/v1/connect/status' && method === 'GET') return handleConnectStatus(url, session, c);
   if (path === '/v1/connections' && method === 'GET') {
-    return json({ connections: Object.values(session.record.requisitions).map(publicRequisition) });
+    return json({ connections: Object.values(session.record.requisitions).map(r => publicRequisition(r, c.now())) });
   }
   const acc = /^\/v1\/accounts\/([^/]+)\/(transactions|balances)$/.exec(path);
-  if (acc && method === 'GET') return handleAccountData(acc[2] as 'transactions' | 'balances', decodeURIComponent(acc[1]), url, session, c);
+  if (acc && method === 'GET') return handleAccountData(acc[2] as 'transactions' | 'balances', decodeURIComponent(acc[1]), url, request, session, c);
   const del = /^\/v1\/connections\/([^/]+)$/.exec(path);
   if (del && method === 'DELETE') return handleRevoke(decodeURIComponent(del[1]), session, c);
 
@@ -389,7 +415,7 @@ export function createApp(deps: Deps = {}) {
           const c: Ctx = {
             env,
             cfg,
-            gc: new GoCardless(env, cfg, fetchImpl, now),
+            agg: new EnableBanking(env, cfg, fetchImpl, now),
             system: new SystemClient(env),
             rate: new RateClient(env),
             now,
@@ -401,8 +427,10 @@ export function createApp(deps: Deps = {}) {
       } catch (e) {
         if (e instanceof HttpError) {
           res = json({ error: e.code }, e.status);
-        } else if (e instanceof GcError) {
-          res = json({ error: e.code }, e.status);
+        } else if (e instanceof AggregatorError) {
+          // Shape-only diagnostics ride along on staging (open mode) — the
+          // tail websocket is not reachable from every network.
+          res = json(cfg.mode === 'open' && e.diag ? { error: e.code, diag: e.diag } : { error: e.code }, e.status);
         } else {
           // Message only — never a body, never a header.
           console.log(JSON.stringify({ level: 'error', p: url.pathname, err: e instanceof Error ? e.message : String(e) }));
