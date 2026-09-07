@@ -32,7 +32,7 @@ and the root `npm run lint/test` never touch it.
 | `GET /healthz` | — | `{ok, mode, aggregator}` |
 | `GET /.well-known/assetlinks.json`, `/apple-app-site-association` | — | from `ANDROID_*` / `IOS_APP_ID` vars |
 | `GET /v1/institutions?country=IT` | client id | `{id: "IT:Name", name, country, logo, bic, historyDays, maxValidityDays, beta, sandbox}`, edge-cached 24h, 120/min per IP |
-| `POST /v1/entitlement/verify` | client id (+ device) | no bearer → mints owner + `deviceToken` (10/h per IP). `open` mode → entitled for a year. `store` mode → B5 (501 on receipts for now) |
+| `POST /v1/entitlement/verify` | client id (+ device) | no bearer → mints owner + `deviceToken` (10/h per IP). `open` mode → entitled for a year. `store` mode → verifies the receipt with the store (see below) |
 | `POST /v1/connect/start` | device, entitled | `{country, institutionId, historyDays, validityDays}` → `POST /auth` at the aggregator → `{ref, bankRedirectUrl}`; clamped to the institution; 3 per owner, `MAX_CONNECTIONS` global |
 | `GET /v1/connect/return?code&state` | — | the bank's redirect target: exchanges `code` for a session, stores `{id, ibanTail, currency, name}` per account, then hands off to the app (App Link when verified, else the custom-scheme page) |
 | `GET /v1/connect/status?ref=` | device | the connection: `status` CR / LN / EX / RJ / UA, accounts, expiresAt, lastError |
@@ -49,6 +49,26 @@ Every `/v1/*` call except the return needs `X-Stackd-Client: stackd-web`
 `502 aggregator_auth_failed|aggregator_error_<status>`,
 `503 capacity|aggregator_paused|aggregator_rate_limited|aggregator_not_configured|aggregator_key_invalid`.
 On staging (open mode) an `aggregator_auth_failed` carries a shape-only `diag`.
+
+## Store entitlement (v1.09 B5)
+
+In `store` mode `POST /v1/entitlement/verify` verifies receipts with the
+stores itself (`src/store-verify.ts`): Google Play via a service-account JWT
+→ `purchases.subscriptionsv2` (acknowledging as a backstop), Apple via an
+ES256 App Store Server API JWT → subscription statuses (sandbox retry on a
+production 404). Without a receipt it silently re-checks a stored one near
+expiry / after a lapse (once per 6 h). Config: `PRODUCT_IDS`,
+`PLAY_PACKAGE_NAME`, `APPLE_BUNDLE_ID`, `APPLE_ISSUER_ID`, `APPLE_KEY_ID`
+(vars) and the secrets `PLAY_SERVICE_ACCOUNT_JSON` (whole key file) and
+`APPLE_PRIVATE_KEY` (the `.p8`):
+
+```powershell
+cd C:\Users\ecalvaresi\Desktop\Projects\Stackd\broker; Get-Content "<service-account>.json" -Raw | npx wrangler secret put PLAY_SERVICE_ACCOUNT_JSON --env production
+cd C:\Users\ecalvaresi\Desktop\Projects\Stackd\broker; Get-Content "AuthKey_<KEYID>.p8" -Raw | npx wrangler secret put APPLE_PRIVATE_KEY --env production
+```
+
+Errors: `400 receipt_required|receipt_invalid|product_unknown|platform_unknown`,
+`502 store_auth_failed|store_error_<status>`, `503 store_not_configured|store_key_invalid`.
 
 ## Threat model (keep current)
 

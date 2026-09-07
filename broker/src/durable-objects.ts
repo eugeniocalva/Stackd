@@ -24,6 +24,10 @@ export interface Entitlement {
   expiresAt?: string | null;
   lastVerifiedAt?: string | null;
   lapsedAt?: string | null;
+  // v1.09 B5: what the broker needs to re-check with the store later.
+  purchaseToken?: string | null;         // Play
+  originalTransactionId?: string | null; // App Store
+  state?: string | null;                 // store-native state at the last check
 }
 
 export interface AccountRecord {
@@ -256,6 +260,17 @@ export class SystemDO {
       case '/connections': {
         return json({ count: (await this.state.storage.get<number>('connections')) || 0 });
       }
+      // v1.09 B5: small named caches (store access tokens). null value = delete.
+      case '/cache': {
+        const name = String(body.name || url.searchParams.get('name') || '');
+        if (!name) return json({ error: 'name_required' }, 400);
+        if (request.method === 'POST') {
+          if (body.value === null || body.value === undefined) await this.state.storage.delete('cache:' + name);
+          else await this.state.storage.put('cache:' + name, body.value);
+          return json({ ok: true });
+        }
+        return json({ value: (await this.state.storage.get('cache:' + name)) ?? null });
+      }
       default:
         return json({ error: 'unknown_method' }, 404);
     }
@@ -386,6 +401,14 @@ export class SystemClient {
 
   async connections(): Promise<number> {
     return (await call<{ count: number }>(this.stub, '/connections')).data.count;
+  }
+
+  async cacheGet<T>(name: string): Promise<T | null> {
+    return (await call<{ value: T | null }>(this.stub, '/cache?name=' + encodeURIComponent(name))).data.value;
+  }
+
+  async cachePut(name: string, value: unknown): Promise<void> {
+    await call(this.stub, '/cache', { name, value });
   }
 }
 

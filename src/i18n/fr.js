@@ -1120,4 +1120,9 @@ window.I18n.dicts.fr = {
   'insight.bankDays.other': '{count} jours',
   'insight.bankExpired': '— l’accès à <strong>{bank}</strong> a expiré ; reconnectez-la pour continuer à importer',
   'insight.bankExpiredValue': 'Expiré',
+  // v1.09 B5: store entitlement
+  'bank.pricesLoading': 'Chargement des tarifs depuis la boutique…',
+  'bank.verifying': 'Confirmation auprès de la boutique…',
+  'bank.purchaseFailed': 'L’achat n’a pas abouti. Vous n’avez pas été débité, sauf indication contraire de la boutique.',
+  'bank.restoreNone': 'Aucun abonnement Bank Connect trouvé pour ce compte de boutique.',
 };

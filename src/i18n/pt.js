@@ -1120,4 +1120,9 @@ window.I18n.dicts.pt = {
   'insight.bankDays.other': '{count} dias',
   'insight.bankExpired': '— o acesso ao <strong>{bank}</strong> expirou; volte a ligá-lo para continuar a importar',
   'insight.bankExpiredValue': 'Expirado',
+  // v1.09 B5: store entitlement
+  'bank.pricesLoading': 'A carregar os preços da loja…',
+  'bank.verifying': 'A confirmar com a loja…',
+  'bank.purchaseFailed': 'A compra não foi concluída. Não lhe foi cobrado nada, salvo indicação em contrário da loja.',
+  'bank.restoreNone': 'Não foi encontrada nenhuma subscrição do Bank Connect para esta conta da loja.',
 };

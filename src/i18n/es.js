@@ -1120,4 +1120,9 @@ window.I18n.dicts.es = {
   'insight.bankDays.other': '{count} días',
   'insight.bankExpired': '— el acceso a <strong>{bank}</strong> ha caducado; reconéctalo para seguir importando',
   'insight.bankExpiredValue': 'Caducado',
+  // v1.09 B5: store entitlement
+  'bank.pricesLoading': 'Cargando precios de la tienda…',
+  'bank.verifying': 'Confirmando con la tienda…',
+  'bank.purchaseFailed': 'La compra no se completó. No se te ha cobrado salvo que la tienda indique lo contrario.',
+  'bank.restoreNone': 'No se encontró ninguna suscripción a Bank Connect para esta cuenta de la tienda.',
 };

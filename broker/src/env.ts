@@ -13,6 +13,21 @@ export interface Env {
   EB_PRIVATE_KEY: string;
   EB_BASE_URL: string;
 
+  // Store receipt verification (v1.09 B5, UX plan §14). Secrets:
+  // PLAY_SERVICE_ACCOUNT_JSON (the service-account key file, whole JSON) and
+  // APPLE_PRIVATE_KEY (the App Store Connect API .p8 PEM). Vars: the rest.
+  PLAY_PACKAGE_NAME?: string;
+  PLAY_SERVICE_ACCOUNT_JSON?: string;
+  PLAY_API_URL?: string;
+  GOOGLE_TOKEN_URL?: string;
+  APPLE_BUNDLE_ID?: string;
+  APPLE_ISSUER_ID?: string;
+  APPLE_KEY_ID?: string;
+  APPLE_PRIVATE_KEY?: string;
+  APPLE_API_URL?: string;
+  APPLE_SANDBOX_API_URL?: string;
+  PRODUCT_IDS?: string; // comma list of the store product ids (one product, monthly + yearly)
+
   ENTITLEMENT_MODE: string; // 'open' (staging only) | 'store'
   CLIENT_ID: string;
   MAX_CONNECTIONS: string;
@@ -41,6 +56,20 @@ export interface Config {
   mintPerHour: number;
   institutionsPerMinute: number;
   ownerPerHour: number;
+  // Store verification (B5)
+  productIds: string[];
+  playPackage: string;
+  playApiUrl: string;
+  googleTokenUrl: string;
+  appleBundleId: string;
+  appleIssuerId: string;
+  appleKeyId: string;
+  appleApiUrl: string;
+  appleSandboxApiUrl: string;
+  // Re-verify a stored entitlement with the store when it is this close to
+  // expiry (or lapsed), at most once per `recheckMinIntervalMs`.
+  recheckWithinMs: number;
+  recheckMinIntervalMs: number;
 }
 
 const list = (s: string | undefined): string[] =>
@@ -71,7 +100,18 @@ export function parseConfig(env: Env): Config {
     publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
     mintPerHour: 10,
     institutionsPerMinute: 120,
-    ownerPerHour: 600
+    ownerPerHour: 600,
+    productIds: list(env.PRODUCT_IDS),
+    playPackage: env.PLAY_PACKAGE_NAME || '',
+    playApiUrl: (env.PLAY_API_URL || 'https://androidpublisher.googleapis.com').replace(/\/$/, ''),
+    googleTokenUrl: env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+    appleBundleId: env.APPLE_BUNDLE_ID || '',
+    appleIssuerId: env.APPLE_ISSUER_ID || '',
+    appleKeyId: env.APPLE_KEY_ID || '',
+    appleApiUrl: (env.APPLE_API_URL || 'https://api.storekit.itunes.apple.com').replace(/\/$/, ''),
+    appleSandboxApiUrl: (env.APPLE_SANDBOX_API_URL === undefined ? 'https://api.storekit-sandbox.itunes.apple.com' : env.APPLE_SANDBOX_API_URL).replace(/\/$/, ''),
+    recheckWithinMs: 24 * 60 * 60 * 1000,
+    recheckMinIntervalMs: 6 * 60 * 60 * 1000
   };
 }
 

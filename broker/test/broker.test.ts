@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import { createPrivateKey } from 'node:crypto';
 import { createApp } from '../src/index';
 import { EnableBanking, pemToPkcs8 } from '../src/enable-banking';
-import { makeEnv, fakeEnableBanking, testKeys, type FakeEb, type TestKeys } from './fakes';
+import { makeEnv, fakeEnableBanking, testKeys, testAppleKeys, fakeStores, type FakeEb, type TestKeys, type AppleTestKeys, type FakeStores } from './fakes';
 import type { Env } from '../src/env';
 
 const BASE = 'https://broker.test';
@@ -17,10 +17,16 @@ interface ReqOpts {
 }
 
 let keys: TestKeys;
+let appleKeys: AppleTestKeys;
 let env: ReturnType<typeof makeEnv>;
 let eb: FakeEb;
+let stores: FakeStores;
 let app: ReturnType<typeof createApp>;
 let clock: number;
+
+// One fetch for the aggregator AND the store hosts.
+const combinedFetch = (input: string, init?: RequestInit) =>
+  /^https:\/\/(google|play|apple|apple-sandbox)\.test/.test(input) ? stores.fetchImpl(input, init) : eb.fetchImpl(input, init);
 
 const req = async (path: string, o: ReqOpts = {}) => {
   const headers: Record<string, string> = { 'cf-connecting-ip': o.ip || '203.0.113.1', 'user-agent': 'StackdTest/1.0', ...(o.headers || {}) };
@@ -52,14 +58,16 @@ const bankReturn = async (ref: string, extra = '') => {
 describe('Stack\'d broker (Enable Banking)', () => {
   beforeAll(async () => {
     keys = await testKeys();
+    appleKeys = await testAppleKeys();
   });
 
   beforeEach(() => {
-    env = makeEnv(keys);
+    env = makeEnv(keys, {}, appleKeys);
     eb = fakeEnableBanking(keys);
+    stores = fakeStores(keys, appleKeys);
     clock = Date.parse('2026-09-07T10:00:00.000Z');
     EnableBanking.resetMemo();
-    app = createApp({ fetch: eb.fetchImpl, now: () => clock });
+    app = createApp({ fetch: combinedFetch, now: () => clock });
   });
 
   describe('edge rules', () => {
@@ -208,12 +216,118 @@ describe('Stack\'d broker (Enable Banking)', () => {
       expect((await req('/v1/entitlement/verify', { body: {}, ip: '192.0.2.7' })).status).toBe(429);
     });
 
-    it('store mode: not entitled by default, store receipts are a B5 501', async () => {
-      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
+    it('store mode: not entitled by default; a bogus receipt is refused', async () => {
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' }, appleKeys);
       const r = await req('/v1/entitlement/verify', { body: {} });
       expect(r.status).toBe(201);
       expect(r.data.active).toBe(false);
-      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'x' }, token: r.data.deviceToken })).status).toBe(501);
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'nope' }, token: r.data.deviceToken })).data).toEqual({ error: 'receipt_invalid' });
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'appstore', originalTransactionId: '999' }, token: r.data.deviceToken })).data).toEqual({ error: 'receipt_invalid' });
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'steam', purchaseToken: 'x' }, token: r.data.deviceToken })).data).toEqual({ error: 'platform_unknown' });
+    });
+  });
+
+  // v1.09 B5 (UX plan §14): the broker verifies with the stores itself.
+  describe('store entitlement (B5)', () => {
+    const DAY = 86400000;
+    const storeEnv = (over: Record<string, string> = {}) => { env = makeEnv(keys, { ENTITLEMENT_MODE: 'store', ...over }, appleKeys); };
+
+    it('Play: a fresh purchase token is verified with a signed service-account JWT, stored, and unlocks connect/start', async () => {
+      storeEnv();
+      stores.play.set('tok_1', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_monthly', expiryTime: new Date(clock + 30 * DAY).toISOString(), acknowledgementState: 'ACKNOWLEDGEMENT_STATE_PENDING' });
+      const token = await mint();
+      expect((await start(token)).data).toEqual({ error: 'subscription_required' });
+      const r = await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_1', productId: 'stackd_bank_connect_monthly' }, token });
+      expect(r.status).toBe(200);
+      expect(r.data).toMatchObject({ active: true, platform: 'play', productId: 'stackd_bank_connect_monthly', expiresAt: new Date(clock + 30 * DAY).toISOString() });
+      expect(stores.tokenCalls).toBe(1);
+      expect(stores.acknowledged).toEqual(['tok_1']); // backstop acknowledgement
+      expect((await start(token)).status).toBe(201);
+      const record = await env.owners.instance(token.split('.')[0]).fetch(new Request('https://do/record')).then(x => x.json()) as any;
+      expect(record.entitlement).toMatchObject({ active: true, purchaseToken: 'tok_1', state: 'SUBSCRIPTION_STATE_ACTIVE' });
+      expect(JSON.stringify(r.data)).not.toContain('tok_1'); // the token never echoes back
+    });
+
+    it('Play: expired / on-hold subscriptions are not entitled and start the grace clock', async () => {
+      storeEnv();
+      stores.play.set('tok_live', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_yearly', expiryTime: new Date(clock + 300 * DAY).toISOString() });
+      stores.play.set('tok_hold', { subscriptionState: 'SUBSCRIPTION_STATE_ON_HOLD', productId: 'stackd_bank_connect_yearly', expiryTime: new Date(clock - DAY).toISOString() });
+      const token = await mint();
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_live' }, token })).data.active).toBe(true);
+      const r = await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_hold' }, token });
+      expect(r.data).toMatchObject({ active: false, reason: 'store_subscription_state_on_hold' });
+      expect((await start(token)).data).toEqual({ error: 'subscription_required' });
+      expect(env.owners.storages.get(token.split('.')[0])!.alarm).toBeGreaterThan(Date.now());
+      // wrong product → refused
+      stores.play.set('tok_other', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'some_other_app', expiryTime: new Date(clock + DAY).toISOString() });
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_other' }, token })).data).toEqual({ error: 'product_unknown' });
+    });
+
+    it('App Store: an ES256-signed call, with the sandbox retry on a production 404', async () => {
+      storeEnv();
+      stores.apple.set('2000000123', { status: 1, productId: 'stackd_bank_connect_yearly', expiresDate: clock + 200 * DAY, originalTransactionId: '2000000123', sandbox: true });
+      const token = await mint();
+      const r = await req('/v1/entitlement/verify', { body: { platform: 'appstore', originalTransactionId: '2000000123' }, token });
+      expect(r.status).toBe(200);
+      expect(r.data).toMatchObject({ active: true, platform: 'appstore', productId: 'stackd_bank_connect_yearly', expiresAt: new Date(clock + 200 * DAY).toISOString() });
+      const hosts = stores.calls.map(c => new URL(c.url).host);
+      expect(hosts).toEqual(['apple.test', 'apple-sandbox.test']);
+      expect((await start(token)).status).toBe(201);
+
+      stores.apple.set('3000000001', { status: 2, productId: 'stackd_bank_connect_yearly', expiresDate: clock - DAY, originalTransactionId: '3000000001' });
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'appstore', originalTransactionId: '3000000001' }, token })).data).toMatchObject({ active: false, reason: 'store_2' });
+      stores.apple.set('3000000002', { status: 1, productId: 'stackd_bank_connect_yearly', expiresDate: clock + DAY, originalTransactionId: '3000000002', bundleId: 'com.other.app' });
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'appstore', originalTransactionId: '3000000002' }, token })).data).toEqual({ error: 'receipt_invalid' });
+    });
+
+    it('re-checks a stored receipt silently when it nears expiry or lapsed, throttled to once per 6h', async () => {
+      storeEnv();
+      stores.play.set('tok_r', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_monthly', expiryTime: new Date(clock + 10 * DAY).toISOString() });
+      const token = await mint();
+      await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_r' }, token });
+      const playCalls = () => stores.calls.filter(c => new URL(c.url).host === 'play.test').length;
+      const before = playCalls();
+      // far from expiry: a plain re-verify does not touch the store
+      expect((await req('/v1/entitlement/verify', { body: {}, token })).data.active).toBe(true);
+      expect(playCalls()).toBe(before);
+      // within 24h of expiry and 6h+ since the last check: re-verified (renewed at the store)
+      clock += 9 * DAY + 12 * 3600000;
+      stores.play.get('tok_r')!.expiryTime = new Date(clock + 31 * DAY).toISOString();
+      const r = await req('/v1/entitlement/verify', { body: {}, token });
+      expect(playCalls()).toBe(before + 1);
+      expect(r.data.expiresAt).toBe(new Date(clock + 31 * DAY).toISOString());
+      // throttled
+      await req('/v1/entitlement/verify', { body: {}, token });
+      expect(playCalls()).toBe(before + 1);
+      // lapsed at the store → not entitled; a later re-check (6h+) sees the renewal
+      clock += 7 * 3600000;
+      stores.play.get('tok_r')!.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+      stores.play.get('tok_r')!.expiryTime = new Date(clock - DAY).toISOString();
+      // still 30 days from the stored expiry → no re-check yet
+      expect((await req('/v1/entitlement/verify', { body: {}, token })).data.active).toBe(true);
+      clock += 31 * DAY;
+      expect((await req('/v1/entitlement/verify', { body: {}, token })).data.active).toBe(false);
+      expect((await start(token)).data).toEqual({ error: 'subscription_required' });
+      clock += 7 * 3600000;
+      stores.play.get('tok_r')!.subscriptionState = 'SUBSCRIPTION_STATE_ACTIVE';
+      stores.play.get('tok_r')!.expiryTime = new Date(clock + 30 * DAY).toISOString();
+      expect((await req('/v1/entitlement/verify', { body: {}, token })).data.active).toBe(true);
+    });
+
+    it('a silent re-check that fails keeps the stored entitlement; missing store config is a 503 for fresh receipts', async () => {
+      storeEnv();
+      stores.play.set('tok_x', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_monthly', expiryTime: new Date(clock + 10 * 3600000).toISOString() });
+      const token = await mint();
+      await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_x' }, token });
+      clock += 7 * 3600000;
+      stores.play.delete('tok_x'); // the store now says "invalid"
+      expect((await req('/v1/entitlement/verify', { body: {}, token })).data.active).toBe(true); // kept
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store', PLAY_SERVICE_ACCOUNT_JSON: '' }, appleKeys);
+      const t2 = await mint('192.0.2.99');
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_x' }, token: t2 })).data).toEqual({ error: 'store_not_configured' });
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store', APPLE_PRIVATE_KEY: '' } as any, appleKeys);
+      const t3 = await mint('192.0.2.98');
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'appstore', originalTransactionId: '1' }, token: t3 })).data).toEqual({ error: 'store_not_configured' });
     });
   });
 

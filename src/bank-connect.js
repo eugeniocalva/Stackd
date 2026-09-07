@@ -31,6 +31,12 @@ window.BankConnect = {
   // Aggregator coverage (EEA + UK). Alpha-2 codes; labels come from
   // Intl.DisplayNames at render time so they follow the language.
   COUNTRIES: ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB'],
+  // v1.09 B5 (D-C9/D-C12): one product, two plans. Ids must match Play
+  // Console and App Store Connect exactly, and the broker's PRODUCT_IDS.
+  PRODUCTS: { monthly: 'stackd_bank_connect_monthly', yearly: 'stackd_bank_connect_yearly' },
+  PURCHASE_WAIT_MS: 3 * 60 * 1000, // the store sheet + the broker round-trip
+  RESTORE_WAIT_MS: 8000,           // no approved transaction by then = nothing to restore
+  _iap: null,
   TOKEN_KEY: 'stackd_device_token', // deliberately NOT stackd_v1_
   REFRESH_OVERLAP_DAYS: 7, // §4: subsequent fetches re-read a week (dedup absorbs it)
   REFRESH_AFTER_MS: 6 * 60 * 60 * 1000, // §3.10: refresh on open once the last fetch is older
@@ -513,8 +519,12 @@ window.BankConnect = {
     if (now - this._lastRefreshCheck < this.REFRESH_RECHECK_MS) return null;
     this._lastRefreshCheck = now;
     const state = window.Store.getState();
-    if (!this.isEnabled(state) || !this.connections(state).length) return null;
-    return this.refreshDue(state).catch(() => null);
+    if (!this.isEnabled(state)) return null;
+    // v1.09 B5: the broker re-checks the subscription with the store when it
+    // nears expiry (throttled there) — the cached gate follows it.
+    const check = this.tokenGet().then(tok => (tok ? this.verifyEntitlement().catch(() => null) : null));
+    if (!this.connections(state).length) return check;
+    return check.then(() => this.refreshDue(window.Store.getState())).catch(() => null);
   },
 
   // Review from the insight / hub badge: reuse the cached statement.
@@ -678,13 +688,126 @@ window.BankConnect = {
     return 'bank.fetchError';
   },
 
-  // ── Entitlement (B5 wires the store plugin; the stub stands in until then) ─
+  // ── Entitlement (v1.09 B5, UX plan §14) ───────────────────────────────────
+  // cordova-plugin-purchase (D-C12) drives the store sheet; the RECEIPT goes
+  // to the broker, which asks the store and is the only judge (D-C3). The
+  // client caches {active, expiresAt} for UI gating. The e2e stub replaces
+  // the plugin on the web build.
 
-  // Store prices for the paywall, or null when no store is reachable.
+  platform() {
+    const cap = window.Capacitor;
+    const p = cap && typeof cap.getPlatform === 'function' ? cap.getPlatform() : 'web';
+    return p === 'ios' ? 'appstore' : (p === 'android' ? 'play' : 'web');
+  },
+
+  _storeApi() {
+    const Cdv = window.CdvPurchase;
+    return Cdv && Cdv.store ? Cdv : null;
+  },
+
+  storeAvailable() {
+    return !!this.stub() || (this.isNative() && !!this._storeApi());
+  },
+
+  // Registers the two plans once and initializes the platform. Idempotent.
+  async initStore() {
+    if (this._iap) return this._iap.ready;
+    const Cdv = this._storeApi();
+    if (!Cdv) return null;
+    const { store, ProductType, Platform } = Cdv;
+    const platform = this.platform() === 'appstore' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
+    const iap = { store, platform, prices: null, resolvers: [], ready: null };
+    this._iap = iap;
+    store.register(Object.values(this.PRODUCTS).map(id => ({ id, type: ProductType.PAID_SUBSCRIPTION, platform })));
+    store.when()
+      .productUpdated(() => { iap.prices = this._readPrices(); })
+      .approved(tx => { this._onApproved(tx); });
+    if (typeof store.error === 'function') store.error(err => { this._settlePurchase(null, err); });
+    iap.ready = Promise.resolve(store.initialize([platform]))
+      .then(() => { iap.prices = this._readPrices(); return iap; })
+      .catch(() => { iap.prices = this._readPrices(); return iap; });
+    return iap.ready;
+  },
+
+  _offerPrice(product) {
+    if (!product) return null;
+    if (product.pricing && product.pricing.price) return product.pricing;
+    const offer = product.offers && product.offers[0];
+    const phase = offer && offer.pricingPhases && offer.pricingPhases[0];
+    return phase && phase.price ? phase : null;
+  },
+
+  _readPrices() {
+    const iap = this._iap;
+    if (!iap) return null;
+    const get = (id) => { try { return iap.store.get(id, iap.platform); } catch (e) { return null; } };
+    const m = this._offerPrice(get(this.PRODUCTS.monthly));
+    const y = this._offerPrice(get(this.PRODUCTS.yearly));
+    if (!m && !y) return null;
+    let perMonth = null;
+    if (y && y.priceMicros && y.currency) {
+      try { perMonth = window.Store.formatCurrency(y.priceMicros / 12e6, y.currency); } catch (e) { perMonth = null; }
+    }
+    return { monthly: { price: m ? m.price : null }, yearly: { price: y ? y.price : null, perMonth } };
+  },
+
+  // Store prices for the paywall, or null when no store is reachable (yet).
   prices() {
     const stub = this.stub();
     if (stub && stub.prices) return stub.prices;
-    return null;
+    return this._iap ? this._iap.prices : null;
+  },
+
+  async loadPrices() {
+    if (this.stub()) return this.prices();
+    const iap = await this.initStore();
+    return iap ? iap.prices : null;
+  },
+
+  // What the broker needs from an approved transaction (UX plan §14).
+  receiptFrom(tx) {
+    const products = Array.isArray(tx.products) ? tx.products : [];
+    const productId = (products[0] && products[0].id) || null;
+    if (this.platform() === 'appstore') {
+      return { platform: 'appstore', originalTransactionId: String(tx.originalTransactionId || tx.transactionId || ''), productId };
+    }
+    const np = tx.nativePurchase || {};
+    return { platform: 'play', purchaseToken: String(np.purchaseToken || tx.purchaseToken || tx.purchaseId || ''), productId: productId || (Array.isArray(np.productIds) ? np.productIds[0] : null) };
+  },
+
+  async submitReceipt(receipt) {
+    await this.ensureDevice();
+    const res = await this.request('/v1/entitlement/verify', { method: 'POST', body: receipt });
+    if (res) {
+      window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+        ownerId: res.ownerId || this.prefs(window.Store.getState()).ownerId,
+        entitlement: { active: !!res.active, expiresAt: res.expiresAt || null, platform: res.platform || receipt.platform, productId: res.productId || receipt.productId || null }
+      });
+    }
+    return res;
+  },
+
+  async _onApproved(tx) {
+    try {
+      const res = await this.submitReceipt(this.receiptFrom(tx));
+      if (res && res.active && typeof tx.finish === 'function') await tx.finish(); // acknowledge/consume only once entitled
+      this._settlePurchase(res, null);
+    } catch (e) {
+      this._settlePurchase(null, e);
+    }
+  },
+
+  _settlePurchase(res, err) {
+    const rs = this._iap ? this._iap.resolvers.splice(0) : [];
+    rs.forEach(r => { clearTimeout(r.timer); if (err) r.reject(err); else r.resolve(res); });
+  },
+
+  _awaitApproval(ms) {
+    return new Promise((resolve, reject) => {
+      const r = { resolve, reject, timer: null };
+      r.timer = setTimeout(() => { this._settlePurchase(null, null); }, ms);
+      this._iap.resolvers.push(r);
+    });
   },
 
   async purchase(plan) {
@@ -694,7 +817,18 @@ window.BankConnect = {
       if (ent) window.Store.dispatch('SET_BANK_CONNECT_PREFS', { entitlement: ent, ownerId: ent.ownerId || this.prefs(window.Store.getState()).ownerId });
       return ent;
     }
-    return null; // B5: cordova-plugin-purchase → /v1/entitlement/verify
+    const iap = await this.initStore();
+    if (!iap) return null;
+    const product = iap.store.get(this.PRODUCTS[plan] || this.PRODUCTS.yearly, iap.platform);
+    const offer = product && typeof product.getOffer === 'function' ? product.getOffer() : null;
+    if (!offer) throw new Error('product_unavailable');
+    const outcome = this._awaitApproval(this.PURCHASE_WAIT_MS);
+    const err = await iap.store.order(offer);
+    if (err) {
+      const cancelled = /cancel/i.test(String(err.code || '')) || /cancel/i.test(String(err.message || ''));
+      this._settlePurchase(null, cancelled ? Object.assign(new Error('cancelled'), { cancelled: true }) : new Error(err.message || 'purchase_failed'));
+    }
+    return outcome; // {active, expiresAt, …} from the broker, or null
   },
 
   async restorePurchase() {
@@ -704,7 +838,11 @@ window.BankConnect = {
       if (ent) window.Store.dispatch('SET_BANK_CONNECT_PREFS', { entitlement: ent, ownerId: ent.ownerId || this.prefs(window.Store.getState()).ownerId });
       return ent;
     }
-    return null;
+    const iap = await this.initStore();
+    if (!iap) return null;
+    const outcome = this._awaitApproval(this.RESTORE_WAIT_MS);
+    await iap.store.restorePurchases();
+    return outcome; // null when no transaction shows up
   },
 
   // ── Presentation helpers shared by views and sheets ───────────────────────

@@ -1141,4 +1141,9 @@ window.I18n.dicts.en = {
   'insight.bankDays.other': '{count} days',
   'insight.bankExpired': '— access to <strong>{bank}</strong> has expired; reconnect it to keep importing',
   'insight.bankExpiredValue': 'Expired',
+  // v1.09 B5: store entitlement
+  'bank.pricesLoading': 'Loading prices from the store…',
+  'bank.verifying': 'Confirming with the store…',
+  'bank.purchaseFailed': 'The purchase didn’t go through. You were not charged unless the store says otherwise.',
+  'bank.restoreNone': 'No Bank Connect subscription found for this store account.',
 };

@@ -16,6 +16,7 @@ import { EnableBanking, AggregatorError, type Institution, type PsuContext } fro
 import { mintToken, parseBearer, sha256Hex, randomHex } from './auth';
 import { OwnerClient, SystemClient, RateClient, type OwnerRecord, type ReqRecord, type Entitlement } from './durable-objects';
 import { returnPage } from './html';
+import { verifyReceipt, StoreError, type VerifyInput } from './store-verify';
 
 export { OwnerDO, SystemDO, RateDO } from './durable-objects';
 
@@ -45,6 +46,7 @@ interface Ctx {
   now: () => number;
   ip: string;
   origin: string;
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
 const json = (data: unknown, status = 200, extra?: Record<string, string>): Response =>
@@ -154,6 +156,7 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
   }
 
   let entitlement: Entitlement;
+  let reason: string | null = null;
   if (c.cfg.mode === 'open') {
     entitlement = await owner.setEntitlement({
       active: true,
@@ -162,21 +165,69 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
       expiresAt: iso(c.now() + 365 * DAY_MS),
       lastVerifiedAt: iso(c.now())
     });
-  } else if (body.platform || body.receipt || body.purchaseToken) {
-    // B5: Google Play Developer API / App Store Server API verification.
-    throw new HttpError(501, 'store_verification_not_implemented');
   } else {
-    entitlement = record.entitlement;
+    // v1.09 B5: a receipt in the body → verify with the store now; no receipt
+    // → re-check a stored one when it is near expiry or lapsed (throttled).
+    const input = receiptFromBody(body, record.entitlement);
+    const fresh = !!(body.platform && (body.purchaseToken || body.originalTransactionId || body.transactionId));
+    if (fresh && !input) throw new HttpError(400, 'platform_unknown');
+    if (fresh || (input && shouldRecheck(record.entitlement, c))) {
+      try {
+        const v = await verifyReceipt(c.env, c.cfg, c.fetchImpl, input as VerifyInput, c.now());
+        entitlement = await owner.setEntitlement({
+          active: v.active,
+          platform: v.platform,
+          productId: v.productId,
+          expiresAt: v.expiresAt,
+          lastVerifiedAt: iso(c.now()),
+          purchaseToken: v.purchaseToken || null,
+          originalTransactionId: v.originalTransactionId || null,
+          state: v.state
+        });
+        if (!v.active) reason = 'store_' + v.state.toLowerCase();
+      } catch (e) {
+        if (fresh) throw e; // the user is watching: surface receipt_invalid & co.
+        entitlement = record.entitlement; // silent re-check failed: keep what we had
+      }
+    } else {
+      entitlement = record.entitlement;
+    }
   }
 
   const res: Record<string, unknown> = {
     ownerId,
     active: isEntitled({ ...record, entitlement }, c.cfg, c.now()),
     expiresAt: entitlement.expiresAt || null,
+    platform: entitlement.platform || null,
+    productId: entitlement.productId || null,
     mode: c.cfg.mode
   };
+  if (reason) res.reason = reason;
   if (deviceToken) res.deviceToken = deviceToken;
   return json(res, deviceToken ? 201 : 200);
+}
+
+function receiptFromBody(body: Record<string, unknown>, stored: Entitlement): VerifyInput | null {
+  const platform = String(body.platform || stored.platform || '');
+  if (platform === 'play') {
+    const purchaseToken = String(body.purchaseToken || stored.purchaseToken || '');
+    return purchaseToken ? { platform: 'play', purchaseToken, productId: String(body.productId || stored.productId || '') } : null;
+  }
+  if (platform === 'appstore') {
+    const originalTransactionId = String(body.originalTransactionId || body.transactionId || stored.originalTransactionId || '');
+    return originalTransactionId ? { platform: 'appstore', originalTransactionId, productId: String(body.productId || stored.productId || '') } : null;
+  }
+  return null;
+}
+
+function shouldRecheck(e: Entitlement, c: Ctx): boolean {
+  if (!e || !e.platform || (!e.purchaseToken && !e.originalTransactionId)) return false;
+  const now = c.now();
+  const last = e.lastVerifiedAt ? Date.parse(e.lastVerifiedAt) : 0;
+  if (now - last < c.cfg.recheckMinIntervalMs) return false;
+  const exp = e.expiresAt ? Date.parse(e.expiresAt) : NaN;
+  if (!e.active) return true; // lapsed: maybe renewed since
+  return Number.isFinite(exp) && exp - now < c.cfg.recheckWithinMs;
 }
 
 // ── Connect ────────────────────────────────────────────────────────────────
@@ -420,12 +471,15 @@ export function createApp(deps: Deps = {}) {
             rate: new RateClient(env),
             now,
             ip: request.headers.get('cf-connecting-ip') || 'unknown',
-            origin: url.origin
+            origin: url.origin,
+            fetchImpl
           };
           res = await route(request, url, c);
         }
       } catch (e) {
         if (e instanceof HttpError) {
+          res = json({ error: e.code }, e.status);
+        } else if (e instanceof StoreError) {
           res = json({ error: e.code }, e.status);
         } else if (e instanceof AggregatorError) {
           // Shape-only diagnostics ride along on staging (open mode) — the

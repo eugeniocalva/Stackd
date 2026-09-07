@@ -48,6 +48,14 @@ ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = ""
 PUBLIC_URL = "https://api-staging.stackdplatform.com"
+# Store receipt verification (v1.09 B5). Secrets: PLAY_SERVICE_ACCOUNT_JSON
+# (whole service-account key file) and APPLE_PRIVATE_KEY (App Store Connect
+# API .p8). Unused while ENTITLEMENT_MODE=open.
+PRODUCT_IDS = "stackd_bank_connect_monthly,stackd_bank_connect_yearly"
+PLAY_PACKAGE_NAME = "com.stackd.finance"
+APPLE_BUNDLE_ID = "com.stackd.finance"
+APPLE_ISSUER_ID = ""
+APPLE_KEY_ID = ""
 
 [env.production]
 name = "stackd-broker"
@@ -76,3 +84,11 @@ ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = ""
 PUBLIC_URL = "https://api.stackdplatform.com"
+# Store receipt verification (v1.09 B5). Secrets: PLAY_SERVICE_ACCOUNT_JSON
+# (whole service-account key file) and APPLE_PRIVATE_KEY (App Store Connect
+# API .p8). Required in store mode.
+PRODUCT_IDS = "stackd_bank_connect_monthly,stackd_bank_connect_yearly"
+PLAY_PACKAGE_NAME = "com.stackd.finance"
+APPLE_BUNDLE_ID = "com.stackd.finance"
+APPLE_ISSUER_ID = ""
+APPLE_KEY_ID = ""

@@ -90,7 +90,27 @@ export function testKeys(): Promise<TestKeys> {
   return keysPromise;
 }
 
-export function makeEnv(keys: TestKeys, overrides: Partial<Env> = {}): Env & { owners: FakeNamespace; systems: FakeNamespace; rates: FakeNamespace } {
+// ── Apple test key (ES256) ─────────────────────────────────────────────────
+
+export interface AppleTestKeys {
+  privatePem: string; // PKCS#8
+  publicKey: CryptoKey;
+}
+
+let appleKeysPromise: Promise<AppleTestKeys> | null = null;
+
+export function testAppleKeys(): Promise<AppleTestKeys> {
+  if (!appleKeysPromise) {
+    appleKeysPromise = (async () => {
+      const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+      const pkcs8 = (await crypto.subtle.exportKey('pkcs8', pair.privateKey)) as ArrayBuffer;
+      return { privatePem: toPem('PRIVATE KEY', pkcs8), publicKey: pair.publicKey };
+    })();
+  }
+  return appleKeysPromise;
+}
+
+export function makeEnv(keys: TestKeys, overrides: Partial<Env> = {}, apple?: AppleTestKeys): Env & { owners: FakeNamespace; systems: FakeNamespace; rates: FakeNamespace } {
   const ref: { env: Env | null } = { env: null };
   const owners = new FakeNamespace(OwnerDO, ref);
   const systems = new FakeNamespace(SystemDO, ref);
@@ -102,6 +122,18 @@ export function makeEnv(keys: TestKeys, overrides: Partial<Env> = {}): Env & { o
     EB_APP_ID: keys.appId,
     EB_PRIVATE_KEY: keys.privatePem,
     EB_BASE_URL: 'https://eb.test',
+    // v1.09 B5 store verification (fake hosts, see fakeStores)
+    PRODUCT_IDS: 'stackd_bank_connect_monthly,stackd_bank_connect_yearly',
+    PLAY_PACKAGE_NAME: 'com.stackd.finance',
+    PLAY_API_URL: 'https://play.test',
+    GOOGLE_TOKEN_URL: 'https://google.test/token',
+    PLAY_SERVICE_ACCOUNT_JSON: JSON.stringify({ client_email: 'sa@stackd.test', private_key: keys.privatePem }),
+    APPLE_BUNDLE_ID: 'com.stackd.finance',
+    APPLE_ISSUER_ID: 'issuer-1',
+    APPLE_KEY_ID: 'KEY123',
+    APPLE_API_URL: 'https://apple.test',
+    APPLE_SANDBOX_API_URL: 'https://apple-sandbox.test',
+    APPLE_PRIVATE_KEY: apple ? apple.privatePem : '',
     ENTITLEMENT_MODE: 'open',
     CLIENT_ID: 'stackd-web',
     MAX_CONNECTIONS: '50',
@@ -262,4 +294,121 @@ export function fakeEnableBanking(keys: TestKeys): FakeEb {
     }
   };
   return eb;
+}
+
+// ── Stores (Google Play + App Store Server API) ────────────────────────────
+// Both hosts verify the JWT the broker signs, so the signing paths are
+// covered end to end. Play: subscriptionsv2 keyed by purchase token. Apple:
+// production 404s for sandbox transactions, the sandbox host answers.
+
+export interface FakePlaySub {
+  subscriptionState: string;
+  productId: string;
+  expiryTime: string;
+  acknowledgementState?: string;
+}
+
+export interface FakeAppleSub {
+  status: number;
+  productId: string;
+  expiresDate: number; // ms
+  originalTransactionId: string;
+  sandbox?: boolean;
+  bundleId?: string;
+}
+
+export interface FakeStores {
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response>;
+  calls: { method: string; url: string; body: string | null }[];
+  tokenCalls: number;
+  play: Map<string, FakePlaySub>;
+  apple: Map<string, FakeAppleSub>;
+  acknowledged: string[];
+}
+
+const jwsPayload = (obj: unknown): string => {
+  const b = (s: string) => Buffer.from(s).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${b(JSON.stringify({ alg: 'ES256' }))}.${b(JSON.stringify(obj))}.sig`;
+};
+
+export function fakeStores(keys: TestKeys, apple: AppleTestKeys): FakeStores {
+  const st: FakeStores = {
+    calls: [],
+    tokenCalls: 0,
+    play: new Map(),
+    apple: new Map(),
+    acknowledged: [],
+    fetchImpl: async (input, init = {}) => {
+      const u = new URL(input);
+      const method = (init.method || 'GET').toUpperCase();
+      const body = init.body ? String(init.body) : null;
+      st.calls.push({ method, url: input, body });
+      const res = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+      const headers = new Headers(init.headers || {});
+
+      const verifyJwt = async (token: string, alg: 'RS256' | 'ES256'): Promise<Record<string, unknown> | null> => {
+        const parts = token.split('.');
+        if (parts.length !== 3) return null;
+        const header = JSON.parse(Buffer.from(b64urlToBytes(parts[0])).toString('utf8'));
+        const payload = JSON.parse(Buffer.from(b64urlToBytes(parts[1])).toString('utf8'));
+        const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+        const ok = alg === 'RS256'
+          ? await crypto.subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, keys.publicKey, b64urlToBytes(parts[2]), data)
+          : await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, apple.publicKey, b64urlToBytes(parts[2]), data);
+        if (!ok || header.alg !== alg) return null;
+        return { ...payload, _kid: header.kid };
+      };
+
+      if (u.host === 'google.test' && u.pathname === '/token') {
+        const params = new URLSearchParams(body || '');
+        const claims = await verifyJwt(params.get('assertion') || '', 'RS256');
+        if (!claims || claims.iss !== 'sa@stackd.test' || claims.aud !== 'https://google.test/token' || claims.scope !== 'https://www.googleapis.com/auth/androidpublisher') return res({ error: 'invalid_grant' }, 400);
+        st.tokenCalls += 1;
+        return res({ access_token: 'play-access-' + st.tokenCalls, expires_in: 3600, token_type: 'Bearer' });
+      }
+
+      if (u.host === 'play.test') {
+        if (!/^Bearer play-access-\d+$/.test(headers.get('authorization') || '')) return res({ error: 'unauth' }, 401);
+        const m = /\/purchases\/subscriptionsv2\/tokens\/([^/]+)$/.exec(u.pathname);
+        if (m) {
+          const sub = st.play.get(decodeURIComponent(m[1]));
+          if (!sub) return res({ error: { code: 400, message: 'Invalid Value' } }, 400);
+          return res({ subscriptionState: sub.subscriptionState, acknowledgementState: sub.acknowledgementState || 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED', lineItems: [{ productId: sub.productId, expiryTime: sub.expiryTime }] });
+        }
+        const a = /\/purchases\/subscriptions\/([^/]+)\/tokens\/([^/]+):acknowledge$/.exec(u.pathname);
+        if (a && method === 'POST') {
+          st.acknowledged.push(decodeURIComponent(a[2]));
+          const sub = st.play.get(decodeURIComponent(a[2]));
+          if (sub) sub.acknowledgementState = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
+          return res({});
+        }
+        return res({ error: 'unhandled' }, 500);
+      }
+
+      if (u.host === 'apple.test' || u.host === 'apple-sandbox.test') {
+        const claims = await verifyJwt((headers.get('authorization') || '').replace(/^Bearer\s+/i, ''), 'ES256');
+        if (!claims || claims.iss !== 'issuer-1' || claims.aud !== 'appstoreconnect-v1' || claims.bid !== 'com.stackd.finance' || claims._kid !== 'KEY123') return res({ errorCode: 4010000 }, 401);
+        const m = /\/inapps\/v1\/subscriptions\/(\d+)$/.exec(u.pathname);
+        if (!m) return res({ error: 'unhandled' }, 500);
+        const sub = st.apple.get(m[1]);
+        const isSandboxHost = u.host === 'apple-sandbox.test';
+        if (!sub || (sub.sandbox && !isSandboxHost)) return res({ errorCode: sub ? 4040010 : 4040005 }, 404);
+        return res({
+          bundleId: sub.bundleId || 'com.stackd.finance',
+          environment: isSandboxHost ? 'Sandbox' : 'Production',
+          data: [{
+            subscriptionGroupIdentifier: 'grp',
+            lastTransactions: [{
+              originalTransactionId: sub.originalTransactionId,
+              status: sub.status,
+              signedTransactionInfo: jwsPayload({ productId: sub.productId, expiresDate: sub.expiresDate, originalTransactionId: sub.originalTransactionId, environment: isSandboxHost ? 'Sandbox' : 'Production' }),
+              signedRenewalInfo: jwsPayload({})
+            }]
+          }]
+        });
+      }
+      return res({ error: 'unhandled ' + input }, 500);
+    }
+  };
+  return st;
 }

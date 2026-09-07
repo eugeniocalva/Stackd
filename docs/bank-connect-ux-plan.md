@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 (v1.05), B3 (v1.07) and B4 refresh lifecycle (v1.08) SHIPPED — next: B5 store entitlement, then B6 legal (gates any public build).** See §9–§13.
+> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 (v1.05), B3 (v1.07), B4 (v1.08) and B5 store entitlement (v1.09) SHIPPED — B5 is verified against store fakes only until the products exist (§14 runbook). Next: B6 legal (gates any public build).** See §9–§14.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -313,7 +313,7 @@ Native plugins (D-C12, D-C15 pick the exact packages):
 | B2 | v1.05 | Client shell: 3.1, 3.2, 3.3, 3.4, 3.9, the paywall UI reading the cached entitlement; `bankConnect` prefs slice; i18n; stub + e2e. Runs against the stub or staging. | — |
 | B3 | v1.07 | Connect leg + data: 3.6, 3.7, 3.8; `bankConnections` slice; normalizer; D-C8 window. **Shipped 2026-09-07 (§12); Android App Links intent filter + iOS Associated Domains are the native-build follow-up.** | B1, B2, U2 |
 | B4 | v1.08 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. **Shipped 2026-09-07 (§13).** | B3 |
-| B5 | v1.08 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. | B0 products |
+| B5 | v1.09 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. **Shipped 2026-09-07 (§14); live store checks pending the products.** | B0 products |
 | B6 | v1.09 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Gate for any public build carrying B2+.** | — |
 | B7 | later | C5 web session + pairing (3.12), iOS Associated Domains in the Mac handoff. | B5, production domain (done) |
 
@@ -620,3 +620,76 @@ Review → import; Refresh now; Manage → Disconnect).
   Pausing the toggle clears pending statements as well.
 - **Not done:** the SecureStorage plugin and native App Links (device build),
   the real store entitlement (B5), and the legal/store rework (B6).
+
+## 14. B5 as built — v1.09, 2026-09-07
+
+Store entitlement, both halves (§3.5, D-C3, D-C9, D-C12). Verified against
+faithful fakes of the store APIs (the fakes verify the broker's signed JWTs)
+because the Play and App Store products do not exist yet — the runbook below
+is what remains.
+
+**Broker** (`broker/src/store-verify.ts`, `POST /v1/entitlement/verify` in
+store mode):
+
+- A receipt in the body → verified with the store NOW. Google Play: a
+  service-account JWT (RS256, signed in the Worker from the key file JSON in
+  the `PLAY_SERVICE_ACCOUNT_JSON` secret) → OAuth token (cached in the
+  SystemDO) → `purchases.subscriptionsv2`; ACTIVE / IN_GRACE_PERIOD /
+  CANCELED-until-expiry count as active; an unacknowledged purchase is
+  acknowledged as a backstop. App Store: an ES256 JWT (kid = `APPLE_KEY_ID`,
+  iss = `APPLE_ISSUER_ID`, bid = `APPLE_BUNDLE_ID`, from the `.p8` in the
+  `APPLE_PRIVATE_KEY` secret) → App Store Server API subscription statuses,
+  with the sandbox-host retry on a production 404; statuses 1 / 3 / 4 count as
+  active; the signed transaction payload is decoded, not chain-verified,
+  because we fetched it from Apple ourselves. Only ids in `PRODUCT_IDS` are
+  accepted (`product_unknown` otherwise); wrong bundle → `receipt_invalid`.
+- The owner record keeps `{active, platform, productId, expiresAt,
+  lastVerifiedAt, purchaseToken | originalTransactionId, state}`. A lapse
+  (active → inactive) arms the existing 14-day grace alarm.
+- No receipt in the body → the broker **re-checks silently** with the store
+  when the stored entitlement is within 24 h of expiry or already lapsed, at
+  most once per 6 h; a failed silent check keeps what it had. The client's
+  `verifyEntitlement()` on every foreground return is what triggers it.
+- Errors: `400 receipt_required | receipt_invalid | product_unknown |
+  platform_unknown`, `502 store_auth_failed | store_error_<status>`,
+  `503 store_not_configured | store_key_invalid`. Staging (open mode) never
+  runs any of this.
+
+**App** (`src/bank-connect.js` v4, `PaywallModal`):
+
+- `cordova-plugin-purchase` 13.18 (D-C12) is a dependency; `initStore()`
+  registers `stackd_bank_connect_monthly` / `_yearly` as paid subscriptions
+  on the current platform, lazily, the first time the paywall needs prices.
+  The paywall renders at once and fills the plan cards when
+  `loadPrices()` resolves (yearly shows the per-month equivalent).
+- Purchase = `store.order(offer)` → the `approved` transaction → its receipt
+  (Play `purchaseToken`, App Store `originalTransactionId` /
+  `transactionId`) posted to the broker → only an `active` answer finishes
+  (acknowledges) the transaction and caches `{active, expiresAt, platform,
+  productId}` in the prefs slice. A cancelled sheet rejects with
+  `cancelled` (silent); anything else says the purchase didn't go through.
+  Restore = `restorePurchases()` with the same approved path; nothing within
+  8 s means "no subscription found".
+- On the web build without the e2e stub: no store, prices null, Subscribe
+  disabled with the "prices load on your phone" line; the stub keeps the
+  Playwright flow synchronous.
+
+**Runbook — when the products exist:**
+
+1. **Play Console:** create the subscription `stackd_bank_connect_monthly`
+   and `stackd_bank_connect_yearly` (one product, two base plans is also
+   fine as long as the ids above are the product ids the plugin sees). Create
+   a Google Cloud service account, grant it *View financial data* + *Manage
+   orders and subscriptions* on the app in Play Console, download its JSON
+   key → `wrangler secret put PLAY_SERVICE_ACCOUNT_JSON --env production`
+   (file-based, see broker/README).
+2. **App Store Connect:** create the auto-renewable subscription group with
+   the same two product ids. Users and Access → Integrations → *In-App
+   Purchase* key: download the `.p8` once → `wrangler secret put
+   APPLE_PRIVATE_KEY --env production`; put its Key ID and the Issuer ID in
+   `[env.production.vars]` `APPLE_KEY_ID` / `APPLE_ISSUER_ID`.
+3. `npx cap sync` so the plugin lands in the native projects; test with
+   license testers (Play) / sandbox testers (App Store) against a
+   `--env production` deploy, or a second staging worker with
+   `ENTITLEMENT_MODE=store`.
+4. The 402 → paywall path (B4) and the grace alarm (B1) are already wired.

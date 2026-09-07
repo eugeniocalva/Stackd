@@ -4093,8 +4093,10 @@ Object.assign(window.Components, {
         });
       }
       backdrop.querySelector('#bank-set-restore').addEventListener('click', async () => {
-        const ent2 = await BC.restorePurchase();
-        if (!ent2) { alert(t('bank.storeUnavailable')); return; }
+        if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+        let ent2 = null;
+        try { ent2 = await BC.restorePurchase(); } catch (e) { alert(t('bank.purchaseFailed')); return; }
+        if (!ent2 || !ent2.active) { alert(t('bank.restoreNone')); return; }
         const e2 = BC.entitlement(window.Store.getState());
         const el = backdrop.querySelector('#bank-set-sub');
         if (el) el.textContent = e2.active ? t('bank.subActive', { date: BC.formatDate(e2.expiresAt) }) : t('bank.subNone');
@@ -4129,6 +4131,9 @@ Object.assign(window.Components, {
            </div>`
         : `<div id="bank-paywall-noprices" style="font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-4) 0; line-height: 1.5;">${t('bank.pricesUnavailable')}</div>`;
 
+      // v1.09 B5: the store answers asynchronously — render now, fill in the
+      // plans when the prices arrive (native only; the stub is synchronous).
+      const storeReachable = BC.storeAvailable();
       const backdrop = window.Components._bankSheet('bank-paywall', `
         <h2 id="bank-paywall-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('bank.paywallTitle')}</h2>
         ${opts.reason ? `<div style="font-size: var(--text-sm); color: var(--color-expense); margin-bottom: var(--space-2);">${BC.esc(opts.reason)}</div>` : ''}
@@ -4136,7 +4141,7 @@ Object.assign(window.Components, {
         ${perk('bank.perkAuto')}
         ${perk('bank.perkBanks', { count: BC.MAX_CONNECTIONS })}
         ${perk('bank.perkReview')}
-        ${plansHtml}
+        <div id="bank-paywall-plans-wrap">${prices ? plansHtml : (storeReachable ? `<div id="bank-paywall-noprices" style="font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-4) 0; line-height: 1.5;">${t('bank.pricesLoading')}</div>` : plansHtml)}</div>
         <div style="display: flex; flex-direction: column; gap: var(--space-3);">
           <button type="button" class="btn btn-primary" id="bank-paywall-subscribe" ${prices ? '' : 'disabled'}>${t('bank.subscribe')}</button>
           <button type="button" class="btn btn-secondary" id="bank-paywall-restore">${t('bank.restore')}</button>
@@ -4149,32 +4154,72 @@ Object.assign(window.Components, {
       const close = backdrop._close;
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
       backdrop.querySelector('#bank-paywall-close').addEventListener('click', close);
-      backdrop.querySelectorAll('.bank-plan').forEach(btn => {
-        btn.addEventListener('click', () => {
-          plan = btn.dataset.plan;
-          backdrop.querySelectorAll('.bank-plan').forEach(b => {
-            const on = b.dataset.plan === plan;
-            b.setAttribute('aria-pressed', on ? 'true' : 'false');
-            b.style.borderColor = on ? 'var(--color-accent)' : 'var(--color-border)';
-            b.style.boxShadow = on ? '0 0 0 1px var(--color-accent)' : 'none';
+      const bindPlans = () => {
+        backdrop.querySelectorAll('.bank-plan').forEach(btn => {
+          btn.addEventListener('click', () => {
+            plan = btn.dataset.plan;
+            backdrop.querySelectorAll('.bank-plan').forEach(b => {
+              const on = b.dataset.plan === plan;
+              b.setAttribute('aria-pressed', on ? 'true' : 'false');
+              b.style.borderColor = on ? 'var(--color-accent)' : 'var(--color-border)';
+              b.style.boxShadow = on ? '0 0 0 1px var(--color-accent)' : 'none';
+            });
           });
         });
-      });
+      };
+      bindPlans();
+      // v1.09 B5: late prices from the native store
+      if (!prices && storeReachable && !BC.stub()) {
+        BC.loadPrices().then(p => {
+          if (!p || !backdrop.isConnected) return;
+          const wrap = backdrop.querySelector('#bank-paywall-plans-wrap');
+          if (!wrap) return;
+          wrap.innerHTML = `<div id="bank-paywall-plans" style="display: flex; gap: var(--space-3); margin: var(--space-4) 0;">
+             ${planCard('monthly', 'bank.planMonthly', p.monthly.price || '—', '')}
+             ${planCard('yearly', 'bank.planYearly', p.yearly.price || '—', p.yearly.perMonth ? t('bank.perMonthEquiv', { amount: p.yearly.perMonth }) : '')}
+           </div>`;
+          bindPlans();
+          const sub = backdrop.querySelector('#bank-paywall-subscribe');
+          if (sub) sub.disabled = false;
+        }).catch(() => {});
+      }
       const finish = (ent) => {
         if (ent && ent.active) {
           close();
           if (opts.onEntitled) opts.onEntitled();
         }
       };
+      const busy = (on) => {
+        backdrop.querySelectorAll('#bank-paywall-subscribe, #bank-paywall-restore').forEach(b => { b.disabled = on; });
+        const s = backdrop.querySelector('#bank-paywall-subscribe');
+        if (s) s.textContent = on ? t('bank.verifying') : t('bank.subscribe');
+      };
       backdrop.querySelector('#bank-paywall-subscribe').addEventListener('click', async () => {
-        const ent = await BC.purchase(plan);
-        if (!ent) { alert(t('bank.storeUnavailable')); return; }
-        finish(ent);
+        if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+        busy(true);
+        try {
+          const ent = await BC.purchase(plan);
+          busy(false);
+          if (!ent) return; // timed out / nothing approved: the store showed its own message
+          if (!ent.active) { alert(t('bank.purchaseFailed')); return; }
+          finish(ent);
+        } catch (e) {
+          busy(false);
+          if (!(e && e.cancelled)) alert(t('bank.purchaseFailed'));
+        }
       });
       backdrop.querySelector('#bank-paywall-restore').addEventListener('click', async () => {
-        const ent = await BC.restorePurchase();
-        if (!ent) { alert(t('bank.storeUnavailable')); return; }
-        finish(ent);
+        if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+        busy(true);
+        try {
+          const ent = await BC.restorePurchase();
+          busy(false);
+          if (!ent || !ent.active) { alert(t('bank.restoreNone')); return; }
+          finish(ent);
+        } catch (e) {
+          busy(false);
+          alert(t('bank.purchaseFailed'));
+        }
       });
       backdrop.querySelector('#bank-paywall-terms').addEventListener('click', () => {
         close();
