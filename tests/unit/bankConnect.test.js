@@ -223,7 +223,7 @@ describe('Bank Connect (v1.05 B2)', () => {
       let html = window.Views.BankConnectHubView.render(state());
       expect(html).toContain('id="bank-explainer"');
       expect(html).toContain('id="bank-add" style="width: 100%;" disabled');
-      expect(html).toContain('Powered by GoCardless');
+      expect(html).toContain('Powered by Enable Banking');
 
       window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: true });
       html = window.Views.BankConnectHubView.render(state());
