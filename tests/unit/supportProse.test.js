@@ -33,7 +33,7 @@ describe('Support prose (v0.91 P8f)', () => {
     it.each(LANGS)('%s FAQ has no unresolved keys', (lang) => {
       global.window.I18n.setLang(lang);
       const faqs = global.window.Components.FaqModal.FAQS;
-      expect(faqs).toHaveLength(7);
+      expect(faqs).toHaveLength(9); // v1.10 B6: + bankConnect, bankPending
       const unresolved = faqs.flatMap(f => [f.q, f.a]).filter(s => /^faq\./.test(s));
       expect(unresolved).toEqual([]);
     });

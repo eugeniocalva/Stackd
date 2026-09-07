@@ -1,6 +1,6 @@
 # Bank Connect — client UX spec & build plan
 
-> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2 (v1.05), B3 (v1.07), B4 (v1.08) and B5 store entitlement (v1.09) SHIPPED — B5 is verified against store fakes only until the products exist (§14 runbook). Next: B6 legal (gates any public build).** See §9–§14.
+> Status: **B1 broker LIVE + VERIFIED on staging (Enable Banking, §11); B2–B5 (v1.05–v1.09) and B6 legal/store rework (v1.10) SHIPPED 2026-09-07. What remains before a public build is outside the code: Enable Banking production access (contract + KYB, or restricted mode), the store products + secrets (§14 runbook), the native wiring (App Links, SecureStorage, `cap sync`), and a legal read-through of §15.** See §9–§15.
 > Companion to `docs/bank-connect-plan.md`, which holds the architecture and
 > the §10 decisions (all SETTLED — nothing here reopens them). That document
 > says what the broker does; this one says what the USER sees, in what
@@ -314,7 +314,7 @@ Native plugins (D-C12, D-C15 pick the exact packages):
 | B3 | v1.07 | Connect leg + data: 3.6, 3.7, 3.8; `bankConnections` slice; normalizer; D-C8 window. **Shipped 2026-09-07 (§12); Android App Links intent filter + iOS Associated Domains are the native-build follow-up.** | B1, B2, U2 |
 | B4 | v1.08 | 3.10, 3.11: refresh on open, insights, Refresh now, reconnect, disconnect, pause. **Shipped 2026-09-07 (§13).** | B3 |
 | B5 | v1.09 | Real entitlement: IAP plugin, store sheet, restore, broker receipt verification, 402/grace handling. **Shipped 2026-09-07 (§14); live store checks pending the products.** | B0 products |
-| B6 | v1.09 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Gate for any public build carrying B2+.** | — |
+| B6 | v1.10 | C4 legal + store rework: terms/privacy ×5, listing copy, privacy labels. **Shipped 2026-09-07 (§15).** Gate for any public build carrying B2+. | — |
 | B7 | later | C5 web session + pairing (3.12), iOS Associated Domains in the Mac handoff. | B5, production domain (done) |
 
 B2–B4 are testable end to end on an internal Android build against the
@@ -693,3 +693,55 @@ store mode):
    `--env production` deploy, or a second staging worker with
    `ENTITLEMENT_MODE=store`.
 4. The 402 → paywall path (B4) and the grace alarm (B1) are already wired.
+
+## 15. B6 as built — v1.10, 2026-09-07
+
+The C4 legal, store and business rework (architecture plan §6), written by
+the developer's assistant and **to be read through by a lawyer before the
+public build** — it is careful, not legal advice.
+
+**In-app Terms & Privacy (canonical, ×5 dictionaries).** `terms.updatedDate`
+→ 2026-09-07, which by design re-shows the Bank Connect disclosure sheet to
+anyone who had consented under the old date. Terms of Use gain clause 5
+*Bank Connect (optional)* — opt-in, the two third parties by name (Enable
+Banking Oy as the FIN-FSA-supervised AISP, the Stack'd relay server), consent
+on the bank's pages, credentials never through the app, 90–180-day access,
+refresh limits, review-before-save, availability not guaranteed, disconnect
+= revoke — and clause 6 *Bank Connect subscription* (billed by Apple/Google,
+auto-renew, cancel in store settings, refunds by the store, refresh stops at
+lapse, connections kept 14 days then revoked, imported data stays, all else
+free). Amended: intro, imported data (fetched rows, no pending), your data
+(accounts you link), third-party names (institution list, not a party to
+the bank/aggregator/store agreements). Privacy gains clause 3 *what
+travels, what is kept* (the transit-only relay; the exact server-side record:
+opaque owner/device id, per-bank ref + bank name + IBAN last-4 + currency +
+name, subscription status + store id; deletion on disconnect or 14 days
+after lapse; EU-jurisdiction Cloudflare) and clause 4 *recipients and legal
+basis* (the bank, Enable Banking Oy with address and supervision, Apple or
+Google, Cloudflare as EU processor; Art. 6(1)(b)). Amended: the short
+version (now conditional on the toggle), what is stored (fetched rows only
+after confirmation, the device token outside the backup), what the app does
+not do, the GDPR position (controller for the technical records only, the
+transactions transit), rights (disconnect = server-side erasure, complaint
+right), security (encrypted throughout, per-device token), changes (this is
+the announced change). `TermsModal.TERMS_IDS` / `PRIVACY_IDS` carry the
+order; the intro cites "Terms 5–6 / Privacy 3–4" so the order is load-bearing.
+Two FAQ entries (`bankConnect`, `bankPending`).
+
+**Store forms.** `docs/store-listing.md`: listing copy ("local by default",
+the Online banking paragraph, the subscription disclosure, the two required
+links), the App Store privacy-label answers with the "linked to you"
+judgement call spelled out, the Play Data-safety answers, the subscription
+product table, the Enable Banking production question, screenshots.
+
+**Marketing site** (`../StackdSite`, separate repo): `privacy.html` and
+`terms.html` mirror the in-app clauses in English (they are the URLs the
+stores link to); the hero drops "never leaves your phone" for "stays on your
+phone" with the bank link named in the lede; the *Local first* principle
+mentions the relay. Committed separately in that repo.
+
+**Not done / decisions left to the owner:** the legal read-through; the
+Enable Banking production route (contract + KYB vs restricted mode — §14
+and store-listing §5); the App Store privacy label's "linked" column at
+submission; localized versions of the marketing site pages (the site is
+English-only today).

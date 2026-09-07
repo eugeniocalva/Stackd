@@ -298,7 +298,7 @@ window.Components = {
   FaqModal: {
     // v0.91 P8f: 7 stable ids; the text lives in the dictionary, so the
     // list is rebuilt in the active language on every show().
-    IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags'],
+    IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags', 'bankConnect', 'bankPending'], // v1.10 B6: Bank Connect entries
 
     get FAQS() {
       return this.IDS.map(id => ({
@@ -477,8 +477,12 @@ window.Components = {
   // content; reuses the #active-modal id so Modal.hide() owns the teardown.
   TermsModal: {
     // v0.91 P8f: clause ids only; every heading and body is a dictionary key.
-    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'importAccuracy', 'yourData', 'noWarranty', 'liability', 'thirdParties', 'changes'], // v0.99: bank-import clauses (imported data accuracy + third-party names)
-    PRIVACY_IDS: ['short', 'whatStored', 'whatNot', 'gdpr', 'rights', 'security', 'children', 'contact', 'changes'],
+    // v0.99: bank-import clauses (imported data accuracy + third-party names).
+    // v1.10 B6 (bank-connect-ux-plan §15): Bank Connect + subscription clauses;
+    // the privacy part gains the data-flow and recipients clauses. Order =
+    // numbering, and terms.intro cites "Terms 5–6 / Privacy 3–4" — keep it.
+    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'importAccuracy', 'bankConnect', 'subscription', 'yourData', 'noWarranty', 'liability', 'thirdParties', 'changes'],
+    PRIVACY_IDS: ['short', 'whatStored', 'bankConnectData', 'recipients', 'whatNot', 'gdpr', 'rights', 'security', 'children', 'contact', 'changes'],
 
     show() {
       const clause = (title, body) => `

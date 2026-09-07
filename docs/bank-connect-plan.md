@@ -8,7 +8,7 @@
 > the settled decisions; §2–§6 already reflect them.
 > Relationship to `docs/import-ux-plan.md`: independent; recommended order is
 > U2 (success modal) → C1–C5 → the rest of the UX plan.
-> **Built (2026-09-07):** B3 (return, mapping, first fetch) shipped in the app as v1.07 (UX plan §12); the broker exists in `broker/` (B1, see the UX plan §10 and `broker/README.md`) and runs on `api-staging.stackdplatform.com`. **Aggregator is now Enable Banking, not GoCardless** (UX plan §11, D-C17) — read "GoCardless" below as "the aggregator"; the architecture is unchanged.
+> **Built (2026-09-07):** B2–B6 shipped in the app (v1.05–v1.10, UX plan §9–§15; C4 legal = §15); B3 (return, mapping, first fetch) shipped in the app as v1.07 (UX plan §12); the broker exists in `broker/` (B1, see the UX plan §10 and `broker/README.md`) and runs on `api-staging.stackdplatform.com`. **Aggregator is now Enable Banking, not GoCardless** (UX plan §11, D-C17) — read "GoCardless" below as "the aggregator"; the architecture is unchanged.
 > **Companion (2026-09-06):** `docs/bank-connect-ux-plan.md` is the client
 > UX spec + build sequence (B0–B7, screens, touch-list, open decisions
 > D-C9–D-C16). Step 0 progress lives in its §0: domain
