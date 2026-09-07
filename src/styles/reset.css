@@ -8,6 +8,12 @@
   padding: 0;
 }
 
+/* v1.11: the `hidden` attribute must win over class display rules (.btn is
+   inline-flex, which used to keep a hidden CTA on screen). */
+[hidden] {
+  display: none !important;
+}
+
 html {
   width: 100%;
   max-width: 100vw;

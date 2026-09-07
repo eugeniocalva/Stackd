@@ -20,7 +20,7 @@ and the root `npm run lint/test` never touch it.
 | `src/index.ts` | routing, CORS, client-id gate, sessions, every handler incl. the bank return |
 | `src/durable-objects.ts` | `OwnerDO` (per owner, `jurisdiction('eu')`), `SystemDO` (breaker, global count), `RateDO` (per-IP windows), typed clients |
 | `src/enable-banking.ts` | aggregator adapter: PEM import, RS256 JWT, error mapping, pagination |
-| `src/auth.ts` | device tokens `<ownerId>.<secret>`; the DO stores only `sha256(secret)` |
+| `src/auth.ts` | device tokens `<ownerId>.<secret>`; the DO stores only `sha256(secret)`; the web session cookie + pairing codes (v1.11) |
 | `src/html.ts` | the `/v1/connect/return` hand-off page |
 | `test/` | node vitest suite on in-memory DO fakes + a fake Enable Banking that verifies the JWT signature |
 | `scripts/smoke.mjs` | drives a deployed worker through the sandbox "Mock ASPSP" |
@@ -40,12 +40,27 @@ and the root `npm run lint/test` never touch it.
 | `GET /v1/accounts/:id/transactions?date_from&date_to` | device, entitled | proxied, all pages merged → `{transactions, truncated}`; ownership-checked, unknown → 404 |
 | `GET /v1/accounts/:id/balances` | device, entitled | proxied |
 | `DELETE /v1/connections/:ref` | device | deletes the session at the aggregator, forgets the ref, releases capacity |
+| `POST /v1/pair/code` | native, entitled | v1.11: `{code, expiresAt}` — 8 chars, 5-minute TTL, single-use, 5/h per owner |
+| `POST /v1/pair/claim` | — | v1.11: `{code}` → the browser becomes a `web` device on that owner: `Set-Cookie stackd_session` + `{ownerId, active, expiresAt, csrf, sessionExpiresAt}`; 10/h per IP |
+| `GET /v1/session` | cookie | v1.11: the web boot check — same body with a fresh `csrf`, re-issues the cookie (90 days sliding); `401 no_session` |
+| `POST /v1/session/logout` | cookie + CSRF | v1.11: removes the web device, clears the cookie |
+| `GET /v1/devices`, `DELETE /v1/devices/:id` | device | v1.11: the owner's paired browsers (`{id, label, createdAt, lastSeenAt, current}`) and revoke |
+
+**Two auth modes (v1.11 B7, UX plan §16):** a native device sends
+`Authorization: Bearer <ownerId>.<secret>`; a browser sends the HttpOnly
+cookie `stackd_session=<ownerId>.<secret>` (`Secure; SameSite=Lax`, set by
+the claim) plus `X-Stackd-CSRF` on every non-GET call. Both resolve to the
+same owner record; the app's `fetch` uses `credentials: 'include'` on web,
+which is why CORS echoes the exact origin with
+`Access-Control-Allow-Credentials: true`. A web-started connect returns to
+`PUBLIC_WEB_URL/#bank-connect` instead of the hand-off page.
 
 Every `/v1/*` call except the return needs `X-Stackd-Client: stackd-web`
 (`CLIENT_ID`). Errors are `{error: <code>}`:
-`401 device_token_required|invalid_device_token`, `402 subscription_required`,
-`403 client_required`, `404 unknown_ref|unknown_account`, `409 connection_limit`,
-`410 consent_expired`, `429 rate_limited|account_rate_limited`,
+`400 invalid_code|web_only`, `401 device_token_required|invalid_device_token|no_session|invalid_session|session_expired`,
+`402 subscription_required`, `403 client_required|csrf_required|csrf_invalid|native_only`,
+`404 unknown_ref|unknown_account|unknown_device`, `409 connection_limit`,
+`410 consent_expired|code_expired`, `429 rate_limited|account_rate_limited`,
 `502 aggregator_auth_failed|aggregator_error_<status>`,
 `503 capacity|aggregator_paused|aggregator_rate_limited|aggregator_not_configured|aggregator_key_invalid`.
 On staging (open mode) an `aggregator_auth_failed` carries a shape-only `diag`.
@@ -79,6 +94,16 @@ Errors: `400 receipt_required|receipt_invalid|product_unknown|platform_unknown`,
 - **Token theft** from a device exposes that owner's connections only; every
   data path is checked against the caller's own record and unknown ids are
   404, never 403. Revoking = `DELETE /v1/connections/:ref`.
+- **Web sessions (v1.11):** the cookie is `HttpOnly` (never readable by
+  JS) and `SameSite=Lax`; every mutation needs the `X-Stackd-CSRF` header,
+  whose hash lives on the web device entry and rotates on each boot check,
+  so a cross-site form post or top-level navigation cannot act. Sessions
+  expire 90 days after the last check. Pairing codes are single-use,
+  5-minute, 32⁸ keyspace, 5/h per owner to mint and 10/h per IP to claim;
+  the SystemDO only routes a claim, the owner record decides. Logout
+  removes only that browser; the phone lists and revokes browsers
+  (`/v1/devices`). A cookie session can re-check entitlement but never
+  mint an owner.
 - **The return URL** is unauthenticated by nature (the bank's browser
   redirect). `state` must be a well-formed ref whose owner record holds it in
   `CR`; the code is single-use at the aggregator; a replay renders the page
@@ -146,7 +171,12 @@ cd broker && node scripts/smoke.mjs https://api-staging.stackdplatform.com
 
 Point the dev app at staging from the browser console before enabling the
 toggle: `window.__STACKD_BROKER_URL__ = 'https://api-staging.stackdplatform.com'`
-(the dev origin is in `ALLOWED_ORIGINS`). `workers.dev` hostnames are blocked
+(the dev origin is in `ALLOWED_ORIGINS`). For the **web session mode**
+(v1.11) use `wrangler dev` instead — cookies need a same-site broker, and
+`localhost:3000` → `localhost:8787` is one; set
+`window.__STACKD_WEB_SESSION__ = true` and
+`window.__STACKD_BROKER_URL__ = 'http://localhost:8787'` (UX plan §16.4).
+`PUBLIC_WEB_URL` (`[vars]`) is where a web-started connect flow returns. `workers.dev` hostnames are blocked
 on some networks (TLS alert for the whole domain, `wrangler tail` included),
 which is why staging lives on the project's own zone.
 

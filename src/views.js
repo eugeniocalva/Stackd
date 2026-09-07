@@ -5824,6 +5824,10 @@ Object.assign(window.Views, {
       const enabled = !!(BC && BC.isEnabled(state));
       const conns = BC ? BC.connections(state) : [];
       const atCap = !!BC && conns.length >= BC.MAX_CONNECTIONS;
+      // v1.11 B7 (UX plan §3.12 / §16.3): on the web build the toggle-on
+      // state is the pairing screen until the browser holds a session.
+      const web = !!(BC && BC.isWebSession());
+      const unpaired = web && enabled && !BC.hasWebSession();
 
       const topCard = `
         <div class="card card-elevated" style="margin-bottom: var(--space-4); padding: var(--space-4) var(--space-5);">
@@ -5858,6 +5862,21 @@ Object.assign(window.Views, {
             <div style="font-weight: 700; margin-bottom: var(--space-2);">${t('bank.explainerTitle')}</div>
             <div style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.explainerBody')}</div>
           </div>`;
+      } else if (unpaired && !BC.webSessionKnown()) {
+        body = `<div class="card" id="bank-pair-checking" style="text-align: center; padding: var(--space-6) var(--space-4); color: var(--text-secondary); font-size: var(--text-sm);">${t('bank.pairChecking')}</div>`;
+      } else if (unpaired) {
+        body = `
+          <div class="card" id="bank-pair" style="padding: var(--space-5);">
+            <div style="font-weight: 700; margin-bottom: var(--space-2);">${t('bank.pairTitle')}</div>
+            <div style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin-bottom: var(--space-4);">${t('bank.pairIntro')}</div>
+            <div class="form-group">
+              <label class="form-label" for="bank-pair-code">${t('bank.pairCode')}</label>
+              <input id="bank-pair-code" class="form-control" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="9" placeholder="ABCD EFGH" style="font-family: monospace; font-size: var(--text-lg); letter-spacing: 0.18em; text-transform: uppercase; text-align: center;">
+            </div>
+            <div id="bank-pair-error" role="alert" style="color: var(--color-expense); font-size: var(--text-sm); line-height: 1.4; min-height: 1.4em; margin-bottom: var(--space-3);"></div>
+            <button type="button" class="btn btn-primary" id="bank-pair-submit" style="width: 100%;">${t('bank.pairButton')}</button>
+            <div style="color: var(--text-tertiary); font-size: var(--text-xs); line-height: 1.5; margin-top: var(--space-3);">${t('bank.pairHint')}</div>
+          </div>`;
       } else if (!conns.length) {
         body = `
           <div class="card" id="bank-empty" style="text-align: center; padding: var(--space-6) var(--space-4);">
@@ -5872,7 +5891,7 @@ Object.assign(window.Views, {
         ? `<p id="bank-powered-by" style="text-align: center; color: var(--text-tertiary); font-size: var(--text-xs); margin: var(--space-5) 0;">${t('bank.poweredBy')}</p>`
         : '';
       const cta = available
-        ? `<button type="button" class="btn btn-primary" id="bank-add" style="width: 100%;" ${enabled ? '' : 'disabled'} ${atCap ? 'hidden' : ''}>${conns.length ? t('bank.addAnother') : t('bank.addBank')}</button>`
+        ? `<button type="button" class="btn btn-primary" id="bank-add" style="width: 100%;" ${enabled ? '' : 'disabled'} ${atCap || unpaired ? 'hidden' : ''}>${conns.length ? t('bank.addAnother') : t('bank.addBank')}</button>`
         : '';
 
       return `
@@ -6019,13 +6038,45 @@ Object.assign(window.Views, {
         btn.addEventListener('click', () => window.Components.BankManageModal.show({ ref: btn.dataset.ref }));
       });
 
+      // v1.11 B7: the pairing screen (web build without a session).
+      const pairBtn = container.querySelector('#bank-pair-submit');
+      if (pairBtn && BC) {
+        const input = container.querySelector('#bank-pair-code');
+        const errEl = container.querySelector('#bank-pair-error');
+        const submit = async () => {
+          const code = String(input.value || '').toUpperCase().replace(/[\s-]/g, '');
+          errEl.textContent = '';
+          if (code.length !== 8) { errEl.textContent = t('bank.pairInvalid'); input.focus(); return; }
+          pairBtn.disabled = true;
+          pairBtn.textContent = t('bank.pairing');
+          try {
+            await BC.pairClaim(code); // the dispatches re-render the hub with the list
+          } catch (e) {
+            const c = (e && (e.code || e.message)) || '';
+            errEl.textContent = c === 'code_expired' ? t('bank.pairExpired') : (c === 'invalid_code' || (e && e.status === 400) ? t('bank.pairInvalid') : t('bank.pairFailed'));
+            pairBtn.disabled = false;
+            pairBtn.textContent = t('bank.pairButton');
+            input.focus();
+          }
+        };
+        pairBtn.addEventListener('click', submit);
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+        input.addEventListener('input', () => { errEl.textContent = ''; });
+      }
+
       // v1.07 B3: a connection the bank confirmed while we were away (web
       // return, cold start without the App Link) resumes from pendingRef;
       // a reinstalled device rebuilds its list from the broker once.
+      // v1.11 B7: on web the session check comes first — its answer decides
+      // between the pairing screen and the list (one re-render).
       if (BC && BC.isEnabled(state)) {
-        const pending = BC.prefs(state).pendingRef;
-        if (pending) BC.resumeConnection(pending).catch(() => {});
-        else BC.syncConnections(state).catch(() => {});
+        if (BC.isWebSession() && !BC.webSessionKnown()) {
+          BC.checkSession().catch(() => null).then(() => window.Store.emit());
+        } else if (!BC.isWebSession() || BC.hasWebSession()) {
+          const pending = BC.prefs(state).pendingRef;
+          if (pending) BC.resumeConnection(pending).catch(() => {});
+          else BC.syncConnections(state).catch(() => {});
+        }
       }
 
       if (BC) BC.attachLogoFallbacks(container);

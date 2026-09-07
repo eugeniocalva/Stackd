@@ -14,6 +14,8 @@ interface ReqOpts {
   ip?: string;
   client?: string | null;
   headers?: Record<string, string>;
+  cookie?: string; // v1.11 B7 web session
+  csrf?: string;
 }
 
 let keys: TestKeys;
@@ -32,6 +34,8 @@ const req = async (path: string, o: ReqOpts = {}) => {
   const headers: Record<string, string> = { 'cf-connecting-ip': o.ip || '203.0.113.1', 'user-agent': 'StackdTest/1.0', ...(o.headers || {}) };
   if (o.client !== null) headers['x-stackd-client'] = o.client || 'stackd-web';
   if (o.token) headers.authorization = `Bearer ${o.token}`;
+  if (o.cookie) headers.cookie = o.cookie;
+  if (o.csrf) headers['x-stackd-csrf'] = o.csrf;
   if (o.body !== undefined) headers['content-type'] = 'application/json';
   const res = await app.fetch(new Request(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), headers, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }), env as unknown as Env);
   const text = await res.text();
@@ -532,6 +536,183 @@ describe('Stack\'d broker (Enable Banking)', () => {
       // A never-linked connection has no session to delete; still removable.
       const s2 = await start(token);
       expect((await req(`/v1/connections/${s2.data.ref}`, { token, method: 'DELETE' })).status).toBe(200);
+    });
+  });
+
+  // v1.11 B7 (UX plan §16): a browser pairs with the phone through a code
+  // and becomes a `web` device on the same owner — cookie + CSRF instead of
+  // a bearer, sliding 90-day life, revocable from the phone.
+  describe('web session + pairing (B7)', () => {
+    const cookieOf = (r: { headers: Headers }) => {
+      const sc = r.headers.get('set-cookie') || '';
+      return sc.split(';')[0];
+    };
+    const pair = async (token: string, ip = '198.51.100.7') => {
+      const code = await req('/v1/pair/code', { token, body: {} });
+      expect(code.status).toBe(201);
+      const claim = await req('/v1/pair/claim', { body: { code: code.data.code }, ip, headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/128.0 Safari/537.36' } });
+      expect(claim.status).toBe(201);
+      return { code: code.data.code as string, cookie: cookieOf(claim), csrf: claim.data.csrf as string, claim };
+    };
+
+    it('pairs a browser with the phone: code → cookie session on the same owner, seeing the phone\'s connections', async () => {
+      const token = await mint();
+      const ownerId = token.split('.')[0];
+      const s = await start(token);
+      eb.pendingAccounts = [];
+      await bankReturn(s.data.ref);
+
+      const code = await req('/v1/pair/code', { token, body: {} });
+      expect(code.status).toBe(201);
+      expect(code.data.code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/);
+      expect(code.data.expiresAt).toBe('2026-09-07T10:05:00.000Z');
+
+      // The claim is unauthenticated; the code may be typed in lower case with spaces.
+      const typed = `${code.data.code.slice(0, 4).toLowerCase()} ${code.data.code.slice(4)}`;
+      const claim = await req('/v1/pair/claim', { body: { code: typed }, headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/128.0 Safari/537.36' } });
+      expect(claim.status).toBe(201);
+      expect(claim.data).toMatchObject({ ownerId, active: true, mode: 'open' });
+      expect(claim.data.csrf).toMatch(/^[0-9a-f]{32}$/);
+      expect(claim.data.sessionExpiresAt).toBe('2026-12-06T10:00:00.000Z'); // 90 days
+      const sc = claim.headers.get('set-cookie')!;
+      expect(sc).toMatch(new RegExp(`^stackd_session=${ownerId}\\.[0-9a-f]{64}; Path=/; Max-Age=7776000; HttpOnly; Secure; SameSite=Lax$`));
+      expect(JSON.stringify(claim.data)).not.toContain(sc.split('=')[1].split(';')[0]); // the secret lives in the cookie only
+      expect(JSON.stringify(claim.data)).not.toContain('deviceToken');
+
+      const cookie = cookieOf(claim);
+      const conns = await req('/v1/connections', { cookie });
+      expect(conns.status).toBe(200);
+      expect(conns.data.connections).toHaveLength(1);
+      expect(conns.data.connections[0].ref).toBe(s.data.ref);
+
+      // The phone sees the browser, with a coarse label and no hash.
+      const devices = await req('/v1/devices', { token });
+      expect(devices.data.devices).toHaveLength(1);
+      expect(devices.data.devices[0]).toMatchObject({ kind: 'web', label: 'Chrome · Windows', current: false });
+      expect(devices.data.devices[0].id).toMatch(/^[0-9a-f]{16}$/);
+      expect(JSON.stringify(devices.data)).not.toMatch(/[0-9a-f]{64}/);
+    });
+
+    it('codes are single-use, expire after 5 minutes, and a wrong one is refused without side effects', async () => {
+      const token = await mint();
+      const { code } = await pair(token);
+      expect((await req('/v1/pair/claim', { body: { code } })).data).toEqual({ error: 'invalid_code' });
+      expect((await req('/v1/pair/claim', { body: { code: 'ZZZZZZZZ' } })).status).toBe(400);
+      expect((await req('/v1/pair/claim', { body: { code: '0O1I0O1I' } })).data).toEqual({ error: 'invalid_code' }); // excluded glyphs
+      expect((await req('/v1/pair/claim', { body: {} })).status).toBe(400);
+
+      const fresh = await req('/v1/pair/code', { token, body: {} });
+      clock += 5 * 60 * 1000 + 1;
+      const late = await req('/v1/pair/claim', { body: { code: fresh.data.code } });
+      expect(late.status).toBe(410);
+      expect(late.data).toEqual({ error: 'code_expired' });
+      expect((await req('/v1/devices', { token })).data.devices).toHaveLength(1); // only the first pairing
+    });
+
+    it('a cookie session needs the CSRF header on mutations, not on reads; a web-started connect returns to the web build', async () => {
+      env = makeEnv(keys, { PUBLIC_WEB_URL: 'https://app.stackdplatform.com/' });
+      const token = await mint();
+      const { cookie, csrf } = await pair(token);
+      const body = { country: 'IT', institutionId: 'IT:Big Bank' };
+      expect((await req('/v1/connect/start', { cookie, body })).data).toEqual({ error: 'csrf_required' });
+      expect((await req('/v1/connect/start', { cookie, csrf: 'nope', body })).data).toEqual({ error: 'csrf_invalid' });
+      expect((await req('/v1/connections', { cookie })).status).toBe(200);
+
+      const s = await req('/v1/connect/start', { cookie, csrf, body });
+      expect(s.status).toBe(201);
+      eb.pendingAccounts = [];
+      const back = await bankReturn(s.data.ref);
+      expect(back.status).toBe(302);
+      expect(back.headers.get('location')).toBe('https://app.stackdplatform.com/#bank-connect');
+      expect((await req(`/v1/connect/status?ref=${s.data.ref}`, { cookie })).data.status).toBe('LN');
+      // A native-started flow still gets the hand-off page.
+      const n = await start(token);
+      expect((await bankReturn(n.data.ref)).headers.get('content-type')).toContain('text/html');
+      // Without PUBLIC_WEB_URL the web flow falls back to the page too.
+      env = makeEnv(keys, {});
+      const t2 = await mint();
+      const w2 = await pair(t2, '198.51.100.8');
+      const s2 = await req('/v1/connect/start', { cookie: w2.cookie, csrf: w2.csrf, body });
+      expect((await bankReturn(s2.data.ref)).status).toBe(200);
+    });
+
+    it('GET /v1/session is the boot check: 401 without a cookie, sliding expiry + CSRF rotation with one', async () => {
+      const token = await mint();
+      expect((await req('/v1/session')).data).toEqual({ error: 'no_session' });
+      expect((await req('/v1/session', { token })).data).toEqual({ error: 'web_only' });
+      const { cookie, csrf } = await pair(token);
+
+      clock += 10 * 86400000;
+      const sess = await req('/v1/session', { cookie });
+      expect(sess.status).toBe(200);
+      expect(sess.data.csrf).not.toBe(csrf);
+      expect(sess.data.sessionExpiresAt).toBe('2026-12-16T10:00:00.000Z'); // extended from today
+      expect(sess.headers.get('set-cookie')).toContain('Max-Age=7776000');
+      expect(cookieOf(sess)).toBe(cookie); // same secret re-issued
+      const body = { country: 'IT', institutionId: 'IT:Big Bank' };
+      expect((await req('/v1/connect/start', { cookie, csrf, body })).data).toEqual({ error: 'csrf_invalid' }); // rotated away
+      expect((await req('/v1/connect/start', { cookie, csrf: sess.data.csrf, body })).status).toBe(201);
+
+      // entitlement/verify over a cookie session re-checks, never mints.
+      const ev = await req('/v1/entitlement/verify', { cookie, csrf: sess.data.csrf, body: {} });
+      expect(ev.status).toBe(200);
+      expect(ev.data.ownerId).toBe(token.split('.')[0]);
+      expect(ev.data.deviceToken).toBeUndefined();
+
+      clock += 91 * 86400000;
+      const gone = await req('/v1/session', { cookie });
+      expect(gone.status).toBe(401);
+      expect(gone.data).toEqual({ error: 'session_expired' });
+      expect(gone.headers.get('set-cookie')).toContain('Max-Age=0');
+      expect((await req('/v1/devices', { token })).data.devices).toEqual([]);
+    });
+
+    it('logout removes only the web device; the phone can revoke a browser', async () => {
+      const token = await mint();
+      const a = await pair(token, '198.51.100.1');
+      const b = await pair(token, '198.51.100.2');
+      expect((await req('/v1/session/logout', { cookie: a.cookie, method: 'POST' })).data).toEqual({ error: 'csrf_required' });
+      const out = await req('/v1/session/logout', { cookie: a.cookie, csrf: a.csrf, body: {} });
+      expect(out.status).toBe(200);
+      expect(out.headers.get('set-cookie')).toContain('stackd_session=; Path=/; Max-Age=0');
+      const again = await req('/v1/connections', { cookie: a.cookie });
+      expect(again.data).toEqual({ error: 'invalid_session' });
+      expect(again.headers.get('set-cookie')).toContain('Max-Age=0');
+      expect((await req('/v1/connections', { cookie: b.cookie })).status).toBe(200);
+      expect((await req('/v1/connections', { token })).status).toBe(200); // the phone is untouched
+
+      const list = (await req('/v1/devices', { token })).data.devices;
+      expect(list).toHaveLength(1);
+      expect((await req(`/v1/devices/${list[0].id}`, { method: 'DELETE', token })).data).toEqual({ ok: true, id: list[0].id });
+      expect((await req('/v1/connections', { cookie: b.cookie })).data).toEqual({ error: 'invalid_session' });
+      expect((await req(`/v1/devices/${list[0].id}`, { method: 'DELETE', token })).status).toBe(404);
+      expect((await req('/v1/devices/xyz', { method: 'DELETE', token })).status).toBe(404);
+      // A browser sees itself as `current` and cannot mint pairing codes.
+      const c2 = await pair(token, '198.51.100.3');
+      expect((await req('/v1/devices', { cookie: c2.cookie })).data.devices[0].current).toBe(true);
+      expect((await req('/v1/pair/code', { cookie: c2.cookie, csrf: c2.csrf, body: {} })).data).toEqual({ error: 'native_only' });
+    });
+
+    it('rate-limits codes per owner (5/h) and claims per IP (10/h); store mode needs an entitled phone', async () => {
+      const token = await mint();
+      for (let i = 0; i < 5; i++) expect((await req('/v1/pair/code', { token, body: {} })).status).toBe(201);
+      expect((await req('/v1/pair/code', { token, body: {} })).status).toBe(429);
+      for (let i = 0; i < 10; i++) expect((await req('/v1/pair/claim', { body: { code: 'ZZZZZZZZ' }, ip: '198.51.100.9' })).status).toBe(400);
+      expect((await req('/v1/pair/claim', { body: { code: 'ZZZZZZZZ' }, ip: '198.51.100.9' })).status).toBe(429);
+
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' });
+      const t2 = await mint();
+      expect((await req('/v1/pair/code', { token: t2, body: {} })).data).toEqual({ error: 'subscription_required' });
+    });
+
+    it('answers credentialed CORS for allow-listed origins only', async () => {
+      const ok = await req('/v1/session', { headers: { origin: 'http://localhost:3000' } });
+      expect(ok.headers.get('access-control-allow-credentials')).toBe('true');
+      expect(ok.headers.get('access-control-allow-origin')).toBe('http://localhost:3000');
+      const pre = await req('/v1/pair/claim', { method: 'OPTIONS', headers: { origin: 'http://localhost:3000' } });
+      expect(pre.headers.get('access-control-allow-headers')).toContain('x-stackd-csrf');
+      const no = await req('/v1/session', { headers: { origin: 'https://evil.example' } });
+      expect(no.headers.get('access-control-allow-credentials')).toBeNull();
     });
   });
 

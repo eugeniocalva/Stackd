@@ -15,6 +15,18 @@ export interface DeviceRecord {
   kind: 'native' | 'web';
   createdAt: string;
   lastSeenAt: string;
+  // v1.11 B7 — web (cookie) devices only: hashed CSRF token, sliding expiry,
+  // and a coarse browser/OS label for the phone's "paired browsers" list.
+  csrfHash?: string | null;
+  expiresAt?: string | null;
+  label?: string | null;
+}
+
+// v1.11 B7: a pairing code minted by a native device, waiting to be claimed
+// by a browser (UX plan §16.2). Hash only; single-use; 5-minute life.
+export interface PairCode {
+  hash: string;
+  expiresAt: string;
 }
 
 export interface Entitlement {
@@ -49,6 +61,7 @@ export interface ReqRecord {
   institutionLogo: string | null;
   createdAt: string;
   status: string;
+  kind?: 'native' | 'web'; // v1.11 B7: which session started it → where the bank return lands
   accounts: AccountRecord[] | null;
   historyDays: number;
   validityDays: number;
@@ -63,6 +76,7 @@ export interface OwnerRecord {
   devices: DeviceRecord[];
   entitlement: Entitlement;
   requisitions: Record<string, ReqRecord>;
+  pairCodes?: PairCode[]; // v1.11 B7 (absent on pre-B7 records)
 }
 
 interface RateWindow {
@@ -72,6 +86,16 @@ interface RateWindow {
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+
+const deviceFromBody = (body: Record<string, unknown>, nowIso: string): DeviceRecord => {
+  const d: DeviceRecord = { hash: String(body.hash), kind: body.kind === 'web' ? 'web' : 'native', createdAt: nowIso, lastSeenAt: nowIso };
+  if (d.kind === 'web') {
+    d.csrfHash = body.csrfHash ? String(body.csrfHash) : null;
+    d.expiresAt = body.expiresAt ? String(body.expiresAt) : null;
+    d.label = body.label ? String(body.label).slice(0, 60) : null;
+  }
+  return d;
+};
 
 const readBody = async (request: Request): Promise<Record<string, unknown>> => {
   if (request.method !== 'POST') return {};
@@ -106,7 +130,61 @@ export class OwnerDO {
         if (!r) {
           r = { ownerId: String(body.ownerId), createdAt: nowIso, devices: [], entitlement: { active: false }, requisitions: {} };
         }
-        r.devices.push({ hash: String(body.hash), kind: body.kind === 'web' ? 'web' : 'native', createdAt: nowIso, lastSeenAt: nowIso });
+        r.devices.push(deviceFromBody(body, nowIso));
+        await this.save(r);
+        return json({ ok: true, record: r });
+      }
+
+      // v1.11 B7: logout (own hash) and revoke-from-the-phone (16-char id).
+      case '/devices/remove': {
+        const r = await this.load();
+        if (!r) return json({ ok: false }, 404);
+        const hash = String(body.hash || '');
+        const id = String(body.id || '');
+        const before = r.devices.length;
+        r.devices = r.devices.filter(d => !((hash && d.hash === hash) || (id && d.kind === 'web' && d.hash.slice(0, 16) === id)));
+        if (r.devices.length !== before) await this.save(r);
+        return json({ ok: true, removed: before - r.devices.length, record: r });
+      }
+
+      // v1.11 B7: sliding session (D-C19) + CSRF rotation on the boot check.
+      case '/devices/touch': {
+        const r = await this.load();
+        const device = r && r.devices.find(d => d.hash === String(body.hash));
+        if (!r || !device) return json({ ok: false }, 404);
+        if (body.csrfHash !== undefined) device.csrfHash = body.csrfHash ? String(body.csrfHash) : null;
+        if (body.expiresAt !== undefined) device.expiresAt = body.expiresAt ? String(body.expiresAt) : null;
+        device.lastSeenAt = nowIso;
+        await this.save(r);
+        return json({ ok: true, record: r });
+      }
+
+      case '/pair/add': {
+        const r = await this.load();
+        if (!r) return json({ ok: false }, 404);
+        const now = Number(body.now) || Date.now(); // the worker is the clock authority
+        const live = (r.pairCodes || []).filter(pc => Date.parse(pc.expiresAt) > now);
+        live.push({ hash: String(body.hash), expiresAt: String(body.expiresAt) });
+        r.pairCodes = live.slice(-10);
+        await this.save(r);
+        return json({ ok: true, count: r.pairCodes.length });
+      }
+
+      // The owner record is the authority on its own codes: the SystemDO
+      // lookup only routes the claim here, it cannot pair anyone by itself.
+      case '/pair/claim': {
+        const r = await this.load();
+        if (!r) return json({ ok: false, reason: 'invalid_code' }, 404);
+        const hash = String(body.hash || '');
+        const codes = r.pairCodes || [];
+        const hit = codes.find(pc => pc.hash === hash);
+        if (!hit) return json({ ok: false, reason: 'invalid_code' }, 404);
+        r.pairCodes = codes.filter(pc => pc !== hit); // single-use either way
+        if (Date.parse(hit.expiresAt) <= (Number(body.now) || Date.now())) {
+          await this.save(r);
+          return json({ ok: false, reason: 'code_expired' }, 410);
+        }
+        r.devices.push(deviceFromBody((body.device as Record<string, unknown>) || {}, nowIso));
         await this.save(r);
         return json({ ok: true, record: r });
       }
@@ -260,6 +338,22 @@ export class SystemDO {
       case '/connections': {
         return json({ count: (await this.state.storage.get<number>('connections')) || 0 });
       }
+      // v1.11 B7: pairing-code routing table, codeHash → ownerId. Take =
+      // get + delete in one DO turn, so a code can only ever route once.
+      case '/pair/put': {
+        const now = Number(body.now) || Date.now();
+        const stale = await this.state.storage.list<{ expiresAt: number }>({ prefix: 'pair:' });
+        for (const [k, v] of stale) if (!v || v.expiresAt <= now) await this.state.storage.delete(k);
+        await this.state.storage.put('pair:' + String(body.hash), { ownerId: String(body.ownerId), expiresAt: Number(body.expiresAt) });
+        return json({ ok: true });
+      }
+      case '/pair/take': {
+        const key = 'pair:' + String(body.hash);
+        const v = await this.state.storage.get<{ ownerId: string; expiresAt: number }>(key);
+        if (!v) return json({ ok: false }, 404);
+        await this.state.storage.delete(key);
+        return json({ ok: true, ownerId: v.ownerId, expiresAt: v.expiresAt });
+      }
       // v1.09 B5: small named caches (store access tokens). null value = delete.
       case '/cache': {
         const name = String(body.name || url.searchParams.get('name') || '');
@@ -334,9 +428,29 @@ export class OwnerClient {
     this.stub = ns.get(ns.idFromName(ownerId));
   }
 
-  async addDevice(hash: string, kind: 'native' | 'web'): Promise<OwnerRecord> {
-    const { data } = await call<{ record: OwnerRecord }>(this.stub, '/devices/add', { ownerId: this.ownerId, hash, kind });
+  async addDevice(hash: string, kind: 'native' | 'web', extra?: Partial<DeviceRecord>): Promise<OwnerRecord> {
+    const { data } = await call<{ record: OwnerRecord }>(this.stub, '/devices/add', { ownerId: this.ownerId, hash, kind, ...(extra || {}) });
     return data.record;
+  }
+
+  // v1.11 B7
+  async removeDevice(sel: { hash?: string; id?: string }): Promise<{ removed: number; record: OwnerRecord | null }> {
+    const { status, data } = await call<{ removed?: number; record?: OwnerRecord }>(this.stub, '/devices/remove', sel);
+    return { removed: status === 200 ? data.removed || 0 : 0, record: data.record || null };
+  }
+
+  async touchDevice(hash: string, patch: { csrfHash?: string | null; expiresAt?: string | null }): Promise<OwnerRecord | null> {
+    const { status, data } = await call<{ record?: OwnerRecord }>(this.stub, '/devices/touch', { hash, ...patch });
+    return status === 200 && data.record ? data.record : null;
+  }
+
+  async addPairCode(hash: string, expiresAt: string, now: number): Promise<void> {
+    await call(this.stub, '/pair/add', { hash, expiresAt, now });
+  }
+
+  async claimPairCode(hash: string, device: Partial<DeviceRecord> & { hash: string }, now: number): Promise<{ ok: boolean; reason?: string; record?: OwnerRecord }> {
+    const { data } = await call<{ ok: boolean; reason?: string; record?: OwnerRecord }>(this.stub, '/pair/claim', { hash, device: { ...device, kind: 'web' }, now });
+    return data;
   }
 
   async verify(hash: string, limit: number, windowMs: number): Promise<{ ok: boolean; rateLimited?: boolean; record?: OwnerRecord }> {
@@ -401,6 +515,16 @@ export class SystemClient {
 
   async connections(): Promise<number> {
     return (await call<{ count: number }>(this.stub, '/connections')).data.count;
+  }
+
+  // v1.11 B7
+  async pairPut(hash: string, ownerId: string, expiresAt: number, now: number): Promise<void> {
+    await call(this.stub, '/pair/put', { hash, ownerId, expiresAt, now });
+  }
+
+  async pairTake(hash: string): Promise<{ ownerId: string; expiresAt: number } | null> {
+    const { status, data } = await call<{ ownerId: string; expiresAt: number }>(this.stub, '/pair/take', { hash });
+    return status === 200 ? data : null;
   }
 
   async cacheGet<T>(name: string): Promise<T | null> {

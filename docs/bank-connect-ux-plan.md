@@ -747,13 +747,14 @@ and store-listing §5); the App Store privacy label's "linked" column at
 submission; localized versions of the marketing site pages (the site is
 English-only today).
 
-## 16. B7 plan — C5 web session + pairing (v1.11) — NOT STARTED
+## 16. B7 as built — C5 web session + pairing, v1.11, 2026-09-07
 
 Cold-start reading order for a new session: this section, then
 `broker/README.md` (endpoints + runbook), then `src/bank-connect.js` (the
-client) and `broker/src/index.ts` (sessions live in `requireDevice`). Every
-decision below is already settled by D-C2 / D-C3 / D-C11 / architecture §2;
-nothing here is open except what §16.6 lists.
+client; sessions live in `resolveSession` on the broker side,
+`broker/src/index.ts`). Built to the plan that stood here (D-C2 / D-C3 /
+D-C11, architecture §2); the three questions of the old §16.6 were taken as
+recommended and are recorded in §16.6 below.
 
 ### 16.1 What it is
 
@@ -762,115 +763,181 @@ too, but only when **paired with a phone that holds the subscription**
 (D-C2/D-C3: no web payment path). The pairing gives the browser a broker
 session cookie that resolves to the SAME owner as the phone, so the
 subscription and the existing connections become visible in the browser.
-Until then the web build shows §3.2's "mobile only" state (shipped in B2).
+Until then the web build shows the pairing screen (§3.12) once the toggle is
+on. A build that is neither native nor in web session mode (a stray
+`localhost:3000` without the flag) still shows §3.2's "mobile only" card.
 
-### 16.2 Broker (`broker/`)
+### 16.2 Broker (`broker/`) — as built
 
-- **Web session = a device of kind `web` on the owner record**, exactly like
-  a native device but authenticated by a cookie instead of a bearer:
-  `stackd_session=<ownerId>.<secret>`; `HttpOnly; Secure; SameSite=Lax;
-  Path=/; Max-Age=90d`, set by the broker host (`api.stackdplatform.com`).
-  Same-site with `app.stackdplatform.com` (one registrable domain, D-C11),
-  so Lax cookies ride on the app's `fetch(..., {credentials: 'include'})`.
-  The DO stores `sha256(secret)` as it does for native devices.
-- **CSRF:** the claim response also returns a `csrf` token (random, stored
-  hashed on the web device entry); every non-GET request from a cookie
-  session must carry it as `X-Stackd-CSRF`. GETs are safe (no state change).
-- `requireDevice`: bearer first, else cookie (+ CSRF on POST/DELETE) →
-  `{ownerId, record, owner, kind}`. The per-owner rate limit is shared.
-- **Endpoints (architecture §2 table, already reserved):**
-  - `POST /v1/pair/code` — native, entitled → `{code, expiresAt}`. Code =
-    8 chars from an unambiguous alphabet (no 0/O/1/I), **single-use, 5-min
-    TTL**, stored on the OwnerDO (`pairCodes: [{hash, expiresAt}]`) AND in a
-    `PairDO` (or the SystemDO) map `codeHash → ownerId` so `claim` can find
-    the owner without knowing it. Rate: 5 codes / hour / owner.
-  - `POST /v1/pair/claim` — web, body `{code}` → looks up the owner, adds a
-    `web` device, sets the cookie, returns `{ownerId, csrf, active,
-    expiresAt}`. Rate: 10 / hour / IP; a wrong code burns nothing but counts.
-  - `POST /v1/session/logout` — web (cookie + CSRF) → removes the web device
-    from the owner, clears the cookie.
-  - `GET /v1/session` — web → `{ownerId, active, expiresAt, csrf}` (the app's
-    boot check; a fresh CSRF each time is fine).
-- **CORS with credentials:** `Access-Control-Allow-Credentials: true` and the
-  exact origin (never `*`) for origins in `ALLOWED_ORIGINS`; add
-  `x-stackd-csrf` to the allowed headers. Staging keeps
-  `http://localhost:3000` — note cookies are then cross-site (localhost →
-  api-staging) and Lax will NOT send them; local development of B7 needs
-  either `wrangler dev` on `localhost:8787` (same-site with localhost:3000?
-  no — different ports are same-site, so yes it works) or the e2e stub.
-- **Connect from a web session:** `ReqRecord.kind = 'web'`; the return page
-  (`/v1/connect/return`) redirects to `PUBLIC_WEB_URL + '#bank-connect'`
-  instead of rendering the stackd:// hand-off when the ref's record is
-  `web`. New var `PUBLIC_WEB_URL` (`https://app.stackdplatform.com`;
-  staging: whatever hosts the staging web build, or `http://localhost:3000`).
-- **Threat model additions (README):** cookie never readable by JS; CSRF on
-  mutations; pairing codes single-use + short-lived + rate-limited per IP;
-  logout removes only the web device; a phone can list and revoke its web
-  sessions (nice-to-have: `GET /v1/devices` + `DELETE /v1/devices/:hash`).
-- **Tests:** claim → cookie → same owner reads the phone's connections; code
-  single-use + TTL + wrong code; CSRF missing → 403 on POST, GET fine;
-  cookie never in a body; logout; web return redirect; rate limits.
+- **Web session = a device of kind `web` on the owner record**, verified by
+  the same `/devices/verify` DO call as a native device. The credential is
+  the cookie `stackd_session=<ownerId>.<secret>` (same grammar as the
+  bearer; `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7776000`), set by
+  the broker host. Same-site with `app.stackdplatform.com` (D-C11), so Lax
+  rides on the app's `fetch(..., {credentials: 'include'})`. The web device
+  entry additionally stores `csrfHash`, a sliding `expiresAt` and a coarse
+  `label` (browser · OS from the UA, never the raw string).
+- **CSRF:** every non-safe request (anything but GET/HEAD/OPTIONS) from a
+  cookie session must carry `X-Stackd-CSRF`; `403 csrf_required` /
+  `csrf_invalid` otherwise. The token is returned by the claim and by every
+  `GET /v1/session`, which **rotates** it (and the client retries once on a
+  403 after re-reading the session, so a second tab cannot lock the first
+  out).
+- **Lifetime (D-C19): 90 days sliding.** `GET /v1/session` re-issues the
+  cookie and pushes the device's `expiresAt` 90 days out; a session past it
+  answers `401 session_expired`, clears the cookie and drops the device.
+- `resolveSession`: bearer first, else cookie (+ CSRF on mutations) →
+  `{ownerId, record, owner, kind, device}`; `requireDevice` = that or
+  `401 device_token_required`. The per-owner rate limit is shared.
+  `POST /v1/entitlement/verify` over a cookie session **re-checks, never
+  mints** (a browser can only get an owner by pairing).
+- **Endpoints:**
+  - `POST /v1/pair/code` — native (`403 native_only` from a browser),
+    entitled → `201 {code, expiresAt}`. 8 chars from
+    `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0/O/1/I; 32⁸ ≈ 1.1e12), 5-minute
+    TTL, single-use; sha256 stored on the OwnerDO (`pairCodes`, last 10,
+    expired pruned) AND in the SystemDO routing table `pair:<hash> →
+    {ownerId, expiresAt}` (pruned on every put). 5 codes / hour / owner.
+  - `POST /v1/pair/claim` — unauthenticated, body `{code}` (upper-cased,
+    spaces/dashes dropped) → SystemDO `take` (get + delete, one DO turn) →
+    OwnerDO `/pair/claim` (the owner record is the authority: it burns the
+    code and adds the web device) → `201 {ownerId, active, expiresAt,
+    platform, productId, mode, csrf, sessionExpiresAt}` + `Set-Cookie`.
+    `400 invalid_code`, `410 code_expired`. 10 attempts / hour / IP.
+  - `GET /v1/session` — the boot check: `401 no_session` (clean, no mint)
+    or the same body as the claim with a fresh `csrf` and a re-issued
+    cookie. `400 web_only` for a bearer.
+  - `POST /v1/session/logout` — cookie + CSRF → removes only that web
+    device, clears the cookie.
+  - `GET /v1/devices` (D-C20) — any device → `{devices: [{id, kind,
+    createdAt, lastSeenAt, label, expiresAt, current}]}`, web devices only;
+    `id` = first 16 hex of the stored hash. `DELETE /v1/devices/:id` →
+    revokes that browser (`404 unknown_device`).
+- **CORS with credentials:** `Access-Control-Allow-Credentials: true` + the
+  exact origin for the allow-list; `x-stackd-csrf` added to the allowed
+  headers.
+- **Connect from a web session:** `ReqRecord.kind` records who started the
+  flow; when it is `web` and `PUBLIC_WEB_URL` is set, `/v1/connect/return`
+  answers `302 → PUBLIC_WEB_URL/#bank-connect` (success, failure and the
+  idempotent reload alike — the hub resumes from `pendingRef` and reads the
+  outcome from `/v1/connect/status`). Without the var, or for a native
+  ref, the hand-off page renders as before. `PUBLIC_WEB_URL` is
+  `https://app.stackdplatform.com` in production and `http://localhost:3000`
+  on staging until a staging web build exists.
+- **Tests (`broker/test`, 43 total):** code → cookie → the phone's
+  connections, no secret in any body, single-use + TTL + wrong code +
+  excluded glyphs, CSRF missing/wrong/rotated, GET free, web return
+  redirect (and the page fallback), sliding expiry, no-mint on cookie
+  verify, logout, phone-side list/revoke with `current`, `native_only`,
+  both rate limits, store-mode 402, credentialed CORS.
 
-### 16.3 App (`src/bank-connect.js`, views, components)
+### 16.3 App (`src/bank-connect.js`, views, components) — as built
 
-- **Availability:** `isAvailable()` becomes: native, or the stub, or **web
-  session mode** = `window.__STACKD_WEB_SESSION__ === true` (set by the
-  deployed web build — put it in `index.html` behind a build-time flag, or
-  detect `location.origin === 'https://app.stackdplatform.com'`). On web the
-  transport uses `credentials: 'include'` and the CSRF header; there is no
-  device token and `ensureDevice()` throws `web_unpaired` when `GET
-  /v1/session` says no session.
-- **Hub on web without a session (§3.12):** the pairing screen replaces the
-  mobile-only card — an 8-char code field, *Pair* button, and the line
-  *"On your phone: Online banking → Settings → Pair a browser"*. Success →
-  `syncConnections()` (already exists) rebuilds the list from
-  `GET /v1/connections`.
-- **Native settings sheet:** a *Pair a browser* row → `POST /v1/pair/code`
-  → shows the code large with a 5-minute countdown and *Done*. Entitled
-  only (the button is hidden otherwise).
-- **Web settings sheet:** a *Log out of this browser* row.
-- **Paywall on web:** no Subscribe/Restore; the body says *subscribe on your
-  phone, then pair this browser* with a *Pair* button that opens the pairing
-  screen.
-- **Return on web:** the browser comes back to `#bank-connect`; the hub's
-  existing `pendingRef` resume handles the rest (B3).
-- i18n ~15 keys ×5 (`bank.pairTitle`, `bank.pairIntro`, `bank.pairCode`,
-  `bank.pairButton`, `bank.pairInvalid`, `bank.pairExpired`,
-  `bank.pairBrowser`, `bank.pairShow`, `bank.pairCountdown.one/other`,
-  `bank.logoutBrowser`, `bank.webPaywall`, …).
-- Tests: unit (transport in web mode, pairing view, settings rows), e2e via
-  the stub (`stub.session` + `stub.claim(code)`), plus one real-broker
-  manual check from `localhost:3000` against `wrangler dev`.
+- **Availability:** `isWebSession()` = not native AND (`window.
+  __STACKD_WEB_SESSION__ === true` OR `location.origin ===
+  'https://app.stackdplatform.com'`); `isAvailable()` = native, the stub, or
+  that. On the deployed origin `brokerUrl()` is the production broker
+  (`__STACKD_BROKER_URL__` still wins, for `wrangler dev`).
+- **Transport:** in web session mode `request()` sends `credentials:
+  'include'`, no bearer, and `X-Stackd-CSRF` on non-GET calls; a 403
+  `csrf_*` re-reads `/v1/session` and retries once; a 401 `no_session |
+  invalid_session | session_expired` forgets the session locally and
+  surfaces as `web_unpaired` (`fetchErrorKey` → `bank.webUnpaired`).
+  `ensureDevice()` never mints on web: it throws `web_unpaired` when
+  `checkSession()` says none. `hasIdentity()` (session on web, token
+  elsewhere) gates `syncConnections` and `refreshDue`; `refreshOnOpen` on
+  web runs `checkSession()` (a GET, which also slides the cookie) instead
+  of the POST verify. `storeAvailable()` is false on web, stub or not.
+- **Session state:** `BankConnect._webSession` — `undefined` until the
+  first `/v1/session` answer of the page load, `null` = not paired, else
+  `{ownerId, csrf, active}`. Every answer updates `bankConnect.ownerId` and
+  the cached entitlement; losing the session resets both.
+- **Hub on web:** toggle off → the explainer (consent first, no network);
+  toggle on + session unknown → a one-line "Checking…" card while
+  `attachEvents` runs the check and emits once; no session → the pairing
+  card (`#bank-pair`: intro, 8-char code field with `autocomplete=
+  one-time-code`, *Pair*, an inline error line, the "On your phone: Online
+  banking → Settings → Pair a browser" hint) and the add CTA hidden;
+  paired → identical to native (`pendingRef` resume / one-time sync).
+  `pairClaim(code)` posts the code, adopts the session and rebuilds the
+  list from `GET /v1/connections`.
+- **Native settings sheet:** *Pair a browser* (entitled only) → `POST
+  /v1/pair/code` → `BankPairCodeModal`: the code large and grouped
+  (`ABCD EFGH`), a live "Expires in m:ss" countdown, *New code* once it
+  runs out, *Done*. Below it *Paired browsers* (D-C20): label + "Paired
+  {date}" + *Remove* per browser, "No browser is paired." when empty.
+- **Web settings sheet:** no *Restore purchase*; *Log out of this browser*
+  (danger) → confirm → `logoutWeb()`: broker logout, session forgotten,
+  the mirrored connection list, pending reviews and cached entitlement
+  cleared, toggle and consent kept.
+- **Paywall on web:** the three perks, then *"Bank Connect is bought in the
+  mobile app. Subscribe on your phone, then pair this browser to use it
+  here."* with a *Pair* button (hidden once paired) and *Close*; no plans,
+  no store note.
+- **Settings row on web:** the subtitle reads "Pair this browser with your
+  phone to use it here." while enabled and unpaired.
+- **Return on web:** the browser lands on `#bank-connect`; the fresh page's
+  hub checks the session, then the existing `pendingRef` resume (B3)
+  finishes the flow.
+- **CSS:** `src/styles/reset.css` gains `[hidden] { display: none
+  !important }` — `.btn` is `inline-flex`, which had been keeping the
+  at-cap hidden CTA (B2) on screen; the pairing screen exposed it.
+- **i18n:** 25 keys × 5 (`bank.pair*`, `bank.paired*`, `bank.logout*`,
+  `bank.webPaywall`, `bank.webUnpaired`).
+- **Tests:** `tests/unit/bankConnectB7.test.js` (17: availability + broker
+  URL, transport headers/credentials, CSRF retry, no-mint, dead session,
+  offline, boot check, pairClaim, logoutWeb, native pairCode + devices, the
+  hub's three web states and the form, the paywall and both settings
+  sheets, the code sheet); the e2e `bank_connect.spec.js` gains the web
+  scenario through the stub (`stub.session`, `stub.pairCode`: pairing
+  screen → wrong/expired/right code → the phone's connection → log out →
+  the Settings row copy). The one real-broker check (dev server against
+  `wrangler dev`) is the owner's, see §16.5.
 
-### 16.4 Deployment prerequisites (owner)
+### 16.4 Local development against the real broker
+
+```
+cd broker && npm run dev        # http://localhost:8787, mode open
+```
+
+then in the app's console before enabling the toggle:
+
+```js
+window.__STACKD_WEB_SESSION__ = true;
+window.__STACKD_BROKER_URL__ = 'http://localhost:8787';
+```
+
+`localhost:3000` → `localhost:8787` is same-site (ports do not count), so
+the Lax cookie is sent; Chrome and Firefox accept a `Secure` cookie from
+`http://localhost`, Safari does not (use Chrome for this check). A pairing
+code comes from a native build on staging, or from a second dev tab
+without the web flag (it mints a native device and can call
+`BankConnect.pairCode()` from the console). `api-staging` is NOT usable
+from `localhost:3000` for cookies (cross-site).
+
+### 16.5 Deployment prerequisites (owner, still open)
 
 1. **A deployed web build at `https://app.stackdplatform.com`:** a second
    Cloudflare Pages project (`stackd-app`) building this repo with
    `npm run build` (output `dist/`, single file) and the custom domain
-   `app.stackdplatform.com`. Cheap; the marketing site already lives on Pages.
-2. `ALLOWED_ORIGINS` += `https://app.stackdplatform.com` (production) and
-   `PUBLIC_WEB_URL` in both environments.
-3. Nothing at Enable Banking: the redirect URL is unchanged (the broker's).
+   `app.stackdplatform.com`. Per D-C18 below, only once the native app is
+   in TestFlight / Play testing.
+2. `npm run deploy:staging` for the broker (the code above is not deployed
+   yet); `--env production` later. `ALLOWED_ORIGINS` (production) already
+   lists `https://app.stackdplatform.com`; `PUBLIC_WEB_URL` is in both
+   environments' `[vars]`.
+3. One real pairing: dev server + `wrangler dev` per §16.4, then the same
+   against staging once a staging web build exists.
+4. Nothing at Enable Banking: the redirect URL is unchanged (the broker's).
 
-### 16.5 Order of work (~1 day)
+### 16.6 Decisions taken (as recommended in the plan)
 
-1. Broker sessions + pairing endpoints + tests → deploy staging.
-2. App transport (web mode, credentials, CSRF) + pairing screen + settings
-   rows + i18n → unit tests.
-3. e2e through the stub; manual pass against `wrangler dev`.
-4. Pages project for the web build; ALLOWED_ORIGINS/PUBLIC_WEB_URL; a real
-   pairing between the dev server and staging.
-5. Docs: §16 → "as built", README threat-model additions.
-
-### 16.6 Open before starting (owner answers)
-
-- **D-C18** Should the web build exist publicly at all before the native app
-  ships? (Recommendation: build B7 now — the code is small — but only
-  create the Pages project when the native app is in TestFlight/Play
-  testing; until then test against `wrangler dev`.)
-- **D-C19** Session lifetime: 90 days sliding (recommended) vs 30 days fixed.
-- **D-C20** Show paired browsers on the phone with a revoke action in v1
-  (recommended, small) or defer.
+- **D-C18** The code is built now; the Pages project waits for the native
+  app to reach store testing. Until then the web build is exercised against
+  `wrangler dev`.
+- **D-C19** Session lifetime: 90 days sliding.
+- **D-C20** Paired browsers are listed on the phone with a *Remove* action
+  in v1 (`GET/DELETE /v1/devices`).
 
 ### 16.7 B8 — native wiring (needs the Android build environment)
 
