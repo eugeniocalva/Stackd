@@ -181,7 +181,11 @@ typecheck + tests + dry-run build). Nothing under `broker/` is loaded by
 `index.html`, and the root `npm run lint/test` never touch it. Secrets are
 wrangler secrets only — never a committed `.dev.vars`. The app side talks to
 it through `window.BankConnect` (`src/bank-connect.js`), and only while the
-user's Online banking toggle is on. `broker/README.md` is the reference.
+user's Online banking toggle is on. Native devices hold a bearer token; the
+web build (v1.11 B7, UX plan §16) has no token at all — it pairs with the
+phone through a code and rides an HttpOnly cookie + `X-Stackd-CSRF`, and
+`BankConnect.isWebSession()` / `hasWebSession()` decide between the pairing
+screen and the list. `broker/README.md` is the reference.
 
 ## Working conventions in this repo
 

@@ -48,6 +48,10 @@ ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = ""
 PUBLIC_URL = "https://api-staging.stackdplatform.com"
+# v1.11 B7: where a connect flow started from a web session returns. Staging
+# = the dev server (same-site with `wrangler dev` on localhost); set it to the
+# staging Pages URL once one exists.
+PUBLIC_WEB_URL = "http://localhost:3000"
 # Store receipt verification (v1.09 B5). Secrets: PLAY_SERVICE_ACCOUNT_JSON
 # (whole service-account key file) and APPLE_PRIVATE_KEY (App Store Connect
 # API .p8). Unused while ENTITLEMENT_MODE=open.
@@ -84,6 +88,7 @@ ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = ""
 PUBLIC_URL = "https://api.stackdplatform.com"
+PUBLIC_WEB_URL = "https://app.stackdplatform.com"
 # Store receipt verification (v1.09 B5). Secrets: PLAY_SERVICE_ACCOUNT_JSON
 # (whole service-account key file) and APPLE_PRIVATE_KEY (App Store Connect
 # API .p8). Required in store mode.

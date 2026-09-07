@@ -4050,6 +4050,11 @@ Object.assign(window.Components, {
         ? t('bank.subActive', { date: BC.formatDate(ent.expiresAt) })
         : t('bank.subNone');
       const supportId = BC.supportId(state);
+      // v1.11 B7 (UX plan §3.12): native gets "Pair a browser" + the paired
+      // list (entitled only); the web build gets "Log out of this browser"
+      // and no store buttons (there is no web payment path).
+      const web = BC.isWebSession();
+      const canPair = !web && ent.active;
       const readRow = (label, valueHtml, id) => `
         <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border-color);">
           <div style="font-size: var(--text-sm); color: var(--text-secondary);">${label}</div>
@@ -4070,7 +4075,14 @@ Object.assign(window.Components, {
           ${field('bank-set-from', 'bank.importFrom', 'bank.importFromHelp', `<input id="bank-set-from" class="form-control" type="date" value="${BC.esc(p.importFrom || '')}">`)}
           ${readRow(t('bank.subscription'), BC.esc(subLine), 'bank-set-sub')}
           ${readRow(t('bank.supportId'), supportId ? `<span style="font-family: monospace;">${BC.esc(supportId)}</span> <button type="button" id="bank-set-copy" class="touch-target" aria-label="${t('bank.copied')}" style="background: none; border: none; cursor: pointer; color: var(--color-accent); vertical-align: middle; padding: 4px;"><i data-lucide="copy" style="width: 16px; height: 16px;"></i></button>` : '—', 'bank-set-support')}
-          <button type="button" class="btn btn-secondary" id="bank-set-restore" style="width: 100%; margin-top: var(--space-3);">${t('bank.restore')}</button>
+          ${web ? '' : `<button type="button" class="btn btn-secondary" id="bank-set-restore" style="width: 100%; margin-top: var(--space-3);">${t('bank.restore')}</button>`}
+          ${canPair ? `
+          <button type="button" class="btn btn-secondary" id="bank-set-pair" style="width: 100%; margin-top: var(--space-3);">${t('bank.pairBrowser')}</button>
+          <div style="margin-top: var(--space-4); border-top: 1px solid var(--border-color); padding-top: var(--space-3);">
+            <div style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-2);">${t('bank.pairedBrowsers')}</div>
+            <div id="bank-set-devices" style="font-size: var(--text-sm);">${t('bank.pairChecking')}</div>
+          </div>` : ''}
+          ${web ? `<button type="button" class="btn btn-danger" id="bank-set-logout" style="width: 100%; margin-top: var(--space-4);">${t('bank.logoutBrowser')}</button>` : ''}
         </div>
         <div style="margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3);">
           <button type="button" class="btn btn-primary" id="bank-set-save">${t('common.save')}</button>
@@ -4096,7 +4108,8 @@ Object.assign(window.Components, {
           copy.innerHTML = `<span style="font-size: var(--text-xs);">${t('bank.copied')}</span>`;
         });
       }
-      backdrop.querySelector('#bank-set-restore').addEventListener('click', async () => {
+      const restore = backdrop.querySelector('#bank-set-restore');
+      if (restore) restore.addEventListener('click', async () => {
         if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
         let ent2 = null;
         try { ent2 = await BC.restorePurchase(); } catch (e) { alert(t('bank.purchaseFailed')); return; }
@@ -4104,6 +4117,122 @@ Object.assign(window.Components, {
         const e2 = BC.entitlement(window.Store.getState());
         const el = backdrop.querySelector('#bank-set-sub');
         if (el) el.textContent = e2.active ? t('bank.subActive', { date: BC.formatDate(e2.expiresAt) }) : t('bank.subNone');
+      });
+
+      // v1.11 B7: Pair a browser → the code sheet; the paired list (D-C20).
+      const pairBtn = backdrop.querySelector('#bank-set-pair');
+      if (pairBtn) {
+        pairBtn.addEventListener('click', async () => {
+          pairBtn.disabled = true;
+          try {
+            const res = await BC.pairCode();
+            close();
+            setTimeout(() => window.Components.BankPairCodeModal.show({ code: res.code, expiresAt: res.expiresAt }), 320);
+          } catch (e) {
+            alert(t((e && e.code) === 'subscription_required' ? 'bank.chipSubscription' : 'bank.pairFailed'));
+            pairBtn.disabled = false;
+          }
+        });
+        const list = backdrop.querySelector('#bank-set-devices');
+        const renderDevices = (devices) => {
+          if (!list) return;
+          if (!devices.length) { list.innerHTML = `<div style="color: var(--text-tertiary);">${t('bank.pairedNone')}</div>`; return; }
+          list.innerHTML = devices.map(d => `
+            <div class="bank-device-row" style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0;">
+              <div style="min-width: 0;">
+                <div style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${BC.esc(d.label || t('bank.pairedBrowser'))}</div>
+                <div style="font-size: var(--text-xs); color: var(--text-tertiary);">${BC.esc(t('bank.pairedSince', { date: BC.formatDate(d.createdAt) }))}</div>
+              </div>
+              <button type="button" class="btn btn-secondary bank-device-remove" data-id="${BC.esc(d.id)}" style="padding: 6px 12px; font-size: var(--text-xs); flex-shrink: 0;">${t('bank.pairedRemove')}</button>
+            </div>`).join('');
+          list.querySelectorAll('.bank-device-remove').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              btn.disabled = true;
+              try {
+                await BC.revokeDevice(btn.dataset.id);
+                renderDevices(devices.filter(d => d.id !== btn.dataset.id));
+              } catch (e) {
+                btn.disabled = false;
+                alert(t('bank.fetchError'));
+              }
+            });
+          });
+        };
+        BC.listDevices().then(renderDevices).catch(() => { if (list) list.innerHTML = `<div style="color: var(--text-tertiary);">${t('bank.pairedNone')}</div>`; });
+      }
+
+      // v1.11 B7: web — log this browser out (the phone is untouched).
+      const logout = backdrop.querySelector('#bank-set-logout');
+      if (logout) {
+        logout.addEventListener('click', () => {
+          close();
+          setTimeout(() => window.Components.Modal.show({
+            title: t('bank.logoutBrowser'),
+            content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.logoutBody')}</p>`,
+            saveText: t('bank.logoutConfirm'),
+            onSave: async (closeModal) => {
+              closeModal();
+              try { await BC.logoutWeb(); } catch (e) { alert(t('bank.fetchError')); }
+              window.Store.emit();
+            }
+          }), 320);
+        });
+      }
+    }
+  },
+
+  // v1.11 B7 (UX plan §3.12): the pairing code, shown large on the phone
+  // with its 5-minute countdown. A new code can be minted from here once
+  // this one runs out.
+  BankPairCodeModal: {
+    show(options) {
+      const opts = options || {};
+      const BC = window.BankConnect;
+      const t = (k, p) => window.I18n.t(k, p);
+      const grouped = (code) => String(code || '').replace(/(.{4})(?=.)/g, '$1 ');
+      const backdrop = window.Components._bankSheet('bank-pair-code-modal', `
+        <h2 id="bank-pair-code-modal-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem;">${t('bank.pairBrowser')}</h2>
+        <div style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin-bottom: var(--space-4);">${t('bank.pairShowIntro')}</div>
+        <div id="bank-pair-code-value" style="font-family: monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.12em; text-align: center; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-surface-sunken); user-select: all;">${BC.esc(grouped(opts.code))}</div>
+        <div id="bank-pair-code-countdown" aria-live="polite" style="text-align: center; color: var(--text-tertiary); font-size: var(--text-sm); margin: var(--space-3) 0 var(--space-4); min-height: 1.4em;"></div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-secondary" id="bank-pair-code-new" hidden>${t('bank.pairNewCode')}</button>
+          <button type="button" class="btn btn-primary" id="bank-pair-code-done">${t('common.done')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const close = () => { clearInterval(timer); backdrop._close(); };
+      const countdown = backdrop.querySelector('#bank-pair-code-countdown');
+      const renew = backdrop.querySelector('#bank-pair-code-new');
+      let expiresAt = Date.parse(opts.expiresAt || '') || (Date.now() + 5 * 60 * 1000);
+      const tick = () => {
+        const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+        if (left <= 0) {
+          countdown.textContent = t('bank.pairCodeExpired');
+          renew.hidden = false;
+          clearInterval(timer);
+          return;
+        }
+        const m = Math.floor(left / 60);
+        const s = left % 60;
+        countdown.textContent = t('bank.pairExpiresIn', { time: `${m}:${s < 10 ? '0' : ''}${s}` });
+      };
+      let timer = setInterval(() => { if (!backdrop.isConnected) { clearInterval(timer); return; } tick(); }, 1000);
+      tick();
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#bank-pair-code-done').addEventListener('click', close);
+      renew.addEventListener('click', async () => {
+        renew.disabled = true;
+        try {
+          const res = await BC.pairCode();
+          backdrop.querySelector('#bank-pair-code-value').textContent = grouped(res.code);
+          expiresAt = Date.parse(res.expiresAt || '') || (Date.now() + 5 * 60 * 1000);
+          renew.hidden = true;
+          timer = setInterval(() => { if (!backdrop.isConnected) { clearInterval(timer); return; } tick(); }, 1000);
+          tick();
+        } catch (e) {
+          alert(t('bank.pairFailed'));
+        }
+        renew.disabled = false;
       });
     }
   },
@@ -4137,8 +4266,25 @@ Object.assign(window.Components, {
 
       // v1.09 B5: the store answers asynchronously — render now, fill in the
       // plans when the prices arrive (native only; the stub is synchronous).
+      // v1.11 B7: the web build has no store — it says so and points at the
+      // pairing screen (UX plan §16.3).
       const storeReachable = BC.storeAvailable();
-      const backdrop = window.Components._bankSheet('bank-paywall', `
+      const webOnly = !storeReachable && BC.isWebSession();
+      const webHtml = `
+        <div id="bank-paywall-web" style="font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-4) 0; line-height: 1.6;">${t('bank.webPaywall')}</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          ${BC.hasWebSession() ? '' : `<button type="button" class="btn btn-primary" id="bank-paywall-pair">${t('bank.pairButton')}</button>`}
+          <button type="button" class="btn btn-secondary" id="bank-paywall-close">${t('common.close')}</button>
+        </div>`;
+      const backdrop = window.Components._bankSheet('bank-paywall', webOnly ? `
+        <h2 id="bank-paywall-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('bank.paywallTitle')}</h2>
+        ${opts.reason ? `<div style="font-size: var(--text-sm); color: var(--color-expense); margin-bottom: var(--space-2);">${BC.esc(opts.reason)}</div>` : ''}
+        ${opts.bankName ? `<div id="bank-paywall-bank" style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-4);">${t('bank.worksWith', { bank: BC.esc(opts.bankName) })}</div>` : '<div style="margin-bottom: var(--space-3);"></div>'}
+        ${perk('bank.perkAuto')}
+        ${perk('bank.perkBanks', { count: BC.MAX_CONNECTIONS })}
+        ${perk('bank.perkReview')}
+        ${webHtml}
+        <p style="font-size: var(--text-xs); color: var(--text-secondary); text-align: center; margin: var(--space-4) 0 var(--space-2);">${t('bank.optionalNote')}</p>` : `
         <h2 id="bank-paywall-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('bank.paywallTitle')}</h2>
         ${opts.reason ? `<div style="font-size: var(--text-sm); color: var(--color-expense); margin-bottom: var(--space-2);">${BC.esc(opts.reason)}</div>` : ''}
         ${opts.bankName ? `<div id="bank-paywall-bank" style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-4);">${t('bank.worksWith', { bank: BC.esc(opts.bankName) })}</div>` : '<div style="margin-bottom: var(--space-3);"></div>'}
@@ -4158,6 +4304,11 @@ Object.assign(window.Components, {
       const close = backdrop._close;
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
       backdrop.querySelector('#bank-paywall-close').addEventListener('click', close);
+      if (webOnly) {
+        const pairBtn = backdrop.querySelector('#bank-paywall-pair');
+        if (pairBtn) pairBtn.addEventListener('click', () => { close(); window.Router.navigate('#bank-connect'); });
+        return;
+      }
       const bindPlans = () => {
         backdrop.querySelectorAll('.bank-plan').forEach(btn => {
           btn.addEventListener('click', () => {

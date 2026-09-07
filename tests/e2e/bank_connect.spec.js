@@ -12,8 +12,26 @@ test.describe('Bank Connect (B2) E2E flow', () => {
       opened: null,
       prices: { monthly: { price: '€2.99' }, yearly: { price: '€29.99', perMonth: '€2.50' } },
       linked: false,
+      // v1.11 B7: the web build's cookie session (null = not paired) and
+      // the pairing code the phone "minted".
+      session: null,
+      pairCode: 'ABCDEFGH',
       async request(path, opts) {
         this.calls.push({ path, opts });
+        const deny = (code, status) => { const e = new Error(code); e.code = code; e.status = status; throw e; };
+        if (path === '/v1/session') {
+          if (!this.session) deny('no_session', 401);
+          return Object.assign({ csrf: 'csrf-stub' }, this.session);
+        }
+        if (path === '/v1/pair/claim') {
+          const code = String((opts.body || {}).code || '').toUpperCase().replace(/[\s-]/g, '');
+          if (code === 'EXPIRED1') deny('code_expired', 410);
+          if (code !== this.pairCode) deny('invalid_code', 400);
+          this.session = { ownerId: 'owner_phone000', active: true, expiresAt: null };
+          this.linked = true;
+          return Object.assign({ csrf: 'csrf-stub' }, this.session);
+        }
+        if (path === '/v1/session/logout') { this.session = null; return { ok: true }; }
         if (path.startsWith('/v1/institutions')) {
           return [
             { id: 'TEST_BANK', name: 'Test Bank', logo: '', transaction_total_days: 730, max_access_valid_for_days: 180 },
@@ -313,6 +331,71 @@ test.describe('Bank Connect (B2) E2E flow', () => {
     await page.click('a[href="#settings"]');
     await page.waitForSelector('#bank-settings-subtitle');
     await expect(page.locator('#bank-settings-subtitle')).toHaveText('Paused');
+
+    expect(errors).toEqual([]);
+  });
+
+  // v1.11 B7 (UX plan §16): the web build pairs with the phone instead of
+  // buying — pairing screen → code → the phone's connections → log out.
+  test('web build: pairing screen → pair with the phone\'s code → connections appear → log out', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+    await page.addInitScript(() => { window.__STACKD_WEB_SESSION__ = true; });
+    await bootstrap(page);
+    await openHub(page);
+
+    // Off: explainer, no network. On (consent): the session check runs, and
+    // with no session the pairing screen replaces the empty state.
+    await expect(page.locator('#bank-explainer')).toBeVisible();
+    expect(await page.evaluate(() => window.__STACKD_BROKER_STUB__.calls.length)).toBe(0);
+    await page.click('label.toggle-switch');
+    await page.waitForSelector('#bank-disclosure-modal.open');
+    await page.click('#bank-disclosure-accept');
+    await expect(page.locator('#bank-pair')).toBeVisible();
+    await expect(page.locator('#bank-add')).toBeHidden();
+    expect(await page.evaluate(() => window.__STACKD_BROKER_STUB__.calls.map(c => c.path))).toEqual(['/v1/session']);
+
+    // The paywall on web has no store buttons.
+    await page.evaluate(() => window.Components.PaywallModal.show({}));
+    await page.waitForSelector('#bank-paywall.open');
+    await expect(page.locator('#bank-paywall-subscribe')).toHaveCount(0);
+    await expect(page.locator('#bank-paywall-web')).toContainText('Subscribe on your phone');
+    await page.click('#bank-paywall-close');
+    await expect(page.locator('#bank-paywall')).toHaveCount(0);
+
+    // Wrong / expired / right code.
+    await page.fill('#bank-pair-code', 'zzzz zzzz');
+    await page.click('#bank-pair-submit');
+    await expect(page.locator('#bank-pair-error')).toHaveText('That code isn’t valid. Check it and try again.');
+    await page.fill('#bank-pair-code', 'expired1');
+    await page.press('#bank-pair-code', 'Enter');
+    await expect(page.locator('#bank-pair-error')).toHaveText('That code has expired. Get a new one on your phone.');
+    await page.fill('#bank-pair-code', 'abcd efgh');
+    await page.click('#bank-pair-submit');
+    await expect(page.locator('.bank-conn-card[data-ref="req_e2e"]')).toBeVisible();
+    await expect(page.locator('#bank-pair')).toHaveCount(0);
+    await expect(page.locator('#bank-add')).toBeVisible();
+    const prefs = await page.evaluate(() => window.Store.getState().bankConnect);
+    expect(prefs.ownerId).toBe('owner_phone000');
+    expect(prefs.entitlement.active).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem('stackd_device_token'))).toBeNull(); // never minted
+
+    // Settings on web: Log out instead of Restore; confirming returns to the pairing screen.
+    await page.click('#bank-open-settings');
+    await page.waitForSelector('#bank-settings-modal.open');
+    await expect(page.locator('#bank-set-restore')).toHaveCount(0);
+    await expect(page.locator('#bank-set-pair')).toHaveCount(0);
+    await page.click('#bank-set-logout');
+    await page.waitForSelector('#active-modal.open');
+    await page.click('#modal-save-btn');
+    await expect(page.locator('#bank-pair')).toBeVisible();
+    expect(await page.evaluate(() => window.Store.getState().bankConnections)).toEqual([]);
+    expect(await page.evaluate(() => window.Store.getState().bankConnect.entitlement.active)).toBe(false);
+
+    // The Settings row says what to do.
+    await page.click('a[href="#settings"]');
+    await page.waitForSelector('#bank-settings-subtitle');
+    await expect(page.locator('#bank-settings-subtitle')).toHaveText('Pair this browser with your phone to use it here.');
 
     expect(errors).toEqual([]);
   });

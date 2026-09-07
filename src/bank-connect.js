@@ -2,6 +2,9 @@
 //   v1.05 B2: hub / picker / settings / paywall shell, broker transport.
 //   v1.07 B3: device identity, the return leg (App Link or stackd://), account
 //             mapping, the first fetch → normalizer → the statement pipeline.
+//   v1.11 B7: web session mode (UX plan §16) — the deployed web build pairs
+//             with the phone through a code and talks to the broker with an
+//             HttpOnly cookie + CSRF header instead of a device token.
 //
 // Thin client for the Stack'd broker (docs/bank-connect-plan.md §2). Loaded
 // after import.js because fetches feed Views._ImportShared.startStatement.
@@ -15,14 +18,19 @@
 //  - The device token never enters `stackd_v1_*` (not mirrored, not in the
 //    CSV backup): native SecureStorage when a plugin is present, otherwise a
 //    plain localStorage key OUTSIDE the prefix (web build / dev).
-//  - The web build has no session mode until C5, so on web the feature
-//    renders its "mobile only" state unless the e2e stub is present.
+//  - On the web build the feature works only in "web session mode"
+//    (`isWebSession()`: the deployed origin, or `window.__STACKD_WEB_SESSION__`
+//    for local development against `wrangler dev`); otherwise it renders its
+//    "mobile only" state unless the e2e stub is present. There is no web
+//    payment path (D-C2/D-C3): the browser pairs with a subscribed phone.
 //
 // Test hook: `window.__STACKD_BROKER_STUB__` — when set, `request()` /
 // `purchase()` / `openSca()` are delegated to it so Playwright can drive the
 // flow without a network. Never set in production code.
 window.BankConnect = {
   BROKER_URL: 'https://api-staging.stackdplatform.com', // D-C11 (staging until B6; production = api.)
+  PROD_BROKER_URL: 'https://api.stackdplatform.com',    // v1.11 B7: what the deployed web build talks to
+  WEB_ORIGIN: 'https://app.stackdplatform.com',         // v1.11 B7: the deployed web build (UX plan §16.4)
   CLIENT_ID: 'stackd-web',
   MAX_CONNECTIONS: 3, // D-C9: one product, up to 3 banks
   // Settings-sheet options. 0 = "Maximum" (the institution's own limit).
@@ -52,6 +60,10 @@ window.BankConnect = {
   _pending: {},
   _refreshing: null,
   _lastRefreshCheck: 0,
+  // v1.11 B7: the browser's session with the broker. undefined = not checked
+  // yet this page load, null = none (pairing screen), else {ownerId, csrf,
+  // active}. The cookie itself is HttpOnly — JS never sees it.
+  _webSession: undefined,
 
   stub() {
     return window.__STACKD_BROKER_STUB__ || null;
@@ -62,13 +74,24 @@ window.BankConnect = {
     return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
   },
 
-  // v1.05: native only (plus the stub) until C5 adds the web cookie session.
+  // v1.05: native (plus the stub); v1.11 B7: or the web build in session mode.
   isAvailable() {
-    return this.isNative() || !!this.stub();
+    return this.isNative() || !!this.stub() || this.isWebSession();
+  },
+
+  // v1.11 B7 (UX plan §16.3): the deployed web build, or an explicit flag for
+  // local development (`window.__STACKD_WEB_SESSION__ = true` with the dev
+  // server pointed at `wrangler dev`, same-site on localhost).
+  isWebSession() {
+    if (this.isNative()) return false;
+    if (window.__STACKD_WEB_SESSION__ === true) return true;
+    try { return !!window.location && window.location.origin === this.WEB_ORIGIN; } catch (e) { return false; }
   },
 
   brokerUrl() {
-    return window.__STACKD_BROKER_URL__ || this.BROKER_URL;
+    if (window.__STACKD_BROKER_URL__) return window.__STACKD_BROKER_URL__;
+    try { if (window.location && window.location.origin === this.WEB_ORIGIN) return this.PROD_BROKER_URL; } catch (e) { /* no location */ }
+    return this.BROKER_URL;
   },
 
   // ── Prefs helpers (state.bankConnect, see Store._bankConnectDefaults) ─────
@@ -167,6 +190,13 @@ window.BankConnect = {
   // First contact mints the owner + device token at the broker (UX plan §3.5,
   // architecture §2). Re-used for every later call; a 401 clears it.
   async ensureDevice() {
+    // v1.11 B7: a browser never mints — it pairs. No session = the pairing
+    // screen; callers surface `web_unpaired` like any other broker error.
+    if (this.isWebSession()) {
+      if (this._webSession === undefined) await this.checkSession();
+      if (!this._webSession) throw Object.assign(new Error('web_unpaired'), { code: 'web_unpaired', status: 401 });
+      return null; // cookie-authenticated: there is no token to hand back
+    }
     const existing = await this.tokenGet();
     if (existing) return existing;
     const res = await this.request('/v1/entitlement/verify', { method: 'POST', body: { kind: this.isNative() ? 'native' : 'web' }, auth: false });
@@ -193,25 +223,141 @@ window.BankConnect = {
     return res;
   },
 
+  // ── Web session + pairing (v1.11 B7, UX plan §16.3) ───────────────────────
+
+  hasWebSession() {
+    return !!this._webSession;
+  },
+
+  // false only until the first /v1/session answer of this page load.
+  webSessionKnown() {
+    return this._webSession !== undefined;
+  },
+
+  // Native (or any identity): does this client have something to authenticate
+  // with, without minting? Web: a live session; else: a stored token.
+  async hasIdentity() {
+    if (this.isWebSession()) {
+      if (this._webSession === undefined) await this.checkSession().catch(() => null);
+      return !!this._webSession;
+    }
+    return !!(await this.tokenGet());
+  },
+
+  _applySession(res) {
+    this._webSession = { ownerId: res.ownerId || null, csrf: res.csrf || null, active: !!res.active };
+    window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
+      ownerId: res.ownerId || null,
+      entitlement: { active: !!res.active, expiresAt: res.expiresAt || null }
+    });
+  },
+
+  _forgetSession() {
+    this._webSession = null;
+    const p = this.prefs(window.Store.getState());
+    if (p.ownerId || p.entitlement.active) {
+      window.Store.dispatch('SET_BANK_CONNECT_PREFS', { ownerId: null, entitlement: { active: false, expiresAt: null } });
+    }
+  },
+
+  // The boot check (`GET /v1/session`): a cookie session slides another 90
+  // days and hands back a fresh CSRF token. 401 = not paired (or logged out
+  // elsewhere / revoked from the phone); anything else leaves the last
+  // answer alone (offline).
+  async checkSession() {
+    if (!this.isWebSession()) return null;
+    try {
+      const res = await this.request('/v1/session', { auth: false });
+      if (res && res.csrf) {
+        this._applySession(res);
+        return this._webSession;
+      }
+    } catch (e) {
+      if (!(e && e.status === 401)) throw e;
+    }
+    this._forgetSession();
+    return null;
+  },
+
+  // Web: the code typed on the pairing screen → a session on the phone's
+  // owner. The connection list is rebuilt from the broker right away.
+  async pairClaim(code) {
+    const res = await this.request('/v1/pair/claim', { method: 'POST', body: { code: String(code || '') }, auth: false });
+    this._applySession(res);
+    this._listSynced = false;
+    await this.syncConnections(window.Store.getState()).catch(() => {});
+    return this._webSession;
+  },
+
+  // Native, entitled: mint a code for the "Pair a browser" sheet.
+  async pairCode() {
+    await this.ensureDevice();
+    return this.request('/v1/pair/code', { method: 'POST', body: {} });
+  },
+
+  // Web: forget this browser at the broker and locally. The phone and its
+  // connections are untouched; the local list was only ever a mirror.
+  async logoutWeb() {
+    try {
+      await this.request('/v1/session/logout', { method: 'POST', body: {} });
+    } catch (e) {
+      if (!(e && (e.status === 401 || e.code === 'web_unpaired'))) throw e;
+    }
+    this._forgetSession();
+    this.clearPending();
+    this._listSynced = false;
+    this.connections(window.Store.getState()).forEach(c => window.Store.dispatch('REMOVE_BANK_CONNECTION', c.ref));
+    window.Store.dispatch('SET_BANK_CONNECT_PREFS', { pendingRef: null, pendingInstitution: null, pendingReplaceRef: null });
+  },
+
+  // D-C20: the paired browsers, from any device; revoke by id.
+  async listDevices() {
+    const res = await this.request('/v1/devices');
+    return (res && res.devices) || [];
+  },
+
+  async revokeDevice(id) {
+    return this.request('/v1/devices/' + encodeURIComponent(id), { method: 'DELETE' });
+  },
+
   // ── Broker transport ──────────────────────────────────────────────────────
 
   async request(path, options) {
     const opts = options || {};
     const stub = this.stub();
     if (stub && typeof stub.request === 'function') return stub.request(path, opts);
+    const web = this.isWebSession();
+    const method = String(opts.method || 'GET').toUpperCase();
     const headers = { 'Content-Type': 'application/json', 'X-Stackd-Client': this.CLIENT_ID };
-    const token = opts.auth === false ? null : (opts.token || await this.tokenGet());
+    // v1.11 B7: web = cookie (sent by the browser, never seen here) + CSRF on
+    // anything that is not a GET; native = bearer.
+    const token = web || opts.auth === false ? null : (opts.token || await this.tokenGet());
     if (token) headers.Authorization = 'Bearer ' + token;
-    const res = await fetch(this.brokerUrl() + path, {
-      method: opts.method || 'GET',
+    if (web && method !== 'GET' && this._webSession && this._webSession.csrf) headers['X-Stackd-CSRF'] = this._webSession.csrf;
+    const init = {
+      method,
       headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       keepalive: !!opts.keepalive // factory reset revokes right before a reload
-    });
+    };
+    if (web) init.credentials = 'include';
+    const res = await fetch(this.brokerUrl() + path, init);
     if (!res.ok) {
       let code = 'broker_' + res.status;
       try { const b = await res.json(); if (b && b.error) code = b.error; } catch (e) { /* no body */ }
       if (res.status === 401 && code === 'invalid_device_token') await this.tokenClear();
+      if (web) {
+        // Another tab's boot check rotated the CSRF token: pick up the new
+        // one and retry once. A dead session becomes the pairing screen.
+        if (res.status === 403 && (code === 'csrf_invalid' || code === 'csrf_required') && !opts._retried) {
+          const s = await this.checkSession();
+          if (s) return this.request(path, Object.assign({}, opts, { _retried: true }));
+        }
+        if (res.status === 401 && (code === 'no_session' || code === 'invalid_session' || code === 'session_expired')) {
+          this._forgetSession();
+          if (path !== '/v1/session') code = 'web_unpaired';
+        }
+      }
       const err = new Error(code);
       err.status = res.status;
       err.code = code;
@@ -380,8 +526,7 @@ window.BankConnect = {
   // Once per session; never while the toggle is off.
   async syncConnections(state) {
     if (this._listSynced || !this.isEnabled(state)) return;
-    const token = await this.tokenGet();
-    if (!token) return;
+    if (!(await this.hasIdentity())) return;
     this._listSynced = true;
     const res = await this.request('/v1/connections');
     const list = (res && res.connections) || [];
@@ -489,7 +634,7 @@ window.BankConnect = {
     if (this._refreshing) return this._refreshing;
     if (!this.isEnabled(state) || !this.isAvailable()) return { fetched: 0, newTotal: 0, failed: 0 };
     const run = async () => {
-      if (!(await this.tokenGet())) return { fetched: 0, newTotal: 0, failed: 0 };
+      if (!(await this.hasIdentity())) return { fetched: 0, newTotal: 0, failed: 0 };
       let fetched = 0, newTotal = 0, failed = 0;
       for (const conn of this.connections(state)) {
         if (opts.ref && conn.ref !== opts.ref) continue;
@@ -522,7 +667,11 @@ window.BankConnect = {
     if (!this.isEnabled(state)) return null;
     // v1.09 B5: the broker re-checks the subscription with the store when it
     // nears expiry (throttled there) — the cached gate follows it.
-    const check = this.tokenGet().then(tok => (tok ? this.verifyEntitlement().catch(() => null) : null));
+    // v1.11 B7: on web the boot check IS the entitlement read (the session
+    // answer carries the phone's subscription) and slides the cookie.
+    const check = this.isWebSession()
+      ? this.checkSession().catch(() => null)
+      : this.tokenGet().then(tok => (tok ? this.verifyEntitlement().catch(() => null) : null));
     if (!this.connections(state).length) return check;
     return check.then(() => this.refreshDue(window.Store.getState())).catch(() => null);
   },
@@ -685,6 +834,7 @@ window.BankConnect = {
     if (code === 'account_rate_limited') return 'bank.rateLimited';
     if (code === 'consent_expired') return 'bank.consentExpiredMsg';
     if (code === 'subscription_required') return 'bank.chipSubscription';
+    if (code === 'web_unpaired') return 'bank.webUnpaired'; // v1.11 B7
     return 'bank.fetchError';
   },
 
@@ -706,6 +856,7 @@ window.BankConnect = {
   },
 
   storeAvailable() {
+    if (this.isWebSession()) return false; // v1.11 B7: no web payment path, stub or not
     return !!this.stub() || (this.isNative() && !!this._storeApi());
   },
 
@@ -928,6 +1079,7 @@ window.BankConnect = {
     if (!this.isAvailable()) return t('bank.webOnlyDesc');
     const conns = this.connections(state);
     if (!this.isEnabled(state)) return conns.length ? t('bank.chipPaused') : t('bank.settingsDesc');
+    if (this.isWebSession() && this.webSessionKnown() && !this.hasWebSession()) return t('bank.webUnpaired'); // v1.11 B7
     if (!conns.length) return t('bank.emptyTitle');
     if (conns.some(c => this.connectionStatus(state, c) === 'expired')) return t('bank.chipExpired');
     if (!this.entitlement(state).active) return t('bank.chipSubscription');

@@ -38,6 +38,10 @@ export interface Env {
   ANDROID_SHA256_FINGERPRINTS: string;
   IOS_APP_ID: string;
   PUBLIC_URL: string;
+  // v1.11 B7 (UX plan §16): where the web build lives. A connect flow that
+  // started from a web session returns here (+ '#bank-connect') instead of
+  // the stackd:// hand-off page. Empty = no web return (page as before).
+  PUBLIC_WEB_URL?: string;
 }
 
 export interface Config {
@@ -52,6 +56,12 @@ export interface Config {
   androidFingerprints: string[];
   iosAppId: string;
   publicUrl: string;
+  publicWebUrl: string;
+  // Web sessions + pairing (v1.11 B7, D-C19: 90 days sliding)
+  sessionMaxAgeMs: number;
+  pairCodeTtlMs: number;
+  pairPerHour: number;   // codes per owner
+  claimPerHour: number;  // claim attempts per IP
   // Per-IP limits (unauthenticated) and per-owner limit (authenticated).
   mintPerHour: number;
   institutionsPerMinute: number;
@@ -98,6 +108,11 @@ export function parseConfig(env: Env): Config {
     androidFingerprints: list(env.ANDROID_SHA256_FINGERPRINTS),
     iosAppId: env.IOS_APP_ID || '',
     publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
+    publicWebUrl: (env.PUBLIC_WEB_URL || '').replace(/\/$/, ''),
+    sessionMaxAgeMs: 90 * 24 * 60 * 60 * 1000,
+    pairCodeTtlMs: 5 * 60 * 1000,
+    pairPerHour: 5,
+    claimPerHour: 10,
     mintPerHour: 10,
     institutionsPerMinute: 120,
     ownerPerHour: 600,

@@ -10,11 +10,16 @@
 // knows about it). The bank redirects the user to /v1/connect/return with
 // `code` + `state`; the broker exchanges the code for a session right there,
 // so the app's later /v1/connect/status is a read of the owner record.
+//
+// v1.11 B7 (UX plan §16): a browser becomes a `web` device on the SAME owner
+// record as the phone, through a pairing code the phone mints; it is
+// authenticated by an HttpOnly cookie (+ a CSRF header on mutations)
+// instead of a bearer. Everything below `requireDevice` is auth-agnostic.
 import type { Env, Config } from './env';
 import { parseConfig } from './env';
 import { EnableBanking, AggregatorError, type Institution, type PsuContext } from './enable-banking';
-import { mintToken, parseBearer, sha256Hex, randomHex } from './auth';
-import { OwnerClient, SystemClient, RateClient, type OwnerRecord, type ReqRecord, type Entitlement } from './durable-objects';
+import { mintToken, parseBearer, parseSessionCookie, sessionCookie, clearSessionCookie, randomPairCode, normalizePairCode, sha256Hex, randomHex } from './auth';
+import { OwnerClient, SystemClient, RateClient, type OwnerRecord, type ReqRecord, type Entitlement, type DeviceRecord } from './durable-objects';
 import { returnPage } from './html';
 import { verifyReceipt, StoreError, type VerifyInput } from './store-verify';
 
@@ -26,8 +31,10 @@ export interface Deps {
 }
 
 class HttpError extends Error {
-  constructor(public status: number, public code: string, message?: string) {
+  headers?: Record<string, string>;
+  constructor(public status: number, public code: string, message?: string, headers?: Record<string, string>) {
     super(message || code);
+    this.headers = headers;
   }
 }
 
@@ -35,6 +42,8 @@ interface Session {
   ownerId: string;
   record: OwnerRecord;
   owner: OwnerClient;
+  kind: 'native' | 'web'; // v1.11 B7: how the caller authenticated
+  device: DeviceRecord;
 }
 
 interface Ctx {
@@ -67,12 +76,16 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
+// v1.11 B7: the web build sends the session cookie (`credentials:
+// 'include'`), which CORS only permits with an exact origin echo and the
+// credentials flag — never `*`. The list is the allow-list, unchanged.
 function corsHeaders(origin: string | null, allowed: string[]): Record<string, string> {
   if (!origin || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
+    'access-control-allow-credentials': 'true',
     'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-    'access-control-allow-headers': 'authorization,content-type,x-stackd-client,x-stackd-attest',
+    'access-control-allow-headers': 'authorization,content-type,x-stackd-client,x-stackd-attest,x-stackd-csrf',
     'access-control-max-age': '600',
     vary: 'origin'
   };
@@ -93,14 +106,148 @@ function requireEntitled(session: Session, c: Ctx): void {
 
 // ── Sessions ───────────────────────────────────────────────────────────────
 
-async function requireDevice(request: Request, c: Ctx): Promise<Session> {
-  const parsed = parseBearer(request.headers.get('authorization'));
-  if (!parsed) throw new HttpError(401, 'device_token_required');
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// Bearer first, else the cookie (v1.11 B7). A cookie session must also carry
+// X-Stackd-CSRF on anything that is not a safe method — Lax cookies ride on
+// top-level cross-site navigations, the header cannot. Null = no credentials
+// at all (only /v1/entitlement/verify treats that as "mint me one").
+async function resolveSession(request: Request, c: Ctx): Promise<Session | null> {
+  const bearer = parseBearer(request.headers.get('authorization'));
+  const cookie = bearer ? null : parseSessionCookie(request.headers.get('cookie'));
+  const parsed = bearer || cookie;
+  if (!parsed) return null;
   const owner = new OwnerClient(c.env, parsed.ownerId);
-  const v = await owner.verify(await sha256Hex(parsed.secret), c.cfg.ownerPerHour, 3600000);
+  const hash = await sha256Hex(parsed.secret);
+  const v = await owner.verify(hash, c.cfg.ownerPerHour, 3600000);
   if (v.rateLimited) throw new HttpError(429, 'rate_limited');
-  if (!v.ok || !v.record) throw new HttpError(401, 'invalid_device_token');
-  return { ownerId: parsed.ownerId, record: v.record, owner };
+  const device = v.ok && v.record ? v.record.devices.find(d => d.hash === hash) : undefined;
+  if (!v.ok || !v.record || !device) {
+    if (bearer) throw new HttpError(401, 'invalid_device_token');
+    throw new HttpError(401, 'invalid_session', undefined, { 'set-cookie': clearSessionCookie() });
+  }
+  if (bearer) return { ownerId: parsed.ownerId, record: v.record, owner, kind: 'native', device };
+  if (device.kind !== 'web') throw new HttpError(401, 'invalid_session', undefined, { 'set-cookie': clearSessionCookie() });
+  if (device.expiresAt && Date.parse(device.expiresAt) <= c.now()) {
+    await owner.removeDevice({ hash });
+    throw new HttpError(401, 'session_expired', undefined, { 'set-cookie': clearSessionCookie() });
+  }
+  if (!SAFE_METHODS.has(request.method.toUpperCase())) {
+    const csrf = request.headers.get('x-stackd-csrf') || '';
+    if (!csrf) throw new HttpError(403, 'csrf_required');
+    if (!device.csrfHash || (await sha256Hex(csrf)) !== device.csrfHash) throw new HttpError(403, 'csrf_invalid');
+  }
+  return { ownerId: parsed.ownerId, record: v.record, owner, kind: 'web', device };
+}
+
+async function requireDevice(request: Request, c: Ctx): Promise<Session> {
+  const s = await resolveSession(request, c);
+  if (!s) throw new HttpError(401, 'device_token_required');
+  return s;
+}
+
+// ── Web session + pairing (v1.11 B7, UX plan §16) ─────────────────────────
+
+// Coarse, for the phone's "paired browsers" list. Never the raw UA.
+function uaLabel(ua: string | null): string {
+  const s = ua || '';
+  const browser = /Edg\//.test(s) ? 'Edge' : /OPR\//.test(s) ? 'Opera' : /Firefox\//.test(s) ? 'Firefox' : /Chrome\//.test(s) ? 'Chrome' : /Safari\//.test(s) ? 'Safari' : 'Browser';
+  const os = /Windows/.test(s) ? 'Windows' : /Android/.test(s) ? 'Android' : /iPhone|iPad/.test(s) ? 'iOS' : /Mac OS/.test(s) ? 'macOS' : /CrOS/.test(s) ? 'ChromeOS' : /Linux/.test(s) ? 'Linux' : '';
+  return os ? `${browser} · ${os}` : browser;
+}
+
+function sessionBody(session: Session, csrf: string, c: Ctx): Record<string, unknown> {
+  const e = session.record.entitlement;
+  return {
+    ownerId: session.ownerId,
+    active: isEntitled(session.record, c.cfg, c.now()),
+    expiresAt: e.expiresAt || null,
+    platform: e.platform || null,
+    productId: e.productId || null,
+    mode: c.cfg.mode,
+    csrf,
+    sessionExpiresAt: session.device.expiresAt || null
+  };
+}
+
+// Native, entitled: mint a code the browser can claim within 5 minutes.
+async function handlePairCode(session: Session, c: Ctx): Promise<Response> {
+  if (session.kind !== 'native') throw new HttpError(403, 'native_only');
+  requireEntitled(session, c);
+  if (!(await c.rate.hit(`pair:${session.ownerId}`, c.cfg.pairPerHour, 3600000))) throw new HttpError(429, 'rate_limited');
+  const code = randomPairCode();
+  const hash = await sha256Hex(code);
+  const expiresAt = c.now() + c.cfg.pairCodeTtlMs;
+  await session.owner.addPairCode(hash, iso(expiresAt), c.now());
+  await c.system.pairPut(hash, session.ownerId, expiresAt, c.now());
+  return json({ code, expiresAt: iso(expiresAt) }, 201);
+}
+
+// Web, unauthenticated: the code routes to the owner (SystemDO), the owner
+// record confirms and burns it, and the browser becomes a web device with a
+// cookie + CSRF token. A wrong code costs an attempt, nothing else.
+async function handlePairClaim(request: Request, c: Ctx): Promise<Response> {
+  if (!(await c.rate.hit(`claim:${c.ip}`, c.cfg.claimPerHour, 3600000))) throw new HttpError(429, 'rate_limited');
+  const body = await readJson(request);
+  const code = normalizePairCode(body.code);
+  if (!code) throw new HttpError(400, 'invalid_code');
+  const hash = await sha256Hex(code);
+  const routed = await c.system.pairTake(hash);
+  if (!routed) throw new HttpError(400, 'invalid_code');
+  if (routed.expiresAt <= c.now()) throw new HttpError(410, 'code_expired');
+  const owner = new OwnerClient(c.env, routed.ownerId);
+  const secret = randomHex(32);
+  const csrf = randomHex(16);
+  const expiresAt = iso(c.now() + c.cfg.sessionMaxAgeMs);
+  const claimed = await owner.claimPairCode(hash, {
+    hash: await sha256Hex(secret),
+    csrfHash: await sha256Hex(csrf),
+    expiresAt,
+    label: uaLabel(request.headers.get('user-agent'))
+  }, c.now());
+  if (!claimed.ok || !claimed.record) throw new HttpError(claimed.reason === 'code_expired' ? 410 : 400, claimed.reason || 'invalid_code');
+  const device = claimed.record.devices[claimed.record.devices.length - 1];
+  const session: Session = { ownerId: routed.ownerId, record: claimed.record, owner, kind: 'web', device };
+  return json(sessionBody(session, csrf, c), 201, { 'set-cookie': sessionCookie(`${routed.ownerId}.${secret}`, c.cfg.sessionMaxAgeMs) });
+}
+
+// The app's boot check on web. Sliding 90 days (D-C19): every check extends
+// the device and re-issues the cookie; the CSRF token rotates with it.
+async function handleSession(request: Request, c: Ctx): Promise<Response> {
+  const session = await resolveSession(request, c);
+  if (!session) throw new HttpError(401, 'no_session');
+  if (session.kind !== 'web') throw new HttpError(400, 'web_only');
+  const csrf = randomHex(16);
+  const expiresAt = iso(c.now() + c.cfg.sessionMaxAgeMs);
+  const record = await session.owner.touchDevice(session.device.hash, { csrfHash: await sha256Hex(csrf), expiresAt });
+  if (record) session.record = record;
+  session.device = { ...session.device, expiresAt };
+  const token = parseSessionCookie(request.headers.get('cookie'))!;
+  return json(sessionBody(session, csrf, c), 200, { 'set-cookie': sessionCookie(`${token.ownerId}.${token.secret}`, c.cfg.sessionMaxAgeMs) });
+}
+
+async function handleLogout(session: Session, c: Ctx): Promise<Response> {
+  if (session.kind !== 'web') throw new HttpError(400, 'web_only');
+  await session.owner.removeDevice({ hash: session.device.hash });
+  return json({ ok: true }, 200, { 'set-cookie': clearSessionCookie() });
+}
+
+// D-C20: the phone (or any device) lists the owner's web sessions and can
+// revoke one. Ids are the first 16 hex of the stored hash — enough to pick
+// one, useless to authenticate.
+function publicDevice(d: DeviceRecord, current: DeviceRecord): Record<string, unknown> {
+  return { id: d.hash.slice(0, 16), kind: d.kind, createdAt: d.createdAt, lastSeenAt: d.lastSeenAt, label: d.label || null, expiresAt: d.expiresAt || null, current: d.hash === current.hash };
+}
+
+function handleDevices(session: Session): Response {
+  return json({ devices: session.record.devices.filter(d => d.kind === 'web').map(d => publicDevice(d, session.device)) });
+}
+
+async function handleDeviceRevoke(id: string, session: Session): Promise<Response> {
+  if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(404, 'unknown_device');
+  const { removed } = await session.owner.removeDevice({ id });
+  if (!removed) throw new HttpError(404, 'unknown_device');
+  return json({ ok: true, id });
 }
 
 // ── Institutions ───────────────────────────────────────────────────────────
@@ -133,25 +280,26 @@ async function handleInstitutions(url: URL, c: Ctx): Promise<Response> {
 
 async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Response> {
   const body = await readJson(request);
-  const parsed = parseBearer(request.headers.get('authorization'));
+  const existing = await resolveSession(request, c); // bearer or cookie (B7)
   let ownerId: string;
   let owner: OwnerClient;
   let record: OwnerRecord;
   let deviceToken: string | null = null;
 
-  if (parsed) {
-    owner = new OwnerClient(c.env, parsed.ownerId);
-    const v = await owner.verify(await sha256Hex(parsed.secret), c.cfg.ownerPerHour, 3600000);
-    if (v.rateLimited) throw new HttpError(429, 'rate_limited');
-    if (!v.ok || !v.record) throw new HttpError(401, 'invalid_device_token');
-    ownerId = parsed.ownerId;
-    record = v.record;
+  if (existing) {
+    owner = existing.owner;
+    ownerId = existing.ownerId;
+    record = existing.record;
   } else {
     if (!(await c.rate.hit(`mint:${c.ip}`, c.cfg.mintPerHour, 3600000))) throw new HttpError(429, 'rate_limited');
     const minted = mintToken();
     ownerId = minted.ownerId;
     owner = new OwnerClient(c.env, ownerId);
-    record = await owner.addDevice(await sha256Hex(minted.secret), body.kind === 'web' ? 'web' : 'native');
+    // v1.11 B7: `kind` is the auth mode — a bearer device is always native;
+    // `web` devices only ever come from a pairing claim (cookie session).
+    // The app's body.kind is ignored: the dev-server web build used to mint
+    // a 'web' bearer device that then listed itself as a paired browser.
+    record = await owner.addDevice(await sha256Hex(minted.secret), 'native');
     deviceToken = minted.token;
   }
 
@@ -280,6 +428,7 @@ async function handleConnectStart(request: Request, session: Session, c: Ctx): P
       institutionLogo: inst.logo,
       createdAt: iso(c.now()),
       status: 'CR',
+      kind: session.kind,
       accounts: null,
       historyDays,
       validityDays,
@@ -311,12 +460,19 @@ async function handleConnectReturn(url: URL, c: Ctx): Promise<Response> {
   const record = await owner.record();
   const rec = record ? record.requisitions[ref] : undefined;
   if (!rec) return page({ error: 'invalid_ref', details: 'This link is not valid.' });
-  if (rec.status === 'LN') return page({}); // idempotent: reload of the return page
+  // v1.11 B7: a flow that started from a web session lands back in the web
+  // build; its hub resumes from pendingRef and reads the outcome via
+  // /v1/connect/status, so the redirect carries nothing but the route.
+  const toWeb = rec.kind === 'web' && !!c.cfg.publicWebUrl;
+  const done = (p: { error?: string; details?: string }) => toWeb
+    ? new Response(null, { status: 302, headers: { location: `${c.cfg.publicWebUrl}/#bank-connect`, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } })
+    : page(p);
+  if (rec.status === 'LN') return done({}); // idempotent: reload of the return page
 
   if (error || !code) {
     const cancelled = /cancel/i.test(details) || /access_denied/i.test(error) && /cancel/i.test(details);
     await owner.updateRequisition(ref, { status: cancelled ? 'UA' : 'RJ', lastError: (error || 'no_code').slice(0, 100) });
-    return page({ error: error || 'no_code', details: details || 'The bank did not return an authorization.' });
+    return done({ error: error || 'no_code', details: details || 'The bank did not return an authorization.' });
   }
 
   try {
@@ -329,11 +485,11 @@ async function handleConnectReturn(url: URL, c: Ctx): Promise<Response> {
     }));
     const expiresAt = s.access && s.access.valid_until ? s.access.valid_until : iso(c.now() + rec.validityDays * DAY_MS);
     await owner.updateRequisition(ref, { status: 'LN', sessionId: s.session_id, accounts, linkedAt: iso(c.now()), expiresAt, lastError: null });
-    return page({});
+    return done({});
   } catch (e) {
     const codeStr = e instanceof AggregatorError ? e.code : 'internal';
     await owner.updateRequisition(ref, { status: 'RJ', lastError: codeStr });
-    return page({ error: codeStr, details: 'The connection could not be completed. Please try again.' });
+    return done({ error: codeStr, details: 'The connection could not be completed. Please try again.' });
   }
 }
 
@@ -434,8 +590,17 @@ async function route(request: Request, url: URL, c: Ctx): Promise<Response> {
 
   if (path === '/v1/institutions' && method === 'GET') return handleInstitutions(url, c);
   if (path === '/v1/entitlement/verify' && method === 'POST') return handleEntitlementVerify(request, c);
+  // v1.11 B7: these two authenticate themselves (a claim has no session yet;
+  // the boot check must answer 401 no_session cleanly, never mint).
+  if (path === '/v1/pair/claim' && method === 'POST') return handlePairClaim(request, c);
+  if (path === '/v1/session' && method === 'GET') return handleSession(request, c);
 
   const session = await requireDevice(request, c);
+  if (path === '/v1/pair/code' && method === 'POST') return handlePairCode(session, c);
+  if (path === '/v1/session/logout' && method === 'POST') return handleLogout(session, c);
+  if (path === '/v1/devices' && method === 'GET') return handleDevices(session);
+  const dev = /^\/v1\/devices\/([^/]+)$/.exec(path);
+  if (dev && method === 'DELETE') return handleDeviceRevoke(decodeURIComponent(dev[1]), session);
   if (path === '/v1/connect/start' && method === 'POST') return handleConnectStart(request, session, c);
   if (path === '/v1/connect/status' && method === 'GET') return handleConnectStatus(url, session, c);
   if (path === '/v1/connections' && method === 'GET') {
@@ -478,7 +643,7 @@ export function createApp(deps: Deps = {}) {
         }
       } catch (e) {
         if (e instanceof HttpError) {
-          res = json({ error: e.code }, e.status);
+          res = json({ error: e.code }, e.status, e.headers);
         } else if (e instanceof StoreError) {
           res = json({ error: e.code }, e.status);
         } else if (e instanceof AggregatorError) {
