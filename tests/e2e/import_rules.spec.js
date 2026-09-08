@@ -46,10 +46,24 @@ test.describe('Import category rules E2E flow', () => {
     await page.waitForSelector('#import-preview');
   };
 
+  // v1.06 U2 (docs/import-ux-plan.md §3a): Confirm ends on the success sheet
+  // over Settings, not a dialog. The sheet is modal, so it MUST be dismissed
+  // before the next upload — Settings and the mapping step render behind it
+  // and its backdrop swallows the click on #btn-imap-continue otherwise.
+  const confirmImport = async (page, importedText) => {
+    await page.click('#btn-iprev-confirm');
+    await page.waitForSelector('#import-success-modal.open');
+    await expect(page.locator('#import-success-imported')).toContainText(importedText);
+    await page.click('#import-success-done');
+    await expect(page.locator('#import-success-modal')).toHaveCount(0);
+    await page.waitForSelector('#btn-import-csv');
+  };
+
   test('teaches a rule from the preview and auto-categorizes the next import', async ({ page }) => {
     const errors = [];
     page.on('pageerror', err => errors.push(err));
-    page.on('dialog', d => d.accept());
+    const dialogs = [];
+    page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
 
     await bootstrap(page);
     await goToSettings(page);
@@ -76,8 +90,7 @@ test.describe('Import category rules E2E flow', () => {
     expect(rule).toMatchObject({ match: 'supermercato rossi' });
 
     // Import lands with the chosen category on the taught row only.
-    await page.click('#btn-iprev-confirm');
-    await page.waitForSelector('#btn-import-csv');
+    await confirmImport(page, 'Imported 2 transactions into Main');
     const january = await page.evaluate(() => {
       const cats = Object.fromEntries(window.Store.getState().categories.map(c => [c.id, c.name]));
       return window.Store.getState().transactions
@@ -91,8 +104,7 @@ test.describe('Import category rules E2E flow', () => {
     await uploadCsv(page, FEBRUARY_CSV);
     await expect(page.locator('.import-row-cat').first()).toContainText('Groceries');
 
-    await page.click('#btn-iprev-confirm');
-    await page.waitForSelector('#btn-import-csv');
+    await confirmImport(page, 'Imported 1 transaction into Main');
     const february = await page.evaluate(() => {
       const s = window.Store.getState();
       const groceries = s.categories.find(c => c.name === 'Groceries');
@@ -114,5 +126,6 @@ test.describe('Import category rules E2E flow', () => {
     expect(await page.evaluate(() => window.Store.getState().importRules.length)).toBe(0);
 
     expect(errors).toEqual([]);
+    expect(dialogs).toEqual([]);
   });
 });

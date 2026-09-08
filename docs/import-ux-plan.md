@@ -96,6 +96,12 @@ this ending (docs/bank-connect-ux-plan.md §3.8).
   `viewTransactions`); 2 fallback icons (`circle-check`,
   `arrow-left-right`). The three import e2e specs assert the sheet and the
   inline error and now require `dialogs` to stay empty.
+- **Follow-up (2026-09-08):** `import_rules.spec.js` (v1.01) was the one
+  import spec not updated here — it waited for Settings behind the sheet and
+  its second upload's `#btn-imap-continue` click was swallowed by the modal
+  backdrop. It now dismisses the sheet via `#import-success-done` after each
+  Confirm, like the other three. Any new spec that imports twice must do the
+  same: the sheet is modal and nothing auto-closes it.
 
 ## 4. Phase U3 — Provenance in History
 
