@@ -493,6 +493,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'bank-connect-map': // v1.07: account mapping
         viewModule = window.Views.BankMapView;
         break;
+      case 'purchases': // v1.13: in-app purchases (Stack'd Pro + Bank Connect)
+        viewModule = window.Views.PurchasesView;
+        break;
       default:
         viewModule = window.Views.DashboardView;
     }

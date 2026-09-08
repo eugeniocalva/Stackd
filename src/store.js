@@ -161,6 +161,7 @@ window.Store = {
     // the CSV backup; the device token itself never enters state.
     bankConnect: null,
     bankConnections: [],
+    pro: null, // v1.13: Stack'd Pro entitlement (see _proDefaults)
 
     initialized: false
   },
@@ -189,6 +190,19 @@ window.Store = {
     const saved = window.StackdDB.load('bankConnect', null);
     if (!saved || typeof saved !== 'object') return d;
     return Object.assign(d, saved, { entitlement: Object.assign(d.entitlement, saved.entitlement || {}) });
+  },
+
+  // v1.13 Stack'd Pro (docs/pro-unlock.md): the one-time unlock, decided by
+  // the app store and cached here. Separate from bankConnect.entitlement,
+  // which the broker owns and clears on disable.
+  _proDefaults() {
+    return { active: false, productId: null, platform: null, purchasedAt: null, transactionId: null };
+  },
+
+  _loadPro() {
+    const d = this._proDefaults();
+    const saved = window.StackdDB.load('pro', null);
+    return saved && typeof saved === 'object' ? Object.assign(d, saved) : d;
   },
 
   init() {
@@ -222,6 +236,7 @@ window.Store = {
     this.state.importRules = window.StackdDB.load('importRules', []); // v1.01
     this.state.bankConnect = this._loadBankConnect(); // v1.05
     this.state.bankConnections = window.StackdDB.load('bankConnections', []); // v1.05
+    this.state.pro = this._loadPro(); // v1.13
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -463,6 +478,7 @@ window.Store = {
         if (e.key === 'stackd_v1_importRules') { this.state.importRules = window.StackdDB.load('importRules', []); changed = true; } // v1.01
         if (e.key === 'stackd_v1_bankConnect') { this.state.bankConnect = this._loadBankConnect(); changed = true; } // v1.05
         if (e.key === 'stackd_v1_bankConnections') { this.state.bankConnections = window.StackdDB.load('bankConnections', []); changed = true; } // v1.05
+        if (e.key === 'stackd_v1_pro') { this.state.pro = this._loadPro(); changed = true; } // v1.13
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -2137,6 +2153,8 @@ window.Store = {
         window.StackdDB.save('bankConnect', this.state.bankConnect);
         this.state.bankConnections = [];
         window.StackdDB.save('bankConnections', []);
+        // v1.13: state.pro is deliberately KEPT — it is a paid entitlement,
+        // not user data, and the web build has no restore path.
         // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
         // comes back (Recent Activities no longer exists outside the widgets).
         this.state.homeWidgets = this._defaultHomeWidgets();
@@ -2268,6 +2286,16 @@ window.Store = {
         if (p.entitlement) next.entitlement = Object.assign({}, cur.entitlement, p.entitlement);
         this.state.bankConnect = next;
         window.StackdDB.save('bankConnect', next);
+        changed = true;
+        break;
+      }
+
+      // ── Stack'd Pro (v1.13, docs/pro-unlock.md) ───────────────────────────
+      // Shallow merge; Pro._activate is the only writer besides tests.
+      case 'SET_PRO': {
+        const next = Object.assign({}, this.state.pro || this._proDefaults(), payload || {});
+        this.state.pro = next;
+        window.StackdDB.save('pro', next);
         changed = true;
         break;
       }

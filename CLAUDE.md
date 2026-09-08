@@ -195,6 +195,24 @@ the Universal Links entitlement in `ios/App/App/App.entitlements`. After
 `npm install`, `npx cap sync android` regenerates the gitignored
 `android/capacitor-cordova-android-plugins/` and `assets/public`.
 
+## Stack'd Pro — one-time unlock (v1.13)
+
+`window.Pro` (`src/pro.js`, loaded after `bank-connect.js`) owns the free
+plan and the €4.99 non-consumable `stackd_pro`. **`docs/pro-unlock.md` is the
+reference.** Free plan = up to `Pro.FREE_ACCOUNT_LIMIT` (2) accounts and the
+default categories; Pro lifts both. Gating is **UI-only** — `ADD_ACCOUNT` /
+`ADD_CATEGORY` stay ungated in the store so imports and tests keep working;
+`EditAccountView`/`EditCategoryView` render `Views._proLockedPage` in new
+mode, and the transaction form's "New category" shows
+`Components.ProLockModal`. Existing data is never hidden (grandfathering).
+The entitlement is **local** (`state.pro` under `stackd_v1_pro`, `SET_PRO`,
+kept on `RESET_APP`) — no broker: the product rides Bank Connect's
+cordova-plugin-purchase session (`BankConnect.initStore` registers it and
+routes its `approved` transactions to `Pro`, never to the broker). The
+purchases screen is `#purchases` → `Views.PurchasesView` (one-time tab +
+subscriptions tab; the subscription purchase itself stays in
+`PaywallModal`). E2E stub: `window.__STACKD_PRO_STUB__`.
+
 ## Working conventions in this repo
 
 - The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added.

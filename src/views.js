@@ -1763,6 +1763,12 @@ window.Views = {
       let previousCategory = categorySelect.value;
       const showNewCategoryModal = (onCreatedCallback) => {
         captureDraftTxFormState(container);
+        // v1.13 Stack'd Pro: custom categories are gated on the free plan —
+        // the draft is captured above, so "See Pro" can leave safely.
+        if (window.Pro && !window.Pro.canAddCategory(window.Store.getState())) {
+          window.Components.ProLockModal.show({ feature: 'categories' });
+          return;
+        }
         let selectedIcon = 'pin';
         window.Components.Modal.show({
           title: window.I18n.t('form.newCategory'),
@@ -2424,7 +2430,9 @@ Object.assign(window.Views, {
       const catId = params.id;
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
-      
+      // v1.13 Stack'd Pro: custom categories are a Pro feature.
+      if (!isEdit && window.Pro && !window.Pro.canAddCategory(state)) return window.Views._proLockedPage('categories', '#categories');
+
       const title = isEdit ? window.I18n.t('cat.editTitle') : window.I18n.t('form.newCategory');
       const name = cat ? cat.name : '';
       const icon = cat ? cat.icon : 'pin';
@@ -2478,11 +2486,12 @@ Object.assign(window.Views, {
       `;
     },
     attachEvents(container, state) {
+      if (window.Views._attachProLocked(container, '#categories')) return; // v1.13
       const params = window.Router ? window.Router.getParams() : {};
       const catId = params.id;
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
-      
+
       let selectedEmoji = cat ? cat.icon : 'pin';
 
       const display = container.querySelector('#current-icon-display');
@@ -3136,6 +3145,23 @@ Object.assign(window.Views, {
             </a>
           </div>
 
+          <!-- v1.13 Stack'd Pro (docs/pro-unlock.md): the in-app purchases
+               entry — the one-time unlock and the Bank Connect subscription
+               on one screen. Subtitle = current plan. -->
+          <div class="section-title">${window.I18n.t('others.purchases')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
+            <a href="#purchases" id="btn-open-purchases" style="display: flex; align-items: center; justify-content: space-between; text-decoration: none;">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;"><i data-lucide="${window.Pro && window.Pro.isActive(state) ? 'badge-check' : 'sparkles'}"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title">${window.I18n.t('others.purchases')}</div>
+                  <div class="list-item-subtitle" id="purchases-settings-subtitle" style="white-space: normal; line-height: 1.4;">${window.Pro && window.Pro.isActive(state) ? window.I18n.t('others.purchasesPro') : window.I18n.t('others.purchasesFree', { count: window.Pro ? window.Pro.FREE_ACCOUNT_LIMIT : 2 })}</div>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
+            </a>
+          </div>
+
           <div class="section-title">${window.I18n.t('others.regionSetting')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             <div id="btn-open-currency" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.chooseCurrencyAria')}">
@@ -3625,6 +3651,8 @@ Object.assign(window.Views, {
       const accountId = params.id;
       const account = accountId ? state.accounts.find(a => a.id === accountId) : null;
       const isEdit = !!account;
+      // v1.13 Stack'd Pro: the free plan stops at FREE_ACCOUNT_LIMIT accounts.
+      if (!isEdit && window.Pro && !window.Pro.canAddAccount(state)) return window.Views._proLockedPage('accounts', '#dashboard');
 
       const currentOb = account ? state.transactions.find(
         t => t.accountId === account.id && t.type === 'opening_balance'
@@ -3749,10 +3777,11 @@ Object.assign(window.Views, {
 
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+      if (window.Views._attachProLocked(container, '#dashboard')) return; // v1.13
       const params = window.Router ? window.Router.getParams() : {};
       const accountId = params.id;
       const account = accountId ? state.accounts.find(a => a.id === accountId) : null;
-      
+
       const currentOb = account ? state.transactions.find(
         t => t.accountId === account.id && t.type === 'opening_balance'
       ) : null;
@@ -3945,6 +3974,9 @@ Object.assign(window.Views, {
               window.Store.dispatch('SET_DEFAULT_ACCOUNT', '');
             }
           } else {
+            // v1.13 Stack'd Pro: belt and braces for the free-plan cap (the
+            // locked page normally never renders this button).
+            if (window.Pro && !window.Pro.canAddAccount(window.Store.getState())) { window.Components.ProLockModal.show({ feature: 'accounts' }); return; }
             // New account logic needs to handle ID creation first or dispatch to a specific handler that returns the ID
             // For now, we'll just dispatch and hope for the best, or better, let the store handle it.
             const newId = window.StackdDB.generateId();
@@ -6356,6 +6388,267 @@ Object.assign(window.Views, {
 
     destroy() {
       this._selection = null;
+    }
+  }
+});
+
+// ── Stack'd Pro (v1.13, docs/pro-unlock.md) ──────────────────────────────────
+// The in-app purchases screen (Settings → In-app purchases) plus the in-page
+// lock card that the gated "new account" / "new category" screens render on
+// the free plan. Two tabs: "One-time purchase" (Stack'd Pro, a non-consumable
+// — bought here) and "Subscriptions" (Bank Connect, monthly/yearly — the
+// storefront + status; the purchase itself stays in Components.PaywallModal
+// so there is exactly one subscription flow).
+Object.assign(window.Views, {
+
+  // The locked replacement for a gated "new" screen. `feature` is
+  // 'accounts' | 'categories'; `backHref` is where the X / Go back lead.
+  _proLockedPage(feature, backHref) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const Pro = window.Pro;
+    const isAcc = feature === 'accounts';
+    return `
+      <div class="container" style="padding-bottom: 100px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
+          <h1 class="header-title" style="margin: 0;">${isAcc ? t('account.newTitle') : t('form.newCategory')}</h1>
+          <a href="${backHref}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+        </div>
+        <div class="card card-elevated" id="pro-locked" data-feature="${feature}" style="padding: var(--space-6) var(--space-5); text-align: center;">
+          <div class="list-item-icon" style="margin: 0 auto var(--space-4); width: 56px; height: 56px;" aria-hidden="true"><i data-lucide="lock" style="width: 26px; height: 26px;"></i></div>
+          <h2 class="header-title" style="margin: 0 0 var(--space-2); font-size: var(--text-xl);">${isAcc ? t('pro.lockedAccountsTitle') : t('pro.lockedCategoriesTitle')}</h2>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-5);">${isAcc ? t('pro.lockedAccountsBody', { count: Pro.FREE_ACCOUNT_LIMIT }) : t('pro.lockedCategoriesBody')}</p>
+          <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+            <button type="button" class="btn btn-primary" id="pro-locked-cta">${t('pro.seePro')}</button>
+            <button type="button" class="btn btn-secondary" id="pro-locked-back">${t('common.goBack')}</button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  // Binds the lock card when it is what render() produced. Returns true so
+  // the caller skips its normal (now element-less) wiring.
+  _attachProLocked(container, backHref) {
+    const card = container.querySelector('#pro-locked');
+    if (!card) return false;
+    const cta = container.querySelector('#pro-locked-cta');
+    const back = container.querySelector('#pro-locked-back');
+    if (cta) cta.addEventListener('click', () => window.Router.navigate('#purchases'));
+    if (back) back.addEventListener('click', () => window.Router.navigate(backHref));
+    if (window.StackdHydrateIcons) window.StackdHydrateIcons();
+    return true;
+  },
+
+  PurchasesView: {
+    _tab: 'once', // survives re-renders (a purchase re-renders the view)
+
+    render(state) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const Pro = window.Pro;
+      const BC = window.BankConnect;
+      const esc = (s) => BC ? BC.esc(s) : String(s == null ? '' : s);
+      const params = window.Router ? window.Router.getParams() : {};
+      if (params.tab === 'subscriptions' || params.tab === 'once') this._tab = params.tab;
+      const tab = this._tab;
+      const active = Pro.isActive(state);
+      const price = Pro.price();
+      const storeReachable = Pro.storeAvailable();
+      const bankPrices = BC ? BC.prices() : null;
+      const bankEnt = BC ? BC.entitlement(state) : { active: false, expiresAt: null };
+      const bankStore = BC ? BC.storeAvailable() : false;
+
+      const perk = (key, p) => `
+        <div style="display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.5;">
+          <i data-lucide="check" style="width: 16px; height: 16px; color: var(--color-income); flex-shrink: 0; margin-top: 2px;"></i>
+          <span>${t(key, p)}</span>
+        </div>`;
+      const chip = (text, on) => `<span style="margin-left: auto; flex-shrink: 0; font-size: var(--text-xs); font-weight: 700; padding: 4px 10px; border-radius: 999px; background: ${on ? 'var(--color-income)' : 'var(--bg-surface-sunken)'}; color: ${on ? 'white' : 'var(--text-secondary)'};">${esc(text)}</span>`;
+      const segBtn = (id, key) => `
+        <button type="button" class="btn purchases-tab" data-tab="${id}" role="tab" aria-selected="${tab === id ? 'true' : 'false'}"
+          style="flex: 1; white-space: nowrap; padding: 8px 12px; font-size: var(--text-sm); min-height: 0; height: 36px; border-radius: 18px; ${tab === id ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">${t(key)}</button>`;
+      const note = (id, text) => `<p id="${id}" style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0 0 var(--space-4); line-height: 1.5;">${text}</p>`;
+      const small = (text) => `<p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: var(--space-4) 0 0;">${text}</p>`;
+      const stack = (inner) => `<div style="display: flex; flex-direction: column; gap: var(--space-3);">${inner}</div>`;
+      const centered = (id, text) => `<p id="${id}" style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0; line-height: 1.6; text-align: center;">${text}</p>`;
+
+      // ── One-time: Stack'd Pro ──
+      let proBody = '';
+      if (!active) {
+        if (!price && storeReachable) proBody += note('pro-price-note', t('bank.pricesLoading'));
+        if (storeReachable) {
+          proBody += stack(
+            `<button type="button" class="btn btn-primary" id="pro-buy-btn" ${price ? '' : 'disabled'}>${price ? t('pro.buy', { price: esc(price) }) : t('pro.buyNoPrice')}</button>` +
+            `<button type="button" class="btn btn-secondary" id="pro-restore-btn">${t('bank.restore')}</button>`
+          );
+        } else {
+          proBody += centered('pro-web-note', t('bank.storeUnavailable'));
+        }
+        proBody += small(t('pro.storeNote'));
+      }
+      const onceHtml = `
+        <div class="section-title">${t('pro.tabOnce')}</div>
+        <div class="card card-elevated" id="pro-card" style="padding: var(--space-5); margin-bottom: var(--space-6);">
+          <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);">
+            <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="${active ? 'badge-check' : 'sparkles'}"></i></div>
+            <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">${t('pro.name')}</h2>
+            ${active ? chip(t('pro.enabled'), true) : ''}
+          </div>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-4);">${t('pro.desc')}</p>
+          ${perk('pro.perkAccounts')}
+          ${perk('pro.perkCategories')}
+          ${perk('pro.perkOnce')}
+          <p style="font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.5; margin: var(--space-3) 0 var(--space-4);">${t('pro.freeIncludes', { count: Pro.FREE_ACCOUNT_LIMIT })}</p>
+          ${proBody}
+        </div>`;
+
+      // ── Subscriptions: Bank Connect ──
+      let bankBody = '';
+      if (bankEnt.active) {
+        bankBody += `<p style="font-size: var(--text-sm); color: var(--text-primary); font-weight: 600; margin: var(--space-3) 0 var(--space-4);">${t('bank.subActive', { date: BC.formatDate(bankEnt.expiresAt) })}</p>`;
+        bankBody += stack(`<button type="button" class="btn btn-secondary" id="bank-manage-btn">${t('pro.manage')}</button>`);
+      } else {
+        const hasPrices = !!(bankPrices && (bankPrices.monthly.price || bankPrices.yearly.price));
+        bankBody += '<div style="margin-top: var(--space-3);"></div>';
+        if (hasPrices) bankBody += `<p id="bank-price-line" style="font-size: var(--text-sm); color: var(--text-primary); font-weight: 600; margin: 0 0 var(--space-4);">${t('pro.bankPrices', { monthly: esc(bankPrices.monthly.price || '—'), yearly: esc(bankPrices.yearly.price || '—') })}</p>`;
+        else if (bankStore) bankBody += note('bank-price-line', t('bank.pricesLoading'));
+        if (bankStore) {
+          bankBody += stack(
+            `<button type="button" class="btn btn-primary" id="bank-subscribe-btn">${t('bank.subscribe')}</button>` +
+            `<button type="button" class="btn btn-secondary" id="bank-restore-btn">${t('bank.restore')}</button>`
+          );
+        } else {
+          bankBody += centered('bank-web-note', BC && BC.isWebSession() ? t('bank.webPaywall') : t('bank.storeUnavailable'));
+        }
+      }
+      const subsHtml = `
+        <div class="section-title">${t('pro.tabSubscriptions')}</div>
+        <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-4);">${t('pro.subsIntro')}</p>
+        <div class="card card-elevated" id="bank-sub-card" style="padding: var(--space-5); margin-bottom: var(--space-6);">
+          <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);">
+            <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="landmark"></i></div>
+            <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">${t('bank.paywallTitle')}</h2>
+            ${chip(bankEnt.active ? t('pro.activeChip') : t('bank.subNone'), bankEnt.active)}
+          </div>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0 0 var(--space-4);">${t('pro.bankDesc')}</p>
+          ${perk('bank.perkAuto')}
+          ${perk('bank.perkBanks', { count: BC ? BC.MAX_CONNECTIONS : 3 })}
+          ${perk('bank.perkReview')}
+          ${bankBody}
+          <p style="font-size: var(--text-xs); color: var(--text-secondary); text-align: center; margin: var(--space-4) 0 var(--space-2);">${t('bank.optionalNote')}</p>
+          <p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: 0;">${t('bank.storeNote')}</p>
+        </div>`;
+
+      return `
+        <div class="container" style="padding-bottom: 100px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
+            <h1 class="header-title" style="margin: 0;">${t('others.purchases')}</h1>
+            <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+          </div>
+          <div id="purchases-tabs" role="tablist" style="display: flex; background: var(--bg-surface-sunken); border-radius: 22px; padding: 3px; margin-bottom: var(--space-6);">
+            ${segBtn('once', 'pro.tabOnce')}
+            ${segBtn('subscriptions', 'pro.tabSubscriptions')}
+          </div>
+          <div id="purchases-panel" data-tab="${tab}">
+            ${tab === 'once' ? onceHtml : subsHtml}
+          </div>
+        </div>`;
+    },
+
+    attachEvents(container, state) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const Pro = window.Pro;
+      const BC = window.BankConnect;
+      const view = this;
+      const rerender = () => {
+        const s = window.Store.getState();
+        container.innerHTML = view.render(s);
+        view.attachEvents(container, s);
+      };
+
+      container.querySelectorAll('.purchases-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.tab === view._tab) return;
+          view._tab = btn.dataset.tab;
+          rerender();
+        });
+      });
+
+      // ── One-time: Stack'd Pro ──
+      const buyBtn = container.querySelector('#pro-buy-btn');
+      const restoreBtn = container.querySelector('#pro-restore-btn');
+      const busy = (on) => {
+        [buyBtn, restoreBtn].forEach(b => { if (b) b.disabled = on; });
+        if (buyBtn) buyBtn.textContent = on ? t('bank.verifying') : (Pro.price() ? t('pro.buy', { price: Pro.price() }) : t('pro.buyNoPrice'));
+      };
+      if (buyBtn) {
+        buyBtn.addEventListener('click', async () => {
+          if (!Pro.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+          busy(true);
+          try {
+            const res = await Pro.purchase();
+            if (!res) { busy(false); return; } // timed out / nothing approved: the store showed its own message
+            if (!res.active) { busy(false); alert(t('bank.purchaseFailed')); return; }
+            // SET_PRO re-renders the view in its "Unlocked" state.
+          } catch (e) {
+            busy(false);
+            if (!(e && e.cancelled)) alert(t('bank.purchaseFailed'));
+          }
+        });
+        // Late price from the native store (the stub is synchronous).
+        if (!Pro.price() && Pro.storeAvailable() && !Pro.stub()) {
+          Pro.loadPrice().then(p => {
+            if (!container.isConnected) return;
+            const b = container.querySelector('#pro-buy-btn');
+            const priceNote = container.querySelector('#pro-price-note');
+            if (!b) return;
+            if (p) { b.disabled = false; b.textContent = t('pro.buy', { price: p }); if (priceNote) priceNote.remove(); }
+            else if (priceNote) priceNote.textContent = t('bank.pricesUnavailable');
+          }).catch(() => {});
+        }
+      }
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', async () => {
+          if (!Pro.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+          busy(true);
+          try {
+            const res = await Pro.restore();
+            if (!res || !res.active) { busy(false); alert(t('pro.restoreNone')); }
+          } catch (e) {
+            busy(false);
+            alert(t('bank.purchaseFailed'));
+          }
+        });
+      }
+
+      // ── Subscriptions: Bank Connect ──
+      const subBtn = container.querySelector('#bank-subscribe-btn');
+      if (subBtn) subBtn.addEventListener('click', () => window.Components.PaywallModal.show({ onEntitled: rerender }));
+      const bankRestore = container.querySelector('#bank-restore-btn');
+      if (bankRestore) {
+        bankRestore.addEventListener('click', async () => {
+          if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
+          bankRestore.disabled = true;
+          try {
+            const ent = await BC.restorePurchase();
+            bankRestore.disabled = false;
+            if (!ent || !ent.active) { alert(t('bank.restoreNone')); return; }
+            rerender();
+          } catch (e) {
+            bankRestore.disabled = false;
+            alert(t('bank.purchaseFailed'));
+          }
+        });
+      }
+      const manage = container.querySelector('#bank-manage-btn');
+      if (manage) manage.addEventListener('click', () => window.Router.navigate('#bank-connect'));
+      if (BC && view._tab === 'subscriptions' && !BC.prices() && BC.storeAvailable() && !BC.stub()) {
+        BC.loadPrices().then(p => {
+          if (!p || !container.isConnected || view._tab !== 'subscriptions') return;
+          const line = container.querySelector('#bank-price-line');
+          if (line) { line.textContent = t('pro.bankPrices', { monthly: p.monthly.price || '—', yearly: p.yearly.price || '—' }); line.style.color = 'var(--text-primary)'; line.style.fontWeight = '600'; }
+        }).catch(() => {});
+      }
+
+      if (window.StackdHydrateIcons) window.StackdHydrateIcons();
     }
   }
 });

@@ -161,8 +161,12 @@ equivalent). Buttons: *Subscribe* (store sheet), *Restore purchase*.
 Footer: the store's auto-renewal note (the store-required wording, one
 key per store), links *Terms* · *Privacy*, and the honesty line *Bank
 Connect is optional — statement import stays free.* No trial, no
-one-time products, no "Later" nag: closing returns to the picker with the
-selection kept.
+one-time products *for Bank Connect*, no "Later" nag: closing returns to
+the picker with the selection kept. (v1.13: the app does sell a separate
+one-time product, Stack'd Pro — `docs/pro-unlock.md` — but it is not a
+Bank Connect tier and never appears in this paywall; both products share
+the Settings → In-app purchases screen, where this paywall is what the
+Subscriptions tab's *Subscribe* opens.)
 
 Entitlement resolution: purchase/restore → receipt →
 `POST /v1/entitlement/verify` → `{active, expiresAt}` cached in

@@ -925,14 +925,21 @@ window.BankConnect = {
     const platform = this.platform() === 'appstore' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
     const iap = { store, platform, prices: null, resolvers: [], ready: null };
     this._iap = iap;
-    store.register(Object.values(this.PRODUCTS).map(id => ({ id, type: ProductType.PAID_SUBSCRIPTION, platform })));
+    const products = Object.values(this.PRODUCTS).map(id => ({ id, type: ProductType.PAID_SUBSCRIPTION, platform }));
+    // v1.13: Stack'd Pro (a non-consumable, docs/pro-unlock.md) rides the same
+    // store session — registered here, its transactions routed to window.Pro
+    // (they must NOT reach the broker, which only knows the plans).
+    const Pro = window.Pro && ProductType.NON_CONSUMABLE ? window.Pro : null;
+    if (Pro) products.push({ id: Pro.PRODUCT_ID, type: ProductType.NON_CONSUMABLE, platform });
+    store.register(products);
+    const refresh = () => { iap.prices = this._readPrices(); if (Pro) Pro._onProductUpdated(iap); };
     store.when()
-      .productUpdated(() => { iap.prices = this._readPrices(); })
-      .approved(tx => { this._onApproved(tx); });
-    if (typeof store.error === 'function') store.error(err => { this._settlePurchase(null, err); });
+      .productUpdated(refresh)
+      .approved(tx => { if (Pro && Pro.ownsTransaction(tx)) Pro._onApproved(tx); else this._onApproved(tx); });
+    if (typeof store.error === 'function') store.error(err => { this._settlePurchase(null, err); if (Pro) Pro._settle(null, err); });
     iap.ready = Promise.resolve(store.initialize([platform]))
-      .then(() => { iap.prices = this._readPrices(); return iap; })
-      .catch(() => { iap.prices = this._readPrices(); return iap; });
+      .then(() => { refresh(); return iap; })
+      .catch(() => { refresh(); return iap; });
     return iap.ready;
   },
 

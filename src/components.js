@@ -4383,6 +4383,43 @@ Object.assign(window.Components, {
     }
   },
 
+  // v1.13 Stack'd Pro (docs/pro-unlock.md): the gate hit from INSIDE another
+  // flow (the transaction form's "New category", the account form's Save).
+  // Explains the free-plan limit and hands off to the purchases screen; the
+  // gated "new" screens themselves render Views._proLockedPage instead.
+  ProLockModal: {
+    show(options) {
+      const opts = options || {};
+      const t = (k, p) => window.I18n.t(k, p);
+      const Pro = window.Pro;
+      const isAcc = opts.feature === 'accounts';
+      // Replace whatever sheet is open (the category picker) — exactly what
+      // the ungated path does when Components.Modal.show swaps it for the
+      // new-category form. Left underneath, the picker keeps intercepting
+      // taps meant for this sheet.
+      const mc = document.getElementById('modal-container');
+      if (mc) mc.innerHTML = '';
+      const backdrop = window.Components._bankSheet('pro-lock', `
+        <div class="list-item-icon" style="margin: 0 auto var(--space-4); width: 56px; height: 56px;" aria-hidden="true"><i data-lucide="lock" style="width: 26px; height: 26px;"></i></div>
+        <h2 id="pro-lock-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem; text-align: center;">${isAcc ? t('pro.lockedAccountsTitle') : t('pro.lockedCategoriesTitle')}</h2>
+        <p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; text-align: center; margin: 0 0 var(--space-5);">${isAcc ? t('pro.lockedAccountsBody', { count: Pro.FREE_ACCOUNT_LIMIT }) : t('pro.lockedCategoriesBody')}</p>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="pro-lock-cta">${t('pro.seePro')}</button>
+          <button type="button" class="btn btn-secondary" id="pro-lock-close">${t('common.close')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const close = backdrop._close;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('#pro-lock-close').addEventListener('click', close);
+      backdrop.querySelector('#pro-lock-cta').addEventListener('click', () => {
+        // The router never clears #modal-container, so drop this sheet
+        // outright (no fade) before leaving.
+        backdrop.remove();
+        window.Router.navigate('#purchases');
+      });
+    }
+  },
+
   // v1.06 U2 (docs/import-ux-plan.md §3): the import's ending. Shown over
   // Settings right after Confirm; counts as rows, the reconciliation verdict
   // as a visual state, and the "View transactions" deep link (the wallet

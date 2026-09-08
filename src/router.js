@@ -21,7 +21,8 @@ window.Router = {
     '#import-preview': 'import-preview', // v0.99: bank-statement review & confirm
     '#bank-connect': 'bank-connect', // v1.05: online banking hub
     '#bank-connect-add': 'bank-connect-add', // v1.05: bank picker
-    '#bank-connect-map': 'bank-connect-map' // v1.07: account mapping after the bank confirms
+    '#bank-connect-map': 'bank-connect-map', // v1.07: account mapping after the bank confirms
+    '#purchases': 'purchases' // v1.13: in-app purchases (Stack'd Pro + Bank Connect)
   },
 
   // Returns query params parsed from the current hash, e.g. { account: 'abc123' }
