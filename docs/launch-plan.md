@@ -1,4 +1,4 @@
-# Launch plan — Google Play and the App Store (v1.14, 2026-09-09)
+# Launch plan — Google Play and the App Store (app v1.17, 2026-09-09)
 
 The plan for the FIRST public release of Stack'd on both stores. Written from
 a nine-area audit of the app, the broker, both repos and the current store
@@ -10,15 +10,23 @@ same for every release. This file is the one-off: accounts, agreements,
 declarations, products, and the code work that still stands between today and
 a submittable build.
 
-**Status in one line:** the product is built and the legal texts now match it,
-but no store account, no store product and no production backend exists yet,
-and the Android wrapper cannot be uploaded to Play until it targets API 36.
+**Status.** ~~Struck-through items are done.~~ The code side is finished:
+**13 of 15 assistant tasks are complete** and the remaining two (A-07, A-08)
+are waiting on an Apple app id that only exists once you create the App Store
+Connect record. The app targets API 36, builds, installs and runs; the legal
+texts match the product in five languages; store screenshots and listing copy
+are generated; the broker has a deploy preflight, alerting and an incident
+runbook.
+
+**Nothing now blocks a first build except you.** Every open item below is an
+owner task: the two store accounts, the identity that becomes public, twelve
+testers, a Mac, and a lawyer's read-through.
 
 ---
 
-## 1. The three things that set the date
+## 1. What sets the date
 
-Everything else fits around these.
+One of the original three is done; the other two are yours.
 
 | Blocker | Why | Who | Lead time |
 |---|---|---|---|
@@ -41,14 +49,17 @@ Take these before the work below hits them. My recommendation is in each row.
 | D1 | ~~Ship with Bank Connect hidden, or wait for Enable Banking production access?~~ | **DECIDED 2026-09-09: ship without it.** Implemented in v1.15 (A-04). The first release is the local app plus Stack'd Pro; Online banking is off at build time and turns on in a later update once the Enable Banking contract is signed. |
 | D2 | **Sole trader or company?** This decides the Play account type, whether you need a D-U-N-S number, and which address is published. | **Sole trader** unless a company already exists. A company means a D-U-N-S (up to 30 days) and, on Play, the full legal address published. Note Play requires an Organization account for "financial services" apps — another reason D1 matters. |
 | D3 | **Which address and phone go public?** Both stores publish trader contact details in the EU. Apple accepts a P.O. Box for individuals (with proof); Play publishes your country for personal accounts and the full address once you monetise. | Get a **P.O. Box or a business address** and a **second phone number** before enrolling. Do not use your home address, and do not commit either to these repos — they are public. |
-| D4 | **iPhone-only or universal?** I have set the project to iPhone-only. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
+| ~~D4~~ | ~~**iPhone-only or universal?**~~ **IMPLEMENTED** — the project is set to iPhone-only, so this needs no action unless you disagree. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
 | D5 | **App name.** "Stack'd" is crowded on both stores, including *Stack'd Money*, a finance app on the App Store. Apple requires unique names and may refuse the bare one. | Try **"Stack'd"**, with **"Stack'd — Money Tracker"** ready as the fallback (30-char limit). Reserve it in App Store Connect the day enrolment lands. Run an EUIPO search before printing anything. |
 | D6 | **Bank Connect price.** Still unset because it depends on the Enable Banking minimum. | Deferred by D1. Set it when you have the quote; the reference point is €2.99/month or €4.99/month. |
 | D7 | **Launch countries.** | **EEA + UK only** at first: it matches Bank Connect's coverage, keeps you inside one legal regime, and you can widen any time. |
 
-## 3. What I changed today (v1.14)
+## 3. Already shipped (v1.14 → v1.17)
 
-All of this is in the working tree, tested, not committed.
+~~All of this is done, tested and pushed.~~ Kept as a record of what changed
+and why; the per-task detail is in §4. Later versions added to it: v1.15 hid
+Bank Connect (A-04), v1.16 the broker work and the translated legal pages,
+v1.17 the purchase-replay fix.
 
 **Legal alignment — the app and the website now describe the same product.**
 - New Terms clause 7, *Stack'd Pro (one-time purchase)*, in all five languages
@@ -133,13 +144,14 @@ All of this is in the working tree, tested, not committed.
   Stack'd Pro product row, the free/paid listing paragraph, and the IP
   disclosure note in the privacy labels.
 
-## 4. My side — what remains
+## 4. My side — ~~what remains~~ done, except two blocked items
 
-Ordered. IDs are stable so we can refer to them.
+Ordered, IDs stable. **13 of 15 complete**; A-07 and A-08 need an Apple app
+id that does not exist until you create the App Store Connect record.
 
-### Before the first store build
+### ~~Before the first store build~~ — all done
 
-- **A-01 · Capacitor 6 → 7 → 8 migration — DONE 2026-09-09.** The app targets
+- ~~**A-01 · Capacitor 6 → 7 → 8 migration**~~ · **DONE 2026-09-09.** The app targets
   API 36, minSdk 24, AGP 8.13.0, Gradle 8.14.3, iOS deployment target 15.
   A debug APK builds and reports `targetSdkVersion:'36'` with the billing
   permission present. Safe areas now prefer the `--safe-area-inset-*`
@@ -169,14 +181,14 @@ Ordered. IDs are stable so we can refer to them.
   status bar, and the wedged System UI blocked a device screenshot), and
   behaviour on a WebView newer than 140. The emulator ships WebView 134, which
   is exactly the old-WebView case the injected variables exist for.
-- **A-02 · Verify the purchase plugin actually lands — DONE 2026-09-09.**
+- ~~**A-02 · Verify the purchase plugin actually lands**~~ · **DONE 2026-09-09.**
   `npx cap sync android` pulls all five Capacitor plugins plus
   cordova-plugin-purchase, the built APK carries the `BILLING` permission,
   and on the emulator `window.CdvPurchase` is a live object with
   `BankConnect.storeAvailable()` true. What remains is a purchase against a
   REAL store, which needs the products to exist and license testers — it
   happens during the closed test (O-12, O-13).
-- **A-03 · Unfinished-transaction safety — DONE 2026-09-09 (v1.17).** Two
+- ~~**A-03 · Unfinished-transaction safety**~~ · **DONE 2026-09-09 (v1.17).** Two
   fixes, and the first matters for the release you are actually shipping.
 
   **Boot opens the store session on native.** Both stores re-deliver a
@@ -199,7 +211,7 @@ Ordered. IDs are stable so we can refer to them.
   for a bad receipt it is also what makes the store refund it.
 
   5 new tests (735 unit, 50 e2e).
-- **A-04 · Hide Bank Connect for the first release — DONE 2026-09-09 (v1.15).**
+- ~~**A-04 · Hide Bank Connect for the first release**~~ · **DONE 2026-09-09 (v1.15).**
   `BankConnect.FEATURE_ENABLED = false` removes every trace: the Settings row,
   the three routes (a stale deep link bounces to Settings), the bank return
   leg, the subscription products in the store session, the subscriptions tab
@@ -226,7 +238,7 @@ Ordered. IDs are stable so we can refer to them.
   Turning it on later: flip the constant, bump the version, restore the
   listing paragraphs (`docs/store-listing.md` §5), switch the privacy answers
   from §2a/§3a to §2/§3, and ship.
-- **A-05 · Store screenshots — DONE 2026-09-09.** `node tools/store/screens.cjs`
+- ~~**A-05 · Store screenshots**~~ · **DONE 2026-09-09.** `node tools/store/screens.cjs`
   emits 50 images: 5 screens (home, history, goals, analytics, debt) × 5
   languages × 2 sizes, 1290×2796 for the App Store and 1080×1920 for Play,
   alpha stripped because both stores refuse it. Details and the reasoning in
@@ -237,7 +249,7 @@ Ordered. IDs are stable so we can refer to them.
   shared seed wrote budget start dates as `YYYY-MM-DD` when the app's own month
   picker writes `YYYY-MM`, which made every seeded budget invisible in its own
   start month and rendered the Goals screen empty.
-- **A-06 · Localised listing copy — DONE 2026-09-09.**
+- ~~**A-06 · Localised listing copy**~~ · **DONE 2026-09-09.**
   `docs/store-listing.md` §1b has, in all five languages, the App Store
   subtitle, keywords and promotional text plus the Play short and full
   descriptions, ready to paste. Every string was checked against the store
@@ -245,12 +257,12 @@ Ordered. IDs are stable so we can refer to them.
   mentions Online banking; when Bank Connect ships, the §1 paragraph needs
   translating and adding to each language.
 
-### After you have the store records
+### After you have the store records — the only code left
 
 - **A-07 · Apple app id.** One constant (`Views.APPLE_APP_ID`) turns the Rate
   row on for iOS and gives the website its App Store link.
 - **A-08 · App Store badge and link on the website**, once the id exists.
-- **A-09 · Broker production deploy preflight — DONE 2026-09-09.**
+- ~~**A-09 · Broker production deploy preflight**~~ · **DONE 2026-09-09.**
   `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
   `npm run deploy:production` cannot reach api.stackdplatform.com while the
   config is incomplete (verified: it blocks today, on the five empty vars).
@@ -269,9 +281,9 @@ Ordered. IDs are stable so we can refer to them.
   Note this is preparation, not a launch blocker: with D1 decided, the
   production broker is not deployed for the first release at all.
 
-### Worth doing, not blocking
+### ~~Worth doing, not blocking~~ — all done
 
-- **A-10 · Restore on a second device — DONE 2026-09-09 (v1.16).** A store
+- ~~**A-10 · Restore on a second device**~~ · **DONE 2026-09-09 (v1.16).** A store
   receipt is now bound to ONE broker owner: the first device to present it
   claims it, a later device is adopted into that owner and gets a token for
   it, and the owner it leaves behind is de-entitled. So one subscription is
@@ -279,7 +291,7 @@ Ordered. IDs are stable so we can refer to them.
   and a restored phone sees its banks instead of an empty hub. It refuses to
   adopt when that would strand a device's own existing connections. Details
   in `docs/bank-connect-ux-plan.md` §15b; 4 broker tests and 2 app tests.
-- **A-11 · Broker monitoring — DONE 2026-09-09 (v1.16).** A 15-minute cron
+- ~~**A-11 · Broker monitoring**~~ · **DONE 2026-09-09 (v1.16).** A 15-minute cron
   counts the faults an operator can act on (aggregator key broken, store auth
   failing, breaker open, capacity above 90%, unhandled 5xx) and posts to an
   `ALERT_WEBHOOK_URL` secret — once per condition per 6 hours, so a
@@ -291,7 +303,7 @@ Ordered. IDs are stable so we can refer to them.
 
   **It is not an uptime check** — if the Worker is down, so is its cron. That
   is O-30 below, and needs no code.
-- **A-12 · Incident runbook — DONE 2026-09-09 (v1.16).**
+- ~~**A-12 · Incident runbook**~~ · **DONE 2026-09-09 (v1.16).**
   `docs/broker-runbook.md`: detect, contain, revoke and rotate each key
   separately, assess whether it is a personal-data breach, notify the
   authority inside 72 hours, tell users. It opens with what the broker
@@ -309,7 +321,7 @@ Ordered. IDs are stable so we can refer to them.
   accounts and therefore no push channel — it is the only way to tell users
   anything. Blanks the owner must fill (supervisory authority and its portal)
   are marked in the runbook rather than guessed.
-- **A-13 · Localised legal pages — DONE 2026-09-09 (v1.16).**
+- ~~**A-13 · Localised legal pages**~~ · **DONE 2026-09-09 (v1.16).**
   `node tools/site/legal.cjs` generates `/<lang>/privacy` and `/<lang>/terms`
   for fr, it, es and pt. The clause TEXT comes from the app's own
   dictionaries and the clause ORDER from `Components.TERMS_IDS` /
@@ -329,7 +341,7 @@ Ordered. IDs are stable so we can refer to them.
   plain text, and without that Cloudflare's obfuscation plus the site's own
   CSP would have rendered `[email protected]` on eight new pages, which is
   the exact bug that was live on the English page.
-- **A-14 · Repo tidy — DONE 2026-09-09 (v1.16).** The repository is public and
+- ~~**A-14 · Repo tidy**~~ · **DONE 2026-09-09 (v1.16).** The repository is public and
   had no README; the root also carried a finished v0.60 task list, a one-off
   patch script pointing at a OneDrive path that no longer exists, an empty
   file, two Vite temp files and an AI tool's scratch directory. All gone. IDE
@@ -350,7 +362,7 @@ Ordered. IDs are stable so we can refer to them.
   not open source. **Owner: decide whether you want an explicit LICENSE
   file** — with none, the default is all rights reserved, which is what the
   README now says.
-- **A-15 · Lint is a zero-warning gate — DONE 2026-09-09 (v1.16.1).** The 13
+- ~~**A-15 · Lint is a zero-warning gate**~~ · **DONE 2026-09-09 (v1.16.1).** The 13
   warnings are gone and `npm run lint` now runs with `--max-warnings 0`, so
   the next one fails the build instead of joining a backlog.
 
@@ -363,7 +375,7 @@ Ordered. IDs are stable so we can refer to them.
   Those cases are now braced. Removing one unused variable orphaned its only
   input, which the gate then caught.
 
-## 5. Your side — what remains
+## 5. Your side — what remains (this is now the whole critical path)
 
 ### Now, nothing blocks these
 
@@ -481,20 +493,24 @@ Ordered. IDs are stable so we can refer to them.
 
 ## 6. Most likely rejections, and the answer
 
-- **Play, target API level** — cannot be uploaded at all until A-01 lands.
-- **Apple 2.1 / incomplete build** — the placeholder alerts are gone as of
-  today; make sure the reviewer can reach and complete a purchase (App access
-  notes, sandbox testers, the Paid Apps agreement active).
+- ~~**Play, target API level**~~ — handled: the app targets API 36 (A-01).
+- **Apple 2.1 / incomplete build** — the placeholder alerts are gone, but the
+  remaining half is yours: the reviewer must be able to reach AND complete a
+  purchase (App access notes, sandbox testers, and the Paid Apps agreement
+  actually active — in-app purchases do not work in sandbox without it).
 - **Apple 3.2.1(viii), "money management apps should be submitted by the
   financial institution"** — the answer, in the review notes, is that Stack'd
   holds no funds, moves no money and gives no advice; the licensed activity is
   performed by Enable Banking Oy, a FIN-FSA-registered AISP. Shipping with
   Bank Connect dark (D1) avoids the question entirely for v1.
-- **Apple 3.1.2, subscription disclosure** — fixed today; verify on the device
-  that price, period, restore and both legal links are all visible on the
-  sheet.
-- **Metadata mismatch** — the website and the listing must not promise more
-  than the free plan gives. Fixed today; keep it that way when editing copy.
+- ~~**Apple 3.1.2, subscription disclosure**~~ — handled: price with its
+  period, restore, and Terms and Privacy as separately named links. Moot for
+  v1 anyway, since no subscription ships (D1). Re-verify on a device when
+  Bank Connect goes live.
+- ~~**Metadata mismatch**~~ — handled: the website, the in-app legal texts
+  and the listing copy all describe the same free plan and the same paid
+  products. Keep it that way when editing copy; the legal-page generator
+  fails if the English pages drift from the app.
 - **Data safety / privacy label mismatch** — the answers in
   `docs/store-listing.md` are written to match the policy exactly; if you
   change one, change both.
