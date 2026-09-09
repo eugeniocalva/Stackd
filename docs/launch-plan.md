@@ -209,11 +209,24 @@ Ordered. IDs are stable so we can refer to them.
   Turning it on later: flip the constant, bump the version, restore the
   listing paragraphs (`docs/store-listing.md` §5), switch the privacy answers
   from §2a/§3a to §2/§3, and ship.
-- **A-05 · Store screenshots.** Extend the existing Playwright capture script
-  to emit the store sizes (1260×2736 for the 6.9" iPhone, 1080×1920 for Play)
-  in all five languages, from seeded data, with no real bank names or IBANs.
-- **A-06 · Localised listing copy** (fr/it/es/pt short + full descriptions)
-  drafted into `docs/store-listing.md` for you to paste.
+- **A-05 · Store screenshots — DONE 2026-09-09.** `node tools/store/screens.cjs`
+  emits 50 images: 5 screens (home, history, goals, analytics, debt) × 5
+  languages × 2 sizes, 1290×2796 for the App Store and 1080×1920 for Play,
+  alpha stripped because both stores refuse it. Details and the reasoning in
+  `docs/store-listing.md` §6. Two things it uncovered and fixed: the balance
+  chart's plot area ran flush to the canvas edge, so the line was drawn ON the
+  top and right and half its stroke was clipped — worst on 430pt phones, i.e.
+  the largest iPhones, and visible to real users, not just screenshots; and the
+  shared seed wrote budget start dates as `YYYY-MM-DD` when the app's own month
+  picker writes `YYYY-MM`, which made every seeded budget invisible in its own
+  start month and rendered the Goals screen empty.
+- **A-06 · Localised listing copy — DONE 2026-09-09.**
+  `docs/store-listing.md` §1b has, in all five languages, the App Store
+  subtitle, keywords and promotional text plus the Play short and full
+  descriptions, ready to paste. Every string was checked against the store
+  limits programmatically, not by eye. Written for THIS release, so nothing
+  mentions Online banking; when Bank Connect ships, the §1 paragraph needs
+  translating and adding to each language.
 
 ### After you have the store records
 

@@ -63,6 +63,208 @@ Phrasing rule: "local by default" / "stays on your phone", never "100%
 local" or "nothing ever leaves your device" without the Bank Connect
 qualifier (the marketing site's hero was changed the same way).
 
+## 1b. Localized listing copy (v1.15 — the Bank-Connect-off release)
+
+Ready to paste. Written for the FIRST release, so nothing here mentions
+Online banking; when that feature ships, the paragraph in §1 needs
+translating and adding to each language. Every string below was checked
+against the store limits (App Store subtitle 30, keywords 100,
+promotional text 170; Play short description 80, full description 4000).
+
+The app NAME is the same in every language: **Stack'd**, with
+**Stack'd — Money Tracker** as the fallback if the bare name is refused
+(decision D5).
+
+### English (en-US / en-GB) — default listing
+
+| Field | Value |
+|---|---|
+| Subtitle (App Store, ≤30) | Local-first money tracker |
+| Short description (Play, ≤80) | Private money tracking. Every wallet, budget and log stays on your phone. |
+| Keywords (App Store, ≤100) | `budget,expense,tracker,finance,money,spending,savings,offline,privacy,loan,csv,wallet` |
+| Promotional text (App Store, ≤170) | No account, no cloud, no ads. Stack'd keeps your wallets, budgets and loans on your phone, and exports everything as CSV whenever you want. |
+
+**Full description (both stores):**
+
+```text
+Stack'd is a personal finance tracker that keeps your money on your phone. Wallets, transactions, budgets, loans and tags live in the app's own storage: no account to create, no cloud, no tracking, no ads.
+
+WHAT IT DOES
+
+- Wallets for the accounts you actually keep: bank, card, cash, savings, credit card, each in its own currency.
+- Log an expense, an income or a transfer in a few taps, with a note and tags.
+- Repeating logs: set rent or a salary once and the whole series is written out ahead of time. Edit one occurrence, this and the following ones, or the entire series.
+- Goals: a monthly budget per category, showing what is spent, what is still committed by repeating logs, and how the month will actually end.
+- Debt simulator: enter an amount, a rate and a duration and read the full schedule, instalment by instalment. Track a real loan and progress follows your payments.
+- Import a bank statement as CSV, camt.053 or MT940. Stack'd maps the columns, skips what you already logged, pairs transfers between your own wallets, and shows a review before anything is saved. The file itself is never kept.
+- A home screen you compose yourself from eight widget types, plus Smart Insights that point out what changed this month.
+- Light and dark, in English, French, Italian, Spanish and Portuguese.
+
+HONEST NUMBERS
+
+A balance is never a number someone typed in. It is the sum of the logs behind it, recomputed every time, so what you see always matches what you recorded. Loan maths runs in whole cents, so a schedule adds up to the cent.
+
+YOUR DATA STAYS YOURS
+
+No user accounts. No cloud sync. No analytics, no advertising identifiers, nothing sold or shared. Export everything as CSV any time, and import it back: a backup is a full restore.
+
+WHAT IT COSTS
+
+Free with up to two wallets and the categories the app ships with. Stack'd Pro is a one-time purchase that lifts both limits for good, with no subscription. Anything you have already recorded always stays visible and editable.
+```
+
+### French (fr-FR)
+
+| Field | Value |
+|---|---|
+| Subtitle (App Store, ≤30) | Finances privées, hors ligne |
+| Short description (Play, ≤80) | Suivi d'argent privé. Vos portefeuilles et budgets restent sur votre téléphone. |
+| Keywords (App Store, ≤100) | `budget,dépenses,finances,argent,épargne,suivi,prêt,csv,portefeuille,privé,hors ligne` |
+| Promotional text (App Store, ≤170) | Sans compte, sans cloud, sans publicité. Stack'd garde vos portefeuilles, budgets et prêts sur votre téléphone et exporte tout en CSV quand vous voulez. |
+
+**Full description (both stores):**
+
+```text
+Stack'd est un gestionnaire de finances personnelles qui garde votre argent sur votre téléphone. Portefeuilles, transactions, budgets, prêts et tags vivent dans le stockage de l'application : aucun compte à créer, pas de cloud, pas de suivi, pas de publicité.
+
+CE QU'IL FAIT
+
+- Des portefeuilles pour les comptes que vous tenez vraiment : banque, carte, espèces, épargne, carte de crédit, chacun dans sa devise.
+- Enregistrez une dépense, un revenu ou un virement en quelques touches, avec une note et des tags.
+- Écritures récurrentes : réglez un loyer ou un salaire une fois et toute la série est écrite à l'avance. Modifiez une occurrence, celle-ci et les suivantes, ou la série entière.
+- Objectifs : un budget mensuel par catégorie, qui montre ce qui est dépensé, ce qui est déjà engagé par les écritures récurrentes, et comment le mois va réellement se terminer.
+- Simulateur de prêt : saisissez un montant, un taux et une durée, et lisez tout l'échéancier, mensualité par mensualité. Suivez un prêt réel et la progression suit vos paiements.
+- Importez un relevé bancaire en CSV, camt.053 ou MT940. Stack'd associe les colonnes, ignore ce que vous avez déjà saisi, apparie les virements entre vos propres portefeuilles et affiche une revue avant tout enregistrement. Le fichier lui-même n'est jamais conservé.
+- Un écran d'accueil que vous composez vous-même à partir de huit types de widgets, avec des analyses qui pointent ce qui a changé ce mois-ci.
+- Thème clair et sombre, en anglais, français, italien, espagnol et portugais.
+
+DES CHIFFRES HONNÊTES
+
+Un solde n'est jamais un nombre saisi à la main. C'est la somme des écritures qui le composent, recalculée à chaque fois : ce que vous voyez correspond toujours à ce que vous avez enregistré. Les calculs de prêt se font en centimes entiers, donc un échéancier tombe juste au centime près.
+
+VOS DONNÉES RESTENT LES VÔTRES
+
+Aucun compte utilisateur. Aucune synchronisation cloud. Aucune analyse d'usage, aucun identifiant publicitaire, rien de vendu ni de partagé. Exportez tout en CSV quand vous voulez, et réimportez-le : une sauvegarde est une restauration complète.
+
+CE QUE ÇA COÛTE
+
+Gratuit avec jusqu'à deux portefeuilles et les catégories fournies avec l'application. Stack'd Pro est un achat unique qui lève définitivement ces deux limites, sans abonnement. Ce que vous avez déjà enregistré reste toujours visible et modifiable.
+```
+
+### Italian (it-IT)
+
+| Field | Value |
+|---|---|
+| Subtitle (App Store, ≤30) | Finanze private, offline |
+| Short description (Play, ≤80) | Traccia i soldi in privato. Portafogli, budget e note restano sul telefono. |
+| Keywords (App Store, ≤100) | `budget,spese,finanze,soldi,risparmi,traccia,prestito,csv,portafoglio,privato,offline` |
+| Promotional text (App Store, ≤170) | Senza account, senza cloud, senza pubblicità. Stack'd tiene portafogli, budget e prestiti sul telefono ed esporta tutto in CSV quando vuoi. |
+
+**Full description (both stores):**
+
+```text
+Stack'd è un gestore di finanze personali che tiene i tuoi soldi sul telefono. Portafogli, transazioni, budget, prestiti e tag vivono nella memoria dell'app: nessun account da creare, niente cloud, nessun tracciamento, nessuna pubblicità.
+
+COSA FA
+
+- Portafogli per i conti che tieni davvero: banca, carta, contanti, risparmi, carta di credito, ciascuno nella sua valuta.
+- Registra una spesa, un'entrata o un trasferimento in pochi tocchi, con una nota e dei tag.
+- Voci ricorrenti: imposta l'affitto o lo stipendio una volta e l'intera serie viene scritta in anticipo. Modifica una singola occorrenza, questa e le successive, o tutta la serie.
+- Obiettivi: un budget mensile per categoria, che mostra quanto è già speso, quanto è impegnato dalle voci ricorrenti e come finirà davvero il mese.
+- Simulatore di prestito: inserisci importo, tasso e durata e leggi tutto il piano di ammortamento, rata per rata. Segui un prestito reale e l'avanzamento segue i tuoi pagamenti.
+- Importa un estratto conto in CSV, camt.053 o MT940. Stack'd associa le colonne, salta ciò che hai già registrato, abbina i trasferimenti tra i tuoi portafogli e mostra una revisione prima di salvare. Il file non viene mai conservato.
+- Una schermata iniziale che componi tu, con otto tipi di widget, più gli spunti che segnalano cosa è cambiato questo mese.
+- Tema chiaro e scuro, in inglese, francese, italiano, spagnolo e portoghese.
+
+NUMERI ONESTI
+
+Un saldo non è mai un numero digitato a mano. È la somma delle voci che lo compongono, ricalcolata ogni volta: quello che vedi corrisponde sempre a quello che hai registrato. I calcoli dei prestiti girano in centesimi interi, così un piano torna al centesimo.
+
+I TUOI DATI RESTANO TUOI
+
+Nessun account utente. Nessuna sincronizzazione cloud. Nessuna analisi d'uso, nessun identificativo pubblicitario, niente venduto o condiviso. Esporta tutto in CSV quando vuoi e reimportalo: un backup è un ripristino completo.
+
+QUANTO COSTA
+
+Gratis con un massimo di due portafogli e le categorie predefinite dell'app. Stack'd Pro è un acquisto una tantum che rimuove per sempre entrambi i limiti, senza abbonamento. Quello che hai già registrato resta sempre visibile e modificabile.
+```
+
+### Spanish (es-ES)
+
+| Field | Value |
+|---|---|
+| Subtitle (App Store, ≤30) | Finanzas privadas, sin nube |
+| Short description (Play, ≤80) | Controla tu dinero en privado. Carteras, presupuestos y notas en tu teléfono. |
+| Keywords (App Store, ≤100) | `presupuesto,gastos,finanzas,dinero,ahorro,control,préstamo,csv,cartera,privado,offline` |
+| Promotional text (App Store, ≤170) | Sin cuenta, sin nube y sin anuncios. Stack'd guarda tus carteras, presupuestos y préstamos en tu teléfono y lo exporta todo en CSV cuando quieras. |
+
+**Full description (both stores):**
+
+```text
+Stack'd es un gestor de finanzas personales que guarda tu dinero en tu teléfono. Carteras, transacciones, presupuestos, préstamos y etiquetas viven en el almacenamiento de la app: sin cuenta que crear, sin nube, sin rastreo y sin anuncios.
+
+QUÉ HACE
+
+- Carteras para las cuentas que de verdad tienes: banco, tarjeta, efectivo, ahorro, tarjeta de crédito, cada una en su moneda.
+- Registra un gasto, un ingreso o una transferencia en unos toques, con una nota y etiquetas.
+- Registros periódicos: configura el alquiler o la nómina una vez y toda la serie queda escrita por adelantado. Edita una sola vez, esta y las siguientes, o toda la serie.
+- Objetivos: un presupuesto mensual por categoría que muestra lo ya gastado, lo que comprometen los registros periódicos y cómo va a terminar el mes de verdad.
+- Simulador de préstamos: introduce importe, tipo y plazo y lee el cuadro de amortización completo, cuota a cuota. Sigue un préstamo real y el avance acompaña a tus pagos.
+- Importa un extracto bancario en CSV, camt.053 o MT940. Stack'd asigna las columnas, omite lo que ya registraste, empareja las transferencias entre tus carteras y muestra una revisión antes de guardar nada. El archivo nunca se conserva.
+- Una pantalla de inicio que compones tú con ocho tipos de widgets, más ideas que señalan qué ha cambiado este mes.
+- Tema claro y oscuro, en inglés, francés, italiano, español y portugués.
+
+NÚMEROS HONESTOS
+
+Un saldo nunca es un número escrito a mano. Es la suma de los registros que hay detrás, recalculada cada vez: lo que ves siempre coincide con lo que anotaste. Las cuentas de los préstamos van en céntimos enteros, así que un cuadro cuadra al céntimo.
+
+TUS DATOS SIGUEN SIENDO TUYOS
+
+Sin cuentas de usuario. Sin sincronización en la nube. Sin analíticas, sin identificadores publicitarios, nada vendido ni cedido. Exporta todo en CSV cuando quieras y vuelve a importarlo: una copia de seguridad es una restauración completa.
+
+CUÁNTO CUESTA
+
+Gratis con hasta dos carteras y las categorías que trae la app. Stack'd Pro es una compra única que elimina para siempre ambos límites, sin suscripción. Lo que ya has registrado sigue siempre visible y editable.
+```
+
+### Portuguese (pt-PT)
+
+| Field | Value |
+|---|---|
+| Subtitle (App Store, ≤30) | Finanças privadas, offline |
+| Short description (Play, ≤80) | Controle o seu dinheiro em privado. Carteiras e orçamentos ficam no telemóvel. |
+| Keywords (App Store, ≤100) | `orçamento,despesas,finanças,dinheiro,poupança,controlo,empréstimo,csv,carteira,privado` |
+| Promotional text (App Store, ≤170) | Sem conta, sem nuvem e sem anúncios. O Stack'd guarda carteiras, orçamentos e empréstimos no seu telemóvel e exporta tudo em CSV quando quiser. |
+
+**Full description (both stores):**
+
+```text
+O Stack'd é um gestor de finanças pessoais que guarda o seu dinheiro no seu telemóvel. Carteiras, transações, orçamentos, empréstimos e etiquetas vivem no armazenamento da app: sem conta para criar, sem nuvem, sem rastreio e sem anúncios.
+
+O QUE FAZ
+
+- Carteiras para as contas que tem mesmo: banco, cartão, dinheiro, poupança, cartão de crédito, cada uma na sua moeda.
+- Registe uma despesa, um rendimento ou uma transferência em poucos toques, com uma nota e etiquetas.
+- Registos recorrentes: defina a renda ou o salário uma vez e toda a série fica escrita com antecedência. Edite uma ocorrência, esta e as seguintes, ou a série inteira.
+- Objetivos: um orçamento mensal por categoria, que mostra o que já gastou, o que está comprometido pelos registos recorrentes e como o mês vai realmente acabar.
+- Simulador de empréstimos: introduza um valor, uma taxa e um prazo e leia todo o plano de pagamentos, prestação a prestação. Acompanhe um empréstimo real e o progresso segue os seus pagamentos.
+- Importe um extrato bancário em CSV, camt.053 ou MT940. O Stack'd associa as colunas, ignora o que já registou, emparelha transferências entre as suas carteiras e mostra uma revisão antes de guardar. O ficheiro nunca é conservado.
+- Um ecrã inicial que compõe a seu gosto com oito tipos de widgets, além de sugestões que apontam o que mudou este mês.
+- Tema claro e escuro, em inglês, francês, italiano, espanhol e português.
+
+NÚMEROS HONESTOS
+
+Um saldo nunca é um número escrito à mão. É a soma dos registos que estão por trás, recalculada de cada vez: o que vê corresponde sempre ao que registou. As contas dos empréstimos correm em cêntimos inteiros, por isso um plano fecha ao cêntimo.
+
+OS SEUS DADOS CONTINUAM SEUS
+
+Sem contas de utilizador. Sem sincronização na nuvem. Sem análises, sem identificadores publicitários, nada vendido nem partilhado. Exporte tudo em CSV quando quiser e volte a importar: uma cópia de segurança é um restauro completo.
+
+QUANTO CUSTA
+
+Gratuito com até duas carteiras e as categorias que a app traz. O Stack'd Pro é uma compra única que elimina para sempre os dois limites, sem subscrição. O que já registou continua sempre visível e editável.
+```
+
 ## 2a. Apple — App Privacy while Bank Connect is OFF (the first release)
 
 With the feature switched off at build time the app makes no network calls of
@@ -194,6 +396,29 @@ binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
 
 ## 6. Screenshots
 
-Keep the existing five; add one of the Online banking hub with a linked bank
-and the review sheet ("Import complete — balances match your bank") once the
-production path exists. Never show a real IBAN or bank name in captures.
+Generated, not hand-taken: `node tools/store/screens.cjs` (the dev server must
+be running on :3000) writes `tools/store/out/<platform>/<lang>/NN-name.png`,
+numbered in upload order. The folder is gitignored — regenerate rather than
+commit. `--lang fr` / `--platform apple` narrow a run.
+
+| | Size | Why |
+|---|---|---|
+| App Store | 1290×2796 | iPhone 6.9" portrait, the only REQUIRED iPhone size. Apple also accepts 1260×2736 and 1320×2868. 6.5" is deliberately not generated: Apple scales the 6.9" set when it is absent. |
+| Play | 1080×1920 | Play caps the longest side at twice the shortest, which 1290×2796 (2.17) fails — Play cannot reuse Apple's images. |
+
+Five screens per language, in all five languages: home, history, goals,
+analytics, debt. Dark theme, to match the marketing site's hero and the
+link-preview image (`STACKD_SHOT_THEME=light` switches). All alpha is
+stripped, because both stores refuse an alpha channel and a Playwright PNG
+carries one even when every pixel is opaque.
+
+The purchases screen is deliberately NOT captured: Apple 2.3.2 asks the
+DESCRIPTION to make the free/paid split clear (§1 and §1b do), and a
+screenshot with a price baked in is wrong in every other storefront.
+
+Example data comes from `tools/seed.cjs`, shared with the marketing-site
+capture script. It is entirely invented — never seed a real bank name, IBAN
+or amount, because these images are published and review looks for it.
+
+When Bank Connect ships, add the Online banking hub with a linked bank and
+the review sheet ("Import complete — balances match your bank").

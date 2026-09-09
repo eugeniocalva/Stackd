@@ -5,3 +5,6 @@ dist/
 test-results/
 playwright-report/
 blob-report/
+
+# v1.15: store screenshots are build artefacts (tools/store/screens.cjs)
+tools/store/out/

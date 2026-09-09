@@ -622,6 +622,14 @@ window.Views = {
               responsive: true,
               maintainAspectRatio: false,
               animation: { duration: 0 },
+              // v1.15: without this the plot area runs flush to the canvas on
+              // the top and right, so the balance line is drawn ON the edge
+              // and half of its stroke is clipped — it reads as a chart that
+              // runs off the screen. Chart.js only reserved room at some
+              // widths (a 390pt viewport got 10px, a 430pt one none), so the
+              // largest iPhones showed it worst. Found while capturing the
+              // store screenshots at 430pt.
+              layout: { padding: { top: 6, right: 8 } },
               interaction: { mode: 'index', intersect: false },
               plugins: {
                 legend: { display: false },
