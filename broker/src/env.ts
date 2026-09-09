@@ -28,6 +28,14 @@ export interface Env {
   APPLE_SANDBOX_API_URL?: string;
   PRODUCT_IDS?: string; // comma list of the store product ids (one product, monthly + yearly)
 
+  // v1.16 A-11 (monitoring). Both optional and both SECRETS:
+  // ALERT_WEBHOOK_URL is where a fault is posted (any JSON webhook — an
+  // email relay, Slack, ntfy); with it unset nothing is sent and the cron
+  // just keeps counters. OPS_TOKEN guards /v1/ops/status; unset means the
+  // endpoint does not exist.
+  ALERT_WEBHOOK_URL?: string;
+  OPS_TOKEN?: string;
+
   ENTITLEMENT_MODE: string; // 'open' (staging only) | 'store'
   CLIENT_ID: string;
   MAX_CONNECTIONS: string;
@@ -80,6 +88,11 @@ export interface Config {
   // expiry (or lapsed), at most once per `recheckMinIntervalMs`.
   recheckWithinMs: number;
   recheckMinIntervalMs: number;
+  // v1.16 A-11: how many of a fault in one hour is worth waking someone for,
+  // and how long the same condition stays quiet once reported.
+  alertThresholds: Record<string, number>;
+  alertRepeatMs: number;
+  counterKeepMs: number;
 }
 
 const list = (s: string | undefined): string[] =>
@@ -126,7 +139,21 @@ export function parseConfig(env: Env): Config {
     appleApiUrl: (env.APPLE_API_URL || 'https://api.storekit.itunes.apple.com').replace(/\/$/, ''),
     appleSandboxApiUrl: (env.APPLE_SANDBOX_API_URL === undefined ? 'https://api.storekit-sandbox.itunes.apple.com' : env.APPLE_SANDBOX_API_URL).replace(/\/$/, ''),
     recheckWithinMs: 24 * 60 * 60 * 1000,
-    recheckMinIntervalMs: 6 * 60 * 60 * 1000
+    recheckMinIntervalMs: 6 * 60 * 60 * 1000,
+    // Deliberately low for the auth failures: a wrong or expired aggregator
+    // key breaks every bank connect, and a broken store key rejects purchases
+    // the store has already charged for. Both are total, not degraded.
+    alertThresholds: {
+      aggregator_auth_failed: 3,
+      aggregator_key_invalid: 1,
+      aggregator_not_configured: 1,
+      store_auth_failed: 3,
+      store_not_configured: 1,
+      store_key_invalid: 1,
+      internal: 10
+    },
+    alertRepeatMs: 6 * 60 * 60 * 1000,
+    counterKeepMs: 48 * 60 * 60 * 1000
   };
 }
 

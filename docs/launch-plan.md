@@ -262,8 +262,18 @@ Ordered. IDs are stable so we can refer to them.
   and a restored phone sees its banks instead of an empty hub. It refuses to
   adopt when that would strand a device's own existing connections. Details
   in `docs/bank-connect-ux-plan.md` §15b; 4 broker tests and 2 app tests.
-- **A-11 · Broker monitoring**: nothing tells you the API is down or that
-  auth failures are spiking; Workers logs are 3 days on the free plan.
+- **A-11 · Broker monitoring — DONE 2026-09-09 (v1.16).** A 15-minute cron
+  counts the faults an operator can act on (aggregator key broken, store auth
+  failing, breaker open, capacity above 90%, unhandled 5xx) and posts to an
+  `ALERT_WEBHOOK_URL` secret — once per condition per 6 hours, so a
+  persistent fault pages you once rather than 96 times a day. Per-user 4xx
+  are deliberately not counted: they are normal traffic and would bury the
+  signal. `GET /v1/ops/status` returns the same snapshot on demand, guarded
+  by an `OPS_TOKEN` secret and 404 without it. 16 tests. Details in
+  `broker/README.md`.
+
+  **It is not an uptime check** — if the Worker is down, so is its cron. That
+  is O-30 below, and needs no code.
 - **A-12 · Incident/breach runbook** (GDPR gives you 72 hours) and a status
   line on the support page.
 - **A-13 · Localised legal pages** on the website (English-only today; the app
@@ -362,6 +372,13 @@ Ordered. IDs are stable so we can refer to them.
   is live.
 
 ### Broker production (only if Bank Connect ships)
+
+- **O-30 · Point an external uptime pinger at `GET /healthz`** (public, no
+  auth). Any free service will do. This is the half of monitoring the broker
+  cannot do for itself, because a Worker that is down cannot report that it
+  is down. While you are there: set the `ALERT_WEBHOOK_URL` and `OPS_TOKEN`
+  secrets (`broker/README.md` has the commands), and decide whether Workers
+  Paid is worth $5/month for 7-day log retention instead of 3.
 
 - **O-28 · Fill every empty production value** and deploy: `EB_APP_ID` +
   `EB_PRIVATE_KEY`, `ANDROID_SHA256_FINGERPRINTS` (the **Play App Signing**

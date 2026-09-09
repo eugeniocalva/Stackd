@@ -85,6 +85,49 @@ cd C:\Users\ecalvaresi\Desktop\Projects\Stackd\broker; Get-Content "AuthKey_<KEY
 Errors: `400 receipt_required|receipt_invalid|product_unknown|platform_unknown`,
 `502 store_auth_failed|store_error_<status>`, `503 store_not_configured|store_key_invalid`.
 
+## Monitoring (v1.16, A-11)
+
+Cloudflare Workers Logs have **no alerting**, and retention is 3 days on the
+free plan and 7 on paid — so by default nothing tells you that the Enable
+Banking key expired or that purchases started failing. Both are total outages
+of a feature, not slow degradations, and both are invisible from the outside:
+the API keeps answering, it just answers with an error.
+
+**A cron (every 15 min, `[triggers]` in wrangler.toml)** reads the counters and
+posts to `ALERT_WEBHOOK_URL` when something crosses a threshold. Only faults an
+operator can act on are counted — never per-user 4xx like a bad token, which
+would turn ordinary traffic into Durable Object writes and bury the signal:
+
+| Condition | Fires at | Why it matters |
+|---|---|---|
+| `aggregator_key_invalid`, `aggregator_not_configured` | 1/hour | every bank connect is failing |
+| `aggregator_auth_failed` | 3/hour | the EB key is wrong or expired (a couple can be transient) |
+| `store_auth_failed`, `store_not_configured`, `store_key_invalid` | 1–3/hour | purchases rejected AFTER the store charged the user |
+| `internal` | 10/hour | unhandled 5xx |
+| `breaker_open` | while open | the aggregator paused every caller |
+| `capacity_high` | 90% of `MAX_CONNECTIONS` | the next connect will be refused |
+
+A condition alerts once and then stays quiet for 6 hours, so a persistent
+fault pages you once rather than 96 times a day. A webhook outage never throws
+out of the cron; the next tick retries.
+
+**`GET /v1/ops/status`** is the same snapshot on demand, so an alert and a
+manual check can never disagree. It 404s unless `OPS_TOKEN` is set, and needs
+`Authorization: Bearer <OPS_TOKEN>` — capacity and failure counts are not
+public.
+
+```powershell
+npx wrangler secret put ALERT_WEBHOOK_URL --env production   # any JSON webhook
+npx wrangler secret put OPS_TOKEN --env production
+curl -H "authorization: Bearer <OPS_TOKEN>" https://api.stackdplatform.com/v1/ops/status
+npx wrangler tail --env production --status error            # live, when you are watching
+```
+
+**This is not an uptime check.** If the Worker is down the cron is down with
+it. Uptime belongs outside the failure domain: point any external pinger at
+`GET /healthz` (public, no auth, `{ok:true}`) every few minutes. That is an
+owner task and needs no code.
+
 ## Threat model (keep current)
 
 - **Broker compromise** exposes the aggregator private key (revoke the

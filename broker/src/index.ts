@@ -661,6 +661,15 @@ async function route(request: Request, url: URL, c: Ctx): Promise<Response> {
   const method = request.method.toUpperCase();
 
   if (path === '/healthz' && method === 'GET') return json({ ok: true, mode: c.cfg.mode, service: 'stackd-broker', aggregator: 'enablebanking' });
+  // v1.16 A-11: the deep check. Guarded by a shared secret and 404 when
+  // OPS_TOKEN is unset, so it is invisible unless deliberately enabled — it
+  // reports capacity and failure counts, which is not public information.
+  if (path === '/v1/ops/status' && method === 'GET') {
+    if (!c.env.OPS_TOKEN) throw new HttpError(404, 'not_found');
+    const given = (request.headers.get('authorization') || '').replace(/^Bearer /, '');
+    if (given !== c.env.OPS_TOKEN) throw new HttpError(401, 'unauthorized');
+    return json(await opsSnapshot(c.env, c.cfg, c.now()));
+  }
   if (path === '/.well-known/assetlinks.json' && method === 'GET') return assetLinks(c.cfg);
   if (path === '/.well-known/apple-app-site-association' && method === 'GET') return appleAssociation(c.cfg);
   if (path === '/v1/connect/return' && method === 'GET') return handleConnectReturn(url, c);
@@ -724,18 +733,30 @@ export function createApp(deps: Deps = {}) {
           res = await route(request, url, c);
         }
       } catch (e) {
+        // v1.16 A-11: record the faults an operator can act on. Errors are
+        // rare, so the extra DO write costs nothing on the happy path, and a
+        // failure to count must never change the response.
+        const note = async (code: string) => {
+          const bucket = countable(code);
+          if (!bucket) return;
+          try { await new SystemClient(env).bump([bucket], now(), cfg.counterKeepMs); } catch { /* counting is best effort */ }
+        };
         if (e instanceof HttpError) {
           res = json({ error: e.code }, e.status, e.headers);
+          await note(e.code);
         } else if (e instanceof StoreError) {
           res = json({ error: e.code }, e.status);
+          await note(e.code);
         } else if (e instanceof AggregatorError) {
           // Shape-only diagnostics ride along on staging (open mode) — the
           // tail websocket is not reachable from every network.
           res = json(cfg.mode === 'open' && e.diag ? { error: e.code, diag: e.diag } : { error: e.code }, e.status);
+          await note(e.code);
         } else {
           // Message only — never a body, never a header.
           console.log(JSON.stringify({ level: 'error', p: url.pathname, err: e instanceof Error ? e.message : String(e) }));
           res = json({ error: 'internal' }, 500);
+          await note('internal');
         }
       }
       const headers = new Headers(res.headers);
@@ -744,8 +765,115 @@ export function createApp(deps: Deps = {}) {
       res = new Response(res.body, { status: res.status, headers });
       console.log(JSON.stringify({ m: request.method, p: url.pathname, s: res.status, ms: now() - started }));
       return res;
+    },
+
+    // v1.16 A-11: wired to the cron trigger in wrangler.toml.
+    async scheduled(_event: unknown, env: Env): Promise<void> {
+      await runScheduled(env, fetchImpl as typeof fetch, now());
     }
   };
+}
+
+// ── Monitoring (v1.16 A-11) ────────────────────────────────────────────────
+// Only faults an operator can ACT on are counted. Per-user 4xx (a bad token,
+// a rate limit, an unknown ref) are normal traffic: counting them would turn
+// ordinary use into Durable Object writes and bury the signal.
+const COUNTED = new Set([
+  'aggregator_auth_failed', 'aggregator_key_invalid', 'aggregator_not_configured',
+  'aggregator_paused', 'aggregator_rate_limited', 'capacity',
+  'store_auth_failed', 'store_not_configured', 'store_key_invalid',
+  'internal'
+]);
+
+const countable = (code: string): string | null => {
+  if (COUNTED.has(code)) return code;
+  // aggregator_error_502 / store_error_500 -> one bucket each, so a bad day
+  // upstream does not create a hundred distinct counters.
+  if (code.startsWith('aggregator_error_')) return 'aggregator_error';
+  if (code.startsWith('store_error_')) return 'store_error';
+  return null;
+};
+
+export interface OpsSnapshot {
+  mode: string;
+  at: string;
+  breakerPausedUntil: number;
+  connections: number;
+  maxConnections: number;
+  counters: Record<string, number>;
+  conditions: { code: string; detail: string }[];
+}
+
+// What is wrong right now, in words. Shared by the cron and /v1/ops/status so
+// an alert and a manual check can never disagree.
+export function evaluate(snapshot: Omit<OpsSnapshot, 'conditions'>, cfg: Config): { code: string; detail: string }[] {
+  const out: { code: string; detail: string }[] = [];
+  for (const [code, threshold] of Object.entries(cfg.alertThresholds)) {
+    const n = snapshot.counters[code] || 0;
+    if (n >= threshold) out.push({ code, detail: `${n} in the last hour (threshold ${threshold})` });
+  }
+  if (snapshot.breakerPausedUntil > Date.parse(snapshot.at)) {
+    out.push({ code: 'breaker_open', detail: `aggregator calls paused until ${new Date(snapshot.breakerPausedUntil).toISOString()}` });
+  }
+  if (snapshot.maxConnections > 0 && snapshot.connections >= snapshot.maxConnections * 0.9) {
+    out.push({ code: 'capacity_high', detail: `${snapshot.connections} of ${snapshot.maxConnections} connections used` });
+  }
+  return out;
+}
+
+async function opsSnapshot(env: Env, cfg: Config, now: number): Promise<OpsSnapshot> {
+  const system = new SystemClient(env);
+  const [counters, breaker, connections] = await Promise.all([
+    system.counters(3600000, now).catch(() => ({})),
+    system.getBreaker().catch(() => ({ pausedUntil: 0 })),
+    system.connections().catch(() => 0)
+  ]);
+  const base = {
+    mode: cfg.mode,
+    at: new Date(now).toISOString(),
+    breakerPausedUntil: breaker.pausedUntil || 0,
+    connections,
+    maxConnections: cfg.maxConnections,
+    counters
+  };
+  return { ...base, conditions: evaluate(base, cfg) };
+}
+
+// The cron. Cloudflare runs this outside the request path, so it still fires
+// while the API itself is failing — but NOT if the whole Worker is down,
+// which is why the README also asks for an external pinger on /healthz.
+export async function runScheduled(env: Env, fetchImpl: typeof fetch, now: number): Promise<OpsSnapshot> {
+  const cfg = parseConfig(env);
+  const snap = await opsSnapshot(env, cfg, now);
+  if (!snap.conditions.length || !env.ALERT_WEBHOOK_URL) return snap;
+
+  const system = new SystemClient(env);
+  const state = await system.alertState().catch(() => ({} as Record<string, number>));
+  const fresh = snap.conditions.filter(c => !state[c.code] || now - state[c.code] > cfg.alertRepeatMs);
+  if (!fresh.length) return snap; // already reported; stay quiet
+
+  try {
+    await fetchImpl(env.ALERT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        service: 'stackd-broker',
+        host: cfg.publicUrl,
+        mode: cfg.mode,
+        at: snap.at,
+        conditions: fresh,
+        counters: snap.counters
+      })
+    });
+    const next = { ...state };
+    for (const c of fresh) next[c.code] = now;
+    await system.setAlertState(next);
+  } catch (e) {
+    // Never throw out of a cron: a webhook outage must not look like a
+    // broker fault, and the next tick will try again.
+    console.log(JSON.stringify({ level: 'error', p: 'scheduled', err: e instanceof Error ? e.message : String(e) }));
+  }
+  return snap;
 }
 
 export default createApp();

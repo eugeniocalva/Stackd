@@ -354,6 +354,44 @@ export class SystemDO {
         await this.state.storage.delete(key);
         return json({ ok: true, ownerId: v.ownerId, expiresAt: v.expiresAt });
       }
+      // v1.16 A-11: operational counters, in hourly buckets. Only the
+      // failures an operator can ACT on are counted (a wrong aggregator key,
+      // store auth breaking, the breaker tripping) — never per-user 4xx like
+      // a bad token, which would turn ordinary traffic into DO writes and
+      // bury the signal. Buckets older than the retention window are pruned
+      // on write, so this never grows without bound.
+      case '/counters/bump': {
+        const now = Number(body.now) || Date.now();
+        const hour = new Date(now).toISOString().slice(0, 13);
+        const key = 'ctr:' + hour;
+        const bucket = (await this.state.storage.get<Record<string, number>>(key)) || {};
+        for (const code of (body.codes as string[]) || []) bucket[code] = (bucket[code] || 0) + 1;
+        await this.state.storage.put(key, bucket);
+        const cutoff = new Date(now - (Number(body.keepMs) || 48 * 3600000)).toISOString().slice(0, 13);
+        const all = await this.state.storage.list<Record<string, number>>({ prefix: 'ctr:' });
+        for (const k of all.keys()) if (k.slice(4) < cutoff) await this.state.storage.delete(k);
+        return json({ ok: true });
+      }
+      case '/counters': {
+        const now = Number(body.now) || Date.now();
+        const from = new Date(now - (Number(body.sinceMs) || 3600000)).toISOString().slice(0, 13);
+        const all = await this.state.storage.list<Record<string, number>>({ prefix: 'ctr:' });
+        const totals: Record<string, number> = {};
+        for (const [k, v] of all) {
+          if (k.slice(4) < from) continue;
+          for (const [code, n] of Object.entries(v || {})) totals[code] = (totals[code] || 0) + n;
+        }
+        return json({ totals });
+      }
+      // Alert de-duplication: the last time each condition was reported, so a
+      // persistent fault pages once rather than every cron tick.
+      case '/alerts/state': {
+        if (request.method === 'POST') {
+          await this.state.storage.put('alerts', body.state || {});
+          return json({ ok: true });
+        }
+        return json({ state: (await this.state.storage.get('alerts')) || {} });
+      }
       // v1.15 A-10: receipt -> owner index. One store subscription belongs to
       // exactly ONE owner, so a restore on a second device joins the owner
       // that already holds it (and its linked banks) instead of minting a
@@ -532,6 +570,23 @@ export class SystemClient {
 
   async connections(): Promise<number> {
     return (await call<{ count: number }>(this.stub, '/connections')).data.count;
+  }
+
+  // v1.16 A-11
+  async bump(codes: string[], now: number, keepMs?: number): Promise<void> {
+    await call(this.stub, '/counters/bump', { codes, now, keepMs });
+  }
+
+  async counters(sinceMs: number, now: number): Promise<Record<string, number>> {
+    return (await call<{ totals: Record<string, number> }>(this.stub, '/counters', { sinceMs, now })).data.totals;
+  }
+
+  async alertState(): Promise<Record<string, number>> {
+    return (await call<{ state: Record<string, number> }>(this.stub, '/alerts/state')).data.state;
+  }
+
+  async setAlertState(state: Record<string, number>): Promise<void> {
+    await call(this.stub, '/alerts/state', { state });
   }
 
   // v1.15 A-10: claim this receipt for `ownerId`, or learn who already owns

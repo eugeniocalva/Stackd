@@ -19,6 +19,13 @@ routes = [
 [observability]
 enabled = true
 
+# v1.16 A-11: the monitoring cron. Runs outside the request path, so it still
+# fires while the API itself is failing — but not if the whole Worker is down,
+# which is why README also asks for an EXTERNAL pinger on /healthz. Alerts go
+# to the ALERT_WEBHOOK_URL secret; with it unset the tick only keeps counters.
+[triggers]
+crons = ["*/15 * * * *"]
+
 # Ownership + entitlement live in Durable Objects pinned to the EU (D-C1).
 # The jurisdiction is chosen in code (`env.OWNER_DO.jurisdiction('eu')`), not here.
 [durable_objects]
@@ -78,6 +85,9 @@ bindings = [
   { name = "SYSTEM_DO", class_name = "SystemDO" },
   { name = "RATE_DO", class_name = "RateDO" }
 ]
+
+[env.production.triggers]
+crons = ["*/15 * * * *"]
 
 [env.production.vars]
 ENTITLEMENT_MODE = "store"
