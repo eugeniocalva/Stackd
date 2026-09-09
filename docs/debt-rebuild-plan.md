@@ -464,12 +464,13 @@ orphan series. Acceptable for now — revisit if it bites.
   contains the loan engine and the new views, and `index.html` is correctly
   restored to its `defer` form afterwards.
 
-**Not done, deliberately**: the `scratch/` folder still holds tracked leftovers
-from a July recovery session (`extracted_dist.js`, `restored_views.js`,
-`restored_temp.js`, `extract_debt_view.cjs`, …) that reference the deleted
-`computeLoanRemainingBalance`. They are not loaded by the app or the build, and
-they predate this work — left for the owner to decide on. `task.md` is likewise a
-v0.60-era checklist and still describes the old debt API.
+**Not done, deliberately** (at the time): a `scratch/` folder of leftovers from
+a July recovery session, and `task.md`, a v0.60-era checklist that still
+described the old debt API. Neither was loaded by the app or the build, and
+both predated this work, so they were left for the owner to decide on.
+**Resolved in v1.16 (launch-plan A-14):** both are gone — `scratch/` is no
+longer tracked and `task.md` was deleted in the repo tidy before the public
+repository gained a README.
 
 ## 9. Open decisions
 
