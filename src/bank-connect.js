@@ -1046,10 +1046,27 @@ window.BankConnect = {
     await this.ensureDevice();
     const res = await this.request('/v1/entitlement/verify', { method: 'POST', body: receipt });
     if (res) {
+      // v1.15 A-10: the broker binds one store subscription to one owner. On
+      // a restore it hands back a token for the owner that already holds this
+      // receipt, so this device joins it instead of being a second owner the
+      // same purchase entitles. Take the new identity BEFORE recording the
+      // entitlement, and forget the connection list we synced under the old
+      // one — the banks we are about to see belong to the adopted owner.
+      if (res.deviceToken) {
+        await this.tokenSet(res.deviceToken);
+        this._listSynced = false;
+        this._pending = {};
+      }
       window.Store.dispatch('SET_BANK_CONNECT_PREFS', {
         ownerId: res.ownerId || this.prefs(window.Store.getState()).ownerId,
         entitlement: { active: !!res.active, expiresAt: res.expiresAt || null, platform: res.platform || receipt.platform, productId: res.productId || receipt.productId || null }
       });
+      // Pull the adopted owner's banks in now, so the hub is populated by the
+      // time the purchase flow hands the user back to it rather than showing
+      // an empty state that a later refresh silently fixes.
+      if (res.deviceToken) {
+        try { await this.syncConnections(window.Store.getState()); } catch (e) { /* the hub retries */ }
+      }
     }
     return res;
   },

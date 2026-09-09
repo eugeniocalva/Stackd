@@ -354,6 +354,23 @@ export class SystemDO {
         await this.state.storage.delete(key);
         return json({ ok: true, ownerId: v.ownerId, expiresAt: v.expiresAt });
       }
+      // v1.15 A-10: receipt -> owner index. One store subscription belongs to
+      // exactly ONE owner, so a restore on a second device joins the owner
+      // that already holds it (and its linked banks) instead of minting a
+      // second owner that the same receipt also entitles. Claim is
+      // get-or-set in a single DO turn, so two devices restoring at the same
+      // moment cannot each win.
+      case '/receipt/claim': {
+        const key = 'receipt:' + String(body.key);
+        const existing = await this.state.storage.get<string>(key);
+        if (existing) return json({ ownerId: existing, claimed: false });
+        await this.state.storage.put(key, String(body.ownerId));
+        return json({ ownerId: String(body.ownerId), claimed: true });
+      }
+      case '/receipt/set': {
+        await this.state.storage.put('receipt:' + String(body.key), String(body.ownerId));
+        return json({ ok: true });
+      }
       // v1.09 B5: small named caches (store access tokens). null value = delete.
       case '/cache': {
         const name = String(body.name || url.searchParams.get('name') || '');
@@ -515,6 +532,16 @@ export class SystemClient {
 
   async connections(): Promise<number> {
     return (await call<{ count: number }>(this.stub, '/connections')).data.count;
+  }
+
+  // v1.15 A-10: claim this receipt for `ownerId`, or learn who already owns
+  // it. `claimed` false means the returned ownerId is someone else's.
+  async receiptClaim(key: string, ownerId: string): Promise<{ ownerId: string; claimed: boolean }> {
+    return (await call<{ ownerId: string; claimed: boolean }>(this.stub, '/receipt/claim', { key, ownerId })).data;
+  }
+
+  async receiptSet(key: string, ownerId: string): Promise<void> {
+    await call(this.stub, '/receipt/set', { key, ownerId });
   }
 
   // v1.11 B7

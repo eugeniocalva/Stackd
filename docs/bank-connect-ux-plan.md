@@ -751,6 +751,45 @@ and store-listing §5); the App Store privacy label's "linked" column at
 submission; localized versions of the marketing site pages (the site is
 English-only today).
 
+## 15b. A-10 as built — one receipt, one owner (v1.16, 2026-09-09)
+
+Restoring a subscription on a second phone used to end with **two broker
+owners entitled by the same purchase**. The app mints a device before it can
+send anything, so a restore arrives owned by a brand-new owner, and nothing
+compared the receipt against the owner that actually bought the subscription.
+Consequences: each owner carried its own `OWNER_MAX_CONNECTIONS` allowance at
+Enable Banking (billed per session), the first owner stayed active because the
+store still reports the subscription as active, and the restored device showed
+an **empty hub** because the linked banks live on the first owner.
+
+- **Broker.** `SystemDO` gains a receipt index (`/receipt/claim`, `/receipt/set`)
+  keyed `receipt:<platform>:<sha256(purchaseToken|originalTransactionId)>` —
+  hashed because the raw token is a bearer credential at the store and DO keys
+  surface in traces. Claim is get-or-set in ONE DO turn, so two devices
+  restoring simultaneously cannot both win. `adoptReceiptOwner()` runs in
+  `handleEntitlementVerify` after a successful verification, and only when the
+  receipt is `active`: the first owner to present a receipt claims it; a later
+  device is **adopted** into that owner, receiving a fresh device token for it
+  (response carries `deviceToken` + `reason: 'adopted'`, status 201). The
+  owner it leaves behind — minted seconds earlier for this very request — is
+  set inactive with `state: 'ADOPTED'` so no orphan stays entitled.
+- **Trust boundary:** the store. Only someone signed into the same store
+  account can produce a receipt Apple or Google will verify, which is exactly
+  "the same user's devices" (Apple 3.1.2(a)).
+- **Refusal to strand.** If the calling owner already holds bank connections
+  (a device that used Bank Connect under a *different* store account and is
+  now restoring this one), adoption would abandon them, so it keeps its own
+  identity and the index is left alone. Both stay entitled; the store remains
+  the judge of validity.
+- **App.** `submitReceipt` adopts a returned `deviceToken`, clears
+  `_listSynced` / `_pending`, and immediately re-runs `syncConnections` under
+  the new identity — so the hub is populated when the purchase flow hands the
+  user back, instead of showing an empty state a later refresh silently fixes.
+- **Tests.** 4 broker cases (adoption end to end incl. seeing the first
+  owner's bank through the new token, the no-op re-verify, the
+  do-not-strand case, and an inactive receipt claiming nothing) and 2 app
+  cases (adopt + re-sync, and identity untouched without a token).
+
 ## 16. B7 as built — C5 web session + pairing, v1.11, 2026-09-07
 
 Cold-start reading order for a new session: this section, then

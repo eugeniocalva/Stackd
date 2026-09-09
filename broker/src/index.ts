@@ -322,6 +322,19 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
     if (fresh || (input && shouldRecheck(record.entitlement, c))) {
       try {
         const v = await verifyReceipt(c.env, c.cfg, c.fetchImpl, input as VerifyInput, c.now());
+        // v1.15 A-10: one store subscription belongs to ONE owner. Before
+        // writing the entitlement, find out whether this receipt is already
+        // held elsewhere — a restore on a second device otherwise leaves two
+        // owners entitled by the same purchase, each with its own connection
+        // allowance, and the restored device staring at an empty hub because
+        // the banks live on the first owner.
+        const adopted = v.active ? await adoptReceiptOwner(v, ownerId, owner, record, c) : null;
+        if (adopted) {
+          ownerId = adopted.ownerId;
+          owner = adopted.owner;
+          record = adopted.record;
+          deviceToken = adopted.deviceToken;
+        }
         entitlement = await owner.setEntitlement({
           active: v.active,
           platform: v.platform,
@@ -332,7 +345,9 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
           originalTransactionId: v.originalTransactionId || null,
           state: v.state
         });
+        if (adopted) record = { ...record, entitlement };
         if (!v.active) reason = 'store_' + v.state.toLowerCase();
+        if (adopted) reason = 'adopted';
       } catch (e) {
         if (fresh) throw e; // the user is watching: surface receipt_invalid & co.
         entitlement = record.entitlement; // silent re-check failed: keep what we had
@@ -353,6 +368,73 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
   if (reason) res.reason = reason;
   if (deviceToken) res.deviceToken = deviceToken;
   return json(res, deviceToken ? 201 : 200);
+}
+
+// v1.15 A-10: bind a store receipt to a single owner.
+//
+// The restore-on-a-new-phone path used to end with TWO owners entitled by one
+// purchase: the app mints a device before it can send anything, so the receipt
+// arrives owned by a brand-new owner, and nothing ever compared it against the
+// owner that bought the subscription. Each owner then carried its own
+// OWNER_MAX_CONNECTIONS allowance at the aggregator (a real cost, billed per
+// session), the first owner stayed active because the store still reports the
+// subscription as active, and the restored device showed an empty hub because
+// the linked banks live on the FIRST owner.
+//
+// So: the first owner to present a receipt claims it. A later device
+// presenting the same receipt is ADOPTED into that owner — it gets a fresh
+// device token for it, which means the user's banks are simply there, and the
+// connection cap counts once per subscription as intended. The trust boundary
+// is the store: only someone signed into the same store account can produce a
+// receipt Apple or Google will verify, which is exactly "the same user's
+// devices".
+//
+// The caller's own owner is only abandoned when it has nothing to lose. If it
+// already holds bank connections (a device that used Bank Connect under a
+// different store account, now restoring this one) moving it would strand
+// them, so it keeps its entitlement and the index is left alone.
+async function adoptReceiptOwner(
+  v: { platform: string; purchaseToken?: string | null; originalTransactionId?: string | null },
+  ownerId: string,
+  owner: OwnerClient,
+  record: OwnerRecord,
+  c: Ctx
+): Promise<{ ownerId: string; owner: OwnerClient; record: OwnerRecord; deviceToken: string } | null> {
+  const receiptId = v.purchaseToken || v.originalTransactionId || '';
+  if (!receiptId) return null;
+  // Hashed: the raw purchase token is a bearer credential at the store, and
+  // DO keys turn up in traces and dumps.
+  const key = `${v.platform}:${await sha256Hex(receiptId)}`;
+
+  const claim = await c.system.receiptClaim(key, ownerId);
+  if (claim.claimed || claim.ownerId === ownerId) return null; // ours already
+
+  if (Object.keys(record.requisitions || {}).length > 0) {
+    // Would strand this device's own banks. Leave both entitled rather than
+    // silently disconnect someone; the store is still the judge of validity.
+    return null;
+  }
+
+  const target = new OwnerClient(c.env, claim.ownerId);
+  const secret = randomHex(32);
+  const targetRecord = await target.addDevice(await sha256Hex(secret), 'native');
+
+  // Retire the owner we are leaving: it was minted moments ago for this very
+  // request, and an orphan that stays entitled is the bug we came to fix.
+  try {
+    await owner.setEntitlement({
+      active: false,
+      platform: null,
+      productId: null,
+      expiresAt: null,
+      lastVerifiedAt: iso(c.now()),
+      purchaseToken: null,
+      originalTransactionId: null,
+      state: 'ADOPTED'
+    });
+  } catch { /* best effort: the adoption itself has already succeeded */ }
+
+  return { ownerId: claim.ownerId, owner: target, record: targetRecord, deviceToken: `${claim.ownerId}.${secret}` };
 }
 
 function receiptFromBody(body: Record<string, unknown>, stored: Entitlement): VerifyInput | null {

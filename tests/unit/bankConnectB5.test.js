@@ -169,6 +169,61 @@ describe('Bank Connect B5 (v1.09) — store entitlement client', () => {
     expect(state().bankConnect.entitlement.productId).toBe('stackd_bank_connect_monthly');
   });
 
+  // v1.15 A-10: restoring on a second phone used to leave two broker owners
+  // entitled by one purchase, and the restored device looking at an empty hub
+  // because the linked banks live on the FIRST owner. The broker now hands
+  // back a token for the owner that already holds the receipt; the app has to
+  // actually adopt it, and re-read the connection list under the new identity.
+  it('a restore that returns a deviceToken adopts the owner and re-syncs the banks', async () => {
+    const w = boot('play');
+    const BC = w.BankConnect;
+    w.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: true });
+
+    // This device already minted an owner of its own.
+    await BC.ensureDevice();
+    expect(await BC.tokenGet()).toBe('dev.token');
+    expect(state().bankConnect.ownerId).toBe('owner_x');
+
+    // The broker answers the receipt with someone else's identity.
+    const calls = [];
+    global.fetch = vi.fn(async (url, init) => {
+      const path = new URL(url).pathname;
+      calls.push({ path, auth: (init.headers || {}).Authorization || (init.headers || {}).authorization });
+      const res = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
+      if (path === '/v1/entitlement/verify') {
+        return res({ ownerId: 'owner_first', deviceToken: 'owner_first.newsecret', active: true, expiresAt: '2027-01-01T00:00:00.000Z', platform: 'play', productId: 'stackd_bank_connect_monthly', reason: 'adopted', mode: 'store' }, 201);
+      }
+      if (path === '/v1/connections') {
+        return res({ connections: [{ ref: 'owner_first_r1', status: 'LN', institutionName: 'Big Bank', accounts: [{ id: 'acc1', ibanTail: '4321', currency: 'EUR', name: 'Current' }], expiresAt: '2027-01-01T00:00:00.000Z' }] });
+      }
+      return res({ error: 'unexpected' }, 500);
+    });
+
+    const out = await BC.submitReceipt({ platform: 'play', purchaseToken: 'tok_shared', productId: 'stackd_bank_connect_monthly' });
+    expect(out.active).toBe(true);
+
+    // The device now IS the first owner...
+    expect(await BC.tokenGet()).toBe('owner_first.newsecret');
+    expect(state().bankConnect.ownerId).toBe('owner_first');
+    expect(state().bankConnect.entitlement.active).toBe(true);
+
+    // ...and it pulled that owner's banks in straight away, with the new token.
+    const sync = calls.find(c => c.path === '/v1/connections');
+    expect(sync).toBeTruthy();
+    expect(sync.auth).toBe('Bearer owner_first.newsecret');
+    expect(BC.connections(state()).map(c => c.ref)).toEqual(['owner_first_r1']);
+  });
+
+  it('a normal verify with no deviceToken leaves the identity alone', async () => {
+    const w = boot('play');
+    const BC = w.BankConnect;
+    w.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: true });
+    await BC.ensureDevice();
+    await BC.submitReceipt({ platform: 'play', purchaseToken: 'tok_1', productId: 'stackd_bank_connect_monthly' });
+    expect(await BC.tokenGet()).toBe('dev.token');
+    expect(state().bankConnect.ownerId).toBe('owner_x');
+  });
+
   it('web without the plugin or the stub: no store, prices null, purchase null', async () => {
     const w = boot('web');
     delete w.CdvPurchase;

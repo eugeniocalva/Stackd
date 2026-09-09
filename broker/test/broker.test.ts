@@ -231,6 +231,116 @@ describe('Stack\'d broker (Enable Banking)', () => {
     });
   });
 
+  // v1.15 A-10: one store subscription, one owner. Before this, restoring on
+  // a second phone left TWO owners entitled by the same purchase — each with
+  // its own connection allowance at the aggregator, which is billed per
+  // session — and the restored device saw an empty hub because the banks live
+  // on the first owner.
+  describe('receipt is bound to one owner (A-10)', () => {
+    const DAY = 86400000;
+    const activeSub = (id: string) => ({
+      subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE',
+      productId: 'stackd_bank_connect_monthly',
+      expiryTime: new Date(clock + 30 * DAY).toISOString(),
+      acknowledgementState: 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED',
+      _id: id
+    });
+    const verify = (token: string, purchaseToken: string) =>
+      req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken, productId: 'stackd_bank_connect_monthly' }, token });
+    const recordOf = async (token: string) =>
+      env.owners.instance(token.split('.')[0]).fetch(new Request('https://do/record')).then(x => x.json()) as any;
+
+    beforeEach(() => {
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' }, appleKeys);
+      stores.play.set('tok_shared', activeSub('tok_shared'));
+    });
+
+    it('the second device joins the first owner instead of becoming a second one', async () => {
+      const phoneA = await mint('203.0.113.10');
+      const a = await verify(phoneA, 'tok_shared');
+      expect(a.status).toBe(200);
+      expect(a.data.active).toBe(true);
+      expect(a.data.deviceToken).toBeUndefined(); // A keeps the identity it had
+      const ownerA = phoneA.split('.')[0];
+
+      // A links a bank, so there is something for B to inherit.
+      const started = await start(phoneA);
+      expect(started.status).toBe(201);
+      await bankReturn(started.data.ref as string);
+
+      // B is a fresh install: it mints its own owner before it can send
+      // anything, which is exactly how the second owner used to appear.
+      const phoneB = await mint('203.0.113.11');
+      const ownerBMinted = phoneB.split('.')[0];
+      expect(ownerBMinted).not.toBe(ownerA);
+
+      const b = await verify(phoneB, 'tok_shared');
+      // 201: a device credential was issued, same rule as a first mint.
+      expect(b.status).toBe(201);
+      expect(b.data.active).toBe(true);
+      expect(b.data.ownerId).toBe(ownerA);           // adopted
+      expect(b.data.reason).toBe('adopted');
+      expect(typeof b.data.deviceToken).toBe('string');
+      expect((b.data.deviceToken as string).split('.')[0]).toBe(ownerA);
+
+      // The new token really works, and B now sees A's bank.
+      const adoptedToken = b.data.deviceToken as string;
+      const conns = await req('/v1/connections', { token: adoptedToken });
+      expect(conns.status).toBe(200);
+      expect((conns.data.connections as unknown[]).length).toBe(1);
+
+      // The owner B minted for itself is left inert, not entitled.
+      const orphan = await recordOf(phoneB);
+      expect(orphan.entitlement.active).toBe(false);
+      expect(orphan.entitlement.state).toBe('ADOPTED');
+      expect(orphan.requisitions).toEqual({});
+    });
+
+    it('re-verifying on the owner that already holds the receipt changes nothing', async () => {
+      const phone = await mint('203.0.113.12');
+      await verify(phone, 'tok_shared');
+      const again = await verify(phone, 'tok_shared');
+      expect(again.data.active).toBe(true);
+      expect(again.data.ownerId).toBe(phone.split('.')[0]);
+      expect(again.data.deviceToken).toBeUndefined(); // no re-issue, no adoption
+      expect(again.data.reason).toBeUndefined();
+    });
+
+    it('does not strand a device that already has its own bank connections', async () => {
+      const phoneA = await mint('203.0.113.13');
+      await verify(phoneA, 'tok_shared');
+
+      // B was already entitled by a DIFFERENT purchase and linked a bank.
+      stores.play.set('tok_other', activeSub('tok_other'));
+      const phoneB = await mint('203.0.113.14');
+      await verify(phoneB, 'tok_other');
+      const startedB = await start(phoneB);
+      await bankReturn(startedB.data.ref as string);
+
+      // Now B presents A's receipt. Adopting would abandon B's own bank, so
+      // it keeps its identity; the store is still the judge of validity.
+      const b = await verify(phoneB, 'tok_shared');
+      expect(b.data.active).toBe(true);
+      expect(b.data.ownerId).toBe(phoneB.split('.')[0]);
+      expect(b.data.deviceToken).toBeUndefined();
+      const kept = await req('/v1/connections', { token: phoneB });
+      expect((kept.data.connections as unknown[]).length).toBe(1);
+    });
+
+    it('an inactive receipt claims nothing, so a lapsed subscription cannot capture an owner', async () => {
+      const phoneA = await mint('203.0.113.15');
+      stores.play.set('tok_lapsed', { subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED', productId: 'stackd_bank_connect_monthly', expiryTime: new Date(clock - DAY).toISOString() });
+      const a = await verify(phoneA, 'tok_lapsed');
+      expect(a.data.active).toBe(false);
+
+      // A different device presenting the same lapsed receipt is not adopted.
+      const phoneB = await mint('203.0.113.16');
+      const b = await verify(phoneB, 'tok_lapsed');
+      expect(b.data.ownerId).toBe(phoneB.split('.')[0]);
+      expect(b.data.deviceToken).toBeUndefined();
+    });
+  });
+
   // v1.09 B5 (UX plan §14): the broker verifies with the stores itself.
   describe('store entitlement (B5)', () => {
     const DAY = 86400000;

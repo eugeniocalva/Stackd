@@ -254,9 +254,14 @@ Ordered. IDs are stable so we can refer to them.
 
 ### Worth doing, not blocking
 
-- **A-10 · Restore on a second device** currently mints a second broker owner
-  that is also entitled, and the old device's bank links do not follow. Index
-  the store receipt to one owner.
+- **A-10 · Restore on a second device — DONE 2026-09-09 (v1.16).** A store
+  receipt is now bound to ONE broker owner: the first device to present it
+  claims it, a later device is adopted into that owner and gets a token for
+  it, and the owner it leaves behind is de-entitled. So one subscription is
+  one connection allowance at the aggregator (which is billed per session),
+  and a restored phone sees its banks instead of an empty hub. It refuses to
+  adopt when that would strand a device's own existing connections. Details
+  in `docs/bank-connect-ux-plan.md` §15b; 4 broker tests and 2 app tests.
 - **A-11 · Broker monitoring**: nothing tells you the API is down or that
   auth failures are spiking; Workers logs are 3 days on the free plan.
 - **A-12 · Incident/breach runbook** (GDPR gives you 72 hours) and a status
