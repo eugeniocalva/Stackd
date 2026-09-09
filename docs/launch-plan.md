@@ -176,12 +176,29 @@ Ordered. IDs are stable so we can refer to them.
   `BankConnect.storeAvailable()` true. What remains is a purchase against a
   REAL store, which needs the products to exist and license testers — it
   happens during the closed test (O-12, O-13).
-- **A-03 · Unfinished-transaction safety.** If the broker is unreachable after
-  an approved purchase, the transaction is never finished, the user is told
-  "you were not charged" — and Google auto-refunds an unacknowledged purchase
-  after 3 days. Initialise the store at boot on native so the plugin replays
-  approved transactions, and distinguish a broker outage from a declined
-  receipt in the message.
+- **A-03 · Unfinished-transaction safety — DONE 2026-09-09 (v1.17).** Two
+  fixes, and the first matters for the release you are actually shipping.
+
+  **Boot opens the store session on native.** Both stores re-deliver a
+  purchase that was never finished, but only once the store has been
+  initialized — and that used to happen ONLY when a paywall or the purchases
+  screen was mounted. So a purchase approved while the server was unreachable,
+  or while the app was killed mid-flow, sat unfinished until the user happened
+  to revisit a purchase screen; Google refunds an unacknowledged purchase
+  after three days. The usual outcome was the user paying, quietly losing it,
+  and us never hearing about it. **Not Bank-Connect-only:** with that feature
+  off (A-04) Stack'd Pro is the sole product and rides the same store session,
+  so the gap was live in the shipping build.
+
+  **A broker outage is no longer reported as "you were not charged".** That is
+  untrue after an approved transaction — the store took the money; all we
+  failed to do was confirm the receipt. `_isTransportFailure` separates a
+  missing or 5xx response (verdict unknown) from a 4xx (the receipt really is
+  bad), and only the latter keeps the old wording. The transaction is left
+  unfinished in BOTH cases: unfinished is what makes the store replay it, and
+  for a bad receipt it is also what makes the store refund it.
+
+  5 new tests (735 unit, 50 e2e).
 - **A-04 · Hide Bank Connect for the first release — DONE 2026-09-09 (v1.15).**
   `BankConnect.FEATURE_ENABLED = false` removes every trace: the Settings row,
   the three routes (a stale deep link bounces to Settings), the bank return
