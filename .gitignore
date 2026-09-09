@@ -8,3 +8,12 @@ blob-report/
 
 # v1.15: store screenshots are build artefacts (tools/store/screens.cjs)
 tools/store/out/
+
+# v1.16 A-14: machine- and tool-specific, untracked but kept on disk.
+.idea/
+.gradle/
+.gemini/
+.vscode/
+# Vite writes these beside the config while resolving it.
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

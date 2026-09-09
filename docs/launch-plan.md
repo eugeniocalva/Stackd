@@ -312,8 +312,27 @@ Ordered. IDs are stable so we can refer to them.
   plain text, and without that Cloudflare's obfuscation plus the site's own
   CSP would have rendered `[email protected]` on eight new pages, which is
   the exact bug that was live on the English page.
-- **A-14 · Repo tidy** before more eyes land on a public repo: stale scratch
-  files, no README.
+- **A-14 · Repo tidy — DONE 2026-09-09 (v1.16).** The repository is public and
+  had no README; the root also carried a finished v0.60 task list, a one-off
+  patch script pointing at a OneDrive path that no longer exists, an empty
+  file, two Vite temp files and an AI tool's scratch directory. All gone. IDE
+  and build-cache config (`.idea`, `.gradle`, `.vscode`) is untracked but
+  kept on disk, so the public repo stops shipping machine-specific settings
+  without disturbing the local setup. `generate-assets.cjs` moved to
+  `tools/assets.cjs` (and now resolves paths against the repo root rather
+  than the shell's).
+
+  `crosstab_test.cjs` was NOT simply deleted: it was the only check of
+  cross-tab sync, a documented feature with no automated coverage, and it ran
+  nowhere. It is now `tests/e2e/crosstab_sync.spec.js`, driving the real
+  dispatch path across two tabs — including that the second tab re-points
+  I18n on a language change, not just its state slice.
+
+  `README.md` explains what the app is, where things live, how to run and
+  release it, and states plainly that the repo is public for inspection but
+  not open source. **Owner: decide whether you want an explicit LICENSE
+  file** — with none, the default is all rights reserved, which is what the
+  README now says.
 - **A-15 · Clear the 13 lint warnings** so lint can run at zero.
 
 ## 5. Your side — what remains

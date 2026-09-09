@@ -1,5 +1,15 @@
+// Renders the source app-icon and splash images into assets/ (v1.16: moved
+// here from the repo root, where it looked like build output).
+//
+//   node tools/assets.cjs
+//
+// assets/*.png are the SOURCES that `npm run assets:gen` (@capacitor/assets)
+// then expands into every Android and iOS density. Re-run this only when the
+// logo itself changes.
+const path = require('path');
+const ROOT = path.resolve(__dirname, '..');
+const out = (f) => path.join(ROOT, 'assets', f);
 const { chromium } = require('playwright');
-const fs = require('fs');
 
 const svgLogo = `
 <svg viewBox="0 0 130 100" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
@@ -33,7 +43,7 @@ async function generateAssets() {
       ${svgLogo}
     </div>
   `);
-  await page.screenshot({ path: 'assets/icon.png' });
+  await page.screenshot({ path: out('icon.png') });
 
   // 1a. Generate icon-foreground.png (Transparent background)
   await page.setContent(`
@@ -45,7 +55,7 @@ async function generateAssets() {
       ${svgLogo}
     </div>
   `);
-  await page.screenshot({ path: 'assets/icon-foreground.png', omitBackground: true });
+  await page.screenshot({ path: out('icon-foreground.png'), omitBackground: true });
 
   // 1b. Generate icon-background.png (Solid white)
   await page.setContent(`
@@ -53,7 +63,7 @@ async function generateAssets() {
       body { margin: 0; padding: 0; background: #ffffff; width: 1024px; height: 1024px; }
     </style>
   `);
-  await page.screenshot({ path: 'assets/icon-background.png' });
+  await page.screenshot({ path: out('icon-background.png') });
 
   // 2. Generate splash.png (White background, logo + text, 2732x2732)
   await page.setViewportSize({ width: 2732, height: 2732 });
@@ -82,7 +92,7 @@ async function generateAssets() {
     <h1>Stack'd</h1>
   `);
   await page.waitForFunction('document.fonts.status === "loaded"');
-  await page.screenshot({ path: 'assets/splash.png' });
+  await page.screenshot({ path: out('splash.png') });
 
   await browser.close();
   console.log('Assets generated successfully.');
