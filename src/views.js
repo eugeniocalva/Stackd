@@ -358,7 +358,6 @@ window.Views = {
                 const balance = balancesById[acc.id];
                 const formattedBal = window.Store.formatCurrency(balance, acc.currency); // v1.02
                 const isDefault = acc.id === state.defaultAccountId;
-                const isHidden = this.hiddenChartAccounts.includes(acc.id);
                 const balColor = balance > 0 ? 'var(--color-income)' : (balance < 0 ? 'var(--color-expense)' : 'var(--text-primary)');
                 const balClass = balance > 0 ? 'text-income' : (balance < 0 ? 'text-expense' : '');
 
@@ -728,15 +727,10 @@ window.Views = {
 
       const filterBarHtml = window.Components.AdvancedFilterBar.render('history', filters);
 
-      const now = new Date();
-      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      
       const bounds = window.Store._getPeriodBounds(filters.period.type, filters.period.value);
       // For custom, bounds might be empty, so we use start/end from period
       const rangeStart = filters.period.type === 'custom' ? filters.period.start : bounds.start;
       const rangeEnd = filters.period.type === 'custom' ? filters.period.end : bounds.end;
-
-      const isFuture = rangeEnd > todayStr;
 
       const startBalance = state.transactions
         .filter(t => {
@@ -1311,7 +1305,6 @@ window.Views = {
             window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
           } else {
             // Close any swiped items on click if offset
-            const parentSwipe = item.closest('.swipe-container');
             const match = item.style.transform.match(/translateX\(([-?\d.]+)px\)/);
             const currentOffset = match ? parseFloat(match[1]) : 0;
             if (currentOffset !== 0) {
@@ -1707,7 +1700,6 @@ window.Views = {
       const recurrentText = document.getElementById('tx-recurrent-text');
       const intervalInput = document.getElementById('tx-recurrence-interval');
       const freqInput = document.getElementById('tx-recurrence-freq');
-      const btnBalance = document.getElementById('toggle-balance');
       
       const updateRecurrentText = () => {
         const endGroup = document.getElementById('tx-recurrence-end-group');
@@ -3692,7 +3684,6 @@ Object.assign(window.Views, {
       const currentObAmt = currentOb ? currentOb.amount : 0;
       const isNegativeOb = currentObAmt < 0;
       const currentObDate = currentOb ? currentOb.date : new Date().toISOString().split('T')[0];
-      const currentBalance = account ? window.Store.getAccountBalance(account.id) : 0;
       // v1.02: the form (and its opening-balance prefix) follows the ACCOUNT's
       // currency; new accounts default to the primary one.
       const currencyValue = (account && account.currency) || state.currency;

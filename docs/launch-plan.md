@@ -333,7 +333,18 @@ Ordered. IDs are stable so we can refer to them.
   not open source. **Owner: decide whether you want an explicit LICENSE
   file** — with none, the default is all rights reserved, which is what the
   README now says.
-- **A-15 · Clear the 13 lint warnings** so lint can run at zero.
+- **A-15 · Lint is a zero-warning gate — DONE 2026-09-09 (v1.16.1).** The 13
+  warnings are gone and `npm run lint` now runs with `--max-warnings 0`, so
+  the next one fails the build instead of joining a backlog.
+
+  Ten were dead computations, including a `getAccountBalance()` call and a
+  `getElementById` whose results nothing read. Two were vestiges of a day
+  column the period picker never grew — the code says so itself — so the
+  parse branch went with them. Three were `no-case-declarations`, which is
+  the one with teeth: a bare `const` in a `case` body is scoped to the WHOLE
+  switch, so a later case can reference it before initialisation and throw.
+  Those cases are now braced. Removing one unused variable orphaned its only
+  input, which the gate then caught.
 
 ## 5. Your side — what remains
 

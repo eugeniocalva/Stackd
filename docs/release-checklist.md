@@ -41,7 +41,7 @@ grep -n '?v=' index.html
 ## 3. Gates
 
 ```bash
-npm run lint          # 0 errors
+npm run lint          # zero-warning gate (--max-warnings 0)
 npm test              # 74 files / 716 tests, ~30s
 npm run test:e2e      # Playwright, auto-starts the dev server on :3000
 ```

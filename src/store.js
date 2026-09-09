@@ -698,7 +698,6 @@ window.Store = {
 
   _processRecurringTransactions() {
     let changed = false;
-    const today = new Date().toISOString().split('T')[0];
     
     // Safety break
     let iterations = 0;
@@ -828,13 +827,14 @@ window.Store = {
         start = new Date(d);
         end = new Date(d);
         break;
-      case 'week':
+      case 'week': {
         const day = d.getDay(); // 0 is Sunday, 1 is Monday
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         start = new Date(d.setDate(diff));
         end = new Date(start);
         end.setDate(start.getDate() + 6);
         break;
+      }
       case 'month':
         start = new Date(d.getFullYear(), d.getMonth(), 1);
         end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
@@ -875,11 +875,12 @@ window.Store = {
     const todayStr = today.toISOString().split('T')[0];
 
     switch (type) {
-      case 'today':
+      case 'today': {
         if (bounds.start === todayStr) return window.I18n.t('period.today');
         const yest = new Date(today); yest.setDate(yest.getDate() - 1);
         if (bounds.start === yest.toISOString().split('T')[0]) return window.I18n.t('period.yesterday');
         return d.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
+      }
       
       case 'week':
         if (today >= startDt && today <= endDt) return window.I18n.t('period.thisWeek');

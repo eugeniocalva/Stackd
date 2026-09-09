@@ -1226,7 +1226,6 @@ window.Components = {
       for (let i = 0; i < startIdx; i++) days.push(null);
       for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
-      const monthsStr = window.I18n.monthNames('long');
       const weekdays = window.I18n.weekdayInitials();
       
       const now = new Date();
@@ -1417,13 +1416,12 @@ window.Components = {
       const now = new Date();
       let initYear = now.getFullYear();
       let initMonth = now.getMonth();
-      let initDay = now.getDate();
       
       if (initialValue && initialValue.includes('-')) {
         const parts = initialValue.split('-');
         initYear = parseInt(parts[0], 10);
         if (parts.length > 1) initMonth = parseInt(parts[1], 10) - 1;
-        if (parts.length > 2) initDay = parseInt(parts[2], 10);
+        // A day part is accepted and ignored: this picker has no day column.
       }
       
       const years = [];
@@ -1439,7 +1437,6 @@ window.Components = {
           </div>
         `;
       } else if (type === 'month' || type === 'week' || type === 'today') {
-        const showDay = type === 'today'; // Today mode allows picking a specific day
         columnsHtml = `
           <div id="pp-col-month" style="flex: 1; overflow-y: scroll; scroll-snap-type: y mandatory; padding: 80px 0; scrollbar-width: none; text-align: center;">
             ${monthsStr.map((m, i) => `<div class="pp-item" data-val="${i}" style="height: 40px; line-height: 40px; scroll-snap-align: center; font-size: 1.2rem; font-family: var(--font-family-display); font-weight: 500;">${m}</div>`).join('')}
@@ -3073,7 +3070,6 @@ window.Components = {
       };
 
       const render = () => {
-        const isCurrentDecade = currentYear === now.getFullYear();
         wrapper.innerHTML = `
           <div class="modal-content" style="padding: 0; overflow: hidden;">
             <div class="modal-top-bar" style="display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border-color);">
