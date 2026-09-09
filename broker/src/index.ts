@@ -670,6 +670,21 @@ async function route(request: Request, url: URL, c: Ctx): Promise<Response> {
     if (given !== c.env.OPS_TOKEN) throw new HttpError(401, 'unauthorized');
     return json(await opsSnapshot(c.env, c.cfg, c.now()));
   }
+  // v1.16 A-12: the containment lever the incident runbook needs. Setting the
+  // breaker halts EVERY aggregator call within one request, with no deploy
+  // and without revoking the Enable Banking application — which would force
+  // every user to re-consent. `minutes: 0` lifts it again.
+  if (path === '/v1/ops/pause' && method === 'POST') {
+    if (!c.env.OPS_TOKEN) throw new HttpError(404, 'not_found');
+    const given = (request.headers.get('authorization') || '').replace(/^Bearer /, '');
+    if (given !== c.env.OPS_TOKEN) throw new HttpError(401, 'unauthorized');
+    const body = await readJson(request);
+    const minutes = Math.max(0, Math.min(24 * 60, Number(body.minutes ?? 60) || 0));
+    const pausedUntil = minutes > 0 ? c.now() + minutes * 60000 : 0;
+    await c.system.setBreaker(pausedUntil);
+    console.log(JSON.stringify({ level: 'warn', p: 'ops/pause', minutes }));
+    return json({ ok: true, pausedUntil, until: pausedUntil ? new Date(pausedUntil).toISOString() : null });
+  }
   if (path === '/.well-known/assetlinks.json' && method === 'GET') return assetLinks(c.cfg);
   if (path === '/.well-known/apple-app-site-association' && method === 'GET') return appleAssociation(c.cfg);
   if (path === '/v1/connect/return' && method === 'GET') return handleConnectReturn(url, c);

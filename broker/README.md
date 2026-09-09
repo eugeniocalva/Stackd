@@ -123,6 +123,20 @@ curl -H "authorization: Bearer <OPS_TOKEN>" https://api.stackdplatform.com/v1/op
 npx wrangler tail --env production --status error            # live, when you are watching
 ```
 
+**Containment.** `POST /v1/ops/pause` (same `OPS_TOKEN`) sets the circuit
+breaker, which every aggregator call checks — so bank traffic stops within one
+request, with no deploy and without revoking the Enable Banking application
+(that would force every user to re-consent). `{"minutes":0}` lifts it, and it
+is capped at 24 hours.
+
+```bash
+curl -X POST -H "authorization: Bearer <OPS_TOKEN>" -H "content-type: application/json"      -d '{"minutes":120}' https://api.stackdplatform.com/v1/ops/pause
+```
+
+`docs/broker-runbook.md` is the full incident procedure: detect, contain,
+revoke and rotate each key, assess whether it is a personal-data breach, the
+GDPR 72-hour notification, and what to tell users.
+
 **This is not an uptime check.** If the Worker is down the cron is down with
 it. Uptime belongs outside the failure domain: point any external pinger at
 `GET /healthz` (public, no auth, `{ok:true}`) every few minutes. That is an

@@ -176,4 +176,47 @@ describe('broker monitoring (A-11)', () => {
       expect(body.counters.aggregator_key_invalid).toBe(1);
     });
   });
+
+  // v1.16 A-12: the incident runbook's containment step. Without this,
+  // stopping bank traffic means revoking the Enable Banking application,
+  // which forces every user to re-consent — far too blunt for, say, a
+  // suspected key leak you are still investigating.
+  describe('POST /v1/ops/pause (incident containment)', () => {
+    const app = () => createApp({ fetch: fakeEnableBanking(keys).fetch as unknown as typeof fetch, now: () => clock });
+    const pause = (token: string | null, minutes?: number) => {
+      const headers: Record<string, string> = { 'x-stackd-client': 'stackd-web', 'cf-connecting-ip': '203.0.113.9', 'content-type': 'application/json' };
+      if (token) headers.authorization = `Bearer ${token}`;
+      return app().fetch(new Request('https://broker.test/v1/ops/pause', { method: 'POST', headers, body: JSON.stringify({ minutes }) }), env as unknown as Env);
+    };
+
+    it('does not exist without OPS_TOKEN, and refuses a wrong one', async () => {
+      expect((await pause('x', 10)).status).toBe(404);
+      (env as any).OPS_TOKEN = 's3cret';
+      expect((await pause('wrong', 10)).status).toBe(401);
+    });
+
+    it('halts every aggregator call, then lifts again', async () => {
+      (env as any).OPS_TOKEN = 's3cret';
+      const on = await pause('s3cret', 30);
+      expect(on.status).toBe(200);
+      const body = await on.json() as any;
+      expect(body.pausedUntil).toBe(clock + 30 * 60000);
+
+      // The breaker is what the aggregator client checks before every call.
+      const sys = new SystemClient(env as unknown as Env);
+      expect((await sys.getBreaker()).pausedUntil).toBe(clock + 30 * 60000);
+      const snap = await (await app().fetch(new Request('https://broker.test/v1/ops/status', { headers: { 'x-stackd-client': 'stackd-web', 'cf-connecting-ip': '203.0.113.9', authorization: 'Bearer s3cret' } }), env as unknown as Env)).json() as any;
+      expect(snap.conditions.map((c: any) => c.code)).toContain('breaker_open');
+
+      const off = await pause('s3cret', 0);
+      expect((await off.json() as any).pausedUntil).toBe(0);
+      expect((await sys.getBreaker()).pausedUntil).toBe(0);
+    });
+
+    it('caps the pause at a day, so a fat finger cannot mute the service for a year', async () => {
+      (env as any).OPS_TOKEN = 's3cret';
+      const r = await pause('s3cret', 99999);
+      expect((await r.json() as any).pausedUntil).toBe(clock + 24 * 60 * 60000);
+    });
+  });
 });

@@ -274,8 +274,24 @@ Ordered. IDs are stable so we can refer to them.
 
   **It is not an uptime check** — if the Worker is down, so is its cron. That
   is O-30 below, and needs no code.
-- **A-12 · Incident/breach runbook** (GDPR gives you 72 hours) and a status
-  line on the support page.
+- **A-12 · Incident runbook — DONE 2026-09-09 (v1.16).**
+  `docs/broker-runbook.md`: detect, contain, revoke and rotate each key
+  separately, assess whether it is a personal-data breach, notify the
+  authority inside 72 hours, tell users. It opens with what the broker
+  actually holds (opaque ids, bank names, IBAN last-4, subscription ids — no
+  transactions, no credentials), because that both stops a 2am over-reaction
+  and is the input to the GDPR risk assessment.
+
+  It needed a containment lever that was not "revoke the Enable Banking
+  application", which forces every user to re-consent — so
+  `POST /v1/ops/pause` now sets the circuit breaker every aggregator call
+  already checks: bank traffic stops within one request, no deploy, nothing
+  deleted, no consent lost. Capped at 24 hours, `{"minutes":0}` lifts it.
+
+  The support page gains a **Service status** section, since the app has no
+  accounts and therefore no push channel — it is the only way to tell users
+  anything. Blanks the owner must fill (supervisory authority and its portal)
+  are marked in the runbook rather than guessed.
 - **A-13 · Localised legal pages** on the website (English-only today; the app
   ships five languages). Generatable from the dictionaries.
 - **A-14 · Repo tidy** before more eyes land on a public repo: stale scratch
