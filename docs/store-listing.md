@@ -1,13 +1,33 @@
-# Store listing, privacy labels and subscription disclosure (B6)
+# Store listing, privacy labels and products
 
-> Written 2026-09-07 with the Bank Connect legal rework (docs/bank-connect-ux-plan.md
-> §15). This is the copy and the form answers to enter in Play Console and
-> App Store Connect. The in-app Terms & Privacy (src/i18n/*.js `terms.*`)
-> are canonical; the public copies live at
-> https://stackdplatform.com/terms.html and /privacy.html — both stores
-> require those two links on the listing and on the subscription screen.
+> The copy and the form answers to enter in Play Console and App Store
+> Connect. Written 2026-09-07 with the Bank Connect legal rework
+> (docs/bank-connect-ux-plan.md §15), updated through v1.17.
+>
+> The in-app Terms & Privacy (`src/i18n/*.js` `terms.*`) are canonical. The
+> public copies are at <https://stackdplatform.com/privacy> and `/terms`,
+> plus `/fr`, `/it`, `/es` and `/pt` of each (generated —
+> `tools/site/legal.cjs`). Use the extensionless URLs: Cloudflare Pages
+> 308-redirects the `.html` form. Both stores require those two links.
 
-## 1. Listing copy
+**How to read this file — three states, not two:**
+
+| Marker | Means |
+|---|---|
+| ~~struck through~~ + **READY** | the text or asset exists and has been checked. **It is NOT in the console yet** — pasting it is still your job. |
+| upright | you have something to do here |
+| **NOT FOR THIS RELEASE** | correct, but for the release that ships Bank Connect. Do not paste it now; it would advertise a feature the build does not contain (D1). |
+
+⚠️ **The single most dangerous mistake in this file:** §1 below is the
+Bank-Connect-ON copy. **The copy to actually paste is §1b.** §1's short
+description alone ("or link a bank, if you choose") would advertise a feature
+this build does not ship.
+
+## 1. Listing copy — **NOT FOR THIS RELEASE** (Bank-Connect-ON version)
+
+> Keep for the release that ships Online banking. **For the first submission
+> use §1b**, which is the same product without the bank paragraph and in all
+> five languages.
 
 **Short description (Play, 80 chars):** Private money tracking. Your data
 stays on your phone — or link a bank, if you choose.
@@ -58,12 +78,15 @@ Privacy Policy: https://stackdplatform.com/privacy.html
 
 **What's new (v1.10):** Online banking — link your bank and import booked
 transactions automatically (optional subscription). Updated Terms & Privacy.
+*(For the FIRST release there is no "what's new" — both stores use the
+description instead. This line belongs to the update that turns the feature
+on.)*
 
 Phrasing rule: "local by default" / "stays on your phone", never "100%
 local" or "nothing ever leaves your device" without the Bank Connect
 qualifier (the marketing site's hero was changed the same way).
 
-## 1b. Localized listing copy (v1.15 — the Bank-Connect-off release)
+## ~~1b. Localized listing copy~~ · **READY — this is the copy to paste**
 
 Ready to paste. Written for the FIRST release, so nothing here mentions
 Online banking; when that feature ships, the paragraph in §1 needs
@@ -74,6 +97,14 @@ promotional text 170; Play short description 80, full description 4000).
 The app NAME is the same in every language: **Stack'd**, with
 **Stack'd — Money Tracker** as the fallback if the bare name is refused
 (decision D5).
+
+The two legal URLs are NOT part of the description for this release: they go
+in the consoles' own fields (Play: Privacy policy; App Store Connect: Privacy
+Policy URL). Use <https://stackdplatform.com/privacy> and `/terms` — the
+extensionless form, because Pages redirects `.html`. Apple's rule about a
+Terms of Use link *in the description* applies to subscription apps, and this
+release ships none. Each language also has its own pages (`/fr/privacy` and
+so on) if a localized listing wants them.
 
 ### English (en-US / en-GB) — default listing
 
@@ -265,7 +296,7 @@ QUANTO CUSTA
 Gratuito com até duas carteiras e as categorias que a app traz. O Stack'd Pro é uma compra única que elimina para sempre os dois limites, sem subscrição. O que já registou continua sempre visível e editável.
 ```
 
-## 2a. Apple — App Privacy while Bank Connect is OFF (the first release)
+## 2a. Apple — App Privacy for THIS release · answers ready, you enter them
 
 With the feature switched off at build time the app makes no network calls of
 its own and keeps nothing on a server. The only product is the one-time
@@ -280,7 +311,7 @@ So the answer for the first submission is **Data Not Collected**, which is
 also what the marketing site says. §2 below is what it becomes the moment
 Bank Connect ships — do not use it before then.
 
-## 2. Apple — App Privacy ("nutrition label") — once Bank Connect ships
+## 2. Apple — App Privacy — **NOT FOR THIS RELEASE** (once Bank Connect ships)
 
 Before Bank Connect the answer was **Data Not Collected**. With Bank
 Connect it is not, because transactions transit the developer's server and
@@ -313,7 +344,7 @@ the app has no account, but Apple treats persistent device identifiers as
 linkable in some reviews. If review pushes back, flip Financial Info,
 Purchases and Identifiers to "Linked to you" — the purposes stay the same.
 
-## 3a. Google Play — Data safety while Bank Connect is OFF (the first release)
+## 3a. Google Play — Data safety for THIS release · answers ready, you enter them
 
 - **Does your app collect or share any of the required user data types?** No.
 - Data deletion: no account exists; Factory Reset in the app erases
@@ -321,7 +352,7 @@ Purchases and Identifiers to "Linked to you" — the purposes stay the same.
 
 §3 below applies from the release that ships Bank Connect.
 
-## 3. Google Play — Data safety — once Bank Connect ships
+## 3. Google Play — Data safety — **NOT FOR THIS RELEASE** (once Bank Connect ships)
 
 - **Does your app collect or share any of the required user data types?** Yes.
 - **Is all of the user data collected by your app encrypted in transit?** Yes.
@@ -343,12 +374,16 @@ Purchases and Identifiers to "Linked to you" — the purposes stay the same.
 
 ## 4. Products
 
+For this release there is exactly ONE product to create: `stackd_pro` in §4a.
+§4b is deferred with the feature.
+
 Both listings must declare that the app contains in-app purchases, and the
 description must name what is free: **two wallets and the built-in
-categories**. Do not print the Pro price in the description — the store shows
-the local price, and a hard-coded "€4.99" is wrong in every other currency.
+categories** — §1b already does. Do not print the Pro price in the
+description: the store shows the local price, and a hard-coded "€4.99" is
+wrong in every other currency.
 
-### 4a. One-time product (v1.13)
+### 4a. One-time product · **the only one to create now** (you)
 
 | Field | Value |
 |---|---|
@@ -361,7 +396,7 @@ the local price, and a hard-coded "€4.99" is wrong in every other currency.
 | Apple review | the first non-consumable is submitted WITH a binary: attach a screenshot of `#purchases` (One-time tab) and review notes "Settings → In-app purchases → One-time purchase" |
 | Entitlement | local to the device (`stackd_v1_pro`); no server check, no receipt upload |
 
-### 4b. Subscription products (v1.09)
+### 4b. Subscription products — **NOT FOR THIS RELEASE** (do not create these yet)
 
 | Field | Value |
 |---|---|
@@ -373,7 +408,7 @@ the local price, and a hard-coded "€4.99" is wrong in every other currency.
 | Required links | Terms of Use + Privacy Policy on the listing AND in the paywall (already in-app) |
 | Localizations | en, fr, it, es, pt — display names: Bank Connect · monthly / yearly |
 
-## 5. Enable Banking production access (decides the launch path)
+## ~~5. Enable Banking production access~~ · **SETTLED (D1)** — not needed for this release
 
 Sandbox is enough for everything up to TestFlight/internal testing. Public
 availability requires either:
@@ -394,7 +429,7 @@ reaches the network, so the privacy answers stay at "Data Not Collected"
 stores require anyway: the first subscription product is reviewed WITH a
 binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
 
-## 6. Screenshots
+## ~~6. Screenshots~~ · **READY — 50 images generated**
 
 Generated, not hand-taken: `node tools/store/screens.cjs` (the dev server must
 be running on :3000) writes `tools/store/out/<platform>/<lang>/NN-name.png`,
