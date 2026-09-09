@@ -22,7 +22,7 @@ Everything else fits around these.
 
 | Blocker | Why | Who | Lead time |
 |---|---|---|---|
-| ~~**Android targets API 34, Play requires 36**~~ **DONE 2026-09-09** | Migrated Capacitor 6 → 7 → 8; the app now targets API 36 and builds. A device walk on an API 36 emulator is still owed (edge-to-edge, both themes). | assistant | done; device walk pending |
+| ~~**Android targets API 34, Play requires 36**~~ **DONE 2026-09-09** | Migrated Capacitor 6 → 7 → 8. The app targets API 36, builds, installs and runs on an API 36 emulator with the layout intact. | assistant | done |
 | **Play closed testing: 12 testers, 14 days** | Applies to personal Play accounts created after 13 Nov 2023, before production access is granted. | owner | **14 days of calendar**, plus ~7 days for the access review |
 | **No Apple Developer Program membership** | Nothing on the App Store side can start — no app record, no products, no TestFlight. Uploads also require Xcode 26 / iOS 26 SDK, i.e. a Mac. | owner | hours to days for enrolment, plus Mac access |
 
@@ -147,14 +147,35 @@ Ordered. IDs are stable so we can refer to them.
   edge-to-edge with no opt-out, and `env()` is unreliable on WebViews older
   than 140), falling back to `env()` on iOS and the web; the status-bar icon
   style follows the app theme rather than the device's. 716 unit and 47 e2e
-  tests pass. **Still owed: the emulator walk on API 36** in both themes to
-  confirm nothing sits under the status or gesture bar — a build proves it
-  compiles, not that it looks right.
+  tests pass.
+
+  **Device walk done (API 36 emulator, 2026-09-09).** Installed and launched
+  with no crash in logcat; onboarding and the dashboard render with nothing
+  clipped at either edge, in both themes. Measured in the live WebView over
+  the debug protocol rather than by eye, because this emulator's System UI
+  wedges under software rendering: the WebView viewport is 1082×2276 inside a
+  1080×2400 screen, i.e. the native layer insets it clear of the status and
+  gesture bars, content starts 32px down and the bottom nav ends exactly at
+  the viewport edge. The injected `--safe-area-inset-*` are therefore 0 here,
+  which is correct for that configuration; the fallback chain covers the other
+  one. Three things the walk also proved, which nothing had ever checked on a
+  device: `brokerUrl()` returns **production** (`https://api.stackdplatform.com`),
+  the WebView origin really is `https://localhost` (the value added to the
+  broker's `ALLOWED_ORIGINS`), and `window.CdvPurchase` is present with
+  `storeAvailable() === true`, so both paywalls will render their buy buttons.
+
+  Two things the walk could NOT settle, both needing real hardware: the
+  system-bar ICON contrast in light theme (a WebView capture cannot show the
+  status bar, and the wedged System UI blocked a device screenshot), and
+  behaviour on a WebView newer than 140. The emulator ships WebView 134, which
+  is exactly the old-WebView case the injected variables exist for.
 - **A-02 · Verify the purchase plugin actually lands — DONE 2026-09-09.**
-  `npx cap sync android` now pulls all five Capacitor plugins plus
-  cordova-plugin-purchase, and the built APK carries the `BILLING`
-  permission. The purchase path still has not run on a real device against a
-  real store: that happens during the closed test with license testers.
+  `npx cap sync android` pulls all five Capacitor plugins plus
+  cordova-plugin-purchase, the built APK carries the `BILLING` permission,
+  and on the emulator `window.CdvPurchase` is a live object with
+  `BankConnect.storeAvailable()` true. What remains is a purchase against a
+  REAL store, which needs the products to exist and license testers — it
+  happens during the closed test (O-12, O-13).
 - **A-03 · Unfinished-transaction safety.** If the broker is unreachable after
   an approved purchase, the transaction is never finished, the user is told
   "you were not charged" — and Google auto-refunds an unacknowledged purchase
@@ -295,7 +316,11 @@ Ordered. IDs are stable so we can refer to them.
   from an **In-App Purchase** key, not a team API key. Then verify `/healthz`
   reports `mode=store` and that `/.well-known/assetlinks.json` lists the
   fingerprint.
-- **O-29 · Also add the release fingerprints to the *staging* worker.** Both
+- **O-29 · Also add the release fingerprints to the *staging* worker.** The
+  emulator walk confirmed the gap: `adb shell pm get-app-links` reports
+  `legacy_failure` for BOTH hosts today, because `ANDROID_SHA256_FINGERPRINTS`
+  is empty in both broker environments, so every bank return currently falls
+  back to the `stackd://` hand-off page. Both
   broker hosts are declared as App Links in the shipped manifest, and on
   Android 11 and below verification fails for ALL hosts if any one of them
   fails — which would silently push every bank return onto the fallback path.
