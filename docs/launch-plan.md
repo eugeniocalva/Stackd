@@ -233,9 +233,24 @@ Ordered. IDs are stable so we can refer to them.
 - **A-07 · Apple app id.** One constant (`Views.APPLE_APP_ID`) turns the Rate
   row on for iOS and gives the website its App Store link.
 - **A-08 · App Store badge and link on the website**, once the id exists.
-- **A-09 · Broker production deploy config check** — a preflight that refuses
-  to deploy with an empty production variable, so a half-configured worker
-  cannot go live.
+- **A-09 · Broker production deploy preflight — DONE 2026-09-09.**
+  `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
+  `npm run deploy:production` cannot reach api.stackdplatform.com while the
+  config is incomplete (verified: it blocks today, on the five empty vars).
+  Every failure it catches is silent in production rather than loud — an
+  empty `EB_APP_ID` answers 503 on the first connect, missing store keys
+  reject purchases the store has already charged for, empty App-Link
+  fingerprints push every bank return onto the fallback path, and a missing
+  WebView origin fails CORS on every native request at once. It also reads
+  the APP repo rather than a copy, so package ids and subscription product
+  ids cannot drift apart, and it refuses `stackd_pro` in `PRODUCT_IDS`
+  because Pro is a local entitlement whose receipts must never reach the
+  broker. `--secrets` additionally asks Cloudflare which secrets exist, and
+  says plainly when that check could not run rather than passing silently.
+  16 tests in `broker/test/preflight.test.ts`.
+
+  Note this is preparation, not a launch blocker: with D1 decided, the
+  production broker is not deployed for the first release at all.
 
 ### Worth doing, not blocking
 

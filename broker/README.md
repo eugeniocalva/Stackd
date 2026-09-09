@@ -182,6 +182,30 @@ which is why staging lives on the project's own zone.
 
 ## Deploy production (api.stackdplatform.com)
 
+**A preflight runs first and will refuse the deploy.** `npm run
+deploy:production` is preceded by `predeploy:production`, which is
+`scripts/preflight.mjs`. Run it any time on its own:
+
+```bash
+npm run preflight              # config only
+npm run preflight -- --secrets # also ask Cloudflare which secrets are set
+```
+
+It exists because every one of these failures is SILENT in production rather
+than loud: an empty `EB_APP_ID` answers 503 on the first bank connect, missing
+store keys reject purchases the store has already charged for, empty App-Link
+fingerprints send every bank return down the `stackd://` fallback, and a
+missing Capacitor WebView origin fails CORS on every native request at once.
+It checks that the required vars are non-empty, that the mode is `store` and
+the host is not staging, that `ALLOWED_ORIGINS` still carries
+`https://localhost` and `capacitor://localhost`, that `IOS_APP_ID` is
+`TEAMID.bundleid` and agrees with `APPLE_BUNDLE_ID`, that the fingerprints are
+really colon-separated SHA-256 (a pasted SHA-1 is the classic error), and —
+by reading the app repo rather than a copy — that the package ids and the
+subscription product ids still match the app, and that `stackd_pro` never
+appears (Stack'd Pro is a LOCAL entitlement; its receipts must not reach the
+broker). `test/preflight.test.ts` covers it.
+
 `--env production` uses `ENTITLEMENT_MODE=store`, the custom domain route and
 its own secret (`wrangler secret put EB_PRIVATE_KEY --env production`, from a
 production application). Fill `ANDROID_SHA256_FINGERPRINTS` (release keystore)
