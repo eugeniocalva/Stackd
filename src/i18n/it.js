@@ -1147,6 +1147,10 @@ window.I18n.dicts.it = {
   'bank.pricesLoading': 'Caricamento dei prezzi dallo store…',
   'bank.verifying': 'Conferma con lo store…',
   'bank.purchaseFailed': 'L’acquisto non è andato a buon fine. Non ti è stato addebitato nulla, salvo indicazione contraria dello store.',
+  // v1.16 A-03: the store HAS charged the user; we just could not reach
+  // our own server to confirm it. Saying "you were not charged" here
+  // would be untrue, and the transaction is replayed at the next boot.
+  'bank.purchasePending': "Il tuo acquisto è andato a buon fine. Non siamo ancora riusciti a confermarlo con il server Stack'd: riproveremo automaticamente alla prossima apertura dell'app.",
   'bank.restoreNone': 'Nessun abbonamento Bank Connect trovato per questo account dello store.',
   // v1.11 B7: web session + pairing (docs/bank-connect-ux-plan.md §16)
   'bank.pairTitle': 'Associa al tuo telefono',

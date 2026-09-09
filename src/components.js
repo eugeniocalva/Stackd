@@ -4164,7 +4164,7 @@ Object.assign(window.Components, {
       if (restore) restore.addEventListener('click', async () => {
         if (!BC.storeAvailable()) { alert(t('bank.storeUnavailable')); return; }
         let ent2 = null;
-        try { ent2 = await BC.restorePurchase(); } catch (e) { alert(t('bank.purchaseFailed')); return; }
+        try { ent2 = await BC.restorePurchase(); } catch (e) { alert(t(e && e.pending ? 'bank.purchasePending' : 'bank.purchaseFailed')); return; }
         if (!ent2 || !ent2.active) { alert(t('bank.restoreNone')); return; }
         const e2 = BC.entitlement(window.Store.getState());
         const el = backdrop.querySelector('#bank-set-sub');
@@ -4419,7 +4419,8 @@ Object.assign(window.Components, {
           finish(ent);
         } catch (e) {
           busy(false);
-          if (!(e && e.cancelled)) alert(t('bank.purchaseFailed'));
+          // v1.16 A-03: an unreachable broker is not a declined purchase.
+          if (!(e && e.cancelled)) alert(t(e && e.pending ? 'bank.purchasePending' : 'bank.purchaseFailed'));
         }
       });
       backdrop.querySelector('#bank-paywall-restore').addEventListener('click', async () => {
@@ -4432,7 +4433,7 @@ Object.assign(window.Components, {
           finish(ent);
         } catch (e) {
           busy(false);
-          alert(t('bank.purchaseFailed'));
+          alert(t(e && e.pending ? 'bank.purchasePending' : 'bank.purchaseFailed'));
         }
       });
       window.Components._bindLegalLinks(backdrop, 'bank-paywall', close);

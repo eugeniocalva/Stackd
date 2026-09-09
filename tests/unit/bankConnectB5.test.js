@@ -224,6 +224,79 @@ describe('Bank Connect B5 (v1.09) — store entitlement client', () => {
     expect(state().bankConnect.ownerId).toBe('owner_x');
   });
 
+  // v1.16 A-03: the store has already charged the user by the time we talk to
+  // the broker. If the broker is unreachable we do not know whether the
+  // receipt is good — but we DO know the charge happened, so "you were not
+  // charged" is untrue, and Google refunds an unacknowledged purchase after
+  // three days. The transaction is deliberately left unfinished either way,
+  // because the plugin replays it once the store is initialized again.
+  describe('a purchase the broker could not confirm (A-03)', () => {
+    const approve = (w, finish) => w.CdvPurchase.approve({
+      products: [{ id: 'stackd_bank_connect_monthly' }],
+      nativePurchase: { purchaseToken: 'tok_net' },
+      transactionId: 'tok_net',
+      finish
+    });
+
+    const failWith = (err) => {
+      global.fetch = vi.fn(async (url) => {
+        if (new URL(url).pathname === '/v1/entitlement/verify') throw err;
+        return { ok: true, status: 200, json: async () => ({}) };
+      });
+    };
+
+    it('a network failure is flagged pending and the transaction is NOT finished', async () => {
+      const w = boot('play');
+      const BC = w.BankConnect;
+      await BC.initStore();
+      const finish = vi.fn();
+      const p = BC.purchase('monthly');
+      await new Promise(r => setTimeout(r, 0));
+      failWith(new TypeError('Failed to fetch')); // no .status at all
+      approve(w, finish);
+
+      const err = await p.then(() => null, e => e);
+      expect(err).toBeTruthy();
+      expect(err.pending).toBe(true);
+      expect(finish).not.toHaveBeenCalled(); // stays claimable, so it replays
+    });
+
+    it('a broker 5xx is pending too — it is not a verdict on the receipt', async () => {
+      const w = boot('play');
+      const BC = w.BankConnect;
+      await BC.initStore();
+      const p = BC.purchase('monthly');
+      await new Promise(r => setTimeout(r, 0));
+      global.fetch = vi.fn(async () => ({ ok: false, status: 502, json: async () => ({ error: 'internal' }) }));
+      approve(w, vi.fn());
+      const err = await p.then(() => null, e => e);
+      expect(err.pending).toBe(true);
+    });
+
+    it('a rejected receipt is NOT pending — the store said no, and saying so is correct', async () => {
+      const w = boot('play');
+      const BC = w.BankConnect;
+      await BC.initStore();
+      const finish = vi.fn();
+      const p = BC.purchase('monthly');
+      await new Promise(r => setTimeout(r, 0));
+      global.fetch = vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: 'receipt_invalid' }) }));
+      approve(w, finish);
+      const err = await p.then(() => null, e => e);
+      expect(err.message).toBe('receipt_invalid');
+      expect(err.pending).toBeUndefined();
+      expect(finish).not.toHaveBeenCalled(); // unfinished -> the store refunds
+    });
+
+    it('a cancelled sheet is never mistaken for a pending purchase', () => {
+      const w = boot('play');
+      expect(w.BankConnect._isTransportFailure(Object.assign(new Error('cancelled'), { cancelled: true }))).toBe(false);
+      expect(w.BankConnect._isTransportFailure({ status: 402 })).toBe(false);
+      expect(w.BankConnect._isTransportFailure({ status: 503 })).toBe(true);
+      expect(w.BankConnect._isTransportFailure(new Error('offline'))).toBe(true);
+    });
+  });
+
   it('web without the plugin or the stub: no store, prices null, purchase null', async () => {
     const w = boot('web');
     delete w.CdvPurchase;

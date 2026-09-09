@@ -155,6 +155,19 @@ describe('Bank Connect B8 (v1.12) — native wiring', () => {
       expect(pbx).toContain('/* App.entitlements */ = {isa = PBXFileReference');
     });
 
+    // v1.16 A-03: both stores re-deliver a purchase that was never finished,
+    // but only once the store has been initialized. That used to happen only
+    // when a paywall or the purchases screen was opened, so a purchase
+    // approved during a server outage sat unfinished until the user happened
+    // to revisit one — and Google refunds an unacknowledged purchase after
+    // three days. Boot has to open the store session for the replay to run.
+    it('boot opens the store session on native, so unfinished purchases replay', () => {
+      const main = read('src/main.js');
+      const guarded = /isNative\(\)[\s\S]{0,400}?initStore\(\)/.test(main);
+      expect(guarded).toBe(true);          // native only: the web build has no store
+      expect(main).toMatch(/setTimeout\([^)]*initStore|initStore\(\)[\s\S]{0,40}catch/); // off the critical path, never throws
+    });
+
     it('the three native plugins are declared for npm, gradle and CocoaPods', () => {
       const pkg = JSON.parse(read('package.json'));
       expect(Object.keys(pkg.dependencies)).toEqual(expect.arrayContaining(['@capacitor/browser', '@aparajita/capacitor-secure-storage', 'cordova-plugin-purchase']));

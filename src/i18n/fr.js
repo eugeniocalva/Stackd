@@ -1147,6 +1147,10 @@ window.I18n.dicts.fr = {
   'bank.pricesLoading': 'Chargement des tarifs depuis la boutique…',
   'bank.verifying': 'Confirmation auprès de la boutique…',
   'bank.purchaseFailed': 'L’achat n’a pas abouti. Vous n’avez pas été débité, sauf indication contraire de la boutique.',
+  // v1.16 A-03: the store HAS charged the user; we just could not reach
+  // our own server to confirm it. Saying "you were not charged" here
+  // would be untrue, and the transaction is replayed at the next boot.
+  'bank.purchasePending': "Votre achat a bien été effectué. Nous n'avons pas encore pu le confirmer auprès du serveur Stack'd — une nouvelle tentative aura lieu automatiquement à la prochaine ouverture de l'application.",
   'bank.restoreNone': 'Aucun abonnement Bank Connect trouvé pour ce compte de boutique.',
   // v1.11 B7: web session + pairing (docs/bank-connect-ux-plan.md §16)
   'bank.pairTitle': 'Associer à votre téléphone',

@@ -1071,12 +1071,34 @@ window.BankConnect = {
     return res;
   },
 
+  // v1.16 A-03: a failure here is NOT one thing.
+  //
+  //  - The broker gave a verdict ("this receipt is invalid"): the purchase is
+  //    genuinely not good, we leave the transaction unfinished, and the store
+  //    refunds it. Telling the user it did not go through is correct.
+  //  - The broker could not be reached at all (offline, 5xx, DNS): the store
+  //    HAS charged the user and we simply do not know yet. Saying "you were
+  //    not charged" is then a lie, and leaving it there costs them money —
+  //    Google refunds a subscription that is not acknowledged within 3 days.
+  //
+  // Either way the transaction stays unfinished on purpose, because the
+  // plugin replays approved transactions on the next store initialize, which
+  // main.js now performs at every native boot. The difference is only what we
+  // tell the user, and whether we imply the charge did not happen.
+  _isTransportFailure(e) {
+    if (!e) return false;
+    if (e.cancelled) return false;
+    const status = e.status;
+    return typeof status !== 'number' || status >= 500;
+  },
+
   async _onApproved(tx) {
     try {
       const res = await this.submitReceipt(this.receiptFrom(tx));
       if (res && res.active && typeof tx.finish === 'function') await tx.finish(); // acknowledge/consume only once entitled
       this._settlePurchase(res, null);
     } catch (e) {
+      if (this._isTransportFailure(e)) e.pending = true;
       this._settlePurchase(null, e);
     }
   },

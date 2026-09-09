@@ -1168,6 +1168,10 @@ window.I18n.dicts.en = {
   'bank.pricesLoading': 'Loading prices from the store…',
   'bank.verifying': 'Confirming with the store…',
   'bank.purchaseFailed': 'The purchase didn’t go through. You were not charged unless the store says otherwise.',
+  // v1.16 A-03: the store HAS charged the user; we just could not reach
+  // our own server to confirm it. Saying "you were not charged" here
+  // would be untrue, and the transaction is replayed at the next boot.
+  'bank.purchasePending': "Your purchase went through. We couldn't confirm it with the Stack'd server yet — it will retry automatically next time you open the app.",
   'bank.restoreNone': 'No Bank Connect subscription found for this store account.',
   // v1.11 B7: web session + pairing (docs/bank-connect-ux-plan.md §16)
   'bank.pairTitle': 'Pair with your phone',

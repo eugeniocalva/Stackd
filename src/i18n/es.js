@@ -1147,6 +1147,10 @@ window.I18n.dicts.es = {
   'bank.pricesLoading': 'Cargando precios de la tienda…',
   'bank.verifying': 'Confirmando con la tienda…',
   'bank.purchaseFailed': 'La compra no se completó. No se te ha cobrado salvo que la tienda indique lo contrario.',
+  // v1.16 A-03: the store HAS charged the user; we just could not reach
+  // our own server to confirm it. Saying "you were not charged" here
+  // would be untrue, and the transaction is replayed at the next boot.
+  'bank.purchasePending': "Tu compra se ha realizado. Todavía no hemos podido confirmarla con el servidor de Stack'd; se reintentará automáticamente la próxima vez que abras la app.",
   'bank.restoreNone': 'No se encontró ninguna suscripción a Bank Connect para esta cuenta de la tienda.',
   // v1.11 B7: web session + pairing (docs/bank-connect-ux-plan.md §16)
   'bank.pairTitle': 'Vincular con tu teléfono',

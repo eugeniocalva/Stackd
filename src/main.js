@@ -613,6 +613,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') window.BankConnect.refreshOnOpen();
     });
+
+    // v1.16 A-03: open the store session at every native boot.
+    //
+    // Both stores re-deliver a purchase that was never finished — Play through
+    // queryPurchases() at initialize, the App Store by re-delivering unfinished
+    // transactions to the observer — but only once the store has been
+    // initialized. That used to happen ONLY when a paywall or the purchases
+    // screen was opened. So a purchase that was approved while the server was
+    // unreachable, or while the app was killed mid-flow, sat unfinished until
+    // the user happened to revisit a purchase screen; Google refunds an
+    // unacknowledged purchase after three days, so the usual outcome was the
+    // user paying, silently losing it, and us never knowing.
+    //
+    // Initializing here means the replay happens on the next cold start
+    // instead. It is off the critical path, native-only (there is no store on
+    // the web build), and it matters for Stack'd Pro specifically: with Bank
+    // Connect switched off (A-04) Pro is the only product, and it rides this
+    // same store session.
+    if (window.BankConnect.isNative()) {
+      setTimeout(() => { window.BankConnect.initStore().catch(() => {}); }, 3000);
+    }
   }
 
   // ── Splash dismissal (v0.81) ────────────────────────────────────────────

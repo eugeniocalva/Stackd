@@ -6735,7 +6735,8 @@ Object.assign(window.Views, {
             rerender();
           } catch (e) {
             bankRestore.disabled = false;
-            alert(t('bank.purchaseFailed'));
+            // v1.16 A-03: an unreachable broker is not a declined purchase.
+            alert(t(e && e.pending ? 'bank.purchasePending' : 'bank.purchaseFailed'));
           }
         });
       }
