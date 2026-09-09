@@ -41,6 +41,11 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
   });
 
   test('Settings shows the purchases entry; the screen has both tabs with the right storefronts', async ({ page }) => {
+    // v1.15 (A-04): this case covers the TWO-product screen, so it needs Bank
+    // Connect switched on; the shipped one-product default has its own test.
+    await page.addInitScript(() => { window.__STACKD_BANK_CONNECT__ = true; });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Store && !!window.Pro);
     await page.goto('/#settings');
     const row = page.locator('#btn-open-purchases');
     await expect(row).toBeVisible();
@@ -146,11 +151,37 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
     await expect(page.locator('#new-cat-name')).toBeVisible();
   });
 
+  // v1.15 (A-04, decision D1): the first store release ships with Bank
+  // Connect off at build time, so a reviewer must find no trace of it. This
+  // spec deliberately does NOT set __STACKD_BANK_CONNECT__, so it runs the
+  // shipped default in a real browser.
+  test('Bank Connect leaves no trace in the shipped build', async ({ page }) => {
+    await page.goto('/#settings');
+    await expect(page.locator('#btn-import-csv')).toBeVisible();      // import stays, it is free
+    await expect(page.locator('#btn-open-bank-connect')).toHaveCount(0);
+
+    // One product, so no tab bar and no subscription card.
+    await page.goto('/#purchases');
+    await expect(page.locator('#pro-card')).toBeVisible();
+    await expect(page.locator('#purchases-tabs')).toHaveCount(0);
+    await expect(page.locator('#bank-sub-card')).toHaveCount(0);
+
+    // A stale deep link must not land on a screen that cannot work.
+    await page.goto('/#bank-connect');
+    await expect(page.locator('#bank-connect')).toHaveCount(0);
+    await expect(page.locator('#btn-import-csv')).toBeVisible();      // bounced to Settings
+  });
+
   // v1.14: both stores expect the Terms of Use AND the Privacy Policy to be
   // reachable by name from a purchase surface. One combined "Terms and
   // Conditions" button is the classic review pushback, so the two links are
   // separate and the privacy one opens the sheet already scrolled to Part 2.
   test('the purchases screen links Terms of Use and Privacy Policy by name', async ({ page }) => {
+    // v1.15 (A-04): this case covers the TWO-product screen, so it needs Bank
+    // Connect switched on; the shipped one-product default has its own test.
+    await page.addInitScript(() => { window.__STACKD_BANK_CONNECT__ = true; });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Store && !!window.Pro);
     await page.goto('/#purchases');
     await expect(page.locator('#pro-once-terms-link')).toHaveText('Terms of Use');
     await expect(page.locator('#pro-once-privacy-link')).toHaveText('Privacy Policy');

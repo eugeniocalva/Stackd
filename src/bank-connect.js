@@ -68,6 +68,36 @@ window.BankConnect = {
   // active}. The cookie itself is HttpOnly — JS never sees it.
   _webSession: undefined,
 
+  // ── Feature gate (v1.15, docs/launch-plan.md A-04 / D1) ───────────────────
+  // Bank Connect is BUILD-TIME off for the first store release: Enable
+  // Banking production access needs a signed contract and company KYB, and a
+  // feature that cannot work must not be visible. Apple 2.3.1 treats hidden
+  // or dormant functionality as a rejection reason, so nothing about it is
+  // rendered at all — no Settings row, no routes, no subscription products,
+  // no "coming soon" card, which would itself be dormant functionality.
+  //
+  // Deliberately a CONSTANT and not a remote flag. Asking the broker whether
+  // the feature is on would mean an unconditional network call to our own
+  // server on every launch, which contradicts the privacy policy ("Without
+  // Bank Connect, Stack'd does not collect, transmit, sell or share any
+  // personal data") and would change the Play Data-safety and App Privacy
+  // answers for every user, including those who never touch the feature.
+  // Turning it on is a one-line change plus a new build — which both stores
+  // require anyway, since the first subscription product is reviewed WITH a
+  // binary. The kill switch for users who HAVE opted in already exists: the
+  // broker's own error responses (B4 handles them).
+  //
+  // Flip to true, bump the version and rebuild when the aggregator contract
+  // is signed and the store products exist. `window.__STACKD_BANK_CONNECT__`
+  // is the test override (unit suites and the e2e specs set it).
+  FEATURE_ENABLED: false,
+
+  featureEnabled() {
+    if (window.__STACKD_BANK_CONNECT__ === true) return true;
+    if (window.__STACKD_BANK_CONNECT__ === false) return false;
+    return this.FEATURE_ENABLED;
+  },
+
   stub() {
     return window.__STACKD_BROKER_STUB__ || null;
   },
@@ -78,7 +108,9 @@ window.BankConnect = {
   },
 
   // v1.05: native (plus the stub); v1.11 B7: or the web build in session mode.
+  // v1.15: the build-time gate wins over all of it.
   isAvailable() {
+    if (!this.featureEnabled()) return false;
     return this.isNative() || !!this.stub() || this.isWebSession();
   },
 
@@ -120,6 +152,9 @@ window.BankConnect = {
   },
 
   isEnabled(state) {
+    // v1.15: the build gate wins — a persisted opt-in (an older build, or a
+    // restored backup) must not bring the feature back when it is off.
+    if (!this.featureEnabled()) return false;
     return !!this.prefs(state).enabled;
   },
 
@@ -728,6 +763,7 @@ window.BankConnect = {
 
   // main.js: after boot (off the critical path) and on foreground returns.
   refreshOnOpen() {
+    if (!this.featureEnabled()) return null; // v1.15: no boot work, no network
     const now = Date.now();
     if (now - this._lastRefreshCheck < this.REFRESH_RECHECK_MS) return null;
     this._lastRefreshCheck = now;
@@ -937,7 +973,12 @@ window.BankConnect = {
     const platform = this.platform() === 'appstore' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
     const iap = { store, platform, prices: null, resolvers: [], ready: null };
     this._iap = iap;
-    const products = Object.values(this.PRODUCTS).map(id => ({ id, type: ProductType.PAID_SUBSCRIPTION, platform }));
+    // v1.15: only register the subscriptions when Bank Connect ships. With
+    // the feature off the app sells exactly one product, and asking the store
+    // about plans that do not exist in the console just logs errors.
+    const products = this.featureEnabled()
+      ? Object.values(this.PRODUCTS).map(id => ({ id, type: ProductType.PAID_SUBSCRIPTION, platform }))
+      : [];
     // v1.13: Stack'd Pro (a non-consumable, docs/pro-unlock.md) rides the same
     // store session — registered here, its transactions routed to window.Pro
     // (they must NOT reach the broker, which only knows the plans).

@@ -26,6 +26,16 @@ storage — no account to create, no cloud, no tracking, no ads.
 - Loan simulator and tracker with cent-exact schedules.
 - Export everything as CSV, any time.
 
+> **v1.15 / decision D1 — the FIRST release ships with Bank Connect switched
+> off** (`BankConnect.FEATURE_ENABLED = false`). For that submission, OMIT the
+> "Online banking" paragraph and the subscription sentence below, create only
+> the `stackd_pro` product, and answer the privacy forms for the local-only
+> app (§2a / §3a). The Terms and Privacy keep their Bank Connect clauses:
+> they are written as conditional on a feature the user turns on, they are
+> accurate for a build where nobody can, and rewriting them per release would
+> desync the app from the site. Restore the paragraphs below when the feature
+> ships.
+
 **Online banking (optional, subscription).** Link your bank through a
 licensed open-banking provider and import booked transactions with one tap.
 You log in on your bank's own page; your credentials never touch Stack'd.
@@ -53,7 +63,22 @@ Phrasing rule: "local by default" / "stays on your phone", never "100%
 local" or "nothing ever leaves your device" without the Bank Connect
 qualifier (the marketing site's hero was changed the same way).
 
-## 2. Apple — App Privacy ("nutrition label")
+## 2a. Apple — App Privacy while Bank Connect is OFF (the first release)
+
+With the feature switched off at build time the app makes no network calls of
+its own and keeps nothing on a server. The only product is the one-time
+unlock, and Apple handles that payment:
+
+| Data type | Collected? |
+|---|---|
+| Purchases → Purchase History | **No.** The Stack'd Pro transaction id never leaves the device (`stackd_v1_pro`); Apple sees the purchase because Apple processes it. |
+| Everything else | No |
+
+So the answer for the first submission is **Data Not Collected**, which is
+also what the marketing site says. §2 below is what it becomes the moment
+Bank Connect ships — do not use it before then.
+
+## 2. Apple — App Privacy ("nutrition label") — once Bank Connect ships
 
 Before Bank Connect the answer was **Data Not Collected**. With Bank
 Connect it is not, because transactions transit the developer's server and
@@ -86,7 +111,15 @@ the app has no account, but Apple treats persistent device identifiers as
 linkable in some reviews. If review pushes back, flip Financial Info,
 Purchases and Identifiers to "Linked to you" — the purposes stay the same.
 
-## 3. Google Play — Data safety
+## 3a. Google Play — Data safety while Bank Connect is OFF (the first release)
+
+- **Does your app collect or share any of the required user data types?** No.
+- Data deletion: no account exists; Factory Reset in the app erases
+  everything. The support page carries the contact address.
+
+§3 below applies from the release that ships Bank Connect.
+
+## 3. Google Play — Data safety — once Bank Connect ships
 
 - **Does your app collect or share any of the required user data types?** Yes.
 - **Is all of the user data collected by your app encrypted in transit?** Yes.
@@ -150,10 +183,14 @@ availability requires either:
    developer's own bank accounts work, which is fine for a personal build
    or a soft launch to yourself, not for public users.
 
-Until one of these is in place, the listing must NOT advertise Online
-banking; ship the app with `ENTITLEMENT_MODE=store` and no products, and the
-feature simply shows "Subscription needed" with no purchasable plan — or
-gate the Settings row behind a remote flag (not built; add if needed).
+**Settled (D1, v1.15):** the first release ships with the feature off at
+build time — `BankConnect.FEATURE_ENABLED = false`, so there is no Settings
+row, no routes, no subscription products and no "coming soon" card (which
+would itself be dormant functionality under Apple 2.3.1). Nothing about it
+reaches the network, so the privacy answers stay at "Data Not Collected"
+(§2a / §3a). Turning it on is a one-line change plus a new build, which both
+stores require anyway: the first subscription product is reviewed WITH a
+binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
 
 ## 6. Screenshots
 

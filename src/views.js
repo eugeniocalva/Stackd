@@ -3256,6 +3256,7 @@ Object.assign(window.Views, {
                line once enabled). -->
           <div class="section-title">${window.I18n.t('others.bankData')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            ${(window.BankConnect && window.BankConnect.featureEnabled()) ? `
             <div id="btn-open-bank-connect" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('bank.title')}">
               <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
                 <div class="list-item-icon" style="margin: 0; flex-shrink: 0;"><i data-lucide="landmark"></i></div>
@@ -3265,7 +3266,7 @@ Object.assign(window.Views, {
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
-            </div>
+            </div>` : ''}
             <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
               ${window.I18n.t('others.importDesc', { columns: '<b>Date, Amount, Type, Account, Category, Note</b>' })}
             </p>
@@ -6535,6 +6536,11 @@ Object.assign(window.Views, {
       const esc = (s) => BC ? BC.esc(s) : String(s == null ? '' : s);
       const params = window.Router ? window.Router.getParams() : {};
       if (params.tab === 'subscriptions' || params.tab === 'once') this._tab = params.tab;
+      // v1.15 (A-04): with Bank Connect not shipped there is one product, so
+      // the tab bar goes and the subscriptions tab is unreachable — including
+      // via ?tab=subscriptions, which a stale deep link could still carry.
+      const bankShipped = !!(BC && BC.featureEnabled());
+      if (!bankShipped) this._tab = 'once';
       const tab = this._tab;
       const active = Pro.isActive(state);
       const price = Pro.price();
@@ -6638,10 +6644,11 @@ Object.assign(window.Views, {
             <h1 class="header-title" style="margin: 0;">${t('others.purchases')}</h1>
             <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
           </div>
+          ${bankShipped ? `
           <div id="purchases-tabs" role="tablist" style="display: flex; background: var(--bg-surface-sunken); border-radius: 22px; padding: 3px; margin-bottom: var(--space-6);">
             ${segBtn('once', 'pro.tabOnce')}
             ${segBtn('subscriptions', 'pro.tabSubscriptions')}
-          </div>
+          </div>` : ''}
           <div id="purchases-panel" data-tab="${tab}">
             ${tab === 'once' ? onceHtml : subsHtml}
           </div>

@@ -56,6 +56,10 @@ const fakeCdv = () => {
 const boot = (opts) => {
   const o = opts || {};
   global.window = {
+    // v1.15 (A-04): this suite covers the SHARED store session, so it needs
+    // Bank Connect switched on. That Pro registers alone when the feature
+    // is off is asserted in tests/unit/bankConnectHidden.test.js.
+    __STACKD_BANK_CONNECT__: true,
     crypto: { randomUUID: () => 'uuid-' + Math.random().toString(36).slice(2) },
     localStorage: memStorage(),
     StackdHydrateIcons: vi.fn(),

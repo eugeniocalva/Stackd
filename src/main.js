@@ -377,7 +377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // v1.07 B3: the bank's return (App Link on a verified install, the
       // stackd:// scheme from the broker's hand-off page otherwise) — warm
       // via appUrlOpen, cold via the launch URL.
-      if (window.BankConnect) {
+      if (window.BankConnect && window.BankConnect.featureEnabled()) {
         CapacitorApp.addListener('appUrlOpen', (ev) => {
           if (ev && ev.url) window.BankConnect.handleReturn(ev.url).catch(() => {});
         });
@@ -484,15 +484,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'import-preview': // v0.99: bank-statement import review
         viewModule = window.Views.ImportPreviewView;
         break;
+      // v1.15 (A-04): the three Bank Connect screens exist only in a build
+      // that ships the feature; otherwise anything pointing at them lands on
+      // Settings instead of a screen that cannot work.
       case 'bank-connect': // v1.05: online banking hub
-        viewModule = window.Views.BankConnectHubView;
-        break;
       case 'bank-connect-add': // v1.05: bank picker
-        viewModule = window.Views.BankPickerView;
+      case 'bank-connect-map': { // v1.07: account mapping
+        const bankOn = window.BankConnect && window.BankConnect.featureEnabled();
+        if (!bankOn) { window.Router.navigate('#settings'); return; }
+        viewModule = state.activeView === 'bank-connect' ? window.Views.BankConnectHubView
+          : (state.activeView === 'bank-connect-add' ? window.Views.BankPickerView : window.Views.BankMapView);
         break;
-      case 'bank-connect-map': // v1.07: account mapping
-        viewModule = window.Views.BankMapView;
-        break;
+      }
       case 'purchases': // v1.13: in-app purchases (Stack'd Pro + Bank Connect)
         viewModule = window.Views.PurchasesView;
         break;

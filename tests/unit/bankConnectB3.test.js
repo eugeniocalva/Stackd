@@ -36,6 +36,11 @@ const PUBLIC = {
 
 const boot = (opts = {}) => {
   global.window = {
+    // v1.15 (A-04): Bank Connect is BUILD-TIME off for the first store
+    // release. These suites exercise the feature itself, so they turn it
+    // on explicitly — the shipped default is covered by
+    // tests/unit/bankConnectHidden.test.js.
+    __STACKD_BANK_CONNECT__: true,
     crypto: { randomUUID: () => 'uuid-' + Math.random().toString(36).slice(2) },
     localStorage: memStorage(),
     StackdHydrateIcons: vi.fn(),

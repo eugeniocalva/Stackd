@@ -38,7 +38,7 @@ Take these before the work below hits them. My recommendation is in each row.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | **Ship with Bank Connect hidden, or wait for Enable Banking production access?** Production needs a signed contract + company KYB, and pricing is a quote with a monthly minimum. | **Ship without it.** Launch the local app plus Stack'd Pro, keep Online banking dark behind the remote flag (A-04), and turn it on in an update once the contract is signed. It removes the hardest reviewer question, the largest fixed cost and the "financial services" pressure on both accounts. |
+| D1 | ~~Ship with Bank Connect hidden, or wait for Enable Banking production access?~~ | **DECIDED 2026-09-09: ship without it.** Implemented in v1.15 (A-04). The first release is the local app plus Stack'd Pro; Online banking is off at build time and turns on in a later update once the Enable Banking contract is signed. |
 | D2 | **Sole trader or company?** This decides the Play account type, whether you need a D-U-N-S number, and which address is published. | **Sole trader** unless a company already exists. A company means a D-U-N-S (up to 30 days) and, on Play, the full legal address published. Note Play requires an Organization account for "financial services" apps — another reason D1 matters. |
 | D3 | **Which address and phone go public?** Both stores publish trader contact details in the EU. Apple accepts a P.O. Box for individuals (with proof); Play publishes your country for personal accounts and the full address once you monetise. | Get a **P.O. Box or a business address** and a **second phone number** before enrolling. Do not use your home address, and do not commit either to these repos — they are public. |
 | D4 | **iPhone-only or universal?** I have set the project to iPhone-only. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
@@ -182,10 +182,33 @@ Ordered. IDs are stable so we can refer to them.
   after 3 days. Initialise the store at boot on native so the plugin replays
   approved transactions, and distinguish a broker outage from a declined
   receipt in the message.
-- **A-04 · Remote availability flag for Bank Connect** (needed if D1 = ship
-  without it). A `bankConnect: false` answer from the broker hides the
-  Settings row and the hub, so the feature can be switched on later without a
-  new binary, and doubles as a kill switch. About a day with tests.
+- **A-04 · Hide Bank Connect for the first release — DONE 2026-09-09 (v1.15).**
+  `BankConnect.FEATURE_ENABLED = false` removes every trace: the Settings row,
+  the three routes (a stale deep link bounces to Settings), the bank return
+  leg, the subscription products in the store session, the subscriptions tab
+  on the purchases screen (including via `?tab=subscriptions`), the Smart
+  Insights cards, and any boot work — so nothing reaches the network. A stored
+  opt-in from a restored backup cannot reactivate it. Stack'd Pro is
+  untouched and registers alone. 728 unit and 48 e2e tests pass;
+  `tests/unit/bankConnectHidden.test.js` and an e2e case pin the shipped
+  default, and every other bank suite opts in with
+  `window.__STACKD_BANK_CONNECT__`.
+
+  **Built as a build-time constant, NOT the remote flag this plan originally
+  described.** Asking the broker at boot whether the feature is on would mean
+  an unconditional network call to our own server for every user, including
+  those who never touch Bank Connect. That contradicts the privacy policy
+  ("Without Bank Connect, Stack'd does not collect, transmit, sell or share
+  any personal data") and would push both stores' privacy answers off "Data
+  Not Collected" — a real cost, paid on every install, to avoid a one-line
+  change. It also buys less than it looks: the first subscription product is
+  reviewed WITH a binary on iOS, so switching the feature on needs a new build
+  regardless. The kill switch for users who HAVE opted in already exists in
+  the broker's error responses (B4 handles them).
+
+  Turning it on later: flip the constant, bump the version, restore the
+  listing paragraphs (`docs/store-listing.md` §5), switch the privacy answers
+  from §2a/§3a to §2/§3, and ship.
 - **A-05 · Store screenshots.** Extend the existing Playwright capture script
   to emit the store sizes (1260×2736 for the 6.9" iPhone, 1080×1920 for Play)
   in all five languages, from seeded data, with no real bank names or IBANs.

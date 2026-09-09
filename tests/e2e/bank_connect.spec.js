@@ -7,6 +7,11 @@ import { test, expect } from '@playwright/test';
 // nothing here touches the network. The App-Link return + mapping are B3.
 test.describe('Bank Connect (B2) E2E flow', () => {
   const installStub = () => {
+    // v1.15 (A-04): Bank Connect is build-time off for the first store
+    // release; this spec exercises the feature, so it turns it on. The
+    // shipped-off default is covered by tests/unit/bankConnectHidden.test.js
+    // and by the "hidden at launch" case in pro_paywall.spec.js.
+    window.__STACKD_BANK_CONNECT__ = true;
     window.__STACKD_BROKER_STUB__ = {
       calls: [],
       opened: null,
