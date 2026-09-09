@@ -16,12 +16,20 @@ describe('Global Safe Area Implementation (v0.73 model)', () => {
     expect(read('index.html')).toContain('viewport-fit=cover');
   });
 
-  it('defines --safe-top, --safe-bottom, --safe-left, --safe-right in variables.css', () => {
+  // v1.14: at targetSdk 36 Android forces edge-to-edge with no opt-out, and
+  // env(safe-area-inset-*) is unreliable on Android WebViews older than 140.
+  // Capacitor 8's System Bars plugin injects --safe-area-inset-* with the real
+  // values, so each token now prefers the injected variable and keeps env() as
+  // the fallback for iOS and the web. Both halves must stay present: without
+  // the injected value the bottom nav sits under the gesture bar on Android,
+  // without env() the notch inset is lost on iOS.
+  it('each safe-area token prefers the injected inset and falls back to env()', () => {
     const cssContent = read('src/styles/variables.css');
-    expect(cssContent).toContain('--safe-top: env(safe-area-inset-top');
-    expect(cssContent).toContain('--safe-bottom: env(safe-area-inset-bottom');
-    expect(cssContent).toContain('--safe-left: env(safe-area-inset-left');
-    expect(cssContent).toContain('--safe-right: env(safe-area-inset-right');
+    for (const side of ['top', 'bottom', 'left', 'right']) {
+      expect(cssContent).toContain(
+        `--safe-${side}: var(--safe-area-inset-${side}, env(safe-area-inset-${side}, 0px))`
+      );
+    }
   });
 
   it('#app owns the top inset; .view-container (the scroller) does not pad it', () => {

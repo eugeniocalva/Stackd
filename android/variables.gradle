@@ -1,16 +1,24 @@
+// v1.14: Capacitor 8 template values. Google Play requires new apps to target
+// API 36 (Android 16) since 2026-08-31, which is what forced the 6 -> 7 -> 8
+// migration. `npx cap migrate` could not rewrite this file (its version parser
+// chokes on it), so these are taken verbatim from the Capacitor 8 android
+// template in @capacitor/cli/assets/android-template.tar.gz.
+//
+// minSdk 24 is Capacitor 8's floor and also clears Play Billing 9.0.0's
+// requirement of 23, which the purchase plugin brings in.
 ext {
-    minSdkVersion = 23
-    compileSdkVersion = 34
-    targetSdkVersion = 34
-    androidxActivityVersion = '1.8.0'
-    androidxAppCompatVersion = '1.6.1'
-    androidxCoordinatorLayoutVersion = '1.2.0'
-    androidxCoreVersion = '1.12.0'
-    androidxFragmentVersion = '1.6.2'
-    coreSplashScreenVersion = '1.0.1'
-    androidxWebkitVersion = '1.9.0'
+    minSdkVersion = 24
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    androidxActivityVersion = '1.11.0'
+    androidxAppCompatVersion = '1.7.1'
+    androidxCoordinatorLayoutVersion = '1.3.0'
+    androidxCoreVersion = '1.17.0'
+    androidxFragmentVersion = '1.8.9'
+    coreSplashScreenVersion = '1.2.0'
+    androidxWebkitVersion = '1.14.0'
     junitVersion = '4.13.2'
-    androidxJunitVersion = '1.1.5'
-    androidxEspressoCoreVersion = '3.5.1'
-    cordovaAndroidVersion = '10.1.1'
+    androidxJunitVersion = '1.3.0'
+    androidxEspressoCoreVersion = '3.7.0'
+    cordovaAndroidVersion = '14.0.1'
 }

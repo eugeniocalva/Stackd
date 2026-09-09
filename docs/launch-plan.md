@@ -22,14 +22,15 @@ Everything else fits around these.
 
 | Blocker | Why | Who | Lead time |
 |---|---|---|---|
-| **Android targets API 34, Play requires 36** | Since 31 Aug 2026 new apps must target Android 16. Needs a Capacitor 6 → 7 → 8 migration; the Nov 1 extension is for apps already published, not first submissions. | assistant, then a device test | 1–2 days of work |
+| ~~**Android targets API 34, Play requires 36**~~ **DONE 2026-09-09** | Migrated Capacitor 6 → 7 → 8; the app now targets API 36 and builds. A device walk on an API 36 emulator is still owed (edge-to-edge, both themes). | assistant | done; device walk pending |
 | **Play closed testing: 12 testers, 14 days** | Applies to personal Play accounts created after 13 Nov 2023, before production access is granted. | owner | **14 days of calendar**, plus ~7 days for the access review |
 | **No Apple Developer Program membership** | Nothing on the App Store side can start — no app record, no products, no TestFlight. Uploads also require Xcode 26 / iOS 26 SDK, i.e. a Mac. | owner | hours to days for enrolment, plus Mac access |
 
-Realistic shape: **Android is roughly 4–6 weeks out** (migration → signed build
-→ closed test 14 days → production access review), **iOS depends entirely on
-when enrolment and a Mac happen** and is then 1–2 weeks (TestFlight, review).
-They run in parallel; neither waits for the other.
+Realistic shape: **Android is roughly 3–5 weeks out** (signed build → closed
+test 14 days → production access review), **iOS depends entirely on when
+enrolment and a Mac happen** and is then 1–2 weeks (TestFlight, review). They
+run in parallel; neither waits for the other. With the migration done, the
+Android path now waits only on you: the developer account and the testers.
 
 ## 2. Decisions only you can make
 
@@ -138,19 +139,22 @@ Ordered. IDs are stable so we can refer to them.
 
 ### Before the first store build
 
-- **A-01 · Capacitor 6 → 7 → 8 migration (blocks Play entirely).**
-  `npx cap migrate` twice, taking `compileSdk`/`targetSdk` to 36, `minSdk` to
-  24, AGP 8.13, Gradle 8.14.3, plus Node 22+ and Android Studio Otter (both
-  already on this machine). Then the edge-to-edge work: at target 36 Android
-  16 removes the opt-out, and `env(safe-area-inset-*)` is unreliable on older
-  Android WebViews, so the app's `--safe-top`/`--safe-bottom` need the
-  System Bars plugin's CSS variables as a fallback. Ends with a real emulator
-  run on API 36 in both themes. **This is the single largest remaining piece
-  and needs a device loop, so it wants its own session.**
-- **A-02 · Verify the purchase plugin actually lands.** `npm run build && npx
-  cap sync android`, then confirm the billing dependency and
-  `cordova_plugins.js` are non-empty. The local Android project predates the
-  plugin, so nothing has ever exercised the purchase path on a device.
+- **A-01 · Capacitor 6 → 7 → 8 migration — DONE 2026-09-09.** The app targets
+  API 36, minSdk 24, AGP 8.13.0, Gradle 8.14.3, iOS deployment target 15.
+  A debug APK builds and reports `targetSdkVersion:'36'` with the billing
+  permission present. Safe areas now prefer the `--safe-area-inset-*`
+  variables Capacitor 8's System Bars plugin injects (Android 16 forces
+  edge-to-edge with no opt-out, and `env()` is unreliable on WebViews older
+  than 140), falling back to `env()` on iOS and the web; the status-bar icon
+  style follows the app theme rather than the device's. 716 unit and 47 e2e
+  tests pass. **Still owed: the emulator walk on API 36** in both themes to
+  confirm nothing sits under the status or gesture bar — a build proves it
+  compiles, not that it looks right.
+- **A-02 · Verify the purchase plugin actually lands — DONE 2026-09-09.**
+  `npx cap sync android` now pulls all five Capacitor plugins plus
+  cordova-plugin-purchase, and the built APK carries the `BILLING`
+  permission. The purchase path still has not run on a real device against a
+  real store: that happens during the closed test with license testers.
 - **A-03 · Unfinished-transaction safety.** If the broker is unreachable after
   an approved purchase, the transaction is never finished, the user is told
   "you were not charged" — and Google auto-refunds an unacknowledged purchase

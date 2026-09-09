@@ -537,7 +537,25 @@ window.Store = {
         document.documentElement.classList.remove('dark');
       }
     }
+    this._applySystemBarsStyle(active);
     return active;
+  },
+
+  // v1.14: at targetSdk 36 the app draws under the status and gesture bars,
+  // so the system-bar icons sit on OUR background and have to follow the
+  // app's theme rather than the device's — a user on a light app theme with
+  // the phone in dark mode would otherwise get white icons on white.
+  // SystemBars is bundled with @capacitor/core 8; DARK means light icons for
+  // a dark background, LIGHT means dark icons for a light one. Absent on the
+  // web build, and never allowed to break a theme change.
+  _applySystemBarsStyle(active) {
+    try {
+      const bars = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SystemBars;
+      if (bars && typeof bars.setStyle === 'function') {
+        const result = bars.setStyle({ style: active === 'dark' ? 'DARK' : 'LIGHT' });
+        if (result && typeof result.catch === 'function') result.catch(() => {});
+      }
+    } catch (e) { /* no plugin (web), or the bridge is not up yet */ }
   },
 
   _themeMediaQuery: null,

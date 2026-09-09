@@ -94,11 +94,21 @@
   --z-modal-backdrop: 3000;
   --z-modal: 3100;
   
-  /* Global Safe Area Insets (iOS Status Bar/Notch/Dynamic Island & Android System Cutouts) */
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
+  /* Global Safe Area Insets (iOS Status Bar/Notch/Dynamic Island & Android System Cutouts)
+
+     v1.14: Android 16 (target 36) forces edge-to-edge with no opt-out, so the
+     WebView is laid out under the status and gesture bars and these values
+     are what keep the header and the bottom nav clear of them. Capacitor 8's
+     System Bars plugin (bundled in @capacitor/core, insetsHandling "css" by
+     default) injects --safe-area-inset-* with the real values, because
+     env(safe-area-inset-*) is unreliable on Android WebViews older than 140.
+     Prefer the injected value, fall back to env() on iOS and the web, then 0.
+     The ?safetop= testing override in main.js still wins: it sets --safe-top
+     directly on the root element. */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
 
   /* Home widget uniform card heights (v0.73 Phase 2): every card of a given
      size is exactly this tall — content adapts to the box, never the box to
