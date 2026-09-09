@@ -34,15 +34,22 @@
 			</array>
 		</dict>
 	</array>
+	<!-- v1.14: the app uses only HTTPS and the platform's own crypto, which is
+	     exempt, so App Store Connect stops asking the export-compliance
+	     question on every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- v1.14: armv7 was the Capacitor template default and is a 32-bit
+	     capability no supported iOS device has. -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

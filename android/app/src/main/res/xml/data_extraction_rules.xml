@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v1.14. Android 12+ backup/transfer rules.
+
+  The user's finance data (the WebView's localStorage and the v0.97
+  Capacitor Filesystem mirror in files/stackd_db/) IS deliberately included:
+  the app has no cloud of its own, so the phone's own backup is the only
+  thing that survives a lost handset, and the privacy policy now says exactly
+  that instead of claiming "no cloud backup".
+
+  The Bank Connect device token is excluded. It lives in the secure-storage
+  plugin's shared preferences, encrypted with an Android Keystore key that
+  never leaves the device, so a restored copy would be undecryptable noise —
+  and a second device presenting the same identity is not something we want
+  anyway. Excluded, the app simply mints a fresh device on first connect.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="WSSecureStorageSharedPreferences.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="WSSecureStorageSharedPreferences.xml" />
+    </device-transfer>
+</data-extraction-rules>

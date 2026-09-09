@@ -213,8 +213,31 @@ purchases screen is `#purchases` → `Views.PurchasesView` (one-time tab +
 subscriptions tab; the subscription purchase itself stays in
 `PaywallModal`). E2E stub: `window.__STACKD_PRO_STUB__`.
 
+## Store launch (v1.14)
+
+`docs/launch-plan.md` is the reference for the first Play/App Store release
+(blockers, owner vs assistant tasks, decisions); `docs/release-checklist.md`
+is the mechanical build-and-ship list for every release. Three things that
+bite if forgotten:
+
+- **`package.json` `version` is the single source of the version number.**
+  `npm run version:sync` rewrites the `<title>`, the Android
+  `versionName`/`versionCode` and both Xcode versions;
+  `tests/unit/versionSync.test.js` fails if they drift. `versionCode` =
+  `major*10000 + minor*100 + patch`, and neither store accepts a build number
+  twice — a replaced upload needs a PATCH bump.
+- **Any new purchase surface needs `Components._legalLinks(prefix)` +
+  `_bindLegalLinks`** — both stores want *Terms of Use* and *Privacy Policy*
+  reachable by those names next to a price, and a price must always name its
+  period (`bank.pricePerMonth` / `bank.pricePerYear`).
+- **`BankConnect.brokerUrl()` defaults to PRODUCTION.** Only a browser dev
+  server on localhost falls back to staging; `window.__STACKD_BROKER_URL__` is
+  the explicit override. The Capacitor WebView origins (`https://localhost`,
+  `capacitor://localhost`) must stay in the broker's `ALLOWED_ORIGINS` or every
+  native request fails CORS preflight.
+
 ## Working conventions in this repo
 
-- The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added.
+- The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added. Bump it via `npm run version:sync`, not by hand.
 - `src/store.js`, `src/views.js`, and `src/components.js` are large monolithic files; new logic is added inline to the relevant global rather than split into new files, to preserve the no-bundler / global-load model.
 - The `agents/` and `.agents/` folders document a Product Analyst → Architect → Vibe Engineer → QA workflow used to produce the code; they are process docs, not runtime code.

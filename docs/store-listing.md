@@ -31,12 +31,17 @@ licensed open-banking provider and import booked transactions with one tap.
 You log in on your bank's own page; your credentials never touch Stack'd.
 Every fetch is shown for review before anything is saved. Access lasts up
 to 180 days and is renewed with your bank; banks allow a few refreshes a
-day. Available for banks in the EEA and the UK. Everything else in Stack'd
-stays free.
+day. Available for banks in the EEA and the UK.
 
 Bank Connect is billed as an auto-renewing subscription through your store
 account (monthly or yearly; price shown in the app). Cancel any time in
 your store's subscription settings.
+
+**What's free, and what isn't.** Everything above is free with up to two
+wallets and the categories the app ships with. Stack'd Pro is a one-time
+purchase that lifts both limits for good — no subscription. Online banking
+is the only part billed monthly or yearly. Anything you have already
+recorded always stays visible and editable.
 
 Terms of Use: https://stackdplatform.com/terms.html ·
 Privacy Policy: https://stackdplatform.com/privacy.html
@@ -59,9 +64,16 @@ against the current App Store Connect questionnaire at submission):
 |---|---|---|---|---|
 | Financial Info → Other Financial Info (bank transactions, balances) | Yes (transit only, not retained) | No — tied to an opaque device/owner id, not to a name or Apple ID | No | App Functionality |
 | Financial Info → Payment Info | No (Apple handles the subscription; the app only receives the transaction id) | — | — | — |
-| Purchases → Purchase History (subscription status, original transaction id) | Yes | No (opaque id) | No | App Functionality |
+| Purchases → Purchase History (subscription status and original transaction id; the Stack'd Pro transaction id, kept on the device only) | Yes | No (opaque id) | No | App Functionality |
 | Identifiers → Device ID (the opaque device token) | Yes | No | No | App Functionality |
 | Contact Info, Location, Contacts, Usage Data, Diagnostics | No | — | — | — |
+
+The broker also sees the request's IP address and User-Agent while Bank
+Connect is in use — it rate-limits with them and forwards them to Enable
+Banking and the bank because the payment-services rules require it for
+online access, and stores neither. Apple's questionnaire has no IP data
+type and exempts data used solely for security and fraud prevention, so
+nothing is declared for it; Privacy clause 3 discloses it in words.
 
 Notes for the reviewer field: "Bank Connect is opt-in. Bank data is
 fetched via a licensed AISP (Enable Banking Oy, Finland) and relayed by our
@@ -84,7 +96,8 @@ Purchases and Identifiers to "Linked to you" — the purposes stay the same.
   (only if the user enables Bank Connect). Ephemeral processing: the data is
   relayed and not stored. Purpose: App functionality.
 - **Financial info → Purchase history:** Collected, not shared. Optional.
-  Purpose: App functionality (subscription status).
+  Purpose: App functionality (subscription status, and the Stack'd Pro
+  unlock — that one never leaves the device).
 - **Device or other IDs:** Collected, not shared. Optional. Purpose: App
   functionality (the opaque device token).
 - **Personal info, Location, Messages, Photos, Contacts, App activity, App
@@ -93,7 +106,27 @@ Purchases and Identifiers to "Linked to you" — the purposes stay the same.
   (a service provider acting on the user's consent), not shared with it.
   Payment goes to Google.
 
-## 4. Subscription products
+## 4. Products
+
+Both listings must declare that the app contains in-app purchases, and the
+description must name what is free: **two wallets and the built-in
+categories**. Do not print the Pro price in the description — the store shows
+the local price, and a hard-coded "€4.99" is wrong in every other currency.
+
+### 4a. One-time product (v1.13)
+
+| Field | Value |
+|---|---|
+| Product id | `stackd_pro` (`Pro.PRODUCT_ID`) — identical on both stores, case-sensitive |
+| Type | Play: in-app product, one-time. App Store Connect: Non-Consumable |
+| Price | €4.99 in the base storefront; review the generated per-country prices |
+| What it unlocks | unlimited wallets (free plan = `Pro.FREE_ACCOUNT_LIMIT`, 2) and custom categories, forever, on any device signed in to the same store account |
+| Display name | "Stack'd Pro" in all five locales; description from `pro.desc` |
+| Restore | required and present: *Restore purchase* on the One-time tab (`#pro-restore-btn`) |
+| Apple review | the first non-consumable is submitted WITH a binary: attach a screenshot of `#purchases` (One-time tab) and review notes "Settings → In-app purchases → One-time purchase" |
+| Entitlement | local to the device (`stackd_v1_pro`); no server check, no receipt upload |
+
+### 4b. Subscription products (v1.09)
 
 | Field | Value |
 |---|---|

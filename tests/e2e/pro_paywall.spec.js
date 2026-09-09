@@ -146,6 +146,37 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
     await expect(page.locator('#new-cat-name')).toBeVisible();
   });
 
+  // v1.14: both stores expect the Terms of Use AND the Privacy Policy to be
+  // reachable by name from a purchase surface. One combined "Terms and
+  // Conditions" button is the classic review pushback, so the two links are
+  // separate and the privacy one opens the sheet already scrolled to Part 2.
+  test('the purchases screen links Terms of Use and Privacy Policy by name', async ({ page }) => {
+    await page.goto('/#purchases');
+    await expect(page.locator('#pro-once-terms-link')).toHaveText('Terms of Use');
+    await expect(page.locator('#pro-once-privacy-link')).toHaveText('Privacy Policy');
+
+    await page.click('#pro-once-privacy-link');
+    const body = page.locator('#active-modal .modal-body');
+    await expect(body).toBeVisible();
+    // The Stack'd Pro clause exists and sits after the subscription one, so
+    // terms.intro's "Terms 5-6 / Privacy 3-4" cross-reference still holds.
+    await expect(body).toContainText("7. Stack'd Pro (one-time purchase)");
+    await expect(body).toContainText('6. Bank Connect subscription');
+
+    // Opened at the privacy part, not at the top of the licence.
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.querySelector('#active-modal .modal-body');
+      const anchor = document.getElementById('terms-part-privacy');
+      if (!el || !anchor) return null;
+      return Math.round(anchor.getBoundingClientRect().top - el.getBoundingClientRect().top);
+    })).toBeLessThan(24);
+
+    await page.click('#modal-cancel-btn');
+    await page.click('.purchases-tab[data-tab="subscriptions"]');
+    await expect(page.locator('#bank-subs-terms-link')).toHaveText('Terms of Use');
+    await expect(page.locator('#bank-subs-privacy-link')).toHaveText('Privacy Policy');
+  });
+
   test('a seeded purchase (restored device) boots straight into Pro', async ({ page }) => {
     await page.evaluate(() => localStorage.setItem('stackd_v1_pro', JSON.stringify({ active: true, productId: 'stackd_pro', platform: 'play', purchasedAt: '2026-09-01T00:00:00.000Z' })));
     await page.reload();

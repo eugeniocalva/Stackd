@@ -40,7 +40,11 @@ ENTITLEMENT_MODE = "open"
 CLIENT_ID = "stackd-web"
 MAX_CONNECTIONS = "50"
 OWNER_MAX_CONNECTIONS = "3"
-ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+# v1.14: the Capacitor WebView origins are REQUIRED — the app sends custom
+# headers, so every native call is preflighted, and an origin that is not
+# echoed back fails the request. Android serves the app from https://localhost,
+# iOS from capacitor://localhost.
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://localhost,capacitor://localhost"
 EB_BASE_URL = "https://api.enablebanking.com"
 EB_APP_ID = "463906ef-6530-486f-ba80-4f4e644fac1a"   # Enable Banking SANDBOX application (not secret)
 APP_SCHEME = "stackd"
@@ -80,7 +84,9 @@ ENTITLEMENT_MODE = "store"
 CLIENT_ID = "stackd-web"
 MAX_CONNECTIONS = "500"
 OWNER_MAX_CONNECTIONS = "3"
-ALLOWED_ORIGINS = "https://app.stackdplatform.com"
+# v1.14: the deployed web build plus the two Capacitor WebView origins (see the
+# staging note above) — without them every native request fails CORS preflight.
+ALLOWED_ORIGINS = "https://app.stackdplatform.com,https://localhost,capacitor://localhost"
 EB_BASE_URL = "https://api.enablebanking.com"
 EB_APP_ID = ""   # the Enable Banking application UUID (not secret)
 APP_SCHEME = "stackd"

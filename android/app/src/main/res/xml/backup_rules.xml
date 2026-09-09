@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v1.14. The pre-Android-12 half of data_extraction_rules.xml (minSdk is 23,
+  so devices on API 23-30 still read this one). Same policy: the user's data
+  is backed up, the Bank Connect device token is not.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="WSSecureStorageSharedPreferences.xml" />
+</full-backup-content>

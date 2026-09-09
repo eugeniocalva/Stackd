@@ -31,7 +31,7 @@
 // `purchase()` / `openSca()` are delegated to it so Playwright can drive the
 // flow without a network. Never set in production code.
 window.BankConnect = {
-  BROKER_URL: 'https://api-staging.stackdplatform.com', // D-C11 (staging until B6; production = api.)
+  BROKER_URL: 'https://api-staging.stackdplatform.com', // staging: browser dev servers only (see brokerUrl)
   PROD_BROKER_URL: 'https://api.stackdplatform.com',    // v1.11 B7: what the deployed web build talks to
   WEB_ORIGIN: 'https://app.stackdplatform.com',         // v1.11 B7: the deployed web build (UX plan §16.4)
   CLIENT_ID: 'stackd-web',
@@ -91,10 +91,22 @@ window.BankConnect = {
     try { return !!window.location && window.location.origin === this.WEB_ORIGIN; } catch (e) { return false; }
   },
 
+  // v1.14: PRODUCTION is the default everywhere. Until now this returned the
+  // staging host unless the origin was exactly the deployed web build, so a
+  // store build would have talked to staging — open entitlement mode, sandbox
+  // banks, no receipt checks. Only a browser dev server still defaults to
+  // staging; the native WebView (https://localhost on Android,
+  // capacitor://localhost on iOS) must never match that branch, hence the
+  // isNative() guard. __STACKD_BROKER_URL__ stays the explicit dev override.
   brokerUrl() {
     if (window.__STACKD_BROKER_URL__) return window.__STACKD_BROKER_URL__;
-    try { if (window.location && window.location.origin === this.WEB_ORIGIN) return this.PROD_BROKER_URL; } catch (e) { /* no location */ }
-    return this.BROKER_URL;
+    try {
+      const origin = window.location && window.location.origin;
+      if (origin && !this.isNative() && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return this.BROKER_URL;
+      }
+    } catch (e) { /* no location */ }
+    return this.PROD_BROKER_URL;
   },
 
   // ── Prefs helpers (state.bankConnect, see Store._bankConnectDefaults) ─────

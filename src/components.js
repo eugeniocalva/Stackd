@@ -470,6 +470,36 @@ window.Components = {
     }
   },
 
+  // v1.14: the pair of legal links every purchase surface has to carry. Both
+  // stores expect the Terms of Use AND the Privacy Policy to be reachable BY
+  // NAME next to the price, so one combined "Terms and Conditions" button is
+  // not enough — these open the same modal at the matching part.
+  // `close` lets a sheet dismiss itself first (two stacked sheets fight).
+  _legalLinks(prefix) {
+    const t = (k) => window.I18n.t(k);
+    const link = (id, label) => `<button type="button" id="${prefix}-${id}" style="background: none; border: none; padding: 4px 8px; color: var(--color-accent); font-weight: 600; font-size: var(--text-xs); cursor: pointer;">${label}</button>`;
+    return `<div style="display: flex; justify-content: center; align-items: center; gap: var(--space-1); flex-wrap: wrap;">
+        ${link('terms-link', t('others.termsOfUse'))}
+        <span style="color: var(--text-tertiary); font-size: var(--text-xs);">·</span>
+        ${link('privacy-link', t('others.privacyPolicy'))}
+      </div>`;
+  },
+
+  _bindLegalLinks(root, prefix, close) {
+    const open = (section) => {
+      if (typeof close === 'function') {
+        close();
+        setTimeout(() => window.Components.TermsModal.show({ section }), 320);
+      } else {
+        window.Components.TermsModal.show({ section });
+      }
+    };
+    const terms = root.querySelector('#' + prefix + '-terms-link');
+    const privacy = root.querySelector('#' + prefix + '-privacy-link');
+    if (terms) terms.addEventListener('click', () => open('use'));
+    if (privacy) privacy.addEventListener('click', () => open('privacy'));
+  },
+
   // v0.76: Terms & Conditions sheet (Others → Support → Terms and Conditions).
   // Two parts — Terms of Use and Privacy Policy — written for the app's
   // local-only storage model (no servers, no data collection), with the
@@ -481,16 +511,22 @@ window.Components = {
     // v1.10 B6 (bank-connect-ux-plan §15): Bank Connect + subscription clauses;
     // the privacy part gains the data-flow and recipients clauses. Order =
     // numbering, and terms.intro cites "Terms 5–6 / Privacy 3–4" — keep it.
-    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'importAccuracy', 'bankConnect', 'subscription', 'yourData', 'noWarranty', 'liability', 'thirdParties', 'changes'],
+    // v1.14: 'proUnlock' sits AFTER 'subscription' so bankConnect stays clause 5
+    // and subscription clause 6 — terms.intro cites "Terms 5–6 / Privacy 3–4".
+    TERMS_IDS: ['acceptance', 'license', 'notAdvice', 'importAccuracy', 'bankConnect', 'subscription', 'proUnlock', 'yourData', 'noWarranty', 'liability', 'thirdParties', 'changes'],
     PRIVACY_IDS: ['short', 'whatStored', 'bankConnectData', 'recipients', 'whatNot', 'gdpr', 'rights', 'security', 'children', 'contact', 'changes'],
 
-    show() {
+    // v1.14: show({section: 'privacy'}) opens scrolled to Part 2, so a paywall
+    // can offer a link actually LABELLED "Privacy Policy" (Apple 3.1.2 / the
+    // subscription checklist want the two documents reachable by name).
+    show(options) {
+      const opts = options || {};
       const clause = (title, body) => `
         <div style="margin-bottom: var(--space-4);">
           <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 2px;">${title}</div>
           <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6;">${body}</div>
         </div>`;
-      const part = (title) => `<div class="section-title" style="margin: var(--space-5) 0 var(--space-3);">${title}</div>`;
+      const part = (title, id) => `<div class="section-title" id="${id}" style="margin: var(--space-5) 0 var(--space-3);">${title}</div>`;
       // Numbering is generated, not baked into each translated heading.
       const clauses = (prefix, ids) => ids.map((id, i) =>
         clause(`${i + 1}. ${window.I18n.t(`terms.${prefix}.${id}.h`)}`, window.I18n.t(`terms.${prefix}.${id}.d`))
@@ -510,10 +546,10 @@ window.Components = {
                 ${window.I18n.t('terms.intro')}
               </div>
 
-              ${part(window.I18n.t('terms.part1'))}
+              ${part(window.I18n.t('terms.part1'), 'terms-part-use')}
               ${clauses('use', this.TERMS_IDS)}
 
-              ${part(window.I18n.t('terms.part2'))}
+              ${part(window.I18n.t('terms.part2'), 'terms-part-privacy')}
               ${clauses('privacy', this.PRIVACY_IDS)}
             </div>
             <div style="margin-top: var(--space-4); flex-shrink: 0;">
@@ -526,6 +562,26 @@ window.Components = {
         const backdrop = document.getElementById('active-modal');
         if (backdrop) backdrop.classList.add('open');
       });
+
+      // v1.14: land on the requested part instead of making the reader scroll
+      // past the whole licence to reach the privacy policy. Deliberately NOT
+      // inside the rAF above: the scroll needs the sheet to have been laid out
+      // (until `.open` lands the backdrop has no box, and setting scrollTop on
+      // a zero-height element silently does nothing), and a timer keeps this
+      // working where rAF is throttled.
+      if (opts.section === 'privacy') {
+        setTimeout(() => {
+          const open = document.getElementById('active-modal');
+          const anchor = open && open.querySelector('#terms-part-privacy');
+          const body = open && open.querySelector('.modal-body');
+          // Rect delta, not offsetTop: offsetTop is measured against whatever
+          // the nearest positioned ancestor happens to be, which is not the
+          // scroll container here.
+          if (anchor && body && body.scrollHeight > body.clientHeight) {
+            body.scrollTop += anchor.getBoundingClientRect().top - body.getBoundingClientRect().top;
+          }
+        }, 80);
+      }
 
       const close = () => window.Components.Modal.hide();
       const cancelBtn = document.getElementById('modal-cancel-btn');
@@ -4251,10 +4307,17 @@ Object.assign(window.Components, {
           <i data-lucide="check" style="width: 16px; height: 16px; color: var(--color-income); flex-shrink: 0; margin-top: 2px;"></i>
           <span>${t(key, params)}</span>
         </div>`;
+      // v1.14: the billed amount must name its period ("€2.99 / month"), not
+      // stand alone — Apple's subscription checklist asks for the length of
+      // the subscription and the full renewal price on the sign-up screen,
+      // and Play wants the billing frequency visible before purchase.
+      const withPeriod = (id, price) => price
+        ? t(id === 'yearly' ? 'bank.pricePerYear' : 'bank.pricePerMonth', { price: BC.esc(price) })
+        : '—';
       const planCard = (id, labelKey, price, sub) => `
         <button type="button" class="bank-plan" data-plan="${id}" aria-pressed="${plan === id ? 'true' : 'false'}" style="flex: 1; text-align: left; background: var(--bg-surface); border: 1px solid ${plan === id ? 'var(--color-accent)' : 'var(--color-border)'}; box-shadow: ${plan === id ? '0 0 0 1px var(--color-accent)' : 'none'}; border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); cursor: pointer; color: var(--text-primary);">
           <div style="font-size: var(--text-xs); color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">${t(labelKey)}</div>
-          <div style="font-family: var(--font-family-display); font-weight: 700; font-size: var(--text-lg); margin-top: 2px;">${BC.esc(price)}</div>
+          <div style="font-family: var(--font-family-display); font-weight: 700; font-size: var(--text-lg); margin-top: 2px;">${withPeriod(id, price)}</div>
           ${sub ? `<div style="font-size: var(--text-xs); color: var(--text-tertiary);">${BC.esc(sub)}</div>` : ''}
         </button>`;
       const plansHtml = prices
@@ -4299,7 +4362,7 @@ Object.assign(window.Components, {
         </div>
         <p style="font-size: var(--text-xs); color: var(--text-secondary); text-align: center; margin: var(--space-4) 0 var(--space-2);">${t('bank.optionalNote')}</p>
         <p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: 0 0 var(--space-2);">${t('bank.storeNote')}</p>
-        <button type="button" id="bank-paywall-terms" style="display: block; margin: 0 auto; background: none; border: none; padding: 4px; color: var(--color-accent); font-weight: 600; font-size: var(--text-xs); cursor: pointer;">${t('others.terms')}</button>`);
+        ${window.Components._legalLinks('bank-paywall')}`);
       if (!backdrop) return;
       const close = backdrop._close;
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
@@ -4330,8 +4393,8 @@ Object.assign(window.Components, {
           const wrap = backdrop.querySelector('#bank-paywall-plans-wrap');
           if (!wrap) return;
           wrap.innerHTML = `<div id="bank-paywall-plans" style="display: flex; gap: var(--space-3); margin: var(--space-4) 0;">
-             ${planCard('monthly', 'bank.planMonthly', p.monthly.price || '—', '')}
-             ${planCard('yearly', 'bank.planYearly', p.yearly.price || '—', p.yearly.perMonth ? t('bank.perMonthEquiv', { amount: p.yearly.perMonth }) : '')}
+             ${planCard('monthly', 'bank.planMonthly', p.monthly.price, '')}
+             ${planCard('yearly', 'bank.planYearly', p.yearly.price, p.yearly.perMonth ? t('bank.perMonthEquiv', { amount: p.yearly.perMonth }) : '')}
            </div>`;
           bindPlans();
           const sub = backdrop.querySelector('#bank-paywall-subscribe');
@@ -4376,10 +4439,7 @@ Object.assign(window.Components, {
           alert(t('bank.purchaseFailed'));
         }
       });
-      backdrop.querySelector('#bank-paywall-terms').addEventListener('click', () => {
-        close();
-        setTimeout(() => window.Components.TermsModal.show(), 320);
-      });
+      window.Components._bindLegalLinks(backdrop, 'bank-paywall', close);
     }
   },
 

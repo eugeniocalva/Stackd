@@ -3289,12 +3289,17 @@ Object.assign(window.Views, {
                 <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">${window.I18n.t('others.sendFeedback')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
+              ${window.Views._storeUrl() ? `
               <div class="list-item" id="btn-rate-app" style="cursor: pointer;" tabindex="0" role="button">
                 <div class="list-item-content"><div class="list-item-title" style="color: var(--color-accent);">${window.I18n.t('others.rateApp')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
-              </div>
+              </div>` : ''}
               <div class="list-item" id="btn-open-terms" style="cursor: pointer;" tabindex="0" role="button" aria-label="${window.I18n.t('others.openTermsAria')}">
                 <div class="list-item-content"><div class="list-item-title">${window.I18n.t('others.terms')}</div></div>
+                <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
+              </div>
+              <div class="list-item" id="btn-open-privacy" style="cursor: pointer;" tabindex="0" role="button">
+                <div class="list-item-content"><div class="list-item-title">${window.I18n.t('others.privacyPolicy')}</div></div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
             </div>
@@ -3348,16 +3353,34 @@ Object.assign(window.Views, {
         termsBtn.addEventListener('click', openTerms);
         termsBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTerms(); } });
       }
+      // v1.14: the privacy policy is reachable by name, not only inside a
+      // sheet labelled "Terms and Conditions" (Apple 5.1.1(i) wants it
+      // accessible in the app; reviewers look for the words).
+      const privacyBtn = document.getElementById('btn-open-privacy');
+      if (privacyBtn) {
+        const openPrivacy = () => window.Components.TermsModal.show({ section: 'privacy' });
+        privacyBtn.addEventListener('click', openPrivacy);
+        privacyBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPrivacy(); } });
+      }
       // v0.89 P8d: these two were inline onclick="alert('…')" with the message
       // baked into the attribute, which no amount of escaping makes safe to
       // interpolate a translation into. Wired here instead.
+      // v1.14: they were still alert() placeholders — one of them literally
+      // said "App Store rating flow coming soon", which is the kind of
+      // unfinished content store review rejects. Feedback now opens a
+      // prefilled mail draft (counts only, never the data itself) and Rate
+      // opens the store page; the Rate row is not rendered at all when there
+      // is no store URL for the platform.
       const feedbackBtn = document.getElementById('btn-send-feedback');
       if (feedbackBtn) {
-        feedbackBtn.addEventListener('click', () => alert(window.I18n.t('others.feedbackAlert')));
+        feedbackBtn.addEventListener('click', () => window.Views._openFeedbackMail(window.Store.getState()));
       }
       const rateBtn = document.getElementById('btn-rate-app');
       if (rateBtn) {
-        rateBtn.addEventListener('click', () => alert(window.I18n.t('others.rateAlert')));
+        rateBtn.addEventListener('click', () => {
+          const url = window.Views._storeUrl();
+          if (url) window.Views._openExternal(url);
+        });
       }
       const exportAccBtn = document.getElementById('btn-export-accounts');
       if (exportAccBtn) {
@@ -6403,6 +6426,70 @@ Object.assign(window.Views, {
 
   // The locked replacement for a gated "new" screen. `feature` is
   // 'accounts' | 'categories'; `backHref` is where the X / Go back lead.
+  // ── Store links (v1.14) ───────────────────────────────────────────────────
+  // The Apple id only exists once the App Store Connect record is created.
+  // Until the owner fills APPLE_APP_ID in, anything that would open a dead
+  // apps.apple.com link is hidden rather than shown broken.
+  APPLE_APP_ID: null,
+  ANDROID_PACKAGE: 'com.stackd.finance',
+
+  _platform() {
+    return window.BankConnect ? window.BankConnect.platform() : 'web';
+  },
+
+  // Where "Rate the App" goes, or null when there is no store for this build.
+  _storeUrl() {
+    const p = this._platform();
+    if (p === 'play') return 'https://play.google.com/store/apps/details?id=' + this.ANDROID_PACKAGE;
+    if (p === 'appstore') return this.APPLE_APP_ID ? 'https://apps.apple.com/app/id' + this.APPLE_APP_ID + '?action=write-review' : null;
+    return null;
+  },
+
+  // The store's own subscription centre — both stores require an easy path to
+  // cancel, and neither lets the app do it.
+  _subscriptionsUrl() {
+    const p = this._platform();
+    if (p === 'play') return 'https://play.google.com/store/account/subscriptions';
+    if (p === 'appstore') return 'https://apps.apple.com/account/subscriptions';
+    return null;
+  },
+
+  _openExternal(url) {
+    const cap = window.Capacitor;
+    const Browser = cap && cap.Plugins && cap.Plugins.Browser;
+    const native = window.BankConnect ? window.BankConnect.isNative() : false;
+    if (native && Browser && typeof Browser.open === 'function') {
+      Browser.open({ url }).catch(() => { window.open(url, '_blank'); });
+      return;
+    }
+    window.open(url, '_blank');
+  },
+
+  // A prefilled support mail: the details support.html asks people to send,
+  // filled in for them. Counts only — never a transaction, name or amount.
+  _openFeedbackMail(state) {
+    const t = (k) => window.I18n.t(k);
+    const s = state || {};
+    const body = [
+      '', '',
+      '-----',
+      t('others.feedbackIntro'),
+      'App: ' + document.title,
+      'Platform: ' + this._platform(),
+      'Language: ' + (s.language || 'en'),
+      'Currency: ' + (s.currency || ''),
+      'Accounts: ' + ((s.accounts || []).length),
+      'Transactions: ' + ((s.transactions || []).length)
+    ].join('\n');
+    const url = 'mailto:hi@stackdplatform.com?subject=' + encodeURIComponent(t('others.feedbackSubject')) +
+      '&body=' + encodeURIComponent(body);
+    try {
+      window.location.href = url; // Capacitor hands mailto: to the OS mail app
+    } catch (e) {
+      alert(t('others.feedbackNoMail'));
+    }
+  },
+
   _proLockedPage(feature, backHref) {
     const t = (k, p) => window.I18n.t(k, p);
     const Pro = window.Pro;
@@ -6498,13 +6585,20 @@ Object.assign(window.Views, {
           ${perk('pro.perkOnce')}
           <p style="font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.5; margin: var(--space-3) 0 var(--space-4);">${t('pro.freeIncludes', { count: Pro.FREE_ACCOUNT_LIMIT })}</p>
           ${proBody}
+          ${window.Components._legalLinks('pro-once')}
         </div>`;
 
       // ── Subscriptions: Bank Connect ──
       let bankBody = '';
       if (bankEnt.active) {
         bankBody += `<p style="font-size: var(--text-sm); color: var(--text-primary); font-weight: 600; margin: var(--space-3) 0 var(--space-4);">${t('bank.subActive', { date: BC.formatDate(bankEnt.expiresAt) })}</p>`;
-        bankBody += stack(`<button type="button" class="btn btn-secondary" id="bank-manage-btn">${t('pro.manage')}</button>`);
+        // v1.14: both stores require an easy route to cancel, and only the
+        // store itself can do it — so the store's subscription centre gets its
+        // own button next to the in-app hub link.
+        bankBody += stack(
+          (window.Views._subscriptionsUrl() ? `<button type="button" class="btn btn-secondary" id="bank-store-manage-btn">${t('bank.manageSubscription')}</button>` : '') +
+          `<button type="button" class="btn btn-secondary" id="bank-manage-btn">${t('pro.manage')}</button>`
+        );
       } else {
         const hasPrices = !!(bankPrices && (bankPrices.monthly.price || bankPrices.yearly.price));
         bankBody += '<div style="margin-top: var(--space-3);"></div>';
@@ -6534,7 +6628,8 @@ Object.assign(window.Views, {
           ${perk('bank.perkReview')}
           ${bankBody}
           <p style="font-size: var(--text-xs); color: var(--text-secondary); text-align: center; margin: var(--space-4) 0 var(--space-2);">${t('bank.optionalNote')}</p>
-          <p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: 0;">${t('bank.storeNote')}</p>
+          <p style="font-size: 0.68rem; color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: 0 0 var(--space-2);">${t('bank.storeNote')}</p>
+          ${window.Components._legalLinks('bank-subs')}
         </div>`;
 
       return `
@@ -6640,6 +6735,15 @@ Object.assign(window.Views, {
       }
       const manage = container.querySelector('#bank-manage-btn');
       if (manage) manage.addEventListener('click', () => window.Router.navigate('#bank-connect'));
+      const storeManage = container.querySelector('#bank-store-manage-btn');
+      if (storeManage) {
+        storeManage.addEventListener('click', () => {
+          const url = window.Views._subscriptionsUrl();
+          if (url) window.Views._openExternal(url);
+        });
+      }
+      // v1.14: Terms of Use + Privacy Policy by name on both tabs.
+      window.Components._bindLegalLinks(container, view._tab === 'once' ? 'pro-once' : 'bank-subs');
       if (BC && view._tab === 'subscriptions' && !BC.prices() && BC.storeAvailable() && !BC.stub()) {
         BC.loadPrices().then(p => {
           if (!p || !container.isConnected || view._tab !== 'subscriptions') return;
