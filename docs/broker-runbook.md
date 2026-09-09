@@ -51,14 +51,30 @@ during an incident.
 | **External pinger on `/healthz`** | **MISSING** — launch-plan O-30. Until it exists, "the Worker is down" is a class of incident nothing tells you about |
 | **The owner table above** | **MISSING** — the 72-hour clock in §4 is not a good time to be searching for a portal URL |
 
-**Rehearse before you need it.** Staging (`api-staging.stackdplatform.com`)
-is live and is the safe place to learn the pause lever. One caveat found
-while checking: the deployed staging build is older than this repo, and its
-ops routes still sit behind the client header, so §2's command as written
-returns `403 client_required` there. Redeploy staging (`npm run
-deploy:staging`) before rehearsing, or add `-H "x-stackd-client: stackd-web"`
-to reach the auth check. Against production, once it exists, the commands
-below are correct as written.
+**Rehearse before you need it.** Staging
+(`api-staging.stackdplatform.com`) is live, runs this repo's code as of
+2026-09-09, and is the safe place to learn the pause lever — it is
+`ENTITLEMENT_MODE=open` against the Enable Banking sandbox, so pausing it
+costs nothing.
+
+One thing still blocks the rehearsal: **`OPS_TOKEN` is not set on staging**,
+and both ops routes answer `404` without it by design, so the endpoint is
+invisible rather than merely locked. Set one (any long random string; it
+belongs in the password manager, not here):
+
+```powershell
+cd broker; npx wrangler secret put OPS_TOKEN
+```
+
+Then walk §1 and §2 end to end against staging: read `/v1/ops/status`, pause
+with `{"minutes":5}`, confirm the app shows "temporarily unavailable", lift
+it with `{"minutes":0}`. Swap the host for `api.stackdplatform.com` and add
+`--env production` and the commands are the ones written below.
+
+**How to read the codes while rehearsing:** `404` means `OPS_TOKEN` is unset
+on that environment, `401` means it is set and your bearer token is wrong,
+`403 client_required` means you reached a build whose ops routes still sit
+behind the client header — i.e. one older than v1.16.
 
 ---
 
