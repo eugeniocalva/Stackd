@@ -292,8 +292,26 @@ Ordered. IDs are stable so we can refer to them.
   accounts and therefore no push channel — it is the only way to tell users
   anything. Blanks the owner must fill (supervisory authority and its portal)
   are marked in the runbook rather than guessed.
-- **A-13 · Localised legal pages** on the website (English-only today; the app
-  ships five languages). Generatable from the dictionaries.
+- **A-13 · Localised legal pages — DONE 2026-09-09 (v1.16).**
+  `node tools/site/legal.cjs` generates `/<lang>/privacy` and `/<lang>/terms`
+  for fr, it, es and pt. The clause TEXT comes from the app's own
+  dictionaries and the clause ORDER from `Components.TERMS_IDS` /
+  `PRIVACY_IDS`, so the public pages cannot say something different from the
+  app — the whole risk with a second copy of a legal document. Only the page
+  furniture and the one website-specific privacy clause (which has no in-app
+  equivalent, because the app is not a website) live in the script.
+
+  English stays hand-written at the root: `/privacy` and `/terms` are the URLs
+  in both store listings and carry site-specific structure. The generator
+  checks it has not drifted from the dictionaries (clause counts and the
+  "last updated" date) and exits non-zero if it has.
+
+  Also: hreflang alternates plus a visible language switcher on all ten
+  pages, and the sitemap generator now emits 12 URLs. The generator wraps the
+  contact address in the `email_off` markers — the dictionaries hold it as
+  plain text, and without that Cloudflare's obfuscation plus the site's own
+  CSP would have rendered `[email protected]` on eight new pages, which is
+  the exact bug that was live on the English page.
 - **A-14 · Repo tidy** before more eyes land on a public repo: stale scratch
   files, no README.
 - **A-15 · Clear the 13 lint warnings** so lint can run at zero.
