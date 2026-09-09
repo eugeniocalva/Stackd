@@ -1,4 +1,4 @@
-# Broker incident runbook (v1.16)
+# Broker incident runbook (v1.17)
 
 What to do when the Bank Connect broker misbehaves or is compromised. Written
 to be followed at 2am by one person who did not write it that day.
@@ -15,6 +15,50 @@ to be followed at 2am by one person who did not write it that day.
 >
 > Keep this file free of secrets, tokens and personal data. It is committed to
 > a public repository.
+
+## How to read this file — nothing here is struck through, on purpose
+
+`launch-plan.md` and `store-listing.md` cross out what is finished. **Nothing
+in this file is ever finished.** Every step is conditional, to be run only
+during an incident, and a struck-out line read at 2am means "skip this" —
+which is the last thing this document should ever say.
+
+So the steps stay upright. What is marked instead is **readiness**: whether
+the thing a step depends on actually exists yet. That is §0a, it was measured
+rather than remembered, and it is the part that goes stale.
+
+---
+
+## 0a. Readiness — what would work tonight (measured 2026-09-09)
+
+**This runbook is currently dormant, and that is the correct state.** Bank
+Connect ships switched off, no released build talks to a broker, and the
+production Worker has never been deployed. There is no live incident surface.
+It matters anyway, because readiness is exactly the thing you cannot build
+during an incident.
+
+| What a step needs | State |
+|---|---|
+| The pause lever, `/v1/ops/pause` (§2) | ~~built~~ **IN PLACE** — v1.16 A-12, with tests |
+| The status snapshot, `/v1/ops/status` (§1) | ~~built~~ **IN PLACE** — v1.16 A-11 |
+| The 15-minute monitoring cron | ~~built~~ **IN PLACE** — `[triggers]` in both envs |
+| `preflight --secrets` after a rotation (§3) | ~~built~~ **IN PLACE** — `broker/scripts/preflight.mjs` |
+| The end-to-end smoke (§7) | ~~built~~ **IN PLACE** — `broker/scripts/smoke.mjs` |
+| The Service status line to notify on (§6) | ~~built~~ **IN PLACE** — `StackdSite/support.html` |
+| **The production Worker itself** | **MISSING** — `api.stackdplatform.com` does not answer at all. Every command below points there, so today they hang rather than fail |
+| **`EB_APP_ID` in `[env.production.vars]`** | **MISSING** — empty, so `deploy:production` is refused by its own preflight |
+| **`ALERT_WEBHOOK_URL`** | **UNKNOWN from here** — it is a secret; with it unset the cron only keeps counters and pages nobody |
+| **External pinger on `/healthz`** | **MISSING** — launch-plan O-30. Until it exists, "the Worker is down" is a class of incident nothing tells you about |
+| **The owner table above** | **MISSING** — the 72-hour clock in §4 is not a good time to be searching for a portal URL |
+
+**Rehearse before you need it.** Staging (`api-staging.stackdplatform.com`)
+is live and is the safe place to learn the pause lever. One caveat found
+while checking: the deployed staging build is older than this repo, and its
+ops routes still sit behind the client header, so §2's command as written
+returns `403 client_required` there. Redeploy staging (`npm run
+deploy:staging`) before rehearsing, or add `-H "x-stackd-client: stackd-web"`
+to reach the auth check. Against production, once it exists, the commands
+below are correct as written.
 
 ---
 
@@ -54,6 +98,9 @@ You will hear about it in one of four ways:
 | External uptime pinger on `/healthz` | the Worker itself is down; the cron is down with it, so no alert will come |
 | A user emails `hi@stackdplatform.com` | usually the first sign of something the counters do not cover |
 | Enable Banking, Apple or Google contact you | treat as confirmed until proven otherwise |
+
+Two of those four are not armed yet — the webhook secret and the pinger — so
+check §0a before assuming silence means health.
 
 First command, always:
 
@@ -214,7 +261,8 @@ Never claim "no data was affected" unless step 4 actually established it.
   application is the mass revoke, at the cost of every user re-consenting.
   A per-owner `DELETE /v1/connections/:ref` exists; there is no admin loop.
 - **The cron cannot report that the Worker is down.** That is what the
-  external pinger on `/healthz` is for (launch-plan O-30).
+  external pinger on `/healthz` is for — and it **does not exist yet**
+  (launch-plan O-30). Until it does, a dead Worker is silent.
 - **Workers Logs retention** is 3 days on the free plan, 7 on paid. If an
   incident is older than that, the logs are gone — the counters in the
   SystemDO keep 48 hours, and the Cloudflare deploy audit log is retained
