@@ -211,7 +211,9 @@ id that does not exist until you create the App Store Connect record.
   for a bad receipt it is also what makes the store refund it.
 
   5 new tests (735 unit, 50 e2e).
-- ~~**A-04 · Hide Bank Connect for the first release**~~ · **DONE 2026-09-09 (v1.15).**
+- ~~**A-04 · Hide Bank Connect for the first release**~~ · **DONE 2026-09-09
+  (v1.15); the build default was REVERSED on 2026-09-16 (v1.18) — see the note
+  at the end of this entry.**
   `BankConnect.FEATURE_ENABLED = false` removes every trace: the Settings row,
   the three routes (a stale deep link bounces to Settings), the bank return
   leg, the subscription products in the store session, the subscriptions tab
@@ -219,9 +221,20 @@ id that does not exist until you create the App Store Connect record.
   Insights cards, and any boot work — so nothing reaches the network. A stored
   opt-in from a restored backup cannot reactivate it. Stack'd Pro is
   untouched and registers alone. 728 unit and 48 e2e tests pass;
-  `tests/unit/bankConnectHidden.test.js` and an e2e case pin the shipped
-  default, and every other bank suite opts in with
+  `tests/unit/bankConnectGate.test.js` (then `bankConnectHidden`) and an e2e
+  case pin the shipped default, and every other bank suite opts in with
   `window.__STACKD_BANK_CONNECT__`.
+
+  **v1.18 — the committed default is now `true`.** The feature is developed
+  and exercised in the app instead of behind a local flip, which is what the
+  owner asked for. Nothing about the SUBMISSION decision changed: production
+  still has no Enable Banking application and no deployed broker, so a build
+  with the gate on cannot be submitted — `/v1/connect/start` would answer 503
+  and a subscriber would pay for a feature that errors. A release made before
+  that is fixed sets `FEATURE_ENABLED = false` again; the kill switch is
+  pinned in both directions by `tests/unit/bankConnectGate.test.js` (renamed
+  from `bankConnectHidden.test.js`) and an e2e case. The store-listing
+  sections marked "NOT FOR THIS RELEASE" therefore still are.
 
   **Built as a build-time constant, NOT the remote flag this plan originally
   described.** Asking the broker at boot whether the feature is on would mean
