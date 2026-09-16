@@ -964,6 +964,50 @@ window.BankConnect = {
     return !!this.stub() || (this.isNative() && !!this._storeApi());
   },
 
+  // ── Store code redemption (v1.18) ─────────────────────────────────────────
+  // Promotional codes are redeemed in the STORE's own UI, never in a field of
+  // ours. A homegrown code that unlocked paid functionality would bypass their
+  // billing (Apple 3.1.1, the equivalent Play policy) and would be extractable
+  // anyway — `npm run build` inlines the whole app into one HTML file, so any
+  // constant ships in plain text inside the APK. Going through the store also
+  // means a redeemed code arrives as an ORDINARY transaction, so the handlers
+  // Pro and the broker already have pick it up with no new entitlement path.
+  //   iOS  — StoreKit's redemption sheet, presented over the app.
+  //   Play — no in-app sheet exists; the Play Store's own redeem page.
+  REDEEM_URL_PLAY: 'https://play.google.com/redeem',
+
+  canRedeemCode() {
+    if (this.stub()) return true;
+    if (!this.storeAvailable()) return false;
+    const p = this.platform();
+    return p === 'appstore' || p === 'play';
+  },
+
+  // Resolves when the sheet closes (iOS) or once the Play page has been
+  // opened (Android — the user is still over there). It never reports WHAT
+  // was redeemed, because neither store tells us: the caller re-reads
+  // ownership afterwards instead.
+  async redeemCode() {
+    const stub = this.stub();
+    if (stub && typeof stub.redeem === 'function') return stub.redeem();
+    const platform = this.platform();
+    if (platform === 'appstore') {
+      const Cdv = this._storeApi();
+      const iap = await this.initStore();
+      const adapter = iap && Cdv && Cdv.Platform && typeof iap.store.getAdapter === 'function'
+        ? iap.store.getAdapter(Cdv.Platform.APPLE_APPSTORE)
+        : null;
+      if (!adapter || typeof adapter.presentCodeRedemptionSheet !== 'function') throw new Error('redeem_unavailable');
+      await adapter.presentCodeRedemptionSheet();
+      return { opened: 'sheet' };
+    }
+    if (platform === 'play') {
+      window.Views._openExternal(this.REDEEM_URL_PLAY); // loaded before this file; called at runtime
+      return { opened: 'external' };
+    }
+    throw new Error('redeem_unavailable');
+  },
+
   // Registers the two plans once and initializes the platform. Idempotent.
   async initStore() {
     if (this._iap) return this._iap.ready;

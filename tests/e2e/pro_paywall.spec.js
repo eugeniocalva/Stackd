@@ -208,6 +208,27 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
     await expect(page.locator('#bank-subs-privacy-link')).toHaveText('Privacy Policy');
   });
 
+  // v1.18: promotional codes are redeemed in the STORE's UI (Apple's sheet,
+  // the Play redeem page), never in a field of ours — that would bypass store
+  // billing and ship extractable inside the inlined bundle.
+  test('the redeem entry opens the store flow and never asks for a code in-app', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__STACKD_BROKER_STUB__ = {
+        redeemed: 0,
+        async redeem() { this.redeemed += 1; return { opened: 'stub' }; },
+        async request() { throw new Error('unexpected broker call'); }
+      };
+    });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Store && !!window.BankConnect);
+    await page.goto('/#purchases');
+    await page.waitForSelector('#redeem-card');
+
+    expect(await page.locator('#redeem-card input, #redeem-card textarea, #redeem-card form').count()).toBe(0);
+    await page.click('#redeem-code-btn');
+    await expect.poll(() => page.evaluate(() => window.__STACKD_BROKER_STUB__.redeemed)).toBe(1);
+  });
+
   test('a seeded purchase (restored device) boots straight into Pro', async ({ page }) => {
     await page.evaluate(() => localStorage.setItem('stackd_v1_pro', JSON.stringify({ active: true, productId: 'stackd_pro', platform: 'play', purchasedAt: '2026-09-01T00:00:00.000Z' })));
     await page.reload();

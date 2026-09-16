@@ -1230,4 +1230,8 @@ window.I18n.dicts.en = {
   'pro.lockedCategoriesTitle': 'Your own categories are a Pro feature',
   'pro.lockedCategoriesBody': "The free plan comes with the default categories. Unlock Stack'd Pro once to create your own.",
   'pro.seePro': "See Stack'd Pro",
+  // v1.18: store-native promotional code redemption (PurchasesView)
+  'pro.redeem': 'Redeem a code',
+  'pro.redeemHint': 'Opens your app store, where promotional codes are redeemed.',
+  'pro.redeemFailed': 'Couldn’t open the redemption page. Please try again.',
 };
