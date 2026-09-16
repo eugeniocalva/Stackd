@@ -1209,4 +1209,8 @@ window.I18n.dicts.es = {
   'pro.lockedCategoriesTitle': 'Las categorías propias son una función Pro',
   'pro.lockedCategoriesBody': "El plan gratuito incluye las categorías predeterminadas. Desbloquea Stack'd Pro una vez para crear las tuyas.",
   'pro.seePro': "Ver Stack'd Pro",
+  // v1.18: store-native promotional code redemption (PurchasesView)
+  'pro.redeem': 'Canjear un código',
+  'pro.redeemHint': 'Abre tu tienda de aplicaciones, donde se canjean los códigos promocionales.',
+  'pro.redeemFailed': 'No se pudo abrir la página de canje. Inténtalo de nuevo.',
 };

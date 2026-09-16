@@ -100,6 +100,34 @@ after `RESTORE_WAIT_MS`). `Pro.storeAvailable()` follows
 E2E stub: `window.__STACKD_PRO_STUB__ = { price, purchase(), restore() }`
 installed before any app script (`tests/e2e/pro_paywall.spec.js`).
 
+### Promotional codes (v1.18)
+
+Codes are redeemed in the **store's own UI**, never in a field of ours.
+A homegrown code that unlocked paid functionality would bypass store billing
+(Apple 3.1.1 and the equivalent Play policy) and would be pointless anyway:
+`npm run build` inlines the app into one HTML file, so any constant ships in
+plain text inside the APK, and Pro's entitlement is local with no server able
+to revoke a leaked code. Going through the store also means a redeemed
+purchase arrives as an ORDINARY transaction, so `Pro._onApproved` and the
+broker path handle it with no new entitlement code.
+
+`BankConnect.canRedeemCode()` / `redeemCode()` own it, because `BankConnect`
+owns the store session. iOS presents StoreKit's redemption sheet over the app
+(`store.getAdapter(Platform.APPLE_APPSTORE).presentCodeRedemptionSheet()`, a
+plugin API, iOS 14+ — on iOS 13 the native call is a no-op and nothing
+opens). Android has no in-app sheet, so `Views._openExternal` opens
+`https://play.google.com/redeem`, which the Play Store app intercepts.
+
+The button is one `#redeem-code-btn` under the tab panel in `PurchasesView`,
+shown whenever a store is reachable and **independent of the Bank Connect
+gate**, since Pro is sold either way. Neither store reports what a code
+unlocked, so `PurchasesView._afterRedeem` re-reads ownership twice: once
+immediately (iOS, the sheet closed over the app) and once on the next
+foreground (Android, the user was in the Play Store). It is quiet by design —
+"nothing found" is a cancelled redemption, not an error.
+
+E2E stub: `window.__STACKD_BROKER_STUB__.redeem()`.
+
 ## 6. Owner runbook
 
 1. **Play Console** → Monetise → In-app products → create `stackd_pro`,
@@ -115,12 +143,24 @@ installed before any app script (`tests/e2e/pro_paywall.spec.js`).
    reinstall → "Restore purchase" → Pro.
 4. `npx cap sync android` after any plugin change (B8 wiring is unchanged
    by this feature — no new plugins).
+5. **Promotional codes (v1.18).** Generate them in the consoles, not in the
+   app: Play Console → Monetise → Promo codes (one-time products and
+   subscriptions); App Store Connect → the product → Promo Codes, and Offer
+   Codes for subscriptions. They redeem through the store, are single-use and
+   are tracked there. The in-app *Redeem a code* button only opens that flow.
+   iOS needs no extra native work (the sheet ships with
+   `cordova-plugin-purchase`, so `npx cap sync ios` is enough); Android needs
+   none at all, it is a URL.
 
 ## 7. Tests
 
 - `tests/unit/pro.test.js` — gates, slice, reset, the adapter (register,
   purchase, approval routing vs Bank Connect, cancel, restore by
   replay/owned flag, init-time ownership, web build, stub).
+- `tests/unit/redeemCode.test.js` — code redemption: availability per
+  platform, Apple's sheet vs the Play page, clean refusal with no store,
+  the stub, the button's presence on the Purchases screen, the post-redeem
+  ownership re-read, and a guard that no code field of ours ever renders.
 - `tests/e2e/pro_paywall.spec.js` — Settings entry, both tabs, the third
   account lock → buy → unlock, the category lock (screen + transaction
   form sheet), a seeded purchase at boot.

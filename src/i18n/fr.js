@@ -1209,4 +1209,8 @@ window.I18n.dicts.fr = {
   'pro.lockedCategoriesTitle': 'Les catégories personnalisées sont une fonction Pro',
   'pro.lockedCategoriesBody': "L’offre gratuite propose les catégories par défaut. Débloquez Stack'd Pro une fois pour créer les vôtres.",
   'pro.seePro': "Découvrir Stack'd Pro",
+  // v1.18: store-native promotional code redemption (PurchasesView)
+  'pro.redeem': 'Utiliser un code',
+  'pro.redeemHint': 'Ouvre votre boutique d’applications, où les codes promotionnels sont utilisés.',
+  'pro.redeemFailed': 'Impossible d’ouvrir la page d’utilisation du code. Veuillez réessayer.',
 };

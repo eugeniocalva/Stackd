@@ -1209,4 +1209,8 @@ window.I18n.dicts.it = {
   'pro.lockedCategoriesTitle': 'Le categorie personalizzate sono una funzione Pro',
   'pro.lockedCategoriesBody': "Il piano gratuito offre le categorie predefinite. Sblocca Stack'd Pro una volta per creare le tue.",
   'pro.seePro': "Scopri Stack'd Pro",
+  // v1.18: store-native promotional code redemption (PurchasesView)
+  'pro.redeem': 'Riscatta un codice',
+  'pro.redeemHint': 'Apre il tuo store, dove si riscattano i codici promozionali.',
+  'pro.redeemFailed': 'Non è stato possibile aprire la pagina di riscatto. Riprova.',
 };

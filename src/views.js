@@ -6651,7 +6651,42 @@ Object.assign(window.Views, {
           <div id="purchases-panel" data-tab="${tab}">
             ${tab === 'once' ? onceHtml : subsHtml}
           </div>
+          ${BC && BC.canRedeemCode() ? `
+          <div id="redeem-card" style="margin-bottom: var(--space-6);">
+            <button type="button" class="btn btn-secondary" id="redeem-code-btn" style="width: 100%;">${t('pro.redeem')}</button>
+            <p style="font-size: var(--text-xs); color: var(--text-tertiary); text-align: center; line-height: 1.5; margin: var(--space-3) 0 0;">${t('pro.redeemHint')}</p>
+          </div>` : ''}
         </div>`;
+    },
+
+    // v1.18: neither store tells us what a code unlocked, so after their
+    // redemption UI we re-read ownership — once now (iOS: the sheet closed
+    // over the app) and once when the app is next foregrounded (Android: the
+    // user went out to the Play Store). Deliberately quiet: "nothing found"
+    // is not an error here, the user may simply have cancelled.
+    _afterRedeem(container, rerender) {
+      const check = () => {
+        if (!container.isConnected) return;
+        const Pro = window.Pro;
+        const BC = window.BankConnect;
+        const state = window.Store.getState();
+        const pending = [];
+        if (Pro && !Pro.isActive(state)) pending.push(Pro.restore().catch(() => null));
+        if (BC && BC.featureEnabled() && !BC.entitlement(state).active) pending.push(BC.restorePurchase().catch(() => null));
+        Promise.all(pending).then(() => { if (container.isConnected) rerender(); });
+      };
+      check();
+      const onBack = () => {
+        if (document.visibilityState !== 'visible') return;
+        stop();
+        check();
+      };
+      const stop = () => {
+        document.removeEventListener('visibilitychange', onBack);
+        clearTimeout(timer);
+      };
+      const timer = setTimeout(stop, 5 * 60 * 1000); // the user never came back
+      document.addEventListener('visibilitychange', onBack);
     },
 
     attachEvents(container, state) {
@@ -6749,6 +6784,24 @@ Object.assign(window.Views, {
           if (url) window.Views._openExternal(url);
         });
       }
+      // v1.18: the store's own code redemption (Apple's sheet / the Play
+      // redeem page). What it unlocks shows up as a normal transaction.
+      const redeemBtn = container.querySelector('#redeem-code-btn');
+      if (redeemBtn) {
+        redeemBtn.addEventListener('click', async () => {
+          redeemBtn.disabled = true;
+          try {
+            await BC.redeemCode();
+          } catch (e) {
+            redeemBtn.disabled = false;
+            alert(t('pro.redeemFailed'));
+            return;
+          }
+          redeemBtn.disabled = false;
+          view._afterRedeem(container, rerender);
+        });
+      }
+
       // v1.14: Terms of Use + Privacy Policy by name on both tabs.
       window.Components._bindLegalLinks(container, view._tab === 'once' ? 'pro-once' : 'bank-subs');
       if (BC && view._tab === 'subscriptions' && !BC.prices() && BC.storeAvailable() && !BC.stub()) {
