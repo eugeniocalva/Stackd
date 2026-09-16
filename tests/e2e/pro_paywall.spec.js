@@ -155,7 +155,28 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
   // Connect off at build time, so a reviewer must find no trace of it. This
   // spec deliberately does NOT set __STACKD_BANK_CONNECT__, so it runs the
   // shipped default in a real browser.
-  test('Bank Connect leaves no trace in the shipped build', async ({ page }) => {
+  // v1.18: the build gate is ON in the committed source again, so the feature
+  // is present by default. The case below it pins the kill switch, which is
+  // how a release goes out without Bank Connect while Enable Banking
+  // production access is unsigned.
+  test('Bank Connect is present in the build', async ({ page }) => {
+    await page.goto('/#settings');
+    await expect(page.locator('#btn-import-csv')).toBeVisible();      // import stays, it is free
+    await expect(page.locator('#btn-open-bank-connect')).toBeVisible();
+
+    await page.goto('/#purchases');
+    await expect(page.locator('#pro-card')).toBeVisible();
+    await expect(page.locator('#purchases-tabs')).toBeVisible();
+
+    await page.goto('/#bank-connect');
+    await expect(page.locator('#bank-connect')).toBeVisible();
+  });
+
+  test('the kill switch still leaves no trace', async ({ page }) => {
+    await page.addInitScript(() => { window.__STACKD_BANK_CONNECT__ = false; });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Store && !!window.BankConnect);
+
     await page.goto('/#settings');
     await expect(page.locator('#btn-import-csv')).toBeVisible();      // import stays, it is free
     await expect(page.locator('#btn-open-bank-connect')).toHaveCount(0);

@@ -68,13 +68,24 @@ window.BankConnect = {
   // active}. The cookie itself is HttpOnly — JS never sees it.
   _webSession: undefined,
 
-  // ── Feature gate (v1.15, docs/launch-plan.md A-04 / D1) ───────────────────
-  // Bank Connect is BUILD-TIME off for the first store release: Enable
-  // Banking production access needs a signed contract and company KYB, and a
-  // feature that cannot work must not be visible. Apple 2.3.1 treats hidden
-  // or dormant functionality as a rejection reason, so nothing about it is
-  // rendered at all — no Settings row, no routes, no subscription products,
-  // no "coming soon" card, which would itself be dormant functionality.
+  // ── Feature gate (v1.15 A-04/D1, reversed v1.18) ──────────────────────────
+  // ON in the committed source: the feature is developed and exercised in the
+  // app rather than behind a local flip. v1.15 had it off for the first store
+  // release and the reasoning still stands for a SUBMISSION — see below — so
+  // this stays a switch rather than becoming unconditional.
+  //
+  // NOT READY TO SUBMIT WITH THIS ON. Production has no Enable Banking
+  // application (`EB_APP_ID` is empty and the production broker is not
+  // deployed), so `/v1/connect/start` answers 503 aggregator_not_configured
+  // and a subscriber would pay for a feature that errors — a refund problem
+  // before it is an Apple 3.1.1 / 2.3.1 problem. Before a build with this on
+  // goes to either store: the aggregator contract signed and the broker
+  // deployed to production, the two subscription products live in the
+  // consoles, and the privacy answers moved off "Data Not Collected" to the
+  // Bank-Connect-ON variants (docs/store-listing.md §1, §2, §3, §4b — the
+  // sections currently marked "NOT FOR THIS RELEASE"). To ship without
+  // it in the meantime, set this to false — the kill switch is tested in
+  // tests/unit/bankConnectGate.test.js and removes every trace.
   //
   // Deliberately a CONSTANT and not a remote flag. Asking the broker whether
   // the feature is on would mean an unconditional network call to our own
@@ -82,15 +93,12 @@ window.BankConnect = {
   // Bank Connect, Stack'd does not collect, transmit, sell or share any
   // personal data") and would change the Play Data-safety and App Privacy
   // answers for every user, including those who never touch the feature.
-  // Turning it on is a one-line change plus a new build — which both stores
-  // require anyway, since the first subscription product is reviewed WITH a
-  // binary. The kill switch for users who HAVE opted in already exists: the
-  // broker's own error responses (B4 handles them).
   //
-  // Flip to true, bump the version and rebuild when the aggregator contract
-  // is signed and the store products exist. `window.__STACKD_BANK_CONNECT__`
-  // is the test override (unit suites and the e2e specs set it).
-  FEATURE_ENABLED: false,
+  // The gate is NOT consent: it only decides whether the feature exists in
+  // the build. Nothing reaches the network until the user turns the Online
+  // banking toggle on (D-C10), which is still off by default.
+  // `window.__STACKD_BANK_CONNECT__` is the test override (both directions).
+  FEATURE_ENABLED: true,
 
   featureEnabled() {
     if (window.__STACKD_BANK_CONNECT__ === true) return true;

@@ -45,8 +45,12 @@ re-measure it rather than trusting it.
 | 8 Smoke | to run, on the signed build and not before |
 | 9 Ship | to run — no store accounts exist yet, and there are no git tags yet either |
 
-Bank Connect is off in this build (`BankConnect.FEATURE_ENABLED === false`),
-which is what step 3 enforces — see §3.
+Bank Connect is ON in the committed source since v1.18
+(`BankConnect.FEATURE_ENABLED === true`), so the feature is present in a
+default build. **It cannot be submitted in that state** — production has no
+Enable Banking application and no deployed broker, so the feature errors and a
+subscriber would be paying for it. Set the constant back to `false` before
+building a release, until that is fixed; see §3.
 
 ---
 
@@ -88,13 +92,19 @@ npm run test:e2e      # 50 specs, ~60s, auto-starts the dev server on :3000
 If `npm test` is slow or flaky, do not lower the bar — `vitest.config.js`
 caps the worker pool for exactly this reason; investigate instead.
 
-Two of those tests guard the *shape of the release* rather than a feature,
-and a red one means **do not ship**: `tests/unit/bankConnectHidden.test.js`
-asserts `FEATURE_ENABLED` is still `false`, and `pro_paywall.spec.js` →
-*"Bank Connect leaves no trace in the shipped build"* asserts the UI agrees.
-A build that quietly turned the feature back on would ship a bank integration
-the stores never reviewed, and would contradict the privacy answers filed
-from `store-listing.md`.
+Some of those tests guard the *shape of the release* rather than a feature.
+`tests/unit/bankConnectGate.test.js` pins the Bank Connect build gate in both
+directions: it asserts the committed default (ON since v1.18, so a silent
+change either way is red) and that the kill switch still removes every trace.
+`pro_paywall.spec.js` → *"the kill switch still leaves no trace"* asserts the
+UI agrees.
+
+**Releasing while production is unconfigured:** set
+`BankConnect.FEATURE_ENABLED = false`, then re-run the gates — the default
+assertion will fail, which is the one case where editing a test is correct
+rather than a smell. Shipping with it on would put a bank integration the
+stores never reviewed in front of users, contradict the privacy answers filed
+from `store-listing.md`, and sell a subscription that 503s.
 
 ## 4. Build the web bundle
 

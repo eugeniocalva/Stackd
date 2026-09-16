@@ -427,7 +427,12 @@ would itself be dormant functionality under Apple 2.3.1). Nothing about it
 reaches the network, so the privacy answers stay at "Data Not Collected"
 (§2a / §3a). Turning it on is a one-line change plus a new build, which both
 stores require anyway: the first subscription product is reviewed WITH a
-binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
+binary. **v1.18: the committed default is now `true`** — the feature is
+developed in the app again. That does NOT move this release: production still
+has no Enable Banking application, so a build with the gate on cannot be
+submitted, and the sections above marked "NOT FOR THIS RELEASE" stay that way.
+Set `FEATURE_ENABLED = false` when building the release.
+`tests/unit/bankConnectGate.test.js` pins the default and the kill switch.
 
 ## ~~6. Screenshots~~ · **READY — 50 images generated**
 
