@@ -505,7 +505,7 @@ here. Everything below is for THIS release, with Bank Connect off.
 | Field | Value |
 |---|---|
 | Price | **Free** — the app is free; Stack'd Pro is the in-app purchase |
-| Availability | **D7 — still your decision.** Recommended: the EEA + UK — the 27 EU states, Iceland, Liechtenstein (if listed as a storefront), Norway and the United Kingdom. It keeps you inside one legal regime, which the Terms and Privacy were written for, and it is what makes W-8BEN option B cost nothing (no U.S. storefront, no U.S. withholding). Widening later is a checkbox; set `stackd_pro`'s availability to the same list |
+| Availability | **The EEA + UK — D7, decided 2026-09-27.** The EU 27, Iceland, Liechtenstein (if Apple lists it), Norway and the United Kingdom. Turn OFF automatic availability in new countries, or Apple will add storefronts outside the list as it opens them. Set `stackd_pro`'s availability to the same list. |
 | Distribution | Public |
 | Pre-orders | No |
 

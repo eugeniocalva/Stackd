@@ -27,7 +27,7 @@ testers, a Mac, and a lawyer's read-through.
 |---|---|---|
 | **Apple** | Enrolled. **Paid Apps agreement Active** (O-03b). App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | ~~O-03b~~ → ~~O-18~~ (in Apple's review) → **O-03c Small Business Program** → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
 | **Android** | Upload keystore created (O-07). Its certificate published on staging (O-29). | **O-04 Play account** → O-05 twelve testers → `android/keystore.properties` → signed build → O-11 to O-16 |
-| **Both** | D1, D4, D5 decided. | **D3 (the public address and phone)**, which O-04 and O-18 both need |
+| **Both** | D1, D4, D5, D7 decided. | **D3 (the public address and phone)**, which O-04 and O-18 both need |
 
 **What moved the date today, and what did not.** Enrolment cleared the
 Apple side to start, and everything that did not need a Mac is either done or
@@ -80,7 +80,7 @@ Take these before the work below hits them. My recommendation is in each row.
 | ~~D4~~ | ~~**iPhone-only or universal?**~~ **IMPLEMENTED** — the project is set to iPhone-only, so this needs no action unless you disagree. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
 | ~~D5~~ | ~~**App name.**~~ **DECIDED 2026-09-27 — and the prediction was right.** "Stack'd" was refused as unavailable. | The App Store record is **"Stack'd Finance"** (Apple ID 6816636640). Not the documented fallback — the shorter name was taken as-is. **Two things this leaves open:** use the same name on Play unless you have a reason not to (one product, two names splits reviews and search), and run the EUIPO search on *Stack'd Finance* rather than on *Stack'd* before printing anything. The device home-screen name stays "Stack'd". |
 | D6 | **Bank Connect price.** Still unset because it depends on the Enable Banking minimum. | Deferred by D1. Set it when you have the quote; the reference point is €2.99/month or €4.99/month. |
-| D7 | **Launch countries.** | **EEA + UK only** at first: it matches Bank Connect's coverage, keeps you inside one legal regime, and you can widen any time. |
+| ~~D7~~ | ~~**Launch countries.**~~ **DECIDED 2026-09-27: the EEA + UK** (31 storefronts: the EU 27, Iceland, Liechtenstein if Apple lists it, Norway, the United Kingdom). | One legal regime, which the Terms and Privacy were written for; matches Bank Connect's future coverage; and no U.S. storefront means no U.S. withholding under the W-8BEN. Widening later is a checkbox. `stackd_pro` gets the same list. |
 
 ## 3. Already shipped (v1.14 → v1.18)
 
@@ -468,7 +468,7 @@ unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### Now, nothing blocks these
 
-- **O-01 · Decide D2, D3 and D7** (§2). ~~D1, D4, D5~~ are settled; D6 waits
+- **O-01 · Decide D2 and D3** (§2). ~~D1, D4, D5, D7~~ are settled; D6 waits
   for the Bank Connect release. **D3 is the one blocking work now**: the
   public address and phone feed both the Play identity check (O-04) and the
   Apple trader declaration (O-18).
