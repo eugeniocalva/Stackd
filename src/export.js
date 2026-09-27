@@ -30,12 +30,19 @@ window.StackdExport = {
   },
 
   exportAccounts(state) {
-    // v1.02: Currency column appended (plan §6). Write-only for now — no
-    // account importer exists; import.js ignores unknown columns either way.
-    const headers = 'id,name,opening_balance,created_at,currency';
+    // v1.02: Currency column appended (plan §6).
+    // v1.19 (A-17): the file finally restores (import.js isAccountRows /
+    // buildAccounts), so it carries everything an account is: type, icon,
+    // colour and the opening DATE as well as the amount — the date matters,
+    // because transactions dated before it are left out of the balance.
+    // Columns are only ever appended, so an older file still imports.
+    const headers = 'id,name,opening_balance,created_at,currency,type,icon,color,opening_date';
     const rows = state.accounts.map(acc => {
       const ob = state.transactions.find(t => t.accountId === acc.id && t.type === 'opening_balance');
-      return this._toRow([acc.id, acc.name, ob ? ob.amount : 0, acc.createdAt, acc.currency || '']);
+      return this._toRow([
+        acc.id, acc.name, ob ? ob.amount : 0, acc.createdAt, acc.currency || '',
+        acc.type || '', acc.icon || '', acc.color || '', ob ? ob.date : ''
+      ]);
     });
     this._download('stackd_accounts.csv', [headers, ...rows].join('\n'));
   },
@@ -138,15 +145,25 @@ window.StackdExport = {
   // reached the store silently broke all of it.
   TX_HEADERS: ['Date', 'Time', 'Type', 'Amount', 'Account', 'Category', 'Note', 'Tags',
     'IsPaid', 'TransferRef', 'SeriesId', 'Interval', 'Frequency', 'StartDate', 'EndDate',
-    'NextDate', 'PropagateTags', 'ImportKey', 'BankRef'], // v0.99: bank-import dedup identity survives backup round-trips
+    'NextDate', 'PropagateTags', 'ImportKey', 'BankRef', // v0.99: bank-import dedup identity survives backup round-trips
+    // v1.19 (A-17): the currency of the row's account. Without it a restore
+    // re-created every account in the new phone's primary currency, so a USD
+    // account's dollar amounts were silently read as euros.
+    'AccountCurrency'],
 
   exportTransactions(state, options = {}) {
     const delimiter = options.delimiter || ',';
     const dateFormat = options.dateFormat || 'yyyy-mm-dd';
     const headers = this._toRow(this.TX_HEADERS, delimiter);
 
+    // v1.19 (A-17): opening-balance rows are exported again. The app calls
+    // this file "a Stack'd backup", yet it used to drop them, so a restore
+    // onto a new phone rebuilt every account from zero and every balance came
+    // back wrong. import.js puts them back onto accounts that the SAME import
+    // creates, and still skips them for accounts that already exist, so
+    // re-importing into the same install cannot double-count. (The PDF export
+    // below is a report, not a backup, and keeps leaving them out.)
     const filtered = state.transactions
-      .filter(t => t.type !== 'opening_balance')
       .filter(t => {
         if (!options.period || !options.period.start || !options.period.end) return true;
         return t.date >= options.period.start && t.date <= options.period.end;
@@ -183,7 +200,8 @@ window.StackdExport = {
         this._formatDate(rec.nextDate, dateFormat),
         rec.seriesId ? (rec.propagateTags === false ? 'false' : 'true') : '',
         t.importKey || '', // v0.99
-        t.bankRef || ''
+        t.bankRef || '',
+        acc ? (acc.currency || '') : '' // v1.19 (A-17)
       ], delimiter);
     });
 

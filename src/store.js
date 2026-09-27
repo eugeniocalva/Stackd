@@ -2018,6 +2018,13 @@ window.Store = {
         if (catIdx !== -1) {
           if (payload.name !== undefined) this.state.categories[catIdx].name = payload.name;
           if (payload.icon !== undefined) this.state.categories[catIdx].icon = payload.icon;
+          // v1.19 (A-17): typeHint was accepted by ADD_CATEGORY but ignored
+          // here, so the category editor's income/expense/both choice was
+          // never saved on an EDIT (views.js sends it), and a restore could
+          // not give an auto-created category its real kind back.
+          if (['income', 'expense', 'both'].includes(payload.typeHint)) {
+            this.state.categories[catIdx].typeHint = payload.typeHint;
+          }
           this._sortData();
           window.StackdDB.save('categories', this.state.categories);
           changed = true;

@@ -157,7 +157,12 @@ describe('Locale-aware formatting (v0.87 P8b)', () => {
       const { transactions, stats } = window.StackdImport.buildTransactions(
         window.StackdImport.parseCSV(csv)
       );
-      expect(stats.skippedCount).toBe(0);
+      // v1.19 (A-17): the export carries the opening-balance row again, and a
+      // restore into the SAME store skips it because the kept account already
+      // owns one. That is the only skip allowed — any other would mean a row
+      // was lost to Italian number or date formatting, which is what this test
+      // is here to catch.
+      expect(stats.skipped).toEqual({ 'opening balance rows are owned by the account': 1 });
       window.Store.state.transactions.push(...transactions);
 
       expect(window.Store.getAccountBalance(account.id)).toBe(before);

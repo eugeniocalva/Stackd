@@ -174,7 +174,9 @@ describe('Per-account currency (v1.02, plan §6)', () => {
     window.StackdExport.exportAccounts(window.Store.getState());
     expect(lastDownload.filename).toBe('stackd_accounts.csv');
     const lines = lastDownload.content.split('\n');
-    expect(lines[0]).toBe('id,name,opening_balance,created_at,currency');
+    // v1.19 (A-17): columns appended so the file can restore an account in
+    // full; the v1.02 prefix is unchanged, so an older file still imports.
+    expect(lines[0]).toBe('id,name,opening_balance,created_at,currency,type,icon,color,opening_date');
     expect(lastDownload.content).toContain('EUR');
     expect(lastDownload.content).toContain('USD');
   });

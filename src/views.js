@@ -3568,6 +3568,10 @@ Object.assign(window.Views, {
                 ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
                 : result.kind === 'budgets' // v1.19: restored budgets
                 ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
+                : result.kind === 'accounts' // v1.19 (A-17)
+                ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
+                : result.kind === 'categories' // v1.19 (A-17)
+                ? window.I18n.t('others.importedCategories', { count: result.importedCount })
                 : window.I18n.t('others.importedTransactions', {
                     count: result.importedCount,
                     accounts: result.newAccounts,

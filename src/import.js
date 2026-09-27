@@ -146,6 +146,9 @@ window.StackdImport = {
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
     const txs = [];
+    // v1.19 (A-17): accounts this import created, and so may give an opening
+    // balance to. Anything not in here existed before and keeps its own.
+    const createdHere = new Set();
 
     rows.forEach(row => {
       const rawDate = row['date'];
@@ -174,16 +177,49 @@ window.StackdImport = {
         skip("type 'transfer' needs two paired rows sharing a TransferRef");
         return;
       }
-      // Opening balances belong to the account, and the account creation below
-      // already writes one — importing a second would double-count it.
-      if (type === 'opening_balance') { skip('opening balance rows are owned by the account'); return; }
+      // v1.19 (A-17): the currency of the row's account, when the file has it
+      // (older backups do not), so an account re-created here keeps its own
+      // currency instead of silently taking the new phone's primary one.
+      const accountCurrency = this._currencyCode(row['accountcurrency']);
+      const findAccount = () => window.Store.getState().accounts
+        .find(a => a.name.toLowerCase() === accountName.toLowerCase());
+
+      // v1.19 (A-17): an opening balance belongs to its account. It used to be
+      // skipped outright, and the export dropped it too, so a restore onto a
+      // new phone rebuilt every account from zero. Now it is restored onto an
+      // account THIS import created — whether this row creates it or an
+      // earlier row did — and still skipped for an account that existed
+      // before, which is what stops a re-import double-counting it.
+      // Signed on purpose: a card can open in debt, and Math.abs above would
+      // have turned -500 into +500.
+      if (type === 'opening_balance') {
+        const obAmount = parseFloat(amountStr);
+        let obAccount = findAccount();
+        if (!obAccount) {
+          const created = { name: accountName, openingBalance: obAmount, openingDate: date };
+          if (accountCurrency) created.currency = accountCurrency;
+          window.Store.dispatch('ADD_ACCOUNT', created);
+          obAccount = findAccount();
+          if (obAccount) { createdHere.add(obAccount.id); stats.newAccounts++; }
+          return;
+        }
+        if (createdHere.has(obAccount.id)) {
+          window.Store.dispatch('UPDATE_ACCOUNT', { id: obAccount.id, openingBalance: obAmount, openingDate: date });
+          return;
+        }
+        skip('opening balance rows are owned by the account');
+        return;
+      }
       if (type !== 'expense' && type !== 'income') type = 'expense';
 
       // Resolve Account
-      let account = window.Store.getState().accounts.find(a => a.name.toLowerCase() === accountName.toLowerCase());
+      let account = findAccount();
       if (!account) {
-        window.Store.dispatch('ADD_ACCOUNT', { name: accountName, openingBalance: 0 });
-        account = window.Store.getState().accounts.find(a => a.name.toLowerCase() === accountName.toLowerCase());
+        const created = { name: accountName, openingBalance: 0 };
+        if (accountCurrency) created.currency = accountCurrency;
+        window.Store.dispatch('ADD_ACCOUNT', created);
+        account = findAccount();
+        if (account) createdHere.add(account.id);
         stats.newAccounts++;
       }
 
@@ -1145,6 +1181,135 @@ window.StackdImport = {
     return stats;
   },
 
+  // ── v1.19 (A-17) accounts and categories files ─────────────────────────────
+  // Both were exported but had no importer: the router sent them to the bank
+  // column-mapping flow, so a restore onto a new phone could only rebuild
+  // accounts and categories as side effects of the transactions file — with
+  // default type, icon, colour and currency, and no opening balance.
+  //
+  // Both UPSERT by name. An account or category that already exists — most
+  // often one the transactions file just created with defaults — is brought
+  // up to what the file says rather than skipped, so the files can be
+  // imported in ANY order and still land in the same state. That also means a
+  // backup restored into a phone that has the same account overwrites that
+  // account's settings with the backup's, which is what restoring means.
+
+  _currencyCode(raw) {
+    const c = String(raw || '').trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(c) ? c : null;
+  },
+
+  isAccountRows(rows) {
+    if (!rows || !rows.length) return false;
+    const r = rows[0];
+    const has = (k) => Object.prototype.hasOwnProperty.call(r, k);
+    return has('name') && has('openingbalance') && !has('date') && !has('amount');
+  },
+
+  buildAccounts(rows) {
+    const stats = { importedCount: 0, skippedCount: 0, skipped: {}, created: 0, updated: 0 };
+    const skip = (reason) => {
+      stats.skippedCount++;
+      stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
+    };
+
+    rows.forEach(row => {
+      const name = String(row['name'] || '').trim();
+      if (!name) { skip('missing name'); return; }
+      // Signed: a card can open in debt.
+      const obRaw = String(row['openingbalance'] || '').trim();
+      const openingBalance = obRaw === '' ? 0 : parseFloat(obRaw.replace(',', '.'));
+      if (isNaN(openingBalance)) { skip('invalid opening balance'); return; }
+      // The opening date decides which transactions count toward the balance.
+      // A file from before v1.19 has no opening_date column; created_at is the
+      // date the app itself falls back to when an account has none.
+      const openingDate = this._normalizeDate(row['openingdate'])
+        || this._normalizeDate(String(row['createdat'] || '').split('T')[0]);
+
+      const fields = { openingBalance: openingBalance };
+      if (openingDate) fields.openingDate = openingDate;
+      const currency = this._currencyCode(row['currency']);
+      if (currency) fields.currency = currency;
+      ['type', 'icon', 'color'].forEach(k => {
+        const v = String(row[k] || '').trim();
+        if (v) fields[k] = v;
+      });
+
+      const existing = window.Store.getState().accounts.find(a => a.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        window.Store.dispatch('UPDATE_ACCOUNT', Object.assign({ id: existing.id }, fields));
+        stats.updated++;
+      } else {
+        window.Store.dispatch('ADD_ACCOUNT', Object.assign({ name: name }, fields));
+        stats.created++;
+      }
+      stats.importedCount++;
+    });
+
+    return stats;
+  },
+
+  isCategoryRows(rows) {
+    if (!rows || !rows.length) return false;
+    const r = rows[0];
+    const has = (k) => Object.prototype.hasOwnProperty.call(r, k);
+    return has('name') && has('typehint') && !has('openingbalance') && !has('date') && !has('amount');
+  },
+
+  buildCategories(rows) {
+    const stats = { importedCount: 0, skippedCount: 0, skipped: {}, created: 0, updated: 0 };
+    const skip = (reason) => {
+      stats.skippedCount++;
+      stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
+    };
+    const HINTS = ['income', 'expense', 'both'];
+
+    rows.forEach(row => {
+      const name = String(row['name'] || '').trim();
+      if (!name) { skip('missing name'); return; }
+      const icon = String(row['icon'] || '').trim();
+      const hint = String(row['typehint'] || '').trim().toLowerCase();
+      const typeHint = HINTS.includes(hint) ? hint : null;
+
+      const existing = window.Store.getState().categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        const upd = { id: existing.id };
+        if (icon) upd.icon = icon;
+        if (typeHint) upd.typeHint = typeHint;
+        window.Store.dispatch('UPDATE_CATEGORY', upd);
+        stats.updated++;
+      } else {
+        window.Store.dispatch('ADD_CATEGORY', { name: name, icon: icon || 'pin', typeHint: typeHint || 'both' });
+        stats.created++;
+      }
+      stats.importedCount++;
+    });
+
+    return stats;
+  },
+
+  // A Stack'd export with nothing in it is just its header line — the loans
+  // or rules file of anyone who has no loans or rules, which is most people.
+  // parseCSV rejects a header-only file, so a full restore used to end in
+  // "Import failed" on exactly the files that had nothing to lose. Recognise
+  // our own headers and report "imported 0" instead; anything else still
+  // fails as before.
+  _stackdKindOfHeaderOnly(csvText) {
+    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+    if (lines.length !== 1) return null;
+    const row = {};
+    this._parseRow(lines[0], this._detectDelimiter(lines[0]))
+      .forEach(h => { row[h.toLowerCase().replace(/[^a-z0-9]/g, '')] = ''; });
+    const rows = [row];
+    if (this.isLoanRows(rows)) return 'loans';
+    if (this.isRuleRows(rows)) return 'rules';
+    if (this.isBudgetRows(rows)) return 'budgets';
+    if (this.isAccountRows(rows)) return 'accounts';
+    if (this.isCategoryRows(rows)) return 'categories';
+    if (['date', 'amount', 'account', 'type'].every(k => Object.prototype.hasOwnProperty.call(row, k))) return 'transactions';
+    return null;
+  },
+
   importLoans(file, state, onComplete, onError) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1201,6 +1366,13 @@ window.StackdImport = {
           if (onComplete) onComplete({ kind: 'statement', statement: statement });
           return;
         }
+        // v1.19 (A-17): an empty Stack'd export restores as "0 imported"
+        // rather than failing (see _stackdKindOfHeaderOnly).
+        const emptyKind = this._stackdKindOfHeaderOnly(csvText);
+        if (emptyKind) {
+          if (onComplete) onComplete({ kind: emptyKind, importedCount: 0, skippedCount: 0, skipped: {}, newAccounts: 0, newCategories: 0 });
+          return;
+        }
         const rows = this.parseCSV(csvText);
         if (this.isLoanRows(rows)) {
           const { loans, stats } = this.buildLoans(rows);
@@ -1219,6 +1391,18 @@ window.StackdImport = {
         if (this.isBudgetRows(rows)) {
           const stats = this.buildBudgets(rows);
           if (onComplete) onComplete({ ...stats, kind: 'budgets' });
+          return;
+        }
+        // v1.19 (A-17): accounts and categories files restore instead of
+        // opening the bank column-mapping flow.
+        if (this.isAccountRows(rows)) {
+          const stats = this.buildAccounts(rows);
+          if (onComplete) onComplete({ ...stats, kind: 'accounts' });
+          return;
+        }
+        if (this.isCategoryRows(rows)) {
+          const stats = this.buildCategories(rows);
+          if (onComplete) onComplete({ ...stats, kind: 'categories' });
           return;
         }
         // A Stack'd backup is recognised by its own headers; parseCSV squashed
