@@ -10,8 +10,10 @@
 # can start a run.
 #
 # Signing: Apple's cloud-managed distribution certificate, reached through an
-# App Store Connect API key (App Manager). No .p12, no provisioning profile in
-# the repo. Secrets (Settings > Secrets and variables > Actions):
+# App Store Connect API key with the ADMIN role. An App Manager key is not
+# enough: it archives fine, then export fails with "Cloud signing permission
+# error" (first seen 2026-09-27, run 36345139943). No .p12, no provisioning
+# profile in the repo. Secrets (Settings > Secrets and variables > Actions):
 #   APPSTORE_API_KEY_ID      Key ID
 #   APPSTORE_API_ISSUER_ID   Issuer ID
 #   APPSTORE_API_KEY_P8      full contents of AuthKey_XXXXXXXXXX.p8

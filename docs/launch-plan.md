@@ -375,7 +375,9 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   manual trigger only (the repo is public, so no push or pull-request
   trigger can reach the signing key). It runs the gates, builds the bundle,
   `cap sync ios`, archives with Xcode 26.6, signs with Apple's
-  cloud-managed distribution certificate, and then REFUSES to upload unless
+  cloud-managed distribution certificate (which needs an **Admin** API key —
+  an App Manager key archived fine, then failed export with "Cloud signing
+  permission error"), and then REFUSES to upload unless
   the .ipa carries the expected version, `PrivacyInfo.xcprivacy`, the
   associated-domains entitlement, an Apple Distribution signature and
   `get-task-allow` false. A build-number input re-uploads 1.0 without
