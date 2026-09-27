@@ -11,7 +11,7 @@ declarations, products, and the code work that still stands between today and
 a submittable build.
 
 **Status.** ~~Struck-through items are done.~~ The code side is finished:
-**16 of 17 assistant tasks are complete.** Only A-08 (the App Store badge on
+**16 of 18 assistant tasks are complete.** A-18 (iOS builds without a Mac) is built but unproven until its first run, which waits on your three secrets; A-08 waits for release. Only A-08 (the App Store badge on
 the website) is left, and it is unblocked — it lives in the StackdSite repo.
 The app targets API 36, builds, installs and runs; the legal texts match the
 product in five languages; store screenshots and listing copy are generated;
@@ -55,7 +55,7 @@ one piece of hardware.
 | ~~**Android targets API 34, Play requires 36**~~ **DONE 2026-09-09** | Migrated Capacitor 6 → 7 → 8. The app targets API 36, builds, installs and runs on an API 36 emulator with the layout intact. | assistant | done |
 | **Play closed testing: 12 testers, 14 days** | Applies to personal Play accounts created after 13 Nov 2023, before production access is granted. | owner | **14 days of calendar**, plus ~7 days for the access review |
 | ~~**No Apple Developer Program membership**~~ **DONE 2026-09-27** | The App Store side can start: app record, name reservation, products, TestFlight. **The Paid Apps agreement is a separate step and is not implied by acceptance** — O-03b. | owner | done |
-| **No Mac with Xcode 26** | Every App Store upload since April 2026 needs Xcode 26 / the iOS 26 SDK, which exists only on macOS. Nothing about enrolment changes this. Split out of the row above, because that row was carrying two blockers and only one of them cleared. | owner | borrowed, rented or cloud — hours once arranged |
+| ~~**No Mac with Xcode 26**~~ **ROUTED AROUND 2026-09-27, pending the first green run** | No Mac needed: `.github/workflows/ios-testflight.yml` builds, signs and uploads on GitHub's hosted Macs (repo is public, so macOS runners are free; the `macos-26` image ships Xcode 26.6 — both checked, not assumed). Signing uses Apple's cloud-managed distribution certificate through an App Manager API key. A Mac stays the fallback if signing on CI cannot be made to work. | owner: 3 secrets · assistant: the runs | the first run |
 
 Realistic shape: **Android is roughly 3–5 weeks out** (signed build → closed
 test 14 days → production access review), and **iOS is now roughly 1–2 weeks
@@ -189,7 +189,7 @@ the code is pre-launch history.
 
 ## 4. My side — done, except A-08
 
-Ordered, IDs stable. **16 of 17 complete** (A-16 and A-17 were added and closed on 2026-09-27); only A-08 remains, and it is
+Ordered, IDs stable. **16 of 18 complete** (A-16, A-17 and A-18 were added on 2026-09-27; A-18 is built, not yet proven); only A-08 remains, and it is
 unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### ~~Before the first store build~~ — all done
@@ -370,6 +370,18 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   app preferences and the home-screen layout were never part of the backup,
   by design.
 
+- **A-18 · iOS builds without a Mac** · **BUILT 2026-09-27, first run
+  pending the owner's secrets.** `.github/workflows/ios-testflight.yml`,
+  manual trigger only (the repo is public, so no push or pull-request
+  trigger can reach the signing key). It runs the gates, builds the bundle,
+  `cap sync ios`, archives with Xcode 26.6, signs with Apple's
+  cloud-managed distribution certificate, and then REFUSES to upload unless
+  the .ipa carries the expected version, `PrivacyInfo.xcprivacy`, the
+  associated-domains entitlement, an Apple Distribution signature and
+  `get-task-allow` false. A build-number input re-uploads 1.0 without
+  changing the public version. Honest risk: signing on a fresh CI machine
+  may need an iteration or two on the first run.
+
 ### ~~Worth doing, not blocking~~ — all done
 
 - ~~**A-10 · Restore on a second device**~~ · **DONE 2026-09-09 (v1.16).** A store
@@ -492,17 +504,19 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   a new W-8BEN** with the treaty article and rate an accountant confirms.
   Availability set 2026-09-27: EEA + UK for the app and for `stackd_pro`,
   automatic availability in new countries off.
-- **O-03c · Join the Small Business Program** (15% instead of 30%).
-  Applications are reviewed and the lower rate starts the month after
-  approval, so applying late costs real money on early sales.
+- **O-03c · Join the Small Business Program** (15% instead of 30%) ·
+  **SUBMITTED 2026-09-27** (the first attempt, before the Paid Apps agreement
+  was active, failed). Waiting for Apple's approval; the lower rate starts
+  the month after it.
 - **O-04 · Create the Google Play developer account** ($25 once). Check the
   creation date — if it is after 13 Nov 2023 and personal, the 12-tester
   14-day closed test applies and it is on the critical path. Complete identity
   verification with the public details from O-02.
 - **O-05 · Line up 12 closed testers** (real Google accounts, opted in and
   staying opted in for 14 consecutive days; opting out restarts the clock).
-- **O-06 · Get a Mac with Xcode 26.** Required for every App Store upload since
-  April 2026. Borrowed, rented or a cloud Mac all work.
+- ~~**O-06 · Get a Mac with Xcode 26.**~~ **Not needed — route B chosen
+  2026-09-27:** GitHub's hosted Macs build and upload instead (A-18). Keep a
+  borrowed or rented Mac in mind only as the fallback if CI signing fails.
 - ~~**O-07 · Create the upload keystore**~~ · **DONE 2026-09-27.**
   `C:\Users\ecalvaresi\keys\stackd-upload.jks`, alias `upload`, RSA 2048,
   10000 days — outside the repo, and created by you in your own terminal so
@@ -588,12 +602,21 @@ through while the Mac is still being arranged.
   plain-text version. Standard is simpler and I recommend it.
 - **O-23 · Sandbox testers**, then TestFlight, then submit.
 
-### Mac steps (O-06 first)
+### iOS build — on GitHub's Macs, no Mac of your own (A-18)
 
-- **O-24 · `npx cap sync ios`** (pod install), open the workspace in Xcode 26.
-- **O-25 · Add `PrivacyInfo.xcprivacy` to the App target** — on disk is not
-  enough, it must be in the target to ship.
-- **O-26 · Signing and capabilities**, archive, upload to TestFlight.
+- ~~**O-24 · `npx cap sync ios`**~~ — done by the workflow on every run.
+- ~~**O-25 · Add `PrivacyInfo.xcprivacy` to the App target**~~ · **DONE
+  2026-09-27** by editing `project.pbxproj` (file reference, App group,
+  Resources phase). The workflow fails the build if the manifest is not in
+  the archived app, so it cannot silently regress.
+- **O-26 · Sign, archive, upload** — now: (1) you add three repository
+  secrets (`APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`,
+  `APPSTORE_API_KEY_P8`) — never in chat, never in the repo; (2) a **dry
+  run** (upload unticked) builds, signs and inspects the .ipa; (3) a real run
+  with upload ticked sends build 10000 of 1.0 to App Store Connect.
+- **O-26b · TestFlight on your iPhone**, then attach the build to 1.0 and
+  submit. The TestFlight check is the one step that still needs hardware —
+  an iPhone, not a Mac.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
   `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
   deployed and verified**: `/.well-known/apple-app-site-association` serves

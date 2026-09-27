@@ -41,7 +41,7 @@ re-measure it rather than trusting it.
 | 4 Build | **to run** — `dist/` on this machine predates the Bank Connect gate, so it is not the bundle to ship |
 | 5 Sync | to run, after 4 |
 | 6 Android bundle | **blocked** — `android/keystore.properties` does not exist yet, so a build now would be unsigned (launch-plan, owner side) |
-| 7 iOS archive | **blocked** — needs a Mac (launch-plan, owner side) |
+| 7 iOS archive | **ready to run on CI** — waiting for the three App Store Connect API secrets (launch-plan O-26) |
 | 8 Smoke | to run, on the signed build and not before |
 | 9 Ship | to run — no Play account yet, and there are no git tags yet either. The App Store record now exists: **Stack'd Finance**, Apple ID 6816636640 |
 
@@ -155,7 +155,16 @@ UNSIGNED bundle Play refuses — create it from
 
 `package: name='com.stackd.finance'` and the expected `versionCode`.
 
-## 7. iOS archive (Mac)
+## 7. iOS archive
+
+**Primary path since 2026-09-27: no Mac.** GitHub → Actions → *iOS to
+TestFlight* → *Run workflow*. Leave **upload** unticked for a dry run
+(build, sign, inspect the .ipa, send nothing); tick it to send the build to
+App Store Connect. To replace a build already uploaded for the same version,
+set **build number** above the last one (10001, 10002…) — the public
+version stays `1.0`. Everything below is the fallback on a real Mac.
+
+### 7b. On a Mac (fallback)
 
 ```bash
 npm install && npm run build && npx cap sync ios
@@ -164,11 +173,9 @@ open ios/App/App.xcworkspace
 
 - Xcode 26 or later with an iOS 26 SDK — required for every App Store upload
   since 28 April 2026.
-- First time only: add `ios/App/App/PrivacyInfo.xcprivacy` to the App target
-  (drag it into the App group, tick the target). ~~The manifest itself
-  exists~~ **DONE, ONE TIME** — but a manifest that sits on disk outside the
-  target ships nothing, so the Xcode half of this is still open and belongs
-  to the first Mac session.
+- ~~First time only: add `ios/App/App/PrivacyInfo.xcprivacy` to the App
+  target~~ **DONE, ONE TIME (2026-09-27)** — wired into `project.pbxproj`
+  directly, and the CI workflow fails if it is missing from the archive.
 - Signing: automatic, with the team selected; capabilities Associated Domains
   and In-App Purchase enabled on the App ID.
 - Product → Archive → Distribute → App Store Connect.
