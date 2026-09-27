@@ -6430,7 +6430,12 @@ Object.assign(window.Views, {
   // The Apple id only exists once the App Store Connect record is created.
   // Until the owner fills APPLE_APP_ID in, anything that would open a dead
   // apps.apple.com link is hidden rather than shown broken.
-  APPLE_APP_ID: null,
+  // v1.19 (A-07): the record exists — App Store Connect app "Stack'd
+  // Finance", bundle com.stackd.finance. This is the numeric Apple ID from
+  // App Information → General, NOT the bundle id and NOT the Team ID. Kept
+  // as a string: it is an opaque identifier and nothing does arithmetic on
+  // it, so its leading digits must never be normalised away.
+  APPLE_APP_ID: '6816636640',
   ANDROID_PACKAGE: 'com.stackd.finance',
 
   _platform() {

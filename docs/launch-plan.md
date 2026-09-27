@@ -11,9 +11,8 @@ declarations, products, and the code work that still stands between today and
 a submittable build.
 
 **Status.** ~~Struck-through items are done.~~ The code side is finished:
-**13 of 15 assistant tasks are complete** and the remaining two (A-07, A-08)
-are waiting on an Apple app id that only exists once you create the App Store
-Connect record. The app targets API 36, builds, installs and runs; the legal
+**14 of 15 assistant tasks are complete.** Only A-08 (the App Store badge on
+the website) is left, and it is unblocked — it lives in the StackdSite repo. The app targets API 36, builds, installs and runs; the legal
 texts match the product in five languages; store screenshots and listing copy
 are generated; the broker has a deploy preflight, alerting and an incident
 runbook.
@@ -33,11 +32,10 @@ three things and settles none of them completely:
 2. **Membership is not the Paid Apps agreement.** In-app purchases do not
    work — not even in sandbox — until that agreement is active and the
    banking and tax forms are filled. That is still open; see O-03b.
-3. **A-07 and A-08 unblock the moment the app record exists**, not when
-   enrolment landed. What I need from you is two values: the numeric **Apple
-   ID** (App Store Connect → your app → App Information → General, a
-   10-digit number) and your **Team ID** (Membership details). Send those and
-   both tasks are half an hour of work.
+3. ~~A-07 and A-08 unblock the moment the app record exists.~~ **The record
+   exists (2026-09-27): "Stack'd Finance", Apple ID 6816636640.** A-07 is
+   done; A-08 is unblocked and sits in the StackdSite repo. The one value
+   still outstanding is the **Team ID**, for O-27.
 
 A Mac is still required for every upload, and that is now the only hard gate
 left on the iOS side.
@@ -77,7 +75,7 @@ Take these before the work below hits them. My recommendation is in each row.
 | D2 | **Sole trader or company?** This decides the Play account type, whether you need a D-U-N-S number, and which address is published. | **Sole trader** unless a company already exists. A company means a D-U-N-S (up to 30 days) and, on Play, the full legal address published. Note Play requires an Organization account for "financial services" apps — another reason D1 matters. |
 | D3 | **Which address and phone go public?** Both stores publish trader contact details in the EU. Apple accepts a P.O. Box for individuals (with proof); Play publishes your country for personal accounts and the full address once you monetise. | Get a **P.O. Box or a business address** and a **second phone number**. Do not commit either to these repos — they are public. **Still open after enrolment:** the address published on the EU product page is the one in the DSA trader declaration (O-18), which is entered separately from the address you enrolled with — so if you enrolled with your home address, set the public one there. Confirm that in App Store Connect rather than taking my word for it. |
 | ~~D4~~ | ~~**iPhone-only or universal?**~~ **IMPLEMENTED** — the project is set to iPhone-only, so this needs no action unless you disagree. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
-| D5 | **App name.** "Stack'd" is crowded on both stores, including *Stack'd Money*, a finance app on the App Store. Apple requires unique names and may refuse the bare one. | Try **"Stack'd"**, with **"Stack'd — Money Tracker"** ready as the fallback (30-char limit). **Enrolment landed 2026-09-27, so this is due now** — see O-17. Run an EUIPO search before printing anything. |
+| ~~D5~~ | ~~**App name.**~~ **DECIDED 2026-09-27 — and the prediction was right.** "Stack'd" was refused as unavailable. | The App Store record is **"Stack'd Finance"** (Apple ID 6816636640). Not the documented fallback — the shorter name was taken as-is. **Two things this leaves open:** use the same name on Play unless you have a reason not to (one product, two names splits reviews and search), and run the EUIPO search on *Stack'd Finance* rather than on *Stack'd* before printing anything. The device home-screen name stays "Stack'd". |
 | D6 | **Bank Connect price.** Still unset because it depends on the Enable Banking minimum. | Deferred by D1. Set it when you have the quote; the reference point is €2.99/month or €4.99/month. |
 | D7 | **Launch countries.** | **EEA + UK only** at first: it matches Bank Connect's coverage, keeps you inside one legal regime, and you can widen any time. |
 
@@ -171,11 +169,10 @@ v1.17 the purchase-replay fix.
   Stack'd Pro product row, the free/paid listing paragraph, and the IP
   disclosure note in the privacy labels.
 
-## 4. My side — ~~what remains~~ done, except two blocked items
+## 4. My side — ~~what remains~~ ~~done, except two blocked items~~ done, except A-08
 
-Ordered, IDs stable. **13 of 15 complete**; A-07 and A-08 need the numeric
-Apple ID, which exists once you create the App Store Connect app record
-(O-17) — enrolment alone does not mint it.
+Ordered, IDs stable. **14 of 15 complete**; only A-08 remains, and it is
+unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### ~~Before the first store build~~ — all done
 
@@ -287,21 +284,18 @@ Apple ID, which exists once you create the App Store Connect app record
 
 ### After you have the store records — the only code left
 
-Both are now waiting on one message from you rather than on a two-week
-process. Enrolment (2026-09-27) does not produce the id; **creating the app
-record does** (O-17).
+- ~~**A-07 · Apple app id**~~ · **DONE 2026-09-27.** `Views.APPLE_APP_ID` is
+  `'6816636640'`, so the Rate row appears on iOS builds instead of being
+  hidden. Held as a string — it is an opaque identifier, not a number.
+- **A-08 · App Store badge and link on the website.** Unblocked by the same
+  id; it lives in the StackdSite repo, not this one. The badge artwork has to
+  be Apple's own from the Marketing Resources page, unaltered — a redrawn or
+  recoloured badge is a guideline violation.
 
-- **A-07 · Apple app id.** One constant (`Views.APPLE_APP_ID`) turns the Rate
-  row on for iOS and gives the website its App Store link. Send me the
-  10-digit **Apple ID** from App Store Connect → your app → App Information
-  → General. It is not the bundle id, and it is not the Team ID.
-- **A-08 · App Store badge and link on the website**, once the id exists.
-  Uses the same number; the badge artwork must be Apple's own, from the
-  Marketing Resources page, unaltered.
-
-While you are in there, the other value worth copying out is the **Team ID**
-(Membership details). O-27 needs it for `IOS_APP_ID`
-(`TEAMID.com.stackd.finance`), which is what makes Universal Links verify.
+**Still needed from you: the Team ID** (Membership details). It is not the
+Apple ID and not the bundle id. O-27 needs it for `IOS_APP_ID`
+(`TEAMID.com.stackd.finance`), which is what makes Universal Links verify —
+without it the bank return falls back to the custom scheme.
 - ~~**A-09 · Broker production deploy preflight**~~ · **DONE 2026-09-09.**
   `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
   `npm run deploy:production` cannot reach api.stackdplatform.com while the
@@ -485,11 +479,11 @@ Everything in this block was gated on enrolment and none of it is any more.
 None of it needs a Mac either, so this is the part of the plan to work
 through while the Mac is still being arranged.
 
-- **O-17 · Reserve the app name** (D5). **Do this first, and this week.** It
-  is the item most likely to force a late rename, the name is contested
-  (*Stack'd Money*), and reserving it is also what creates the app record —
-  which is what produces the Apple ID that A-07 and A-08 are waiting on. One
-  action unblocks three things.
+- ~~**O-17 · Reserve the app name**~~ · **DONE 2026-09-27.** "Stack'd" was
+  refused; the record is **"Stack'd Finance"**, bundle `com.stackd.finance`,
+  **Apple ID 6816636640**. The App ID was registered with Associated Domains
+  enabled, which also closes the Associated Domains half of O-20 — confirm
+  In-App Purchase is ticked on it too.
 - **O-18 · DSA trader declaration.** Required for EU distribution; selling
   in-app purchases makes you a trader. Your address, phone and email are
   published on the product page in all 27 EU territories, and email and phone

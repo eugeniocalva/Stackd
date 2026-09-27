@@ -94,9 +94,23 @@ translating and adding to each language. Every string below was checked
 against the store limits (App Store subtitle 30, keywords 100,
 promotional text 170; Play short description 80, full description 4000).
 
-The app NAME is the same in every language: **Stack'd**, with
-**Stack'd — Money Tracker** as the fallback if the bare name is refused
-(decision D5).
+**The app NAME is settled, and it is not what D5 assumed.** ~~Stack'd~~ was
+**refused as unavailable on 2026-09-27**, and neither is it the documented
+fallback: the App Store record was created as **Stack'd Finance**
+(Apple ID 6816636640, bundle `com.stackd.finance`). The name is the same in
+every language — it is a brand, not a phrase, so it is never translated.
+
+Two consequences, both still open:
+
+- **Play should almost certainly use "Stack'd Finance" too.** Nothing forces
+  it — the Play name is independent and "Stack'd" may well be free there —
+  but one product under two names splits reviews, search and word of mouth,
+  and the website has to link both. Align unless you have a reason not to.
+- **The device name stays "Stack'd"** (`capacitor.config.json` `appName`).
+  That is deliberate: a home-screen label truncates at roughly 12 characters,
+  and a store name that extends the device name is ordinary practice rather
+  than the mismatch Apple's 2.3.8 metadata rule is aimed at. Change it only
+  if you would rather both read identically.
 
 The two legal URLs are NOT part of the description for this release: they go
 in the consoles' own fields (Play: Privacy policy; App Store Connect: Privacy

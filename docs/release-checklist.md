@@ -1,4 +1,4 @@
-# Release checklist (v1.17)
+# Release checklist (v1.19)
 
 Every store build follows this list, in order. The traps it exists to stop
 are all silent: a stale synced bundle, an unbumped `?v=`, an `index.html`
@@ -31,19 +31,19 @@ re-measure it rather than trusting it.
 
 ---
 
-## 0. Where v1.17 stands (measured 2026-09-09)
+## 0. Where v1.19 stands (measured 2026-09-27)
 
 | Step | State of this build |
 |---|---|
-| 1 Version | ~~done~~ — `1.17.0` in package.json, `<title>`, gradle (`versionCode 11700`) and Xcode; the `versionSync` test passes |
+| 1 Version | **to run** — the tree is at `1.18.0` and now carries v1.19 work (A-07). Bump and `version:sync` before building |
 | 2 Cache busting | **re-check** — cheap, and only ever valid as of the last commit |
-| 3 Gates | ~~done~~ — lint clean, **75 files / 735 unit tests**, **50 e2e specs**, all green |
+| 3 Gates | ~~done~~ — lint clean, **77 files / 750 unit tests**, **51 e2e specs**, all green |
 | 4 Build | **to run** — `dist/` on this machine predates the Bank Connect gate, so it is not the bundle to ship |
 | 5 Sync | to run, after 4 |
 | 6 Android bundle | **blocked** — `android/keystore.properties` does not exist yet, so a build now would be unsigned (launch-plan, owner side) |
 | 7 iOS archive | **blocked** — needs a Mac (launch-plan, owner side) |
 | 8 Smoke | to run, on the signed build and not before |
-| 9 Ship | to run — no store accounts exist yet, and there are no git tags yet either |
+| 9 Ship | to run — no Play account yet, and there are no git tags yet either. The App Store record now exists: **Stack'd Finance**, Apple ID 6816636640 |
 
 Bank Connect is off in this build (`BankConnect.FEATURE_ENABLED === false`),
 which is what step 3 enforces — see §3.
@@ -81,8 +81,8 @@ grep -n '?v=' index.html
 
 ```bash
 npm run lint          # zero-warning gate (--max-warnings 0)
-npm test              # 75 files / 735 tests, ~60s
-npm run test:e2e      # 50 specs, ~60s, auto-starts the dev server on :3000
+npm test              # 77 files / 750 tests, ~30-60s
+npm run test:e2e      # 51 specs, ~60s, auto-starts the dev server on :3000
 ```
 
 If `npm test` is slow or flaky, do not lower the bar — `vitest.config.js`
