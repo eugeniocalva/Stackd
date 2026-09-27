@@ -1,4 +1,4 @@
-# Launch plan — Google Play and the App Store (app v1.17, 2026-09-09)
+# Launch plan — Google Play and the App Store (app v1.18, 2026-09-27)
 
 The plan for the FIRST public release of Stack'd on both stores. Written from
 a nine-area audit of the app, the broker, both repos and the current store
@@ -19,26 +19,53 @@ are generated; the broker has a deploy preflight, alerting and an incident
 runbook.
 
 **Nothing now blocks a first build except you.** Every open item below is an
-owner task: the two store accounts, the identity that becomes public, twelve
+owner task: the Play account, the identity that becomes public, twelve
 testers, a Mac, and a lawyer's read-through.
+
+**Apple Developer Program membership was approved on 2026-09-27**, which moves
+three things and settles none of them completely:
+
+1. **O-17, reserving the app name, is now the most urgent item in this file**
+   and it was not urgent before. D5 says "Stack'd" may be refused as too close
+   to *Stack'd Money*; every day the name sits unreserved is a day someone
+   else can take it, and a late rename touches the listing, the screenshots
+   and the website.
+2. **Membership is not the Paid Apps agreement.** In-app purchases do not
+   work — not even in sandbox — until that agreement is active and the
+   banking and tax forms are filled. That is still open; see O-03b.
+3. **A-07 and A-08 unblock the moment the app record exists**, not when
+   enrolment landed. What I need from you is two values: the numeric **Apple
+   ID** (App Store Connect → your app → App Information → General, a
+   10-digit number) and your **Team ID** (Membership details). Send those and
+   both tasks are half an hour of work.
+
+A Mac is still required for every upload, and that is now the only hard gate
+left on the iOS side.
 
 ---
 
 ## 1. What sets the date
 
-One of the original three is done; the other two are yours.
+Two of the original three are done. What is left is one Play requirement and
+one piece of hardware.
 
 | Blocker | Why | Who | Lead time |
 |---|---|---|---|
 | ~~**Android targets API 34, Play requires 36**~~ **DONE 2026-09-09** | Migrated Capacitor 6 → 7 → 8. The app targets API 36, builds, installs and runs on an API 36 emulator with the layout intact. | assistant | done |
 | **Play closed testing: 12 testers, 14 days** | Applies to personal Play accounts created after 13 Nov 2023, before production access is granted. | owner | **14 days of calendar**, plus ~7 days for the access review |
-| **No Apple Developer Program membership** | Nothing on the App Store side can start — no app record, no products, no TestFlight. Uploads also require Xcode 26 / iOS 26 SDK, i.e. a Mac. | owner | hours to days for enrolment, plus Mac access |
+| ~~**No Apple Developer Program membership**~~ **DONE 2026-09-27** | The App Store side can start: app record, name reservation, products, TestFlight. **The Paid Apps agreement is a separate step and is not implied by acceptance** — O-03b. | owner | done |
+| **No Mac with Xcode 26** | Every App Store upload since April 2026 needs Xcode 26 / the iOS 26 SDK, which exists only on macOS. Nothing about enrolment changes this. Split out of the row above, because that row was carrying two blockers and only one of them cleared. | owner | borrowed, rented or cloud — hours once arranged |
 
 Realistic shape: **Android is roughly 3–5 weeks out** (signed build → closed
-test 14 days → production access review), **iOS depends entirely on when
-enrolment and a Mac happen** and is then 1–2 weeks (TestFlight, review). They
-run in parallel; neither waits for the other. With the migration done, the
-Android path now waits only on you: the developer account and the testers.
+test 14 days → production access review), and **iOS is now roughly 1–2 weeks
+from the day you have a Mac** (archive → TestFlight → review), assuming the
+Paid Apps agreement is active by then. They run in parallel; neither waits for
+the other.
+
+Two things are worth starting today, before the Mac, because neither needs
+one: reserving the app name (O-17) and the DSA trader declaration (O-18),
+which blocks the first submission and has two-factor verification of your
+email and phone inside it.
 
 ## 2. Decisions only you can make
 
@@ -48,13 +75,13 @@ Take these before the work below hits them. My recommendation is in each row.
 |---|---|---|
 | D1 | ~~Ship with Bank Connect hidden, or wait for Enable Banking production access?~~ | **DECIDED 2026-09-09: ship without it.** Implemented in v1.15 (A-04). The first release is the local app plus Stack'd Pro; Online banking is off at build time and turns on in a later update once the Enable Banking contract is signed. |
 | D2 | **Sole trader or company?** This decides the Play account type, whether you need a D-U-N-S number, and which address is published. | **Sole trader** unless a company already exists. A company means a D-U-N-S (up to 30 days) and, on Play, the full legal address published. Note Play requires an Organization account for "financial services" apps — another reason D1 matters. |
-| D3 | **Which address and phone go public?** Both stores publish trader contact details in the EU. Apple accepts a P.O. Box for individuals (with proof); Play publishes your country for personal accounts and the full address once you monetise. | Get a **P.O. Box or a business address** and a **second phone number** before enrolling. Do not use your home address, and do not commit either to these repos — they are public. |
+| D3 | **Which address and phone go public?** Both stores publish trader contact details in the EU. Apple accepts a P.O. Box for individuals (with proof); Play publishes your country for personal accounts and the full address once you monetise. | Get a **P.O. Box or a business address** and a **second phone number**. Do not commit either to these repos — they are public. **Still open after enrolment:** the address published on the EU product page is the one in the DSA trader declaration (O-18), which is entered separately from the address you enrolled with — so if you enrolled with your home address, set the public one there. Confirm that in App Store Connect rather than taking my word for it. |
 | ~~D4~~ | ~~**iPhone-only or universal?**~~ **IMPLEMENTED** — the project is set to iPhone-only, so this needs no action unless you disagree. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
-| D5 | **App name.** "Stack'd" is crowded on both stores, including *Stack'd Money*, a finance app on the App Store. Apple requires unique names and may refuse the bare one. | Try **"Stack'd"**, with **"Stack'd — Money Tracker"** ready as the fallback (30-char limit). Reserve it in App Store Connect the day enrolment lands. Run an EUIPO search before printing anything. |
+| D5 | **App name.** "Stack'd" is crowded on both stores, including *Stack'd Money*, a finance app on the App Store. Apple requires unique names and may refuse the bare one. | Try **"Stack'd"**, with **"Stack'd — Money Tracker"** ready as the fallback (30-char limit). **Enrolment landed 2026-09-27, so this is due now** — see O-17. Run an EUIPO search before printing anything. |
 | D6 | **Bank Connect price.** Still unset because it depends on the Enable Banking minimum. | Deferred by D1. Set it when you have the quote; the reference point is €2.99/month or €4.99/month. |
 | D7 | **Launch countries.** | **EEA + UK only** at first: it matches Bank Connect's coverage, keeps you inside one legal regime, and you can widen any time. |
 
-## 3. Already shipped (v1.14 → v1.17)
+## 3. Already shipped (v1.14 → v1.18)
 
 ~~All of this is done, tested and pushed.~~ Kept as a record of what changed
 and why; the per-task detail is in §4. Later versions added to it: v1.15 hid
@@ -146,8 +173,9 @@ v1.17 the purchase-replay fix.
 
 ## 4. My side — ~~what remains~~ done, except two blocked items
 
-Ordered, IDs stable. **13 of 15 complete**; A-07 and A-08 need an Apple app
-id that does not exist until you create the App Store Connect record.
+Ordered, IDs stable. **13 of 15 complete**; A-07 and A-08 need the numeric
+Apple ID, which exists once you create the App Store Connect app record
+(O-17) — enrolment alone does not mint it.
 
 ### ~~Before the first store build~~ — all done
 
@@ -259,9 +287,21 @@ id that does not exist until you create the App Store Connect record.
 
 ### After you have the store records — the only code left
 
+Both are now waiting on one message from you rather than on a two-week
+process. Enrolment (2026-09-27) does not produce the id; **creating the app
+record does** (O-17).
+
 - **A-07 · Apple app id.** One constant (`Views.APPLE_APP_ID`) turns the Rate
-  row on for iOS and gives the website its App Store link.
+  row on for iOS and gives the website its App Store link. Send me the
+  10-digit **Apple ID** from App Store Connect → your app → App Information
+  → General. It is not the bundle id, and it is not the Team ID.
 - **A-08 · App Store badge and link on the website**, once the id exists.
+  Uses the same number; the badge artwork must be Apple's own, from the
+  Marketing Resources page, unaltered.
+
+While you are in there, the other value worth copying out is the **Team ID**
+(Membership details). O-27 needs it for `IOS_APP_ID`
+(`TEAMID.com.stackd.finance`), which is what makes Universal Links verify.
 - ~~**A-09 · Broker production deploy preflight**~~ · **DONE 2026-09-09.**
   `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
   `npm run deploy:production` cannot reach api.stackdplatform.com while the
@@ -383,12 +423,19 @@ id that does not exist until you create the App Store Connect record.
 - **O-02 · Sort the public identity**: legal form, the address you are willing
   to publish, a phone number that can receive verification codes, and a
   document proving name and address for Apple. Keep them out of both repos.
-- **O-03 · Enrol in the Apple Developer Program** ($99/yr). Individual unless a
-  company exists — the seller name is your legal name and cannot be changed
-  later without an entity transfer. Then sign the Paid Apps agreement and fill
-  the banking and tax forms: **in-app purchases do not work in sandbox until
-  that agreement is active.** Join the Small Business Program (15%) right after
-  acceptance.
+- ~~**O-03a · Enrol in the Apple Developer Program**~~ ($99/yr) ·
+  **DONE 2026-09-27.** Whatever entity type you enrolled as is now what
+  publishes: an individual enrolment sells under your legal name, and changing
+  that later needs an entity transfer rather than a settings edit.
+- **O-03b · Sign the Paid Apps agreement, and fill the banking and tax
+  forms.** **Not done by being accepted** — it is a separate agreement in
+  App Store Connect → Business. Until it is active, **in-app purchases do not
+  work even in sandbox**, so `stackd_pro` cannot be tested at all and O-23's
+  sandbox pass is blocked behind it. This is the Apple item most likely to be
+  mistaken for finished.
+- **O-03c · Join the Small Business Program** (15% instead of 30%).
+  Applications are reviewed and the lower rate starts the month after
+  approval, so applying late costs real money on early sales.
 - **O-04 · Create the Google Play developer account** ($25 once). Check the
   creation date — if it is after 13 Nov 2023 and personal, the 12-tester
   14-day closed test applies and it is on the critical path. Complete identity
@@ -432,10 +479,17 @@ id that does not exist until you create the App Store Connect record.
   email, privacy policy URL `https://stackdplatform.com/privacy`.
 - **O-16 · Upload, closed test, then apply for production access.**
 
-### App Store Connect, once enrolled
+### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
-- **O-17 · Reserve the app name** (D5) the day you can — this is the item most
-  likely to force a rename late.
+Everything in this block was gated on enrolment and none of it is any more.
+None of it needs a Mac either, so this is the part of the plan to work
+through while the Mac is still being arranged.
+
+- **O-17 · Reserve the app name** (D5). **Do this first, and this week.** It
+  is the item most likely to force a late rename, the name is contested
+  (*Stack'd Money*), and reserving it is also what creates the app record —
+  which is what produces the Apple ID that A-07 and A-08 are waiting on. One
+  action unblocks three things.
 - **O-18 · DSA trader declaration.** Required for EU distribution; selling
   in-app purchases makes you a trader. Your address, phone and email are
   published on the product page in all 27 EU territories, and email and phone
@@ -519,7 +573,7 @@ id that does not exist until you create the App Store Connect record.
 
 | Item | |
 |---|---|
-| Apple Developer Program | $99 / year |
+| Apple Developer Program | $99 / year — ~~first year paid 2026-09-27~~; renews annually, and lapsing pulls the app from sale |
 | Google Play developer account | $25 once |
 | Domain + Zoho mail | already paid |
 | Cloudflare Workers | free tier is enough; $5/month buys 7-day log retention |
