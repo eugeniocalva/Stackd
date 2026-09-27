@@ -409,7 +409,7 @@ wrong in every other currency.
 | Description — **App Store** | **Max 45 characters**, so `pro.desc` (110–126) does NOT fit. Paste these, measured 2026-09-27: en `Unlimited accounts and your own categories.` (43) · fr `Comptes illimités et vos propres catégories.` (44) · it `Conti illimitati e categorie personalizzate.` (44) · es `Cuentas ilimitadas y categorías propias.` (40) · pt `Contas ilimitadas e categorias próprias.` (40). They say "accounts" because the in-app lock page and purchase screen do. |
 | Description — **Play** | `pro.desc` as-is — Play allows 200 characters, and it fits in all five |
 | Restore | required and present: *Restore purchase* on the One-time tab (`#pro-restore-btn`) |
-| Apple review | the first non-consumable is submitted WITH a binary: attach a screenshot of `#purchases` (One-time tab) and review notes "Settings → In-app purchases → One-time purchase" |
+| Apple review | the first non-consumable is submitted WITH a binary. **Screenshot:** `node tools/store/iap-review.cjs` → `tools/store/out/iap-review/stackd_pro-en.png` (1290×2796, no alpha; generated 2026-09-27). **Review notes** — paste as-is: *"Stack'd Pro is a one-time, non-consumable unlock. The free plan allows 2 accounts and the default categories; Pro removes both limits. To reach it: Settings → In-app purchases. It is also offered when adding a third account or creating a custom category. Restore purchase is on the same screen. No sign-in is required; all data stays on the device."* |
 | Entitlement | local to the device (`stackd_v1_pro`); no server check, no receipt upload |
 
 ### 4b. Subscription products — **NOT FOR THIS RELEASE** (do not create these yet)
