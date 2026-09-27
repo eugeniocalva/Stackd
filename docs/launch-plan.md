@@ -517,9 +517,19 @@ through while the Mac is still being arranged.
   enough, it must be in the target to ship.
 - **O-26 · Signing and capabilities**, archive, upload to TestFlight.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
-  `YA3DTZR26U.com.stackd.finance`, in both broker environments. What remains
-  is a **deploy** for it to take effect, and walking the bank return on a
-  device — neither of which matters until Bank Connect is switched on.
+  `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
+  deployed and verified**: `/.well-known/apple-app-site-association` serves
+  `{"appID":"YA3DTZR26U.com.stackd.finance","paths":["/v1/connect/return*"]}`
+  as `application/json`, which is the form Apple fetches. Production carries
+  the same value and applies it whenever production is first deployed.
+  Walking the bank return on a device is still open and does not matter until
+  Bank Connect is switched on.
+
+  **The Android mirror of this is NOT done**, and it is easy to miss because
+  nothing fails loudly: `/.well-known/assetlinks.json` currently publishes
+  `"sha256_cert_fingerprints": []`, so App Links do not verify on Android and
+  every bank return falls back to the `stackd://` scheme. It needs the upload
+  keystore's SHA-256 (O-07 creates the keystore, O-28 fills the value).
 
 ### Broker production (only if Bank Connect ships)
 
