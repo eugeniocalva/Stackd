@@ -405,7 +405,9 @@ wrong in every other currency.
 | Type | Play: in-app product, one-time. App Store Connect: Non-Consumable |
 | Price | €4.99 in the base storefront; review the generated per-country prices |
 | What it unlocks | unlimited wallets (free plan = `Pro.FREE_ACCOUNT_LIMIT`, 2) and custom categories, forever, on any device signed in to the same store account |
-| Display name | "Stack'd Pro" in all five locales; description from `pro.desc` |
+| Display name | "Stack'd Pro" in all five locales (11 chars; Apple allows 35, Play 55) |
+| Description — **App Store** | **Max 45 characters**, so `pro.desc` (110–126) does NOT fit. Paste these, measured 2026-09-27: en `Unlimited accounts and your own categories.` (43) · fr `Comptes illimités et vos propres catégories.` (44) · it `Conti illimitati e categorie personalizzate.` (44) · es `Cuentas ilimitadas y categorías propias.` (40) · pt `Contas ilimitadas e categorias próprias.` (40). They say "accounts" because the in-app lock page and purchase screen do. |
+| Description — **Play** | `pro.desc` as-is — Play allows 200 characters, and it fits in all five |
 | Restore | required and present: *Restore purchase* on the One-time tab (`#pro-restore-btn`) |
 | Apple review | the first non-consumable is submitted WITH a binary: attach a screenshot of `#purchases` (One-time tab) and review notes "Settings → In-app purchases → One-time purchase" |
 | Entitlement | local to the device (`stackd_v1_pro`); no server check, no receipt upload |
