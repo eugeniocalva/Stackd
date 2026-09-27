@@ -378,7 +378,10 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   three fixes on the way, all found by the workflow's own guards: a
   `runner` expression GitHub rejects at job level, a `.p8` secret that did
   not contain the whole file, and an App Manager key that cannot use cloud
-  signing (now Admin). **The upload itself has not been run yet.** `.github/workflows/ios-testflight.yml`,
+  signing (now Admin). **Upload DONE 2026-09-27 19:58 UTC** — run
+  36346065405: every check passed again from scratch, then App Store
+  Connect answered "Upload succeeded". Build 10000 of 1.0 is processing in
+  TestFlight. `.github/workflows/ios-testflight.yml`,
   manual trigger only (the repo is public, so no push or pull-request
   trigger can reach the signing key). It runs the gates, builds the bundle,
   `cap sync ios`, archives with Xcode 26.6, signs with Apple's
@@ -618,7 +621,8 @@ through while the Mac is still being arranged.
   2026-09-27** by editing `project.pbxproj` (file reference, App group,
   Resources phase). The workflow fails the build if the manifest is not in
   the archived app, so it cannot silently regress.
-- **O-26 · Sign, archive, upload** — now: (1) you add three repository
+- ~~**O-26 · Sign, archive, upload**~~ · **DONE 2026-09-27**: 1.0 build 10000
+  uploaded by the workflow. How it works, for the next release: (1) you add three repository
   secrets (`APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`,
   `APPSTORE_API_KEY_P8`) — never in chat, never in the repo; (2) a **dry
   run** (upload unticked) builds, signs and inspects the .ipa; (3) a real run
