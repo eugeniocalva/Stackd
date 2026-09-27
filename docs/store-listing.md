@@ -126,7 +126,7 @@ so on) if a localized listing wants them.
 |---|---|
 | Subtitle (App Store, ≤30) | Local-first money tracker |
 | Short description (Play, ≤80) | Private money tracking. Every wallet, budget and log stays on your phone. |
-| Keywords (App Store, ≤100) | `budget,expense,tracker,finance,money,spending,savings,offline,privacy,loan,csv,wallet` |
+| Keywords (App Store, ≤100) | `budget,expense,tracker,planner,money,spending,savings,offline,privacy,loan,csv,wallet` (85). **Changed 2026-09-27:** `finance` → `planner`, because the App Store name became "Stack'd Finance" and Apple already indexes every word of the name, so a keyword repeating it buys nothing. The other four locales keep their word (`finances`, `finanze`, `finanzas`, `finanças`) — a different token from the English name. |
 | Promotional text (App Store, ≤170) | No account, no cloud, no ads. Stack'd keeps your wallets, budgets and loans on your phone, and exports everything as CSV whenever you want. |
 
 **Full description (both stores):**
@@ -473,3 +473,77 @@ or amount, because these images are published and review looks for it.
 
 When Bank Connect ships, add the Online banking hub with a linked bank and
 the review sheet ("Import complete — balances match your bank").
+
+## 7. App Store Connect — the app page, field by field (first submission)
+
+Written 2026-09-27 against the live record: **"Stack'd Finance"**, Apple ID
+`6816636640`, bundle `com.stackd.finance`, primary language English (U.S.).
+The long copy (description, promotional text) is in §1b and is not repeated
+here. Everything below is for THIS release, with Bank Connect off.
+
+### 7a. App Information (*Informações da app*)
+
+| Field | Value |
+|---|---|
+| Name | `Stack'd Finance` in every localisation — a brand, never translated |
+| Subtitle | per locale, from §1b: en `Local-first money tracker` · fr `Finances privées, hors ligne` · it `Finanze private, offline` · es `Finanzas privadas, sin nube` · pt `Finanças privadas, offline` |
+| Localisations | add French (France), Italian, Spanish (Spain), Portuguese (Portugal) next to English (U.S.) |
+| Category | Primary **Finance**. Secondary: leave empty (optional; nothing else is a clear fit) |
+| Content rights | **No** — the app contains no third-party content |
+| Age rating | answer **None / No to every question** → **4+**. No violence, sexual content, profanity, mature themes, horror, substances, medical content, gambling (real or simulated), contests, loot boxes, advertising, user-generated content, messaging, or unrestricted web access. The in-app links open our own legal pages, which is not unrestricted web access |
+| License agreement | **Apple's standard EULA** (O-22). The in-app Terms remain the app's terms; a custom EULA would need a plain-text copy of them kept in sync forever |
+
+### 7b. Pricing and Availability (*Preços e disponibilidade*)
+
+| Field | Value |
+|---|---|
+| Price | **Free** — the app is free; Stack'd Pro is the in-app purchase |
+| Availability | **D7 — still your decision.** Recommended: the EEA + UK — the 27 EU states, Iceland, Liechtenstein (if listed as a storefront), Norway and the United Kingdom. It keeps you inside one legal regime, which the Terms and Privacy were written for, and it is what makes W-8BEN option B cost nothing (no U.S. storefront, no U.S. withholding). Widening later is a checkbox; set `stackd_pro`'s availability to the same list |
+| Distribution | Public |
+| Pre-orders | No |
+
+### 7c. App Privacy (*Privacidade da app*)
+
+| Field | Value |
+|---|---|
+| Privacy Policy URL | en `https://stackdplatform.com/privacy` · fr `/fr/privacy` · it `/it/privacy` · es `/es/privacy` · pt `/pt/privacy` (all on `https://stackdplatform.com`, all verified 200 on 2026-09-27). Extensionless — Pages redirects `.html` |
+| Data collection | **"No, we do not collect data from this app"** → *Data Not Collected*. Reasoning in §2a. The *Send feedback* email is user-initiated through the user's own mail app and is not collection by the app |
+
+### 7d. The version page (iOS app, first version)
+
+| Field | Value |
+|---|---|
+| **Version number** | App Store Connect created it as `1.0`. **Change it to the version of the build you will upload** — they must match or the build cannot be attached. The next build is `1.19.0` (release-checklist §1); it stays editable until you submit |
+| Screenshots | iPhone **6.9"** only, per locale: `tools/store/out/apple/<lang>/01-home` … `05-debt` (1290×2796, no alpha). 6.5" and iPad are not needed (iPhone-only app, D4) |
+| Promotional text | per locale, §1b |
+| Description | per locale, §1b (the Bank-Connect-OFF copy — not §1) |
+| Keywords | per locale, §1b (English revised 2026-09-27, see above) |
+| Support URL | `https://stackdplatform.com/support` (English page; same URL in every locale) |
+| Marketing URL | `https://stackdplatform.com` (optional) |
+| Copyright | `2026 Eugenio Maria Calvaresi` — Apple adds the ©. The rights holder is you as an individual (D2); "Stack'd Development Studio" is a trading name, not an entity |
+| In-app purchases | add **Stack'd Pro** to this version, so it is reviewed with the build |
+| Build | attached after the Mac upload (O-26) |
+| What's New | not shown for a first version |
+| Version release | **Manually release this version** — so approval does not publish it before you are ready, and so the website badge (A-08) goes live the same day |
+
+### 7e. App Review Information (private to Apple)
+
+| Field | Value |
+|---|---|
+| Sign-in required | **No** — there are no accounts |
+| Contact | your name, a phone number Apple can reach, and an email. Seen only by App Review, never published |
+| Notes | paste as-is, below |
+| Attachment | none |
+
+> Stack'd is a personal finance tracker that keeps all data on the device.
+> There is no account, no sign-in and no server: the app works fully offline
+> and contains no analytics or advertising SDKs. On first launch, choose a
+> currency and language.
+>
+> In-app purchase: Stack'd Pro (stackd_pro), a one-time non-consumable. The
+> free plan allows 2 accounts and the default categories; Pro removes both
+> limits. To reach it: Settings → In-app purchases, or try to add a third
+> account. Restore purchase is on the same screen.
+
+The build already answers export compliance: `ITSAppUsesNonExemptEncryption`
+is `false` in `Info.plist`, so no encryption questionnaire appears.
