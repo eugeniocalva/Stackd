@@ -25,7 +25,7 @@ testers, a Mac, and a lawyer's read-through.
 
 | | Done | Open, in the order I would do them |
 |---|---|---|
-| **Apple** | Enrolled. **Paid Apps agreement Active** (O-03b). App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | ~~O-03b~~ → **O-18 DSA trader declaration** (needs D3) → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
+| **Apple** | Enrolled. **Paid Apps agreement Active** (O-03b). App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | ~~O-03b~~ → ~~O-18~~ (in Apple's review) → **O-03c Small Business Program** → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
 | **Android** | Upload keystore created (O-07). Its certificate published on staging (O-29). | **O-04 Play account** → O-05 twelve testers → `android/keystore.properties` → signed build → O-11 to O-16 |
 | **Both** | D1, D4, D5 decided. | **D3 (the public address and phone)**, which O-04 and O-18 both need |
 
@@ -37,8 +37,11 @@ Play account exists, so **O-04 is now the task whose delay costs the most
 calendar.**
 
 ~~**The Apple item most likely to be mistaken for finished is O-03b.**~~
-**O-03b is done: the Paid Apps agreement went Active on 2026-09-27.** The
-Apple item gating submission is now **O-18**, and it waits on **D3**.
+**O-03b is done: the Paid Apps agreement went Active on 2026-09-27**, with
+the bank account, W-8BEN and DAC7 all active the same afternoon, and the DSA
+declaration (O-18) submitted and in Apple's review. **The whole Business
+side of App Store Connect is finished.** What is left before the Mac is
+product and listing work: O-03c, O-19, O-21, O-22.
 
 ---
 
@@ -504,11 +507,18 @@ through while the Mac is still being arranged.
   refused; the record is **"Stack'd Finance"**, bundle `com.stackd.finance`,
   **Apple ID 6816636640**. The App ID was registered with Associated Domains
   enabled, which closes O-20.
-- **O-18 · DSA trader declaration.** Required for EU distribution; selling
-  in-app purchases makes you a trader. Your address, phone and email are
-  published on the product page in all 27 EU territories, and email and phone
-  need two-factor verification. Do it before the first submission — it blocks
-  it.
+- **O-18 · DSA trader declaration** · **SUBMITTED 2026-09-27, status "Em
+  revisão" (in review).** Declared as a trader, which is correct: selling
+  Stack'd Pro in the EU is trading. Nothing to do unless Apple comes back
+  with a question. Whatever address, phone and email were entered become
+  public on the product page in all 27 EU territories once review passes;
+  they can be updated later, but will have been visible by then (D3).
+
+  **DAC7** (the EU platform tax-reporting directive, asked on the same
+  Business page) · **DONE 2026-09-27, Ativas.** Answered "no personal
+  services": selling software or a digital unlock is outside DAC7, which
+  covers work performed by people, physical goods, property rental and
+  transport rental. Private, never published.
 - **O-19 · Create `stackd_pro`** as a Non-Consumable with the same id, price,
   five localisations, a review screenshot of the purchases screen and review
   notes. The first in-app purchase is reviewed **with the binary**.
