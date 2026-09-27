@@ -25,7 +25,7 @@ testers, a Mac, and a lawyer's read-through.
 
 | | Done | Open, in the order I would do them |
 |---|---|---|
-| **Apple** | Enrolled. App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | **O-03b Paid Apps agreement** → O-18 DSA trader declaration → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
+| **Apple** | Enrolled. **Paid Apps agreement Active** (O-03b). App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | ~~O-03b~~ → **O-18 DSA trader declaration** (needs D3) → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
 | **Android** | Upload keystore created (O-07). Its certificate published on staging (O-29). | **O-04 Play account** → O-05 twelve testers → `android/keystore.properties` → signed build → O-11 to O-16 |
 | **Both** | D1, D4, D5 decided. | **D3 (the public address and phone)**, which O-04 and O-18 both need |
 
@@ -36,10 +36,9 @@ is still Android: the 12-tester, 14-day closed test cannot start until the
 Play account exists, so **O-04 is now the task whose delay costs the most
 calendar.**
 
-**The Apple item most likely to be mistaken for finished is O-03b.**
-Membership is not the Paid Apps agreement. Until that agreement is active and
-its banking and tax forms are in, in-app purchases do not work even in
-sandbox, so Stack'd Pro cannot be tested on iOS at all.
+~~**The Apple item most likely to be mistaken for finished is O-03b.**~~
+**O-03b is done: the Paid Apps agreement went Active on 2026-09-27.** The
+Apple item gating submission is now **O-18**, and it waits on **D3**.
 
 ---
 
@@ -432,12 +431,13 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   **DONE 2026-09-27.** Whatever entity type you enrolled as is now what
   publishes: an individual enrolment sells under your legal name, and changing
   that later needs an entity transfer rather than a settings edit.
-- **O-03b · Sign the Paid Apps agreement, and fill the banking and tax
-  forms.** **Not done by being accepted** — it is a separate agreement in
-  App Store Connect → Business. Until it is active, **in-app purchases do not
-  work even in sandbox**, so `stackd_pro` cannot be tested at all and O-23's
-  sandbox pass is blocked behind it. This is the Apple item most likely to be
-  mistaken for finished.
+- ~~**O-03b · Sign the Paid Apps agreement, and fill the banking and tax
+  forms.**~~ · **DONE 2026-09-27 — status Active** (valid to 2027-09-27).
+  Bank account and W-8BEN submitted the same afternoon; Apple activated it
+  within minutes, not the day or two allowed for. Sandbox purchases of
+  `stackd_pro` can now be tested, which unblocks O-23's sandbox pass. The
+  W-8BEN address is the private residence Apple and the IRS require — it is
+  NOT published, and is a different thing from the O-18 address.
 - **O-03c · Join the Small Business Program** (15% instead of 30%).
   Applications are reviewed and the lower rate starts the month after
   approval, so applying late costs real money on early sales.
