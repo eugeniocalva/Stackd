@@ -572,11 +572,17 @@ through while the Mac is still being arranged.
   from an **In-App Purchase** key, not a team API key. Then verify `/healthz`
   reports `mode=store` and that `/.well-known/assetlinks.json` lists the
   fingerprint.
-- **O-29 · Also add the release fingerprints to the *staging* worker.** The
-  emulator walk confirmed the gap: `adb shell pm get-app-links` reports
-  `legacy_failure` for BOTH hosts today, because `ANDROID_SHA256_FINGERPRINTS`
-  is empty in both broker environments, so every bank return currently falls
-  back to the `stackd://` hand-off page. Both
+- ~~**O-29 · Also add the release fingerprints to the *staging* worker.**~~
+  · **DONE 2026-09-27.** The upload keystore now exists, and staging
+  publishes its certificate:
+  `56:CC:…:5C:6E`, live and verified as `application/json`. What this
+  unblocks is the emulator walk itself — a release build installed by hand
+  keeps the upload signature, so `pm get-app-links` can now report `verified`
+  for the staging host instead of `legacy_failure`. **That walk has not been
+  run yet**; it needs a signed build, which needs
+  `android/keystore.properties`.
+
+  The original finding, kept because the second host is still open: The
   broker hosts are declared as App Links in the shipped manifest, and on
   Android 11 and below verification fails for ALL hosts if any one of them
   fails — which would silently push every bank return onto the fallback path.

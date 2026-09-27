@@ -56,7 +56,13 @@ EB_BASE_URL = "https://api.enablebanking.com"
 EB_APP_ID = "463906ef-6530-486f-ba80-4f4e644fac1a"   # Enable Banking SANDBOX application (not secret)
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
-ANDROID_SHA256_FINGERPRINTS = ""
+# v1.19: the UPLOAD certificate, which is the right one HERE and only here.
+# A release build installed by hand (gradlew bundleRelease -> bundletool)
+# keeps this signature, so this is what makes App Links verify on a device
+# or emulator without Play in the loop (O-29). Production must NOT reuse it:
+# Play re-signs with its own key, so production publishes the Play App
+# Signing certificate instead (O-28). Fingerprints are public by design.
+ANDROID_SHA256_FINGERPRINTS = "56:CC:4D:5E:F2:7F:14:FD:95:88:B2:81:A4:FD:24:1D:B3:E8:03:76:1C:34:CF:0C:95:D6:44:B7:F3:3F:5C:6E"
 IOS_APP_ID = "YA3DTZR26U.com.stackd.finance"   # Team ID + bundle id. NOT a
 # secret: this exact string is what /.well-known/apple-app-site-association
 # serves to the public, and every Universal Links site publishes its own.
@@ -103,6 +109,10 @@ EB_BASE_URL = "https://api.enablebanking.com"
 EB_APP_ID = ""   # the Enable Banking application UUID (not secret)
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
+# Still empty ON PURPOSE. This must be the Play App Signing certificate,
+# which Google generates at the first upload and which is NOT the upload
+# key used by staging above. Play Console > Test and release > Setup > App
+# signing lists both; the preflight warns if only one is set here. O-28.
 ANDROID_SHA256_FINGERPRINTS = ""
 IOS_APP_ID = "YA3DTZR26U.com.stackd.finance"   # Team ID + bundle id. NOT a
 # secret: this exact string is what /.well-known/apple-app-site-association
