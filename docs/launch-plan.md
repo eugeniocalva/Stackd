@@ -442,8 +442,17 @@ the four values in O-28.
 - **O-06 · Get a Mac with Xcode 26.** Required for every App Store upload since
   April 2026. Borrowed, rented or a cloud Mac all work.
 - **O-07 · Create the upload keystore** with the `keytool` line in
-  `android/keystore.properties.example`, store it outside the repo, and back it
-  up in two places.
+  `android/keystore.properties.example`, store it outside the repo, and back
+  it up in two places. **Run it yourself in a real terminal** — `keytool`
+  prompts for the password, and that password should never pass through a
+  chat transcript or a shell history. Use a password manager entry plus one
+  offline copy: an upload key can be reset through Play support, but only
+  while you still control the account.
+
+  Collect `keytool -list -v`'s **SHA-256** afterwards. It is not a secret
+  (fingerprints are published in `assetlinks.json` by design) and it is what
+  the O-29 emulator walk needs. It is **not** the value for production — see
+  O-28.
 - **O-08 · Legal read-through.** The Terms and Privacy are careful but were
   written by me, not a lawyer, and they now describe two paid products and a
   cross-border data flow. Also ask about: the governing-law clause the Terms
@@ -528,8 +537,22 @@ through while the Mac is still being arranged.
   **The Android mirror of this is NOT done**, and it is easy to miss because
   nothing fails loudly: `/.well-known/assetlinks.json` currently publishes
   `"sha256_cert_fingerprints": []`, so App Links do not verify on Android and
-  every bank return falls back to the `stackd://` scheme. It needs the upload
-  keystore's SHA-256 (O-07 creates the keystore, O-28 fills the value).
+  every bank return falls back to the `stackd://` scheme.
+
+  **It cannot be fixed on the same day as the iOS half, and that asymmetry is
+  the thing to understand.** iOS needed only the Team ID, which existed the
+  moment you enrolled. Android needs the **Play App Signing certificate**,
+  which Google generates when you upload the first bundle — so it does not
+  exist until there is a Play account and an upload. Your own upload keystore
+  (O-07) is a *different* certificate and is the wrong value for production:
+  Play strips your upload signature and re-signs with its own key, so an
+  assetlinks file listing the upload cert would fail to verify on every
+  installed copy. See O-28, which has this right.
+
+  The upload cert fingerprint is still worth collecting when you create the
+  keystore, for one narrow purpose: a release build installed **locally**
+  (not through Play) keeps your upload signature, so adding that fingerprint
+  to the *staging* worker is what makes the O-29 emulator walk verify.
 
 ### Broker production (only if Bank Connect ships)
 
