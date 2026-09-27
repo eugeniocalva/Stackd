@@ -627,8 +627,10 @@ through while the Mac is still being arranged.
   `APPSTORE_API_KEY_P8`) — never in chat, never in the repo; (2) a **dry
   run** (upload unticked) builds, signs and inspects the .ipa; (3) a real run
   with upload ticked sends build 10000 of 1.0 to App Store Connect.
-- **O-26b · TestFlight on your iPhone**, then attach the build to 1.0 and
-  submit. The TestFlight check is the one step that still needs hardware —
+- **O-26b · TestFlight on your iPhone** · **IN PROGRESS since 2026-09-27**:
+  build 10000 processed, internal testing set up, installed on the owner's
+  iPhone; device testing over the following days (release-checklist §8).
+  Then attach the build to 1.0 and submit. The TestFlight check is the one step that still needs hardware —
   an iPhone, not a Mac.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
   `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
