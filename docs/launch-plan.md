@@ -629,8 +629,16 @@ through while the Mac is still being arranged.
   with upload ticked sends build 10000 of 1.0 to App Store Connect.
 - **O-26b · TestFlight on your iPhone** · **IN PROGRESS since 2026-09-27**:
   build 10000 processed, internal testing set up, installed on the owner's
-  iPhone; device testing over the following days (release-checklist §8).
-  Then attach the build to 1.0 and submit. The TestFlight check is the one step that still needs hardware —
+  iPhone. **Device check PASSED 2026-09-27** on a real iPhone against Apple's
+  sandbox store: bought Stack'd Pro (lock lifted), deleted and reinstalled
+  then *Restore purchase* (back on Pro), and no Online banking anywhere.
+- **O-26c · SUBMITTED FOR REVIEW 2026-09-27** — 1.0 build 10000 with
+  Stack'd Pro attached. Four gaps App Store Connect raised first and the
+  owner closed: App Privacy answers **published** (not just saved), the app's
+  price tier (Free), content rights (No), and the build selection.
+  Release is MANUAL. **Before pressing release:** Negócios → Conformidade →
+  DSA must show verified, or the EU storefronts may not carry the app.
+  On release day: A-08 (website badge). The TestFlight check is the one step that still needs hardware —
   an iPhone, not a Mac.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
   `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
