@@ -11,11 +11,16 @@
 // Sizes (verified against the official specs on 2026-09-09):
 //   apple  1290x2796  iPhone 6.9" portrait. Apple also accepts 1260x2736 and
 //                     1320x2868; 1290x2796 is 430x932 @3x, a real device
-//                     logical size, so nothing is scaled. 6.9" is the only
-//                     REQUIRED iPhone size — if 6.5" is missing Apple scales
-//                     these down, so it is deliberately not generated. To add
-//                     it, put {w:428,h:926,scale:3} in TARGETS as 6.5".
+//                     logical size, so nothing is scaled.
 //                     https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
+//   apple-6.5  1284x2778  iPhone 6.5" portrait, 428x926 @3x (also a real
+//                     device logical size). ADDED 2026-09-27: the spec page
+//                     reads as if 6.9" alone suffices, but the live App Store
+//                     Connect record for Stack'd Finance showed ONLY a 6.5"
+//                     slot and rejected the 1290x2796 set with "must be
+//                     1242x2688, 2688x1242, 1284x2778 or 2778x1284". Trust
+//                     the console over the spec page. Generate both; upload
+//                     whichever slots the console actually offers.
 //   play   1080x1920  9:16. Play requires the longest side to be at most
 //                     twice the shortest, which 1290x2796 (2.17) fails — so
 //                     Play genuinely needs its own size, it cannot reuse
@@ -37,8 +42,9 @@ const OUT_ROOT = path.resolve(__dirname, 'out');
 const LANGS = ['en', 'fr', 'it', 'es', 'pt'];
 
 const TARGETS = {
-  apple: { w: 430, h: 932, scale: 3 },  // -> 1290 x 2796
-  play: { w: 360, h: 640, scale: 3 }    // -> 1080 x 1920
+  apple: { w: 430, h: 932, scale: 3 },         // -> 1290 x 2796 (6.9")
+  'apple-6.5': { w: 428, h: 926, scale: 3 },   // -> 1284 x 2778 (6.5")
+  play: { w: 360, h: 640, scale: 3 }           // -> 1080 x 1920
 };
 
 // Dark, to match the marketing site's hero and the link-preview image: the
