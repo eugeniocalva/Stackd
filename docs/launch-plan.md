@@ -11,7 +11,7 @@ declarations, products, and the code work that still stands between today and
 a submittable build.
 
 **Status.** ~~Struck-through items are done.~~ The code side is finished:
-**16 of 18 assistant tasks are complete.** A-18 (iOS builds without a Mac) is built but unproven until its first run, which waits on your three secrets; A-08 waits for release. Only A-08 (the App Store badge on
+**17 of 18 assistant tasks are complete.** A-18 (iOS builds without a Mac) is proven by a green dry run; only A-08 (the website badge) is left, and it waits for release. Only A-08 (the App Store badge on
 the website) is left, and it is unblocked — it lives in the StackdSite repo.
 The app targets API 36, builds, installs and runs; the legal texts match the
 product in five languages; store screenshots and listing copy are generated;
@@ -189,7 +189,7 @@ the code is pre-launch history.
 
 ## 4. My side — done, except A-08
 
-Ordered, IDs stable. **16 of 18 complete** (A-16, A-17 and A-18 were added on 2026-09-27; A-18 is built, not yet proven); only A-08 remains, and it is
+Ordered, IDs stable. **17 of 18 complete** (A-16, A-17 and A-18 were added and closed on 2026-09-27); only A-08 remains, and it is
 unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### ~~Before the first store build~~ — all done
@@ -370,8 +370,15 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   app preferences and the home-screen layout were never part of the backup,
   by design.
 
-- **A-18 · iOS builds without a Mac** · **BUILT 2026-09-27, first run
-  pending the owner's secrets.** `.github/workflows/ios-testflight.yml`,
+- **A-18 · iOS builds without a Mac** · **PROVEN 2026-09-27 — dry run
+  36345668470 green**: 774 unit tests passed on the runner, archive and
+  export succeeded, the .ipa (2.0 MB, 1.0 build 10000) is signed by *Apple
+  Distribution: Eugenio Maria Calvaresi (YA3DTZR26U)*, `get-task-allow`
+  false, PrivacyInfo and the associated-domains entitlement present. Took
+  three fixes on the way, all found by the workflow's own guards: a
+  `runner` expression GitHub rejects at job level, a `.p8` secret that did
+  not contain the whole file, and an App Manager key that cannot use cloud
+  signing (now Admin). **The upload itself has not been run yet.** `.github/workflows/ios-testflight.yml`,
   manual trigger only (the repo is public, so no push or pull-request
   trigger can reach the signing key). It runs the gates, builds the bundle,
   `cap sync ios`, archives with Xcode 26.6, signs with Apple's
