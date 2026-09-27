@@ -48,12 +48,17 @@ jobs:
       TEAM_ID: YA3DTZR26U
       WORKSPACE: ios/App/App.xcworkspace
       SCHEME: App
-      ARCHIVE: ${{ runner.temp }}/App.xcarchive
-      EXPORT_DIR: ${{ runner.temp }}/export
-      KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey.p8
       BUILD_NUMBER: ${{ inputs.build_number }}
     steps:
       - uses: actions/checkout@v4
+
+      # The `runner` context does not exist at job level, so the temp paths
+      # are set here and exported to every later step.
+      - name: Paths
+        run: |
+          echo "ARCHIVE=$RUNNER_TEMP/App.xcarchive" >> "$GITHUB_ENV"
+          echo "EXPORT_DIR=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
+          echo "KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
