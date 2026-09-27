@@ -57,7 +57,9 @@ EB_APP_ID = "463906ef-6530-486f-ba80-4f4e644fac1a"   # Enable Banking SANDBOX ap
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
-IOS_APP_ID = ""
+IOS_APP_ID = "YA3DTZR26U.com.stackd.finance"   # Team ID + bundle id. NOT a
+# secret: this exact string is what /.well-known/apple-app-site-association
+# serves to the public, and every Universal Links site publishes its own.
 PUBLIC_URL = "https://api-staging.stackdplatform.com"
 # v1.11 B7: where a connect flow started from a web session returns. Staging
 # = the dev server (same-site with `wrangler dev` on localhost); set it to the
@@ -102,7 +104,9 @@ EB_APP_ID = ""   # the Enable Banking application UUID (not secret)
 APP_SCHEME = "stackd"
 ANDROID_PACKAGE = "com.stackd.finance"
 ANDROID_SHA256_FINGERPRINTS = ""
-IOS_APP_ID = ""
+IOS_APP_ID = "YA3DTZR26U.com.stackd.finance"   # Team ID + bundle id. NOT a
+# secret: this exact string is what /.well-known/apple-app-site-association
+# serves to the public, and every Universal Links site publishes its own.
 PUBLIC_URL = "https://api.stackdplatform.com"
 PUBLIC_WEB_URL = "https://app.stackdplatform.com"
 # Store receipt verification (v1.09 B5). Secrets: PLAY_SERVICE_ACCOUNT_JSON

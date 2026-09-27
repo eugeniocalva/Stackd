@@ -33,9 +33,9 @@ three things and settles none of them completely:
    work — not even in sandbox — until that agreement is active and the
    banking and tax forms are filled. That is still open; see O-03b.
 3. ~~A-07 and A-08 unblock the moment the app record exists.~~ **The record
-   exists (2026-09-27): "Stack'd Finance", Apple ID 6816636640.** A-07 is
-   done; A-08 is unblocked and sits in the StackdSite repo. The one value
-   still outstanding is the **Team ID**, for O-27.
+   exists (2026-09-27): "Stack'd Finance", Apple ID 6816636640, Team ID
+   YA3DTZR26U.** A-07 is done, `IOS_APP_ID` is set in the broker config, and
+   A-08 is unblocked — it sits in the StackdSite repo.
 
 A Mac is still required for every upload, and that is now the only hard gate
 left on the iOS side.
@@ -292,10 +292,13 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   be Apple's own from the Marketing Resources page, unaltered — a redrawn or
   recoloured badge is a guideline violation.
 
-**Still needed from you: the Team ID** (Membership details). It is not the
-Apple ID and not the bundle id. O-27 needs it for `IOS_APP_ID`
-(`TEAMID.com.stackd.finance`), which is what makes Universal Links verify —
-without it the bank return falls back to the custom scheme.
+~~**Still needed from you: the Team ID.**~~ **Received 2026-09-27:
+`YA3DTZR26U`.** `IOS_APP_ID` is now `YA3DTZR26U.com.stackd.finance` in both
+broker environments, so `/.well-known/apple-app-site-association` will serve a
+real appID instead of an empty list. It is not a secret — that string is
+public by definition, since the AASA file is fetched by Apple over plain
+HTTPS. Still needs a deploy to take effect; the production half also waits on
+the four values in O-28.
 - ~~**A-09 · Broker production deploy preflight**~~ · **DONE 2026-09-09.**
   `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
   `npm run deploy:production` cannot reach api.stackdplatform.com while the
@@ -492,7 +495,12 @@ through while the Mac is still being arranged.
 - **O-19 · Create `stackd_pro`** as a Non-Consumable with the same id, price,
   five localisations, a review screenshot of the purchases screen and review
   notes. The first in-app purchase is reviewed **with the binary**.
-- **O-20 · App ID capabilities**: Associated Domains and In-App Purchase.
+- **O-20 · App ID capabilities**: ~~Associated Domains~~ **enabled
+  2026-09-27** on `com.stackd.finance`. In-App Purchase needs no action —
+  Apple enables it on every explicit App ID and does not let you turn it off,
+  so a greyed-out tick there is the correct end state, not a problem. **The
+  thing that actually gates purchases is O-03b, the Paid Apps agreement**,
+  which is a different screen and is still open.
 - **O-21 · App Privacy answers** from `docs/store-listing.md` §2, the age
   rating questionnaire, screenshots (6.9-inch iPhone), keywords, support URL
   `https://stackdplatform.com/support`, marketing URL, and the Terms of Use +
@@ -508,9 +516,10 @@ through while the Mac is still being arranged.
 - **O-25 · Add `PrivacyInfo.xcprivacy` to the App target** — on disk is not
   enough, it must be in the target to ship.
 - **O-26 · Signing and capabilities**, archive, upload to TestFlight.
-- **O-27 · Set `IOS_APP_ID`** (`TEAMID.com.stackd.finance`) on the broker so
-  Universal Links verify, and walk the bank return on a device if Bank Connect
-  is live.
+- ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
+  `YA3DTZR26U.com.stackd.finance`, in both broker environments. What remains
+  is a **deploy** for it to take effect, and walking the bank return on a
+  device — neither of which matters until Bank Connect is switched on.
 
 ### Broker production (only if Bank Connect ships)
 
