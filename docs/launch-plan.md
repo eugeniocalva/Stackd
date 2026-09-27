@@ -1,4 +1,4 @@
-# Launch plan — Google Play and the App Store (app v1.18, 2026-09-27)
+# Launch plan — Google Play and the App Store (app v1.18 + unreleased v1.19 work, updated 2026-09-27)
 
 The plan for the FIRST public release of Stack'd on both stores. Written from
 a nine-area audit of the app, the broker, both repos and the current store
@@ -12,33 +12,34 @@ a submittable build.
 
 **Status.** ~~Struck-through items are done.~~ The code side is finished:
 **14 of 15 assistant tasks are complete.** Only A-08 (the App Store badge on
-the website) is left, and it is unblocked — it lives in the StackdSite repo. The app targets API 36, builds, installs and runs; the legal
-texts match the product in five languages; store screenshots and listing copy
-are generated; the broker has a deploy preflight, alerting and an incident
-runbook.
+the website) is left, and it is unblocked — it lives in the StackdSite repo.
+The app targets API 36, builds, installs and runs; the legal texts match the
+product in five languages; store screenshots and listing copy are generated;
+the broker has a deploy preflight, alerting and an incident runbook.
 
 **Nothing now blocks a first build except you.** Every open item below is an
 owner task: the Play account, the identity that becomes public, twelve
 testers, a Mac, and a lawyer's read-through.
 
-**Apple Developer Program membership was approved on 2026-09-27**, which moves
-three things and settles none of them completely:
+### Where it stands (2026-09-27)
 
-1. **O-17, reserving the app name, is now the most urgent item in this file**
-   and it was not urgent before. D5 says "Stack'd" may be refused as too close
-   to *Stack'd Money*; every day the name sits unreserved is a day someone
-   else can take it, and a late rename touches the listing, the screenshots
-   and the website.
-2. **Membership is not the Paid Apps agreement.** In-app purchases do not
-   work — not even in sandbox — until that agreement is active and the
-   banking and tax forms are filled. That is still open; see O-03b.
-3. ~~A-07 and A-08 unblock the moment the app record exists.~~ **The record
-   exists (2026-09-27): "Stack'd Finance", Apple ID 6816636640, Team ID
-   YA3DTZR26U.** A-07 is done, `IOS_APP_ID` is set in the broker config, and
-   A-08 is unblocked — it sits in the StackdSite repo.
+| | Done | Open, in the order I would do them |
+|---|---|---|
+| **Apple** | Enrolled. App record **"Stack'd Finance"**, Apple ID `6816636640`, Team ID `YA3DTZR26U`. App ID `com.stackd.finance` with Associated Domains (O-17, O-20). `APPLE_APP_ID` in the app (A-07); `IOS_APP_ID` in the broker, live on staging (O-27). | **O-03b Paid Apps agreement** → O-18 DSA trader declaration → O-19 create `stackd_pro` → O-21/O-22 → **a Mac** (O-06) → O-23 TestFlight and submit |
+| **Android** | Upload keystore created (O-07). Its certificate published on staging (O-29). | **O-04 Play account** → O-05 twelve testers → `android/keystore.properties` → signed build → O-11 to O-16 |
+| **Both** | D1, D4, D5 decided. | **D3 (the public address and phone)**, which O-04 and O-18 both need |
 
-A Mac is still required for every upload, and that is now the only hard gate
-left on the iOS side.
+**What moved the date today, and what did not.** Enrolment cleared the
+Apple side to start, and everything that did not need a Mac is either done or
+now yours to click through. It did **not** shorten the longest path, which
+is still Android: the 12-tester, 14-day closed test cannot start until the
+Play account exists, so **O-04 is now the task whose delay costs the most
+calendar.**
+
+**The Apple item most likely to be mistaken for finished is O-03b.**
+Membership is not the Paid Apps agreement. Until that agreement is active and
+its banking and tax forms are in, in-app purchases do not work even in
+sandbox, so Stack'd Pro cannot be tested on iOS at all.
 
 ---
 
@@ -60,10 +61,10 @@ from the day you have a Mac** (archive → TestFlight → review), assuming the
 Paid Apps agreement is active by then. They run in parallel; neither waits for
 the other.
 
-Two things are worth starting today, before the Mac, because neither needs
-one: reserving the app name (O-17) and the DSA trader declaration (O-18),
-which blocks the first submission and has two-factor verification of your
-email and phone inside it.
+Worth doing before the Mac arrives, because none of it needs one: the Paid
+Apps agreement (O-03b), the DSA trader declaration (O-18, which blocks the
+first submission and verifies your email and phone by two-factor), and
+creating `stackd_pro` (O-19). ~~Reserving the app name (O-17)~~ is done.
 
 ## 2. Decisions only you can make
 
@@ -84,7 +85,14 @@ Take these before the work below hits them. My recommendation is in each row.
 ~~All of this is done, tested and pushed.~~ Kept as a record of what changed
 and why; the per-task detail is in §4. Later versions added to it: v1.15 hid
 Bank Connect (A-04), v1.16 the broker work and the translated legal pages,
-v1.17 the purchase-replay fix.
+v1.17 the purchase-replay fix, and **v1.18 promotional codes** — a *Redeem a
+code* button on the purchases screen that opens the **store's own**
+redemption flow (StoreKit's sheet on iOS, the Play Store's redeem page on
+Android). Deliberately not a code field of ours: that would bypass store
+billing (Apple 3.1.1), and any constant ships in plain text inside the
+bundle. Codes are generated in the consoles; `docs/pro-unlock.md` has the
+details. Unreleased on top of v1.18: A-07's Apple id, and the broker's
+`IOS_APP_ID` and staging fingerprint.
 
 **Legal alignment — the app and the website now describe the same product.**
 - New Terms clause 7, *Stack'd Pro (one-time purchase)*, in all five languages
@@ -169,7 +177,7 @@ v1.17 the purchase-replay fix.
   Stack'd Pro product row, the free/paid listing paragraph, and the IP
   disclosure note in the privacy labels.
 
-## 4. My side — ~~what remains~~ ~~done, except two blocked items~~ done, except A-08
+## 4. My side — done, except A-08
 
 Ordered, IDs stable. **14 of 15 complete**; only A-08 remains, and it is
 unblocked — it is website work in the StackdSite repo rather than app work.
@@ -287,22 +295,19 @@ unblocked — it is website work in the StackdSite repo rather than app work.
 - ~~**A-07 · Apple app id**~~ · **DONE 2026-09-27.** `Views.APPLE_APP_ID` is
   `'6816636640'`, so the Rate row appears on iOS builds instead of being
   hidden. Held as a string — it is an opaque identifier, not a number.
+  `tests/unit/storeLinks.test.js` pins it, because a regression to `null` is
+  silent: the Rate row just disappears. The same session set the broker's
+  `IOS_APP_ID` from the Team ID and deployed it to staging (O-27).
 - **A-08 · App Store badge and link on the website.** Unblocked by the same
   id; it lives in the StackdSite repo, not this one. The badge artwork has to
   be Apple's own from the Marketing Resources page, unaltered — a redrawn or
   recoloured badge is a guideline violation.
 
-~~**Still needed from you: the Team ID.**~~ **Received 2026-09-27:
-`YA3DTZR26U`.** `IOS_APP_ID` is now `YA3DTZR26U.com.stackd.finance` in both
-broker environments, so `/.well-known/apple-app-site-association` will serve a
-real appID instead of an empty list. It is not a secret — that string is
-public by definition, since the AASA file is fetched by Apple over plain
-HTTPS. Still needs a deploy to take effect; the production half also waits on
-the four values in O-28.
 - ~~**A-09 · Broker production deploy preflight**~~ · **DONE 2026-09-09.**
   `broker/scripts/preflight.mjs`, wired as `predeploy:production`, so
   `npm run deploy:production` cannot reach api.stackdplatform.com while the
-  config is incomplete (verified: it blocks today, on the five empty vars).
+  config is incomplete (on 2026-09-09 it blocked on five empty vars; since
+  `IOS_APP_ID` was set on 2026-09-27 it blocks on four).
   Every failure it catches is silent in production rather than loud — an
   empty `EB_APP_ID` answers 503 on the first connect, missing store keys
   reject purchases the store has already charged for, empty App-Link
@@ -416,7 +421,10 @@ the four values in O-28.
 
 ### Now, nothing blocks these
 
-- **O-01 · Decide D1–D5, D7** (§2). D2 and D3 gate both store accounts.
+- **O-01 · Decide D2, D3 and D7** (§2). ~~D1, D4, D5~~ are settled; D6 waits
+  for the Bank Connect release. **D3 is the one blocking work now**: the
+  public address and phone feed both the Play identity check (O-04) and the
+  Apple trader declaration (O-18).
 - **O-02 · Sort the public identity**: legal form, the address you are willing
   to publish, a phone number that can receive verification codes, and a
   document proving name and address for Apple. Keep them out of both repos.
@@ -441,18 +449,17 @@ the four values in O-28.
   staying opted in for 14 consecutive days; opting out restarts the clock).
 - **O-06 · Get a Mac with Xcode 26.** Required for every App Store upload since
   April 2026. Borrowed, rented or a cloud Mac all work.
-- **O-07 · Create the upload keystore** with the `keytool` line in
-  `android/keystore.properties.example`, store it outside the repo, and back
-  it up in two places. **Run it yourself in a real terminal** — `keytool`
-  prompts for the password, and that password should never pass through a
-  chat transcript or a shell history. Use a password manager entry plus one
-  offline copy: an upload key can be reset through Play support, but only
-  while you still control the account.
+- ~~**O-07 · Create the upload keystore**~~ · **DONE 2026-09-27.**
+  `C:\Users\ecalvaresi\keys\stackd-upload.jks`, alias `upload`, RSA 2048,
+  10000 days — outside the repo, and created by you in your own terminal so
+  the password never passed through a transcript. Its SHA-256 is on the
+  staging worker (O-29) and is **not** the value for production (O-28).
 
-  Collect `keytool -list -v`'s **SHA-256** afterwards. It is not a secret
-  (fingerprints are published in `assetlinks.json` by design) and it is what
-  the O-29 emulator walk needs. It is **not** the value for production — see
-  O-28.
+  Two halves are still yours: **back it up** (a password manager entry plus
+  one offline copy — an upload key can be reset through Play support, but
+  only while you still control the account), and **create
+  `android/keystore.properties`** from the example. It holds the password and
+  is gitignored; until it exists, `bundleRelease` fails on purpose.
 - **O-08 · Legal read-through.** The Terms and Privacy are careful but were
   written by me, not a lawyer, and they now describe two paid products and a
   cross-border data flow. Also ask about: the governing-law clause the Terms
@@ -482,7 +489,9 @@ the four values in O-28.
   instructions telling the reviewer how to reach the Pro purchase.
 - **O-15 · Store listing**: 512 icon, 1024×500 feature graphic, at least 4
   phone screenshots at 1080×1920, five languages, category Finance, contact
-  email, privacy policy URL `https://stackdplatform.com/privacy`.
+  email, privacy policy URL `https://stackdplatform.com/privacy`. **App name:
+  "Stack'd Finance"**, to match the App Store (D5), unless you decide
+  otherwise.
 - **O-16 · Upload, closed test, then apply for production access.**
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
@@ -494,8 +503,7 @@ through while the Mac is still being arranged.
 - ~~**O-17 · Reserve the app name**~~ · **DONE 2026-09-27.** "Stack'd" was
   refused; the record is **"Stack'd Finance"**, bundle `com.stackd.finance`,
   **Apple ID 6816636640**. The App ID was registered with Associated Domains
-  enabled, which also closes the Associated Domains half of O-20 — confirm
-  In-App Purchase is ticked on it too.
+  enabled, which closes O-20.
 - **O-18 · DSA trader declaration.** Required for EU distribution; selling
   in-app purchases makes you a trader. Your address, phone and email are
   published on the product page in all 27 EU territories, and email and phone
@@ -504,8 +512,8 @@ through while the Mac is still being arranged.
 - **O-19 · Create `stackd_pro`** as a Non-Consumable with the same id, price,
   five localisations, a review screenshot of the purchases screen and review
   notes. The first in-app purchase is reviewed **with the binary**.
-- **O-20 · App ID capabilities**: ~~Associated Domains~~ **enabled
-  2026-09-27** on `com.stackd.finance`. In-App Purchase needs no action —
+- ~~**O-20 · App ID capabilities**~~ · **DONE 2026-09-27.** Associated
+  Domains enabled on `com.stackd.finance`. In-App Purchase needs no action —
   Apple enables it on every explicit App ID and does not let you turn it off,
   so a greyed-out tick there is the correct end state, not a problem. **The
   thing that actually gates purchases is O-03b, the Paid Apps agreement**,
@@ -534,12 +542,11 @@ through while the Mac is still being arranged.
   Walking the bank return on a device is still open and does not matter until
   Bank Connect is switched on.
 
-  **The Android mirror of this is NOT done**, and it is easy to miss because
-  nothing fails loudly: `/.well-known/assetlinks.json` currently publishes
-  `"sha256_cert_fingerprints": []`, so App Links do not verify on Android and
-  every bank return falls back to the `stackd://` scheme.
+  **The Android mirror is half done**, and the missing half fails silently:
+  staging now publishes the upload certificate (O-29), but production's
+  `assetlinks.json` has nothing correct to publish yet.
 
-  **It cannot be fixed on the same day as the iOS half, and that asymmetry is
+  **The two platforms cannot finish on the same day, and that asymmetry is
   the thing to understand.** iOS needed only the Team ID, which existed the
   moment you enrolled. Android needs the **Play App Signing certificate**,
   which Google generates when you upload the first bundle — so it does not
@@ -549,10 +556,9 @@ through while the Mac is still being arranged.
   assetlinks file listing the upload cert would fail to verify on every
   installed copy. See O-28, which has this right.
 
-  The upload cert fingerprint is still worth collecting when you create the
-  keystore, for one narrow purpose: a release build installed **locally**
-  (not through Play) keeps your upload signature, so adding that fingerprint
-  to the *staging* worker is what makes the O-29 emulator walk verify.
+  The upload cert on staging is right for one narrow purpose: a release
+  build installed **locally** (not through Play) keeps your upload
+  signature, which is what the O-29 emulator walk needs.
 
 ### Broker production (only if Bank Connect ships)
 
@@ -565,8 +571,9 @@ through while the Mac is still being arranged.
 
 - **O-28 · Fill every empty production value** and deploy: `EB_APP_ID` +
   `EB_PRIVATE_KEY`, `ANDROID_SHA256_FINGERPRINTS` (the **Play App Signing**
-  certificate, available only after the first upload — not your upload key),
-  `IOS_APP_ID`, and for receipt checks `PLAY_SERVICE_ACCOUNT_JSON` (a Google
+  certificate, available only after the first upload — not your upload key;
+  Play Console lists both, and production should carry both),
+  ~~`IOS_APP_ID`~~ (set 2026-09-27), and for receipt checks `PLAY_SERVICE_ACCOUNT_JSON` (a Google
   Cloud service account granted *View financial data* and *Manage orders and
   subscriptions*) plus `APPLE_PRIVATE_KEY`/`APPLE_KEY_ID`/`APPLE_ISSUER_ID`
   from an **In-App Purchase** key, not a team API key. Then verify `/healthz`
@@ -582,10 +589,12 @@ through while the Mac is still being arranged.
   run yet**; it needs a signed build, which needs
   `android/keystore.properties`.
 
-  The original finding, kept because the second host is still open: The
-  broker hosts are declared as App Links in the shipped manifest, and on
-  Android 11 and below verification fails for ALL hosts if any one of them
-  fails — which would silently push every bank return onto the fallback path.
+  **Why staging alone may still not verify on an older phone:** both broker
+  hosts are declared as App Links in the shipped manifest, and on Android 11
+  and below verification fails for ALL hosts if any one fails. The
+  production host does not answer yet, so on those versions the walk will
+  report failure for staging too. Walk it on Android 12 or later; the full
+  fix arrives with O-28.
 
 ## 6. Most likely rejections, and the answer
 
