@@ -44,7 +44,7 @@ storage — no account to create, no cloud, no tracking, no ads.
 - Import bank statements (CSV, camt.053, MT940) and review every row before
   it is saved. Balances reconcile against your bank's closing figure.
 - Loan simulator and tracker with cent-exact schedules.
-- Export everything as CSV, any time.
+- Export wallets, transactions, categories and loans as CSV, any time.
 
 > **v1.15 / decision D1 — the FIRST release ships with Bank Connect switched
 > off** (`BankConnect.FEATURE_ENABLED = false`). For that submission, OMIT the
@@ -88,8 +88,12 @@ qualifier (the marketing site's hero was changed the same way).
 
 ## ~~1b. Localized listing copy~~ · **READY — this is the copy to paste**
 
-Ready to paste. Written for the FIRST release, so nothing here mentions
-Online banking; when that feature ships, the paragraph in §1 needs
+Ready to paste. **Corrected 2026-09-27:** every locale said "export
+everything" and "a backup is a full restore". Budgets are in neither the CSV
+export nor the import, so both were untrue; the copy now names what IS
+exported (wallets, transactions, categories, loans). If budgets are ever
+added to the backup, the stronger wording can come back. Written for the
+FIRST release, so nothing here mentions Online banking; when that feature ships, the paragraph in §1 needs
 translating and adding to each language. Every string below was checked
 against the store limits (App Store subtitle 30, keywords 100,
 promotional text 170; Play short description 80, full description 4000).
@@ -127,7 +131,7 @@ so on) if a localized listing wants them.
 | Subtitle (App Store, ≤30) | Local-first money tracker |
 | Short description (Play, ≤80) | Private money tracking. Every wallet, budget and log stays on your phone. |
 | Keywords (App Store, ≤100) | `budget,expense,tracker,planner,money,spending,savings,offline,privacy,loan,csv,wallet` (85). **Changed 2026-09-27:** `finance` → `planner`, because the App Store name became "Stack'd Finance" and Apple already indexes every word of the name, so a keyword repeating it buys nothing. The other four locales keep their word (`finances`, `finanze`, `finanzas`, `finanças`) — a different token from the English name. |
-| Promotional text (App Store, ≤170) | No account, no cloud, no ads. Stack'd keeps your wallets, budgets and loans on your phone, and exports everything as CSV whenever you want. |
+| Promotional text (App Store, ≤170) | No account, no cloud, no ads. Stack'd keeps your wallets, budgets and loans on your phone, and exports your transactions as CSV whenever you want. (146) |
 
 **Full description (both stores):**
 
@@ -151,7 +155,7 @@ A balance is never a number someone typed in. It is the sum of the logs behind i
 
 YOUR DATA STAYS YOURS
 
-No user accounts. No cloud sync. No analytics, no advertising identifiers, nothing sold or shared. Export everything as CSV any time, and import it back: a backup is a full restore.
+No user accounts. No cloud sync. No analytics, no advertising identifiers, nothing sold or shared. Export your wallets, transactions, categories and loans as CSV any time, and import them back into Stack'd.
 
 WHAT IT COSTS
 
@@ -165,7 +169,7 @@ Free with up to two wallets and the categories the app ships with. Stack'd Pro i
 | Subtitle (App Store, ≤30) | Finances privées, hors ligne |
 | Short description (Play, ≤80) | Suivi d'argent privé. Vos portefeuilles et budgets restent sur votre téléphone. |
 | Keywords (App Store, ≤100) | `budget,dépenses,finances,argent,épargne,suivi,prêt,csv,portefeuille,privé,hors ligne` |
-| Promotional text (App Store, ≤170) | Sans compte, sans cloud, sans publicité. Stack'd garde vos portefeuilles, budgets et prêts sur votre téléphone et exporte tout en CSV quand vous voulez. |
+| Promotional text (App Store, ≤170) | Sans compte, sans cloud, sans publicité. Stack'd garde vos portefeuilles, budgets et prêts sur votre téléphone et exporte vos transactions en CSV quand vous voulez. (164) |
 
 **Full description (both stores):**
 
@@ -189,7 +193,7 @@ Un solde n'est jamais un nombre saisi à la main. C'est la somme des écritures 
 
 VOS DONNÉES RESTENT LES VÔTRES
 
-Aucun compte utilisateur. Aucune synchronisation cloud. Aucune analyse d'usage, aucun identifiant publicitaire, rien de vendu ni de partagé. Exportez tout en CSV quand vous voulez, et réimportez-le : une sauvegarde est une restauration complète.
+Aucun compte utilisateur. Aucune synchronisation cloud. Aucune analyse d'usage, aucun identifiant publicitaire, rien de vendu ni de partagé. Exportez vos portefeuilles, transactions, catégories et prêts en CSV quand vous voulez, et réimportez-les dans Stack'd.
 
 CE QUE ÇA COÛTE
 
@@ -203,7 +207,7 @@ Gratuit avec jusqu'à deux portefeuilles et les catégories fournies avec l'appl
 | Subtitle (App Store, ≤30) | Finanze private, offline |
 | Short description (Play, ≤80) | Traccia i soldi in privato. Portafogli, budget e note restano sul telefono. |
 | Keywords (App Store, ≤100) | `budget,spese,finanze,soldi,risparmi,traccia,prestito,csv,portafoglio,privato,offline` |
-| Promotional text (App Store, ≤170) | Senza account, senza cloud, senza pubblicità. Stack'd tiene portafogli, budget e prestiti sul telefono ed esporta tutto in CSV quando vuoi. |
+| Promotional text (App Store, ≤170) | Senza account, senza cloud, senza pubblicità. Stack'd tiene portafogli, budget e prestiti sul telefono ed esporta le tue transazioni in CSV quando vuoi. (152) |
 
 **Full description (both stores):**
 
@@ -227,7 +231,7 @@ Un saldo non è mai un numero digitato a mano. È la somma delle voci che lo com
 
 I TUOI DATI RESTANO TUOI
 
-Nessun account utente. Nessuna sincronizzazione cloud. Nessuna analisi d'uso, nessun identificativo pubblicitario, niente venduto o condiviso. Esporta tutto in CSV quando vuoi e reimportalo: un backup è un ripristino completo.
+Nessun account utente. Nessuna sincronizzazione cloud. Nessuna analisi d'uso, nessun identificativo pubblicitario, niente venduto o condiviso. Esporta portafogli, transazioni, categorie e prestiti in CSV quando vuoi e reimportali in Stack'd.
 
 QUANTO COSTA
 
@@ -241,7 +245,7 @@ Gratis con un massimo di due portafogli e le categorie predefinite dell'app. Sta
 | Subtitle (App Store, ≤30) | Finanzas privadas, sin nube |
 | Short description (Play, ≤80) | Controla tu dinero en privado. Carteras, presupuestos y notas en tu teléfono. |
 | Keywords (App Store, ≤100) | `presupuesto,gastos,finanzas,dinero,ahorro,control,préstamo,csv,cartera,privado,offline` |
-| Promotional text (App Store, ≤170) | Sin cuenta, sin nube y sin anuncios. Stack'd guarda tus carteras, presupuestos y préstamos en tu teléfono y lo exporta todo en CSV cuando quieras. |
+| Promotional text (App Store, ≤170) | Sin cuenta, sin nube y sin anuncios. Stack'd guarda tus carteras, presupuestos y préstamos en tu teléfono y exporta tus transacciones en CSV cuando quieras. (156) |
 
 **Full description (both stores):**
 
@@ -265,7 +269,7 @@ Un saldo nunca es un número escrito a mano. Es la suma de los registros que hay
 
 TUS DATOS SIGUEN SIENDO TUYOS
 
-Sin cuentas de usuario. Sin sincronización en la nube. Sin analíticas, sin identificadores publicitarios, nada vendido ni cedido. Exporta todo en CSV cuando quieras y vuelve a importarlo: una copia de seguridad es una restauración completa.
+Sin cuentas de usuario. Sin sincronización en la nube. Sin analíticas, sin identificadores publicitarios, nada vendido ni cedido. Exporta tus carteras, transacciones, categorías y préstamos en CSV cuando quieras y vuelve a importarlos en Stack'd.
 
 CUÁNTO CUESTA
 
@@ -279,7 +283,7 @@ Gratis con hasta dos carteras y las categorías que trae la app. Stack'd Pro es 
 | Subtitle (App Store, ≤30) | Finanças privadas, offline |
 | Short description (Play, ≤80) | Controle o seu dinheiro em privado. Carteiras e orçamentos ficam no telemóvel. |
 | Keywords (App Store, ≤100) | `orçamento,despesas,finanças,dinheiro,poupança,controlo,empréstimo,csv,carteira,privado` |
-| Promotional text (App Store, ≤170) | Sem conta, sem nuvem e sem anúncios. O Stack'd guarda carteiras, orçamentos e empréstimos no seu telemóvel e exporta tudo em CSV quando quiser. |
+| Promotional text (App Store, ≤170) | Sem conta, sem nuvem e sem anúncios. O Stack'd guarda carteiras, orçamentos e empréstimos no seu telemóvel e exporta as suas transações em CSV quando quiser. (157) |
 
 **Full description (both stores):**
 
@@ -303,7 +307,7 @@ Um saldo nunca é um número escrito à mão. É a soma dos registos que estão 
 
 OS SEUS DADOS CONTINUAM SEUS
 
-Sem contas de utilizador. Sem sincronização na nuvem. Sem análises, sem identificadores publicitários, nada vendido nem partilhado. Exporte tudo em CSV quando quiser e volte a importar: uma cópia de segurança é um restauro completo.
+Sem contas de utilizador. Sem sincronização na nuvem. Sem análises, sem identificadores publicitários, nada vendido nem partilhado. Exporte carteiras, transações, categorias e empréstimos em CSV quando quiser e volte a importá-los no Stack'd.
 
 QUANTO CUSTA
 
