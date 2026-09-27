@@ -486,6 +486,12 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   `stackd_pro` can now be tested, which unblocks O-23's sandbox pass. The
   W-8BEN address is the private residence Apple and the IRS require — it is
   NOT published, and is a different thing from the O-18 address.
+  **W-8BEN filed WITHOUT a treaty claim (option B).** That means the default
+  30% U.S. withholding on U.S. sales only — which costs nothing while the
+  storefronts are the EEA + UK (D7). **Before adding the U.S. storefront, file
+  a new W-8BEN** with the treaty article and rate an accountant confirms.
+  Availability set 2026-09-27: EEA + UK for the app and for `stackd_pro`,
+  automatic availability in new countries off.
 - **O-03c · Join the Small Business Program** (15% instead of 30%).
   Applications are reviewed and the lower rate starts the month after
   approval, so applying late costs real money on early sales.
