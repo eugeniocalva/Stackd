@@ -2,14 +2,16 @@
 //
 //   npm run dev                 # this repo, serving :3000
 //   node tools/store/screens.cjs
-//   node tools/store/screens.cjs --lang en --platform apple    # a subset
+//   node tools/store/screens.cjs --lang en --platform apple-6.5  # a subset
 //
 // Output: tools/store/out/<platform>/<lang>/NN-name.png, numbered in the
 // order they should be uploaded. The folder is gitignored — these are build
 // artefacts, and the store consoles are where they live.
 //
 // Sizes (verified against the official specs on 2026-09-09):
-//   apple  1290x2796  iPhone 6.9" portrait. Apple also accepts 1260x2736 and
+//   apple-6.9  1290x2796  iPhone 6.9" portrait. (Was the key `apple` until
+//                     2026-09-27; renamed so the 6.9" and 6.5" output folders
+//                     cannot be told apart only by a missing suffix.) Apple also accepts 1260x2736 and
 //                     1320x2868; 1290x2796 is 430x932 @3x, a real device
 //                     logical size, so nothing is scaled.
 //                     https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
@@ -42,7 +44,7 @@ const OUT_ROOT = path.resolve(__dirname, 'out');
 const LANGS = ['en', 'fr', 'it', 'es', 'pt'];
 
 const TARGETS = {
-  apple: { w: 430, h: 932, scale: 3 },         // -> 1290 x 2796 (6.9")
+  'apple-6.9': { w: 430, h: 932, scale: 3 },   // -> 1290 x 2796 (6.9")
   'apple-6.5': { w: 428, h: 926, scale: 3 },   // -> 1284 x 2778 (6.5")
   play: { w: 360, h: 640, scale: 3 }           // -> 1080 x 1920
 };

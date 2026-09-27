@@ -450,11 +450,12 @@ binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
 Generated, not hand-taken: `node tools/store/screens.cjs` (the dev server must
 be running on :3000) writes `tools/store/out/<platform>/<lang>/NN-name.png`,
 numbered in upload order. The folder is gitignored — regenerate rather than
-commit. `--lang fr` / `--platform apple` narrow a run.
+commit. `--lang fr` / `--platform apple-6.5` narrow a run.
 
 | | Size | Why |
 |---|---|---|
-| App Store | 1290×2796 | iPhone 6.9" portrait, the only REQUIRED iPhone size. Apple also accepts 1260×2736 and 1320×2868. 6.5" is deliberately not generated: Apple scales the 6.9" set when it is absent. |
+| **App Store — upload this** | **1284×2778** | iPhone 6.5" portrait, `out/apple-6.5/`. The live record offers ONLY a 6.5" slot (2026-09-27), so this is the set to upload. |
+| App Store — spare | 1290×2796 | iPhone 6.9" portrait, `out/apple-6.9/`. Kept for a 6.9" slot if the console ever offers one. ~~The only REQUIRED size~~ — the spec page implies it, the console disagreed. |
 | Play | 1080×1920 | Play caps the longest side at twice the shortest, which 1290×2796 (2.17) fails — Play cannot reuse Apple's images. |
 
 Five screens per language, in all five languages: home, history, goals,
@@ -514,7 +515,7 @@ here. Everything below is for THIS release, with Bank Connect off.
 | Field | Value |
 |---|---|
 | **Version number** | App Store Connect created it as `1.0`. **Change it to the version of the build you will upload** — they must match or the build cannot be attached. The next build is `1.19.0` (release-checklist §1); it stays editable until you submit |
-| Screenshots | **Upload the 6.5" set**: `tools/store/out/apple-6.5/<lang>/01-home` … `05-debt` (**1284×2778**, no alpha), per locale, in numbered order. **Corrected 2026-09-27:** the live record showed ONLY a 6.5" slot and rejected the 6.9" set (1290×2796) as the wrong size, despite the spec page reading as if 6.9" alone suffices. The 6.9" set (`tools/store/out/apple/`) is kept for a 6.9" slot if the console ever offers one. iPad is not needed (iPhone-only app, D4). Regenerate with `node tools/store/screens.cjs --platform apple-6.5` |
+| Screenshots | **Upload the 6.5" set**: `tools/store/out/apple-6.5/<lang>/01-home` … `05-debt` (**1284×2778**, no alpha), per locale, in numbered order. **Corrected 2026-09-27:** the live record showed ONLY a 6.5" slot and rejected the 6.9" set (1290×2796) as the wrong size, despite the spec page reading as if 6.9" alone suffices. The 6.9" set (`tools/store/out/apple-6.9/`, renamed from `apple/` so the two folders differ by more than a suffix) is kept for a 6.9" slot if the console ever offers one. iPad is not needed (iPhone-only app, D4). Regenerate with `node tools/store/screens.cjs --platform apple-6.5` |
 | Promotional text | per locale, §1b |
 | Description | per locale, §1b (the Bank-Connect-OFF copy — not §1) |
 | Keywords | per locale, §1b (English revised 2026-09-27, see above) |
