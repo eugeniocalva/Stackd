@@ -325,6 +325,33 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   Note this is preparation, not a launch blocker: with D1 decided, the
   production broker is not deployed for the first release at all.
 
+### Found during the App Store listing (2026-09-27)
+
+- ~~**A-16 · Budgets in the CSV backup**~~ · **DONE 2026-09-27 (v1.19).**
+  Budgets were neither exported nor importable, while the listing, the
+  website and the in-app privacy policy all promised "export everything"
+  and "a backup is a full restore". New *Export Budgets* button;
+  `stackd_budgets.csv` restores through the one *Import CSV* button, with the
+  category travelling by name (re-created if missing), idempotent re-import,
+  and months accepted even after a spreadsheet rewrote them as dates. 14 unit
+  tests (verified to fail without the change) and an e2e that exports, wipes
+  the app and imports through the real file input.
+- **A-17 · A restore onto a new phone gets every balance wrong** · **OPEN —
+  your decision.** Measured with a real export-then-import onto a fresh
+  install, not inferred: an account with an opening balance of 1000 and one
+  expense of 40 came back at **−40**. The importer deliberately skips the
+  opening-balance rows and re-creates each account with `openingBalance: 0`;
+  it also passes no currency, so a USD account came back as **EUR** (the new
+  phone's primary currency) with its dollar amounts counted as euros.
+  Account type, icon and colour and custom category icons are lost too, and
+  `stackd_accounts.csv` / `stackd_categories.csv` are routed into the
+  bank-statement column mapping instead of restoring. The older round-trip
+  test never caught it because it restores into the SAME install and keeps
+  the account. **Until this is fixed, "a backup is a full restore" is untrue
+  on the website homepage and "export everything" is untrue in the privacy
+  policy (app and site, five languages)** — the store copy was already
+  corrected on 2026-09-27.
+
 ### ~~Worth doing, not blocking~~ — all done
 
 - ~~**A-10 · Restore on a second device**~~ · **DONE 2026-09-09 (v1.16).** A store

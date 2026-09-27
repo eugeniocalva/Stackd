@@ -383,6 +383,7 @@ window.I18n.dicts.en = {
   'others.exportCategories': 'Export Categories',
   'others.exportTransactions': 'Export Transactions',
   'others.exportLoans': 'Export Loans',
+  'others.exportBudgets': 'Export Budgets',
   'others.dataImport': 'Data Import',
   'others.bankData': 'Bank data',
   // {columns} is the bolded, deliberately UNTRANSLATED CSV header list — the
@@ -392,6 +393,8 @@ window.I18n.dicts.en = {
   'others.importing': 'Importing...',
   'others.importedLoans.one': 'Success! Imported {count} loan.',
   'others.importedLoans.other': 'Success! Imported {count} loans.',
+  'others.importedBudgets.one': 'Success! Imported {count} budget.',
+  'others.importedBudgets.other': 'Success! Imported {count} budgets.',
   'others.importedTransactions': 'Success! Imported {count} transactions.\nCreated {accounts} missing accounts, and {categories} missing categories automatically.',
   'others.importSkipped.one': 'Skipped {count} row:\n{reasons}',
   'others.importSkipped.other': 'Skipped {count} rows:\n{reasons}',

@@ -102,6 +102,34 @@ window.StackdExport = {
     this._download('stackd_import_rules.csv', [headers, ...rows].join('\n'));
   },
 
+  // v1.19: budgets were the one slice of the Goals screen a backup could not
+  // carry — neither exported nor importable, so a restore silently dropped
+  // every budget. Same convention as import rules: the category travels by
+  // NAME (ids differ across installs) and import.js re-creates a missing one.
+  // A deleted budget is a tombstone (SAVE_BUDGET with amount 0), and a budget
+  // whose category is gone has nothing to restore onto — both are skipped.
+  // Months stay 'YYYY-MM', the format the store and the month picker use.
+  BUDGET_HEADERS: ['Category', 'Amount', 'StartMonth', 'EndMonth', 'Cumulative'],
+
+  exportBudgets(state, options = {}) {
+    const delimiter = options.delimiter || ',';
+    const headers = this._toRow(this.BUDGET_HEADERS, delimiter);
+    const rows = (state.budgets || [])
+      .filter(b => (parseFloat(b.amount) || 0) > 0)
+      .map(b => {
+        const cat = (state.categories || []).find(c => c.id === b.categoryId);
+        return cat ? this._toRow([
+          cat.name,
+          b.amount,
+          b.startDate || '',
+          b.endDate || '',
+          b.isCumulative ? 'true' : 'false'
+        ], delimiter) : null;
+      })
+      .filter(Boolean);
+    this._download('stackd_budgets.csv', [headers, ...rows].join('\n'));
+  },
+
   // v0.68: the CSV is a backup/restore format, so it now carries every field the
   // importer needs to rebuild a transaction faithfully — time, tags, isPaid, the
   // transfer pairing ref and the full recurrence descriptor. Dates default to ISO

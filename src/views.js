@@ -3246,6 +3246,7 @@ Object.assign(window.Views, {
               <button class="btn btn-secondary" id="btn-export-categories">${window.I18n.t('others.exportCategories')}</button>
               <button class="btn btn-secondary" id="btn-export-transactions">${window.I18n.t('others.exportTransactions')}</button>
               <button class="btn btn-secondary" id="btn-export-loans">${window.I18n.t('others.exportLoans')}</button>
+              <button class="btn btn-secondary" id="btn-export-budgets">${window.I18n.t('others.exportBudgets')}</button>
               <button class="btn btn-secondary" id="btn-export-rules">${window.I18n.t('bankImport.exportRules')}</button>
             </div>
           </div>
@@ -3409,6 +3410,11 @@ Object.assign(window.Views, {
       if (exportLoansBtn) {
         exportLoansBtn.addEventListener('click', () => window.StackdExport.exportLoans(state));
       }
+      // v1.19: budgets join the backup (export.js exportBudgets)
+      const exportBudgetsBtn = document.getElementById('btn-export-budgets');
+      if (exportBudgetsBtn) {
+        exportBudgetsBtn.addEventListener('click', () => window.StackdExport.exportBudgets(state));
+      }
 
       const toggleTimeInput = document.getElementById('toggle-enable-time-input');
       if (toggleTimeInput) {
@@ -3560,6 +3566,8 @@ Object.assign(window.Views, {
                 ? window.I18n.t('others.importedLoans', { count: result.importedCount })
                 : result.kind === 'rules' // v1.01: restored import rules
                 ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
+                : result.kind === 'budgets' // v1.19: restored budgets
+                ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
                 : window.I18n.t('others.importedTransactions', {
                     count: result.importedCount,
                     accounts: result.newAccounts,

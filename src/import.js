@@ -1074,6 +1074,77 @@ window.StackdImport = {
     return stats;
   },
 
+  // ── v1.19 budgets CSV (backup parity for the budgets slice) ──────────────
+  // Recognised by Category+Amount+StartMonth WITHOUT the transaction columns.
+  // A transactions backup also has Category and Amount (and StartDate for
+  // recurrence), so the absence of Date/Account is what keeps the two apart.
+  isBudgetRows(rows) {
+    if (!rows || !rows.length) return false;
+    const r = rows[0];
+    const has = (k) => Object.prototype.hasOwnProperty.call(r, k);
+    return has('category') && has('amount') && has('startmonth') && !has('date') && !has('account');
+  },
+
+  // 'YYYY-MM' (what the store keeps), '' for an empty cell, null when the
+  // value is present but unreadable. A spreadsheet that opened the export may
+  // have rewritten "2026-03" as a full date ("2026-03-01", "01/03/2026"), so a
+  // full date is accepted and cut back to its month.
+  _normalizeMonth(raw) {
+    const s = String(raw === null || raw === undefined ? '' : raw).trim();
+    if (s === '') return '';
+    let ym = null;
+    const m = s.match(/^(\d{4})[-/.](\d{1,2})$/);
+    if (m) ym = m[1] + '-' + m[2].padStart(2, '0');
+    else {
+      const d = this._normalizeDate(s);
+      if (d) ym = d.slice(0, 7);
+    }
+    if (!ym) return null;
+    const month = parseInt(ym.slice(5, 7), 10);
+    return month >= 1 && month <= 12 ? ym : null;
+  },
+
+  // Categories are resolved by NAME and created when missing, same as
+  // buildImportRules. SAVE_BUDGET upserts by category, so importing the same
+  // file twice leaves one budget per category rather than duplicates.
+  buildBudgets(rows) {
+    const stats = { importedCount: 0, skippedCount: 0, skipped: {}, newCategories: 0 };
+    const skip = (reason) => {
+      stats.skippedCount++;
+      stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
+    };
+
+    rows.forEach(row => {
+      const catName = String(row['category'] || '').trim();
+      const amount = this._num(row['amount']);
+      const start = this._normalizeMonth(row['startmonth']);
+      const end = this._normalizeMonth(row['endmonth']);
+      if (!catName) { skip('missing category'); return; }
+      if (amount === null || !(amount > 0)) { skip('invalid amount'); return; }
+      if (start === null || end === null) { skip('unreadable month'); return; }
+      if (start && end && end < start) { skip('end month before start month'); return; }
+
+      let category = window.Store.getState().categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+      if (!category) {
+        window.Store.dispatch('ADD_CATEGORY', { name: catName, icon: 'pin', typeHint: 'both' });
+        category = window.Store.getState().categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+        if (category) stats.newCategories++;
+      }
+      if (!category) { skip('missing category'); return; }
+
+      window.Store.dispatch('SAVE_BUDGET', {
+        categoryId: category.id,
+        amount: amount,
+        startDate: start,
+        endDate: end || null,
+        isCumulative: /^(true|1|yes|y)$/i.test(String(row['cumulative'] || '').trim())
+      });
+      stats.importedCount++;
+    });
+
+    return stats;
+  },
+
   importLoans(file, state, onComplete, onError) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1142,6 +1213,12 @@ window.StackdImport = {
         if (this.isRuleRows(rows)) {
           const stats = this.buildImportRules(rows);
           if (onComplete) onComplete({ ...stats, kind: 'rules' });
+          return;
+        }
+        // v1.19: a budgets export restores directly too, for the same reason.
+        if (this.isBudgetRows(rows)) {
+          const stats = this.buildBudgets(rows);
+          if (onComplete) onComplete({ ...stats, kind: 'budgets' });
           return;
         }
         // A Stack'd backup is recognised by its own headers; parseCSV squashed
