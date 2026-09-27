@@ -239,5 +239,6 @@ bite if forgotten:
 ## Working conventions in this repo
 
 - The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added. Bump it via `npm run version:sync`, not by hand.
+- **Public version numbering restarted at 1.0 for the store launch (2026-09-27).** Every `// vX.xx` comment up to `v1.19` is an internal pre-launch iteration; the `v1.19` work is what shipped as public **1.0**. The stores show the public version with a zero patch dropped (`1.0.0` → `1.0`, `1.0.1` stays `1.0.1`) — `tools/version.cjs` owns that rule. Beware the grep collision this creates: a future public `v1.1` is not the historical `v1.10`–`v1.19`.
 - `src/store.js`, `src/views.js`, and `src/components.js` are large monolithic files; new logic is added inline to the relevant global rather than split into new files, to preserve the no-bundler / global-load model.
 - The `agents/` and `.agents/` folders document a Product Analyst → Architect → Vibe Engineer → QA workflow used to produce the code; they are process docs, not runtime code.

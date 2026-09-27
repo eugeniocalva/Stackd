@@ -1,4 +1,4 @@
-# Launch plan — Google Play and the App Store (app v1.18 + unreleased v1.19 work, updated 2026-09-27)
+# Launch plan — Google Play and the App Store (public version 1.0, updated 2026-09-27)
 
 The plan for the FIRST public release of Stack'd on both stores. Written from
 a nine-area audit of the app, the broker, both repos and the current store
@@ -11,7 +11,7 @@ declarations, products, and the code work that still stands between today and
 a submittable build.
 
 **Status.** ~~Struck-through items are done.~~ The code side is finished:
-**14 of 15 assistant tasks are complete.** Only A-08 (the App Store badge on
+**16 of 17 assistant tasks are complete.** Only A-08 (the App Store badge on
 the website) is left, and it is unblocked — it lives in the StackdSite repo.
 The app targets API 36, builds, installs and runs; the legal texts match the
 product in five languages; store screenshots and listing copy are generated;
@@ -93,8 +93,16 @@ redemption flow (StoreKit's sheet on iOS, the Play Store's redeem page on
 Android). Deliberately not a code field of ours: that would bypass store
 billing (Apple 3.1.1), and any constant ships in plain text inside the
 bundle. Codes are generated in the consoles; `docs/pro-unlock.md` has the
-details. Unreleased on top of v1.18: A-07's Apple id, and the broker's
-`IOS_APP_ID` and staging fingerprint.
+details.
+
+**Then the launch build itself, public 1.0** (internal v1.19): A-07's Apple
+id, A-16 budgets in the backup, A-17 a working restore, and the broker's
+`IOS_APP_ID` and staging fingerprint. **Version numbering restarted at 1.0**
+on 2026-09-27 — the owner's choice for how the stores should read. The
+stores show `1.0` (a zero patch is dropped); `package.json` is `1.0.0`;
+both build numbers are 10000. No build had reached either store, so the
+restart costs nothing. Everything numbered v0.xx–v1.19 in this file and in
+the code is pre-launch history.
 
 **Legal alignment — the app and the website now describe the same product.**
 - New Terms clause 7, *Stack'd Pro (one-time purchase)*, in all five languages
@@ -181,7 +189,7 @@ details. Unreleased on top of v1.18: A-07's Apple id, and the broker's
 
 ## 4. My side — done, except A-08
 
-Ordered, IDs stable. **14 of 15 complete**; only A-08 remains, and it is
+Ordered, IDs stable. **16 of 17 complete** (A-16 and A-17 were added and closed on 2026-09-27); only A-08 remains, and it is
 unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### ~~Before the first store build~~ — all done
@@ -327,7 +335,7 @@ unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### Found during the App Store listing (2026-09-27)
 
-- ~~**A-16 · Budgets in the CSV backup**~~ · **DONE 2026-09-27 (v1.19).**
+- ~~**A-16 · Budgets in the CSV backup**~~ · **DONE 2026-09-27 (public 1.0).**
   Budgets were neither exported nor importable, while the listing, the
   website and the in-app privacy policy all promised "export everything"
   and "a backup is a full restore". New *Export Budgets* button;
@@ -336,21 +344,31 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   and months accepted even after a spreadsheet rewrote them as dates. 14 unit
   tests (verified to fail without the change) and an e2e that exports, wipes
   the app and imports through the real file input.
-- **A-17 · A restore onto a new phone gets every balance wrong** · **OPEN —
-  your decision.** Measured with a real export-then-import onto a fresh
-  install, not inferred: an account with an opening balance of 1000 and one
-  expense of 40 came back at **−40**. The importer deliberately skips the
-  opening-balance rows and re-creates each account with `openingBalance: 0`;
-  it also passes no currency, so a USD account came back as **EUR** (the new
-  phone's primary currency) with its dollar amounts counted as euros.
-  Account type, icon and colour and custom category icons are lost too, and
-  `stackd_accounts.csv` / `stackd_categories.csv` are routed into the
-  bank-statement column mapping instead of restoring. The older round-trip
-  test never caught it because it restores into the SAME install and keeps
-  the account. **Until this is fixed, "a backup is a full restore" is untrue
-  on the website homepage and "export everything" is untrue in the privacy
-  policy (app and site, five languages)** — the store copy was already
-  corrected on 2026-09-27.
+- ~~**A-17 · A restore onto a new phone got every balance wrong**~~ ·
+  **DONE 2026-09-27 (public 1.0).** Measured first with a real export-then-
+  import onto a fresh install: an account opening at 1000 with one 40 expense
+  came back at **−40**, a USD account came back as **EUR**, account looks and
+  custom category icons were lost, and the accounts and categories files were
+  routed into the bank column mapping. Fixed at every layer:
+  - the transactions file (the one the app calls "a Stack'd backup") carries
+    opening balances again, signed, plus an `AccountCurrency` column, so it
+    restores every balance and currency **on its own**;
+  - the accounts and categories files restore (upsert by name), carrying
+    type, icon, colour, currency and opening date, so **any import order**
+    ends in the same state;
+  - an empty export (no loans, no rules, no budgets — most people) imports as
+    "0" instead of failing;
+  - `UPDATE_CATEGORY` saves the income/expense/both kind — which also fixes a
+    live bug: the category editor sent it on every edit and the store threw
+    it away.
+  A re-import into the same phone still cannot add a second opening balance.
+  Tests: `tests/unit/fullRestore.test.js` (9, of which 8 fail on the old
+  code) and `tests/e2e/full_restore.spec.js`, which backs up through every
+  Export button, wipes the app and imports all six files, transactions first.
+  **With this, the website's "a backup is a full restore" and the privacy
+  policy's "export everything as CSV" are true again** — of your records;
+  app preferences and the home-screen layout were never part of the backup,
+  by design.
 
 ### ~~Worth doing, not blocking~~ — all done
 

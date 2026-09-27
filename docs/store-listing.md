@@ -518,7 +518,7 @@ here. Everything below is for THIS release, with Bank Connect off.
 
 | Field | Value |
 |---|---|
-| **Version number** | App Store Connect created it as `1.0`. **Change it to the version of the build you will upload** — they must match or the build cannot be attached. The next build is `1.19.0` (release-checklist §1); it stays editable until you submit |
+| **Version number** | **`1.0`** — the public version chosen on 2026-09-27. App Store Connect created the record as `1.0`; if it was changed to `1.19.0`, **change it back to `1.0`**. It must match the build's `MARKETING_VERSION` exactly, and `npm run version:sync` now writes `1.0` there (a zero patch is dropped; `package.json` stays `1.0.0`). |
 | Screenshots | **Upload the 6.5" set**: `tools/store/out/apple-6.5/<lang>/01-home` … `05-debt` (**1284×2778**, no alpha), per locale, in numbered order. **Corrected 2026-09-27:** the live record showed ONLY a 6.5" slot and rejected the 6.9" set (1290×2796) as the wrong size, despite the spec page reading as if 6.9" alone suffices. The 6.9" set (`tools/store/out/apple-6.9/`, renamed from `apple/` so the two folders differ by more than a suffix) is kept for a 6.9" slot if the console ever offers one. iPad is not needed (iPhone-only app, D4). Regenerate with `node tools/store/screens.cjs --platform apple-6.5` |
 | Promotional text | per locale, §1b |
 | Description | per locale, §1b (the Bank-Connect-OFF copy — not §1) |

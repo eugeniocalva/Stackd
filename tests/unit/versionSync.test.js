@@ -14,11 +14,22 @@ const read = (p) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
 describe('version sync (v1.14)', () => {
   it('derives the store versions from package.json', () => {
     const v = version.versions();
-    expect(v.name).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(v.title).toBe(`Stack'd v${v.name.split('.').slice(0, 2).join('.')}`);
+    expect(v.semver).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(v.semver).toBe(JSON.parse(read('package.json')).version);
+    const [major, minor, patch] = v.semver.split('.').map(Number);
+    expect(v.title).toBe(`Stack'd v${major}.${minor}`);
     // major*10000 + minor*100 + patch — monotonic as long as the version is.
-    const [major, minor, patch] = v.name.split('.').map(Number);
     expect(v.code).toBe(major * 10000 + minor * 100 + patch);
+  });
+
+  // 2026-09-27: public numbering restarted at 1.0 for the store launch, and
+  // the owner wants the stores to read "1.0", not "1.0.0".
+  it('the public version drops a zero patch and keeps a real one', () => {
+    const v = version.versions();
+    const [major, minor, patch] = v.semver.split('.').map(Number);
+    expect(v.name).toBe(patch === 0 ? `${major}.${minor}` : v.semver);
+    expect(read('android/app/build.gradle')).toContain(`versionName "${v.name}"`);
+    expect(read('ios/App/App.xcodeproj/project.pbxproj')).toContain(`MARKETING_VERSION = ${v.name};`);
   });
 
   it('index.html, the Android gradle and the Xcode project all agree', () => {

@@ -6,10 +6,21 @@
 // package.json "version" is the source of truth. Everything else is derived:
 //
 //   index.html <title>                    Stack'd v<major>.<minor>
-//   android versionName                   <major>.<minor>.<patch>
+//   android versionName                   the public version (below)
 //   android versionCode                   major*10000 + minor*100 + patch
-//   iOS MARKETING_VERSION                 <major>.<minor>.<patch>
+//   iOS MARKETING_VERSION                 the public version (below)
 //   iOS CURRENT_PROJECT_VERSION           same integer as versionCode
+//
+// The PUBLIC version drops a zero patch: 1.0.0 -> "1.0", 1.1.0 -> "1.1",
+// 1.0.1 -> "1.0.1". It is what both stores display, and "1.0" is the name the
+// owner chose for the launch (2026-09-27). package.json itself stays strict
+// MAJOR.MINOR.PATCH because npm requires it.
+//
+// Public numbering RESTARTED at 1.0 for the store launch. Everything before it
+// (v0.xx to v1.19, still visible in inline `// vX.xx` comments) was internal
+// pre-launch iteration; the v1.19 work is what shipped as public 1.0. No build
+// had reached either store before the restart, so the smaller versionCode
+// (10000) is safe — from here on it only goes up.
 //
 // Both stores need a strictly increasing build integer per upload, so a
 // rejected or replaced build is re-uploaded under a bumped PATCH — never the
@@ -27,7 +38,8 @@ function versions() {
   if (!m) throw new Error(`package.json version must be MAJOR.MINOR.PATCH, got ${pkg.version}`);
   const [major, minor, patch] = m.slice(1).map(Number);
   return {
-    name: `${major}.${minor}.${patch}`,
+    semver: `${major}.${minor}.${patch}`,
+    name: patch === 0 ? `${major}.${minor}` : `${major}.${minor}.${patch}`,
     title: `Stack'd v${major}.${minor}`,
     code: major * 10000 + minor * 100 + patch
   };
@@ -70,7 +82,7 @@ if (require.main === module) {
   const check = process.argv.includes('--check');
   const problems = run(check);
   if (!problems.length) {
-    console.log(`versions agree: ${versions().name} (build ${versions().code})`);
+    console.log(`versions agree: ${versions().name} (package ${versions().semver}, build ${versions().code})`);
     process.exit(0);
   }
   console[check ? 'error' : 'log'](problems.join('\n'));

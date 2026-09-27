@@ -1,4 +1,4 @@
-# Release checklist (v1.19)
+# Release checklist (public 1.0)
 
 Every store build follows this list, in order. The traps it exists to stop
 are all silent: a stale synced bundle, an unbumped `?v=`, an `index.html`
@@ -31,13 +31,13 @@ re-measure it rather than trusting it.
 
 ---
 
-## 0. Where v1.19 stands (measured 2026-09-27)
+## 0. Where 1.0 stands (measured 2026-09-27)
 
 | Step | State of this build |
 |---|---|
-| 1 Version | **to run** — the tree is at `1.18.0` and now carries v1.19 work (A-07). Bump and `version:sync` before building |
+| 1 Version | ~~done~~ — `1.0.0` in package.json; the stores read **`1.0`**; versionCode and iOS build **10000**; `versionSync` test passes. Numbering restarted at 1.0 on 2026-09-27 |
 | 2 Cache busting | **re-check** — cheap, and only ever valid as of the last commit |
-| 3 Gates | ~~done~~ — lint clean, **77 files / 750 unit tests**, **51 e2e specs**, all green |
+| 3 Gates | ~~done~~ — lint clean, **79 files / 774 unit tests**, **53 e2e specs**, all green (re-measured after A-16/A-17) |
 | 4 Build | **to run** — `dist/` on this machine predates the Bank Connect gate, so it is not the bundle to ship |
 | 5 Sync | to run, after 4 |
 | 6 Android bundle | **blocked** — `android/keystore.properties` does not exist yet, so a build now would be unsigned (launch-plan, owner side) |
@@ -81,8 +81,8 @@ grep -n '?v=' index.html
 
 ```bash
 npm run lint          # zero-warning gate (--max-warnings 0)
-npm test              # 77 files / 750 tests, ~30-60s
-npm run test:e2e      # 51 specs, ~60s, auto-starts the dev server on :3000
+npm test              # 79 files / 774 tests, ~30-60s
+npm run test:e2e      # 53 specs, ~60s, auto-starts the dev server on :3000
 ```
 
 If `npm test` is slow or flaky, do not lower the bar — `vitest.config.js`
