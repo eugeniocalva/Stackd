@@ -40,7 +40,7 @@ re-measure it rather than trusting it.
 | 3 Gates | ~~done~~ — lint clean, **79 files / 774 unit tests**, **53 e2e specs**, all green (re-measured after A-16/A-17) |
 | 4 Build | **to run** — `dist/` on this machine predates the Bank Connect gate, so it is not the bundle to ship |
 | 5 Sync | to run, after 4 |
-| 6 Android bundle | **blocked** — `android/keystore.properties` does not exist yet, so a build now would be unsigned (launch-plan, owner side) |
+| 6 Android bundle | ~~done~~ — 1.0 (10000) built 2026-09-29, signed with the upload key, targetSdk 36 |
 | 7 iOS archive | **ready to run on CI** — waiting for the three App Store Connect API secrets (launch-plan O-26) |
 | 8 Smoke | to run, on the signed build and not before |
 | 9 Ship | to run — no Play account yet, and there are no git tags yet either. The App Store record now exists: **Stack'd Finance**, Apple ID 6816636640 |

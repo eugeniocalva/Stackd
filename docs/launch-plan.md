@@ -537,9 +537,8 @@ unblocked — it is website work in the StackdSite repo rather than app work.
 
   Two halves are still yours: **back it up** (a password manager entry plus
   one offline copy — an upload key can be reset through Play support, but
-  only while you still control the account), and **create
-  `android/keystore.properties`** from the example. It holds the password and
-  is gitignored; until it exists, `bundleRelease` fails on purpose.
+  only while you still control the account), and ~~create
+  `android/keystore.properties`~~ **created 2026-09-29** (gitignored).
 - **O-08 · Legal read-through.** The Terms and Privacy are careful but were
   written by me, not a lawyer, and they now describe two paid products and a
   cross-border data flow. Also ask about: the governing-law clause the Terms
@@ -572,7 +571,16 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   email, privacy policy URL `https://stackdplatform.com/privacy`. **App name:
   "Stack'd Finance"**, to match the App Store (D5), unless you decide
   otherwise.
-- **O-16 · Upload, closed test, then apply for production access.**
+- **O-16 · Upload, closed test, then apply for production access.** ·
+  **Bundle BUILT 2026-09-29** on this machine from the same code as the iOS
+  build (no app changes since f5905cd): `app-release.aab`, 4.6 MB, signed
+  with the upload key (SHA-256 `56:CC:…:5C:6E`, valid to 2054);
+  `com.stackd.finance`, versionCode 10000, versionName 1.0, minSdk 24,
+  targetSdk 36, Play Billing 9.0.0; permissions only INTERNET,
+  ACCESS_NETWORK_STATE, BILLING (+ the androidx receiver permission), no
+  `debuggable`. Play Console store setup is complete (App content,
+  store settings, listing in five languages). Next: upload to closed
+  testing, then `stackd_pro` + payments profile, then testers opt in.
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
