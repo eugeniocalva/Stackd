@@ -30,10 +30,10 @@ const makeStub = () => ({
 
 const boot = (opts = {}) => {
   global.window = {
-    // v1.15 (A-04): Bank Connect is BUILD-TIME off for the first store
-    // release. These suites exercise the feature itself, so they turn it
-    // on explicitly — the shipped default is covered by
-    // tests/unit/bankConnectHidden.test.js.
+    // These suites exercise the feature itself, so they set the gate
+    // explicitly rather than riding the committed default (ON since v1.18).
+    // The default and the kill switch are pinned in
+    // tests/unit/bankConnectGate.test.js.
     __STACKD_BANK_CONNECT__: true,
     crypto: { randomUUID: () => 'uuid-' + Math.random().toString(36).slice(2) },
     localStorage: { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() },
