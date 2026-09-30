@@ -6,6 +6,15 @@
 // Output (gitignored, like every store image):
 //   tools/store/out/play/icon-512.png          512x512, the hi-res app icon
 //   tools/store/out/play/feature-graphic.png   1024x500, no alpha
+//   tools/store/out/play/pro-icon-512.png      512x512, 32-bit, for stackd_pro
+//
+// Pro product icon: Play shows it on the listing and in the purchase sheet,
+// cropped to a hexagon, and forbids text or branding on it ("Don't include
+// text, promotions or branding"), so NOT the logo. It is the sparkles glyph
+// the app itself shows next to "Stack'd Pro" on the purchases screen (the
+// Lucide path copied from main.js EMERGENCY_ICONS), white on the same dark
+// ground, kept inside the centre so the hexagon crop never clips it. Play
+// asks for a 32-bit PNG, so this one keeps its alpha channel.
 //
 // Icon: a straight downscale of assets/icon.png — the same full-bleed white
 // tile with the black mark that ships as the launcher icon, so the listing and
@@ -87,7 +96,19 @@ const fontFace = (file) => {
   const featureOut = path.join(OUT, 'feature-graphic.png');
   await sharp(buf).flatten({ background: BG }).png({ compressionLevel: 9 }).toFile(featureOut);
 
-  for (const f of [iconOut, featureOut]) {
+  // ── 512 Pro product icon ─────────────────────────────────────────────────
+  const sparkles = `
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="${BG}"/>
+  <g transform="translate(128 128) scale(10.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+  </g>
+</svg>`;
+  const proOut = path.join(OUT, 'pro-icon-512.png');
+  await sharp(Buffer.from(sparkles)).ensureAlpha().png({ compressionLevel: 9 }).toFile(proOut);
+
+  for (const f of [iconOut, featureOut, proOut]) {
     const m = await sharp(f).metadata();
     console.log(`${path.relative(ROOT, f)}  ${m.width}x${m.height}  alpha:${m.hasAlpha}  ${(fs.statSync(f).size / 1024).toFixed(0)} KB`);
   }
