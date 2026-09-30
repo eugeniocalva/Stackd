@@ -520,11 +520,11 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   **SUBMITTED 2026-09-27** (the first attempt, before the Paid Apps agreement
   was active, failed). Waiting for Apple's approval; the lower rate starts
   the month after it.
-- **O-04 · Create the Google Play developer account** ($25 once). Check the
+- ~~**O-04 · Create the Google Play developer account**~~ · **DONE 2026-09-28/29** — personal account, identity and Android-device checks passed. ($25 once). Check the
   creation date — if it is after 13 Nov 2023 and personal, the 12-tester
   14-day closed test applies and it is on the critical path. Complete identity
   verification with the public details from O-02.
-- **O-05 · Line up 12 closed testers** (real Google accounts, opted in and
+- ~~**O-05 · Line up 12 closed testers**~~ · **IN PROGRESS** — testers are a Google Group (`testers-community@googlegroups.com`, a tester community) plus people the owner recruits. The 14 days start per tester at opt-in, after Google approves the closed test. (real Google accounts, opted in and
   staying opted in for 14 consecutive days; opting out restarts the clock).
 - ~~**O-06 · Get a Mac with Xcode 26.**~~ **Not needed — route B chosen
   2026-09-27:** GitHub's hosted Macs build and upload instead (A-18). Keep a
@@ -552,21 +552,21 @@ unblocked — it is website work in the StackdSite repo rather than app work.
 
 ### Play Console, once the account exists
 
-- **O-11 · Payments profile and tax settings** — nothing paid can be created
+- ~~**O-11 · Payments profile and tax settings**~~ · **DONE 2026-09-30** — payments profile created; sells *Computer software*; support email hi@; statement name `Stackd Finance`. — nothing paid can be created
   without them.
-- **O-12 · Create `stackd_pro`**: one-time product, €4.99, title, description,
+- ~~**O-12 · Create `stackd_pro`**~~ · **DONE 2026-09-30** — `stackd_pro` ACTIVE: one purchase option `lifetime` (Buy, €4.99, digital content, tax category *Digital app sales*), automatically backwards compatible as the first Buy option — which matters: cordova-plugin-purchase reads `getOneTimePurchaseOfferDetails()` when a product has ONE option, so keep it to one option and no discount offers until the multi-option path is tested. Product icon = the app's sparkles glyph (Play forbids branding on product icons). Five-language descriptions.: one-time product, €4.99, title, description,
   512×512 icon, per-country prices reviewed, then **Activate**. If D1 says
   ship without Bank Connect, do not create the subscriptions yet.
-- **O-13 · Add license testers** (Settings → License testing) so purchases can
+- ~~**O-13 · Add license testers**~~ · **Set up 2026-09-30** — license testing is account-wide (All apps → Settings). Community-group testers cannot be license testers without their addresses: give them promo codes (Monetise → Promo codes, redeemed via the app's *Redeem a code*) or ask them not to buy. License response stays RESPOND_NORMALLY (the app does not use the licensing service; no CHECK_LICENSE permission). (Settings → License testing) so purchases can
   be exercised without being charged.
-- **O-14 · App content declarations**: Data safety (answers ready in
+- ~~**O-14 · App content declarations**~~ · **DONE 2026-09-29** — privacy policy, app access (all functionality available), no ads, content rating, target audience 18+ (minor restriction NOT ticked: no age floor in the Terms, no data collected), Data safety "no data collected", no government, **no financial features**, no health.: Data safety (answers ready in
   `docs/store-listing.md` §3), **Financial features declaration** (mandatory
   for every app — with Bank Connect dark, "no financial features" is
   defensible; with it live, *Support services → Other* naming Enable Banking
   Oy as the licensed provider), Content rating (IARC), Ads = No, Target
   audience = 18+, Advertising ID = No, Government apps = No, and App access
   instructions telling the reviewer how to reach the Pro purchase.
-- **O-15 · Store listing**: 512 icon, 1024×500 feature graphic, at least 4
+- ~~**O-15 · Store listing**~~ · **DONE 2026-09-29** — "Stack'd Finance", en-GB default + fr/it/es/pt, category Finance, tags Personal finance / Finance / Calculator / Productivity (NOT Loan: it would pull in the Personal Loans policy), icon, feature graphic, 5×5 screenshots, AI-asset declaration: not labelled (real app captures, logo + name).: 512 icon, 1024×500 feature graphic, at least 4
   phone screenshots at 1080×1920, five languages, category Finance, contact
   email, privacy policy URL `https://stackdplatform.com/privacy`. **App name:
   "Stack'd Finance"**, to match the App Store (D5), unless you decide
@@ -581,6 +581,12 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   `debuggable`. Play Console store setup is complete (App content,
   store settings, listing in five languages). Next: upload to closed
   testing, then `stackd_pro` + payments profile, then testers opt in.
+  **Closed test SUBMITTED for Google's review 2026-09-30** (track *Closed
+  testing – Alpha*, release `1.0 (10000)`, release notes in all five
+  languages; test countries = everywhere, which is right for a test —
+  **production countries must be set to the EEA + UK (D7) when applying**).
+  The only warning was "no deobfuscation file": expected, minify is off, and
+  must stay off — R8 breaks reflection-loaded plugins like the purchase one.
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
