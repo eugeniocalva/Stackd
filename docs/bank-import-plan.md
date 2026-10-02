@@ -385,6 +385,14 @@ Shipped per §6. The mechanics a cold start needs:
   selected foreign account format with the primary symbol; the dashboard
   chart tooltip formats per-account dashed lines with the primary symbol when
   a user explicitly mixes currencies in the expanded-graph filter.
+- **1.0.1 (BUG-01, `docs/deep-test-fixes-plan.md`): switching the base is
+  two-step.** A tap in the Settings picker only selects; Done opens
+  `Components.CurrencySwitchConfirm`, which summarises
+  `Store.currencySwitchImpact(code)` and offers to relabel every account still
+  in the old base (all or nothing, label only, never converted). Cancel,
+  backdrop and Back apply nothing. `SET_CURRENCY` accepts the old string payload
+  or `{code, relabel}`. Onboarding preselects the base the existing accounts
+  use and goes through the same confirm.
 
 ## 7. Phase 5 — Reconciliation polish: matching and transfers
 

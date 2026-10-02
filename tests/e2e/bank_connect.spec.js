@@ -78,6 +78,10 @@ test.describe('Bank Connect (B2) E2E flow', () => {
   };
 
   const bootstrap = async (page) => {
+    // 1.0.1 (C-49): the stub's booking dates and consent timestamps are fixed
+    // literals — pin the clock (flowing, history_scroll precedent) so the
+    // 90-day history window never drifts past them.
+    await page.clock.install({ time: new Date(2026, 8, 15, 12, 0, 0) });
     await page.addInitScript(installStub);
     await page.goto('/');
     await page.evaluate(() => {

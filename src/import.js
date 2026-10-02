@@ -295,15 +295,28 @@ window.StackdImport = {
     });
   },
 
-  // v0.68: re-key seriesId the same way, then enforce the one-armed-tail
-  // invariant (see the recurrence notes in CLAUDE.md) — two armed members of the
-  // same series double the chain on every processing pass.
+  // v0.68: re-key seriesId, then enforce the one-armed-tail invariant (see the
+  // recurrence notes in CLAUDE.md) — two armed members of the same series
+  // double the chain on every processing pass.
+  // 1.0.1 (BUG-02): the CSV's own series id is KEPT unless a series already in
+  // this install uses it; only a collision (e.g. re-importing into the same
+  // install) or a row without a SeriesId gets a fresh id. Re-keying every
+  // series broke the loans file's LinkedSeriesId on every restore, so a
+  // restored loan came back untracked. Keeping the id makes the link resolve
+  // whichever of the two files is imported first.
   _relinkSeries(txs) {
+    const taken = new Set();
+    window.Store.getState().transactions.forEach(t => {
+      if (t.recurrence && t.recurrence.seriesId) taken.add(t.recurrence.seriesId);
+    });
     const seriesMap = {};
     txs.forEach((t, i) => {
       if (!t.recurrence) return;
-      const key = t.recurrence.seriesId || `__row${i}`;
-      if (!seriesMap[key]) seriesMap[key] = window.StackdDB.generateId();
+      const csvId = t.recurrence.seriesId;
+      const key = csvId || `__row${i}`;
+      if (!seriesMap[key]) {
+        seriesMap[key] = (csvId && !taken.has(csvId)) ? csvId : window.StackdDB.generateId();
+      }
       t.recurrence.seriesId = seriesMap[key];
     });
 
@@ -402,15 +415,57 @@ window.StackdImport = {
         }
       }
 
-      loans.push({
+      const kind = String(row['kind'] || '').trim().toLowerCase() === 'sim' ? 'sim' : 'active';
+      // 1.0.1 (BUG-02): the payment series this loan tracks. Only an active
+      // loan is ever linked. An id whose series is not in the store yet is
+      // harmless: every consumer reads through getLoanLinkedTransactions, and
+      // the transactions file brings the series back under the same id.
+      const linkedSeriesId = String(row['linkedseriesid'] || '').trim();
+      const loan = {
         name: name,
-        kind: String(row['kind'] || '').trim().toLowerCase() === 'sim' ? 'sim' : 'active',
-        config: config
-      });
+        kind: kind,
+        config: config,
+        linkedSeriesId: (kind === 'active' && linkedSeriesId) ? linkedSeriesId : null
+      };
+      // 1.0.1 (BUG-02): only a file written BEFORE the LinkedSeriesId column
+      // asks for the payment-note fallback. In a new-format file an empty cell
+      // means "deliberately untracked", so such a loan is never flagged and a
+      // later transactions import cannot silently link it.
+      if (kind === 'active' && !Object.prototype.hasOwnProperty.call(row, 'linkedseriesid')) {
+        loan.needsNoteRelink = true;
+      }
+      loans.push(loan);
       stats.importedCount++;
     });
 
     return { loans: loans, stats: stats };
+  },
+
+  /**
+   * 1.0.1 (BUG-02): a series belongs to ONE loan. Importing the loans file
+   * twice, or a backup into the install it came from, would otherwise give the
+   * duplicate loan the series the original already tracks — and deleting the
+   * duplicate with its future payments would wipe the original's. A link that
+   * a loan in the store (or an earlier row of this file) already names is
+   * dropped and the loan flagged for the payment-note fallback, so
+   * RELINK_LOAN_SERIES links it to an unowned copy (e.g. the re-keyed series
+   * of a re-imported transactions file) or leaves it unlinked. Any other id is
+   * kept as is, so a restore works in either file order. Mutates `loans`.
+   */
+  _releaseOwnedLoanLinks(loans) {
+    const owned = new Set();
+    const existing = (window.Store && window.Store.getState().loans) || [];
+    existing.forEach(l => { if (l.linkedSeriesId) owned.add(l.linkedSeriesId); });
+    loans.forEach(loan => {
+      if (!loan.linkedSeriesId) return;
+      if (owned.has(loan.linkedSeriesId)) {
+        loan.linkedSeriesId = null;
+        loan.needsNoteRelink = true;
+      } else {
+        owned.add(loan.linkedSeriesId);
+      }
+    });
+    return loans;
   },
 
   // v0.99 ── bank statements (docs/bank-import-plan.md §3) ──────────────────
@@ -1256,6 +1311,11 @@ window.StackdImport = {
     return has('name') && has('typehint') && !has('openingbalance') && !has('date') && !has('amount');
   },
 
+  // 1.0.1 (BUG-11): how category names compare (trimmed, case-insensitive).
+  _categoryNameKey(name) {
+    return String(name || '').trim().toLowerCase();
+  },
+
   buildCategories(rows) {
     const stats = { importedCount: 0, skippedCount: 0, skipped: {}, created: 0, updated: 0 };
     const skip = (reason) => {
@@ -1263,15 +1323,43 @@ window.StackdImport = {
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
     const HINTS = ['income', 'expense', 'both'];
+    const nameKey = (name) => this._categoryNameKey(name);
 
-    rows.forEach(row => {
+    // 1.0.1 (BUG-11): a backup can hold two categories with the same name
+    // (the UI used to allow it). Upserting both by name made the second row
+    // overwrite the first one's icon. Keep ONE row per name: the row whose id
+    // is the existing same-name category (so a seeded default beats a custom
+    // duplicate), else the first in file order; skip the rest. Transactions,
+    // budgets and rules reference categories by name, so they merge anyway.
+    const keepRow = new Map();
+    const stateCats = window.Store.getState().categories;
+    rows.forEach((row, i) => {
+      const key = nameKey(row['name']);
+      if (!key) return;
+      const id = String(row['id'] || '').trim();
+      const matchesExisting = !!id && stateCats.some(c => c.id === id && nameKey(c.name) === key);
+      const kept = keepRow.get(key);
+      if (kept === undefined || (matchesExisting && !kept.matchesExisting)) {
+        keepRow.set(key, { index: i, matchesExisting: matchesExisting });
+      }
+    });
+
+    rows.forEach((row, i) => {
       const name = String(row['name'] || '').trim();
       if (!name) { skip('missing name'); return; }
+      const key = nameKey(name);
+      if (keepRow.get(key).index !== i) { skip('duplicate category name'); return; }
+      const id = String(row['id'] || '').trim();
       const icon = String(row['icon'] || '').trim();
       const hint = String(row['typehint'] || '').trim().toLowerCase();
       const typeHint = HINTS.includes(hint) ? hint : null;
 
-      const existing = window.Store.getState().categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+      // Matching stays by name (renamed defaults, foreign CSVs, categories the
+      // transactions file created first); the id only breaks a tie when this
+      // install already holds same-named categories.
+      const cats = window.Store.getState().categories;
+      const sameName = (c) => nameKey(c.name) === key;
+      const existing = (id && cats.find(c => c.id === id && sameName(c))) || cats.find(sameName);
       if (existing) {
         const upd = { id: existing.id };
         if (icon) upd.icon = icon;
@@ -1316,6 +1404,7 @@ window.StackdImport = {
       try {
         const rows = this.parseCSV(e.target.result);
         const { loans, stats } = this.buildLoans(rows);
+        this._releaseOwnedLoanLinks(loans); // 1.0.1 (BUG-02)
         loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
         if (onComplete) onComplete(stats);
       } catch (err) {
@@ -1376,7 +1465,13 @@ window.StackdImport = {
         const rows = this.parseCSV(csvText);
         if (this.isLoanRows(rows)) {
           const { loans, stats } = this.buildLoans(rows);
+          // 1.0.1 (BUG-02): never two loans on one series (re-import).
+          this._releaseOwnedLoanLinks(loans);
           loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
+          // 1.0.1 (BUG-02): a backup from before LinkedSeriesId (or a loan
+          // whose link was released above) relinks by its payment note.
+          // Emits coalesce: still one render.
+          if (loans.length > 0) window.Store.dispatch('RELINK_LOAN_SERIES');
           if (onComplete) onComplete({ ...stats, kind: 'loans' });
           return;
         }
@@ -1414,6 +1509,8 @@ window.StackdImport = {
           const { transactions, stats } = this.buildTransactions(rows);
           if (transactions.length > 0) {
             window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions });
+            // 1.0.1 (BUG-02): the loans file may have come first.
+            window.Store.dispatch('RELINK_LOAN_SERIES');
           }
           if (onComplete) onComplete({ ...stats, kind: 'transactions' });
           return;

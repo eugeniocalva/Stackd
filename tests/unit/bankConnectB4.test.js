@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -82,6 +82,17 @@ const seedConn = (over = {}) => {
   global.window.Store.dispatch('ADD_BANK_CONNECTION', c);
   return c;
 };
+
+// 1.0.1 (C-49d) Pin Date (only Date: real timers keep running for the fetch
+// stubs and waits) to the fixtures' epoch. The consent/entitlement expiries in
+// these fixtures are absolute, so on the real clock the suite would go red as
+// soon as they lapse. Registered at top level so it runs before any
+// describe-level boot().
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW));
+});
+afterEach(() => { vi.useRealTimers(); });
 
 describe('Bank Connect B4 (v1.08)', () => {
   beforeEach(() => boot());

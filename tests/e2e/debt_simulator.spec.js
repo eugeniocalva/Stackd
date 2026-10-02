@@ -6,7 +6,13 @@ import { test, expect } from '@playwright/test';
 // Figures are pinned to the LoanEngine calibration loan (111,000 @ 4.05% / 30y
 // → $533.14/month, $80,927.05 interest, last payment 06/08/56).
 test.describe('Loan simulator E2E flow', () => {
-  const bootstrap = async (page) => {
+  // 1.0.1 (C-49c): pin 'today' before the first navigation. The flows type
+  // hardcoded loan dates, and tracking arms the next instalment relative to
+  // the clock, so an unpinned run broke as soon as those dates went by.
+  // install() (not setFixedTime/pauseAt): time keeps flowing after it, so
+  // the modal teardown timers and the splash behave normally.
+  const bootstrap = async (page, now = new Date(2026, 8, 15, 12, 0, 0)) => {
+    await page.clock.install({ time: now });
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();
@@ -93,9 +99,10 @@ test.describe('Loan simulator E2E flow', () => {
     await expect(page.locator('.debt-sim-item')).toHaveCount(0);
     await expect(page.locator('#debt-loans-empty')).toHaveCount(0);
 
-    // Declining the recurring offer leaves a clean, untracked loan
+    // Dismissing the recurring offer leaves a clean, untracked loan. With no
+    // account yet the offer is info-only: a single OK, no Cancel (1.0.1).
     await expect(page.locator('#modal-title')).toHaveText('Track this payment?');
-    await page.click('#modal-cancel-btn');
+    await page.click('#modal-save-btn');
     await expectModalClosed(page);
     await expect(page.locator('.debt-loan-item .debt-tracked-badge')).toHaveCount(0);
     expect(await page.evaluate(() => window.Store.getState().loans[0].linkedSeriesId)).toBeNull();
@@ -118,7 +125,9 @@ test.describe('Loan simulator E2E flow', () => {
     const errors = [];
     page.on('pageerror', err => errors.push(err));
 
-    await bootstrap(page);
+    // 1.0.1 (BUG-15): 'today' is the loan's first payment day — that
+    // instalment must be tracked from today, not from next month.
+    await bootstrap(page, new Date(2026, 9, 1, 12, 0, 0));
 
     // An account is required before a payment can be logged
     await page.evaluate(() => {
@@ -190,6 +199,27 @@ test.describe('Loan simulator E2E flow', () => {
     await page.waitForSelector('#dres-progress');
     await expect(page.locator('#dres-tracked')).toContainText('Tracked as a monthly expense');
     await expect(page.locator('#btn-dres-track')).toHaveCount(0);
+
+    // 1.0.1 (BUG-06): deleting a tracked loan offers (ticked) to take its
+    // future payments along; today's and past payments stay in history.
+    await page.click('#btn-dres-menu');
+    await page.click('.dres-menu-opt[data-act="delete"]');
+    await expect(page.locator('#dres-delete-future')).toBeChecked();
+    await expect(page.locator('.modal-body')).toContainText('Also delete its 23 upcoming payments');
+    await page.click('#modal-delete-btn');
+    await page.waitForSelector('#debt-hub');
+    const afterDelete = await page.evaluate((sid) => {
+      const txs = window.Store.getState().transactions
+        .filter(t => t.recurrence && t.recurrence.seriesId === sid);
+      return {
+        loans: window.Store.getState().loans.length,
+        dates: txs.map(t => t.date),
+        armed: txs.filter(t => t.recurrence.nextDate).length
+      };
+    }, linked.linkedSeriesId);
+    expect(afterDelete.loans).toBe(0);
+    expect(afterDelete.dates).toEqual(['2026-10-01']);
+    expect(afterDelete.armed).toBe(0);
 
     expect(errors).toEqual([]);
   });

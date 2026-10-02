@@ -70,13 +70,17 @@ test.describe('Full restore E2E', () => {
     expect(await page.evaluate(() => window.Store.getState().accounts.length)).toBe(0);
     await goToSettings(page);
 
+    // 1.0.1 (BUG-21): each result is an in-app sheet (#import-result-modal),
+    // not a system alert(). Dismiss it and wait for it to detach before the
+    // next file, or a stale sheet would satisfy the next 'Imported' match.
     const importOne = async (file, expectedMessage) => {
-      const n = dialogs.length;
       await page.setInputFiles('#import-csv-file', {
         name: file.name, mimeType: 'text/csv', buffer: Buffer.from(file.text, 'utf8')
       });
-      await expect.poll(() => dialogs.length).toBe(n + 1);
-      expect(dialogs[n]).toContain(expectedMessage);
+      const sheet = page.locator('#import-result-modal');
+      await expect(sheet).toContainText(expectedMessage);
+      await page.click('#import-result-modal-ok');
+      await expect(sheet).toHaveCount(0);
       expect(page.url()).not.toContain('#import-map'); // restored, not sent to the bank mapping
     };
     await importOne(saved.transactions, 'Imported 2 transactions');
@@ -87,6 +91,7 @@ test.describe('Full restore E2E', () => {
     await importOne(saved.accounts, 'Imported 2 accounts');
 
     expect(await summary(page)).toEqual(before);
+    expect(dialogs).toEqual([]);
     expect(errors).toEqual([]);
   });
 });

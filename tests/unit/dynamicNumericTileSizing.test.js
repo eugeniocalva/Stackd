@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -14,6 +14,11 @@ const fontSizesIn = (html) =>
 
 describe('Dynamic Numeric Tile Sizing (v0.61)', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49e) Pin Date (only Date) to 2026-08-15 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach, so no test relies on the previous test's leaked pin.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-id-' + Math.random().toString(36).substr(2, 9)
@@ -46,9 +51,9 @@ describe('Dynamic Numeric Tile Sizing (v0.61)', () => {
 
     global.window.Store.init();
     global.window.Store.state.currency = 'EUR';
-
-    vi.setSystemTime(new Date(2026, 7, 15));
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   describe('Components.fitNumericFontSize', () => {
     it('emits a clamp() bounded by the requested min and max', () => {

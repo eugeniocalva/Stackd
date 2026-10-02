@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -22,6 +22,12 @@ const CAL_CONFIG = {
 
 describe('Debt views (hub / simulator / results)', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49a): pin 'today' (Date only, timers stay real) before the
+    // store boots: mid-month at noon, before every hardcoded loan row below.
+    // The prefill and the hub/results views read the clock themselves, so the
+    // unpinned file failed from 2026-10-01 on.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9)
@@ -46,6 +52,10 @@ describe('Debt views (hub / simulator / results)', () => {
 
     global.window.Store.init();
     global.window.Views._DebtShared.draft = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('DebtHubView', () => {
@@ -77,15 +87,21 @@ describe('Debt views (hub / simulator / results)', () => {
     });
 
     it('shows amortized progress on tracked loan cards', () => {
+      // 4 instalments paid (pct ~0.57): exercises the view's floor rule, which
+      // a rounded p.pct.toFixed(0) would contradict
+      vi.setSystemTime(new Date(2026, 11, 31, 12, 0, 0));
       global.window.Store.dispatch('ADD_LOAN', { name: 'Mutuo', kind: 'active', config: CAL_CONFIG });
       const loan = global.window.Store.getState().loans[0];
       const p = global.window.Store.getLoanProgress(loan);
       const html = global.window.Views.DebtHubView.render(global.window.Store.getState());
+      const S = global.window.Views._DebtShared;
       // paid / remaining come from the schedule, not straight-line math
+      expect(p.paidCount).toBe(4);
       expect(html).toContain(`${p.paidCount}/${p.totalCount}`);
       expect(html).toContain('paid');
       expect(html).toContain('remaining');
-      expect(html).toContain(`${p.pct.toFixed(0)}%`);
+      expect(S.pctLabel(p)).toBe('0');
+      expect(html).toContain(`>${S.pctLabel(p)}%<`);
       // untracked loans show no recurring badge
       expect(html).not.toContain('debt-tracked-badge');
     });

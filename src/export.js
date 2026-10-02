@@ -63,7 +63,13 @@ window.StackdExport = {
   LOAN_HEADERS: ['Name', 'Kind', 'Type', 'Principal', 'DownPayment', 'Duration',
     'DurationUnit', 'AnnualRate', 'FirstPaymentDate', 'Amortization',
     'InterestOnlyFirst', 'InterestOnlyExtends', 'RateChanges', 'EarlyRepayments',
-    'ExtraCosts', 'Config'],
+    'ExtraCosts', 'Config',
+    // 1.0.1 (BUG-02): the loan's payment series. Without it a restored loan
+    // came back untracked and offered "Track monthly payment" again, which
+    // doubled every payment. import.js keeps the transactions file's series
+    // ids (re-keyed only on a collision), so this id resolves after a restore
+    // whichever file is imported first. Columns are only ever appended.
+    'LinkedSeriesId'],
 
   exportLoans(state, options = {}) {
     const delimiter = options.delimiter || ',';
@@ -86,7 +92,9 @@ window.StackdExport = {
         (c.rateChanges || []).length,
         (c.earlyRepayments || []).length,
         (c.additionalExpenses || []).length,
-        JSON.stringify(c)
+        JSON.stringify(c),
+        // 1.0.1 (BUG-02): a simulation is never tracked.
+        loan.kind === 'sim' ? '' : (loan.linkedSeriesId || '')
       ], delimiter);
     });
     this._download('stackd_loans.csv', [headers, ...rows].join('\n'));

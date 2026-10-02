@@ -953,6 +953,29 @@ a:focus-visible,
   justify-content: center;
 }
 
+/* 1.0.1 (BUG-22): grow a compact control's TAP area to --target-size (48px)
+   without changing its look (D2) — a transparent ::after halo, the same trick
+   as .btn-month-pill-arrow::after. Vertical only: horizontally the halo is
+   the control's own width, so adjacent segments never steal each other's
+   taps. Do NOT use it where stacked controls sit closer than
+   (48px - control height) apart: the later halo would win the hit test over
+   the earlier control's visible edge. */
+.hit-target,
+.chart-toggle-btn,
+.widget-pill-btn {
+  position: relative;
+}
+.hit-target::after,
+.chart-toggle-btn::after,
+.widget-pill-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - var(--target-size) / 2);
+  height: var(--target-size);
+}
+
 /* Wallets Horizontal Scrolling (v0.53)
    v0.79: bleed/inset mirror the .container gutter vars, and the snapport gets
    the same inset via scroll-padding — a scroll container's own padding does NOT
@@ -3013,4 +3036,22 @@ a:focus-visible,
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+
+/* 1.0.1 (BUG-10): invalid-field cue for the loan simulator (aria-invalid is
+   set on the field a LoanEngine error maps to). The selectors list the :focus
+   and :focus-visible states so they outrank the global focus ring the moment
+   the field is focused programmatically. The principal is a borderless
+   .amount-input, so it gets an underline instead of a border. */
+.form-control[aria-invalid="true"],
+.form-control[aria-invalid="true"]:focus,
+.form-control[aria-invalid="true"]:focus-visible {
+  border-color: var(--color-expense-val);
+  box-shadow: 0 0 0 3px var(--color-expense-bg);
+}
+
+.amount-input[aria-invalid="true"],
+.amount-input[aria-invalid="true"]:focus,
+.amount-input[aria-invalid="true"]:focus-visible {
+  box-shadow: inset 0 -2px 0 var(--color-expense-val);
 }

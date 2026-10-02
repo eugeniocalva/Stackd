@@ -17,6 +17,66 @@ function esc(text) {
   return escapeAttr(text);
 }
 
+// 1.0.1 (BUG-18): shared inline field validation. Replaces the old 1-second
+// background flash, which happened off-screen when the field sat above the
+// fold (#router-view is the only scroller). The message lands under the field
+// (inside its .form-group, else its parent — e.g. #tx-recurrence-end-date has
+// no .form-group and the error correctly goes into #tx-recurrence-end-group),
+// or right after `opts.after` when given. The field is scrolled into view and
+// focused unless `opts.focus === false`. Inline styles on purpose: stylesheets
+// carry no ?v= cache-busting. Validation dispatches nothing, so no coalesced
+// re-render wipes the message; the next real render replaces the whole form.
+function clearFieldError(field) {
+  if (!field) return;
+  // A direct reference first, so detached DOM (unit tests, a sheet being
+  // rebuilt) never stacks duplicates; the id lookup is the fallback.
+  const err = field._fieldErrorEl || document.getElementById((field.id || 'field') + '-error');
+  if (err && err.parentNode) err.parentNode.removeChild(err);
+  field._fieldErrorEl = null;
+  field.removeAttribute('aria-invalid');
+  field.removeAttribute('aria-describedby');
+}
+
+function showFieldError(field, message, opts) {
+  if (!field) return null;
+  const o = opts || {};
+  clearFieldError(field);
+  const err = document.createElement('div');
+  err.className = 'field-error';
+  err.id = (field.id || 'field') + '-error';
+  err.setAttribute('role', 'alert');
+  // The amount sits in .amount-input-group (48px vertical margins): pull the
+  // message up under the figure instead of leaving it floating mid-gap.
+  err.style.cssText = 'color: var(--color-expense); font-size: var(--text-sm); line-height: 1.4; margin-top: var(--space-2);'
+    + (o.after ? ' text-align: center; margin-top: calc(var(--space-12) * -1 + var(--space-2)); margin-bottom: var(--space-6);' : '');
+  err.textContent = message;
+  if (o.after) o.after.insertAdjacentElement('afterend', err);
+  else (field.closest('.form-group') || field.parentElement || document.body).appendChild(err);
+  field._fieldErrorEl = err;
+  field.setAttribute('aria-invalid', 'true');
+  field.setAttribute('aria-describedby', err.id);
+  const clear = () => { if (field._fieldErrorEl === err) clearFieldError(field); };
+  field.addEventListener('input', clear, { once: true });
+  field.addEventListener('change', clear, { once: true });
+  if (o.focus !== false) {
+    if (typeof field.scrollIntoView === 'function') {
+      try { field.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* jsdom / old WebView */ }
+    }
+    try { field.focus({ preventScroll: true }); } catch (e) { try { field.focus(); } catch (e2) { /* not focusable */ } }
+  }
+  return err;
+}
+
+function clearFieldErrors(root) {
+  const scope = root || document;
+  scope.querySelectorAll('.field-error').forEach(e => e.remove());
+  scope.querySelectorAll('[aria-invalid="true"]').forEach(f => {
+    f._fieldErrorEl = null;
+    f.removeAttribute('aria-invalid');
+    f.removeAttribute('aria-describedby');
+  });
+}
+
 function createCategoryOptions(categories, selectedId, includeDefaultOption = true) {
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
@@ -141,15 +201,20 @@ window.Views = {
       const prevNet = prevSummary.net;
       const prevBalance = window.Store.getBalanceAtDate(prevPeriod.type === 'custom' ? prevPeriod.end : window.Store._getPeriodBounds(prevPeriod.type, prevPeriod.value).end, filters.accounts);
       
-      // v1.04: when prevNet is 0 the ratio is undefined, so fall back to ±100% —
-      // signed by the direction of `delta`, not a bare +100 (a -500 net flow
-      // against a flat previous period is a fall, not a rise).
-      const pct = prevNet !== 0 ? ((delta - prevNet) / Math.abs(prevNet)) * 100 : (delta !== 0 ? (delta > 0 ? 100 : -100) : 0);
+      // 1.0.1 (BUG-12): when the previous period netted (under a cent of) zero
+      // the ratio has no basis — no percentage at all, a neutral '—' pill (the
+      // same rule as the savings widget and the dashboard hero). The v1.04 ±100%
+      // fallback read '-100.0%' on every 1st of the month, when the like-for-like
+      // comparison window is a single, usually empty, day. Sub-cent float
+      // baselines (0.1 + 0.2 - 0.3) count as no basis too.
+      const hasBasis = Math.round(prevNet * 100) !== 0;
+      const pct = hasBasis ? ((delta - prevNet) / Math.abs(prevNet)) * 100 : null;
 
       // The NET CHANGE tile reports this period's own net flow, so its sign and
-      // colour follow `delta`.
-      const isPositive = delta >= 0;
-      const sign = isPositive ? '+' : '';
+      // colour follow `delta` — rounded to cents so float dust never renders a
+      // red '-€0.00'.
+      const deltaC = Math.round(delta * 100) / 100;
+      const isPositive = deltaC >= 0;
       const color = isPositive ? 'var(--color-income-val)' : 'var(--color-expense)';
 
       // v1.04: the badge reports `pct` — the change AGAINST the previous period —
@@ -158,10 +223,15 @@ window.Views = {
       // but below last period's, because `pct.toFixed` already carries the minus.
       // Sign, arrow and colour all follow `pct` so the pill reads consistently:
       // up and green means better than last period, down and red means worse.
-      const pctPositive = pct >= 0;
-      const pctSign = pctPositive ? '+' : '';
-      const bgColor = pctPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)';
-      const textColor = pctPositive ? 'var(--color-income-text)' : 'var(--color-expense)';
+      // 1.0.1 (BUG-09/12): the text is Store.formatPercent (locale decimals,
+      // ASCII '-', '—' with no basis); a value that DISPLAYS as zero is never
+      // painted as a fall.
+      const pctText = window.Store.formatPercent(pct, { digits: 1, signed: true });
+      const pctPositive = hasBasis && !pctText.startsWith('-');
+      const pctIcon = !hasBasis ? 'minus' : (pctPositive ? 'trending-up' : 'trending-down');
+      const bgColor = !hasBasis ? 'var(--bg-surface-sunken)' : (pctPositive ? 'var(--color-income-bg)' : 'var(--color-expense-bg)');
+      const textColor = !hasBasis ? 'var(--text-secondary)' : (pctPositive ? 'var(--color-income-text)' : 'var(--color-expense)');
+      const noBasisAttr = hasBasis ? '' : ` title="${window.I18n.t('analytics.noComparison')}" aria-label="${window.I18n.t('analytics.noComparison')}"`;
       
       const deltaLabel = window.I18n.t(`analytics.${clampToToday ? 'vsLastToDate' : 'vsLast'}.${activePeriod.type}`);
 
@@ -179,7 +249,9 @@ window.Views = {
       // v0.61 - Same autosizing as the History summary bar. The hero figure is its own
       // group; the two tiles beneath it share a size with each other.
       const balanceStr = window.Store.formatCurrency(currentBalance);
-      const deltaStr   = `${sign}${window.Store.formatCurrency(Math.abs(delta))}`;
+      // 1.0.1 (BUG-12): a real minus on a net outflow (formatCurrency prefixes
+      // '-'), '+' only above zero — the History summary convention.
+      const deltaStr   = `${deltaC > 0 ? '+' : ''}${window.Store.formatCurrency(deltaC)}`;
       const prevStr    = window.Store.formatCurrency(prevBalance);
 
       // Card content width: container inner width less the card's 32px side padding.
@@ -243,8 +315,8 @@ window.Views = {
 
             <!-- DYNAMIC DELTA BADGE -->
             <div style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 6px 12px; border-radius: 20px; background: ${bgColor}; color: ${textColor}; font-weight: 700; font-size: 0.85rem; margin-bottom: var(--space-6);">
-              <i data-lucide="${pctPositive ? 'trending-up' : 'trending-down'}" style="width: 14px; height: 14px;"></i>
-              <span>${pctSign}${pct.toFixed(1)}%</span>
+              <i data-lucide="${pctIcon}" style="width: 14px; height: 14px;"></i>
+              <span${noBasisAttr}>${pctText}</span>
               <span style="opacity: 0.8; font-weight: 500; margin-left: 2px;">${deltaLabel}</span>
             </div>
             ${balanceModeToggleHtml}
@@ -405,7 +477,7 @@ window.Views = {
 
         const formattedAbs = window.Store.formatCurrency(absVal);
         const signedAbs = absVal > 0 ? `+${formattedAbs}` : formattedAbs;
-        const signedPct = pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
+        const signedPct = window.Store.formatPercent(pct, { digits: 1, signed: true }); // 1.0.1 (BUG-09)
 
         return { abs: signedAbs, pct: window.I18n.t('dash.vsStartOfMonth', { pct: signedPct }), color };
       };
@@ -732,33 +804,73 @@ window.Views = {
       const rangeStart = filters.period.type === 'custom' ? filters.period.start : bounds.start;
       const rangeEnd = filters.period.type === 'custom' ? filters.period.end : bounds.end;
 
-      const startBalance = state.transactions
-        .filter(t => {
-            // v1.02: an empty filter means all PRIMARY-currency accounts (plan §6)
-            const matchAcc = filters.accounts.length === 0 ? window.Store._isPrimaryAccount(t.accountId) : filters.accounts.includes(t.accountId);
-            return matchAcc && t.date < rangeStart;
-        })
-        .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
-        
-      const endBalance = state.transactions
-        .filter(t => {
-            const matchAcc = filters.accounts.length === 0 ? window.Store._isPrimaryAccount(t.accountId) : filters.accounts.includes(t.accountId);
-            return matchAcc && t.date <= rangeEnd;
-        })
-        .reduce((sum, tx) => window.Store._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount, 0);
+      // 1.0.1 (BUG-04) One rule for the day footers AND the filtered summary:
+      // unpaid rows, transfer legs and (with no account filter) foreign-currency
+      // rows never count; opening_balance rows are signed by their amount.
+      const signedRowAmount = (tx) => {
+        if (tx.isPaid === false) return 0;
+        // v1.02: with no account filter, foreign-currency rows stay VISIBLE
+        // in the list but out of the (primary-currency) sums.
+        if (filters.accounts.length === 0 && !window.Store._isPrimaryAccount(tx.accountId)) return 0;
+        if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') return 0;
+        const isOpeningBalance = tx.type === 'opening_balance';
+        if (tx.type === 'income' || (isOpeningBalance && tx.amount >= 0)) return Math.abs(tx.amount);
+        if (tx.type === 'expense' || (isOpeningBalance && tx.amount < 0)) return -Math.abs(tx.amount);
+        return 0;
+      };
 
-      const netChange = endBalance - startBalance;
+      // 1.0.1 (BUG-04) A category, type or tag filter narrows the LIST to a
+      // subset of rows, so account balances (Start/End) would answer a
+      // different question than the list below. Those filters switch the card
+      // to In / Out / Net of the visible rows; an account-only filter keeps
+      // Start/End. Guarded like getFilteredTransactions (tags may be absent).
+      const isRowFiltered = (filters.categories || []).length > 0 ||
+        (filters.types || []).length > 0 ||
+        (Array.isArray(filters.tags) && filters.tags.length > 0);
 
-      const startBalColor  = startBalance > 0 ? 'var(--color-income)' : (startBalance < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
-      const endBalColor    = endBalance   > 0 ? 'var(--color-income)' : (endBalance   < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+      let cell1Label, cell1Value, cell1Color, cell2Label, cell2Value, cell2Color, netChange;
+      if (isRowFiltered) {
+        let inSum = 0;
+        let outSum = 0;
+        visibleTx.forEach(tx => {
+          const v = signedRowAmount(tx);
+          if (v > 0) inSum += v;
+          else if (v < 0) outSum += -v;
+        });
+        netChange  = inSum - outSum; // = the sum of the visible day footers
+        cell1Label = window.I18n.t('history.in');
+        cell1Value = inSum;
+        cell1Color = inSum > 0 ? 'var(--color-income)' : 'var(--color-balance-val)';
+        cell2Label = window.I18n.t('history.out');
+        cell2Value = -outSum;
+        cell2Color = outSum > 0 ? 'var(--color-expense)' : 'var(--color-balance-val)';
+      } else {
+        // 1.0.1 (BUG-05) One rule app-wide: getBalanceAtDate drops unpaid rows
+        // and rows dated before an account's opening date; [] = primary-currency
+        // accounts (v1.02). START is exclusive of rangeStart, so it is the
+        // balance at the day before (Store's noon-anchored stepper; a non-date
+        // falls back to the old lexical behaviour).
+        const startCutoff  = rangeStart ? (window.Store._calculateNextRecurrenceDate(rangeStart, -1, 'days') || rangeStart) : '';
+        const startBalance = startCutoff ? window.Store.getBalanceAtDate(startCutoff, filters.accounts) : 0;
+        const endBalance   = rangeEnd ? window.Store.getBalanceAtDate(rangeEnd, filters.accounts) : 0;
+        netChange  = endBalance - startBalance;
+        cell1Label = window.I18n.t('history.start');
+        cell1Value = startBalance;
+        cell1Color = startBalance > 0 ? 'var(--color-income)' : (startBalance < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+        cell2Label = window.I18n.t('history.end');
+        cell2Value = endBalance;
+        cell2Color = endBalance   > 0 ? 'var(--color-income)' : (endBalance   < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
+      }
+      const netLabel = window.I18n.t(isRowFiltered ? 'history.net' : 'history.netChange');
+
       const netChangeColor = netChange    > 0 ? 'var(--color-income)' : (netChange    < 0 ? 'var(--color-expense)' : 'var(--color-balance-val)');
       const netChangeSign  = netChange > 0 ? '+' : '';
 
       // v0.61 - Autosize the three figures as one group so they stay the same size as
       // each other. Net Change was the first to wrap because its leading '+' costs a
       // whole character the other two never pay.
-      const startStr = window.Store.formatCurrency(startBalance);
-      const endStr   = window.Store.formatCurrency(endBalance);
+      const startStr = window.Store.formatCurrency(cell1Value);
+      const endStr   = window.Store.formatCurrency(cell2Value);
       const netStr   = `${netChangeSign}${window.Store.formatCurrency(netChange)}`;
 
       // Usable width of one cell: container inner width (capped at 600px, less its 16px
@@ -777,7 +889,11 @@ window.Views = {
       const foreignNote = (!filters.accounts.length && window.Store.foreignAccountCount() > 0)
         ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin: 0 2px var(--space-2);">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>`
         : '';
-      const balanceSummaryHtml = foreignNote + `
+      // 1.0.1 (BUG-04) caption so In / Out / Net read as a total of the filtered rows
+      const filteredNote = isRowFiltered
+        ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin: 0 2px var(--space-2);">${window.I18n.t('history.filteredTotal')}</div>`
+        : '';
+      const balanceSummaryHtml = filteredNote + foreignNote + `
         <div style="
           background: var(--bg-surface);
           border: 1px solid var(--color-border);
@@ -790,19 +906,19 @@ window.Views = {
 
             <!-- Start Balance -->
             <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
-              <div style="${summaryLabelStyle}">${window.I18n.t('history.start')}</div>
-              <div style="${summaryValueStyle} color: ${startBalColor};">${startStr}</div>
+              <div style="${summaryLabelStyle}">${cell1Label}</div>
+              <div style="${summaryValueStyle} color: ${cell1Color};">${startStr}</div>
             </div>
 
             <!-- End Balance -->
             <div style="${summaryCellStyle} border-right: 1px solid var(--color-border);">
-              <div style="${summaryLabelStyle}">${window.I18n.t('history.end')}</div>
-              <div style="${summaryValueStyle} color: ${endBalColor};">${endStr}</div>
+              <div style="${summaryLabelStyle}">${cell2Label}</div>
+              <div style="${summaryValueStyle} color: ${cell2Color};">${endStr}</div>
             </div>
 
             <!-- Net Change -->
             <div style="${summaryCellStyle} background: var(--bg-surface-sunken);">
-              <div style="${summaryLabelStyle}">${window.I18n.t('history.netChange')}</div>
+              <div style="${summaryLabelStyle}">${netLabel}</div>
               <div style="${summaryValueStyle} color: ${netChangeColor};">${netStr}</div>
             </div>
 
@@ -834,22 +950,8 @@ window.Views = {
             weekday: 'short', month: 'short', day: 'numeric'
           });
 
-          const daySum = dayTxs.reduce((sum, tx) => {
-            if (tx.isPaid === false) return sum;
-            // v1.02: with no account filter, foreign-currency rows stay VISIBLE
-            // in the list but out of the (primary-currency) day footer.
-            if (filters.accounts.length === 0 && !window.Store._isPrimaryAccount(tx.accountId)) return sum;
-            if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') {
-              return sum;
-            }
-            const isOpeningBalance = tx.type === 'opening_balance';
-            if (tx.type === 'income' || (isOpeningBalance && tx.amount >= 0)) {
-              return sum + Math.abs(tx.amount);
-            } else if (tx.type === 'expense' || (isOpeningBalance && tx.amount < 0)) {
-              return sum - Math.abs(tx.amount);
-            }
-            return sum;
-          }, 0);
+          // 1.0.1 (BUG-04) same rule as the filtered summary (signedRowAmount)
+          const daySum = dayTxs.reduce((sum, tx) => sum + signedRowAmount(tx), 0);
 
           const sumColor = daySum > 0 ? 'var(--color-income)' : (daySum < 0 ? 'var(--color-expense)' : 'var(--text-secondary)');
           const formattedSum = window.Store.formatCurrency(daySum);
@@ -1034,18 +1136,15 @@ window.Views = {
             content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">${window.I18n.t('history.bulkDelete.confirm', { count })} <strong>${window.I18n.t('common.cannotUndo')}</strong></p>`,
             saveText: window.I18n.t('common.cancel'),
             showDelete: true,
+            // 1.0.1 (BUG-20): labelled up front (was a 10ms setTimeout relabel
+            // that flashed the generic "Delete" first).
+            deleteText: window.I18n.t('history.bulkDelete.button', { count }),
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
               window.Store.dispatch('DELETE_BULK_TRANSACTIONS', { ids: selectedIds, deleteFuture: false });
               closeModal();
             }
           });
-          setTimeout(() => {
-            const btnModalSave = document.getElementById('modal-save-btn');
-            const btnModalDelete = document.getElementById('modal-delete-btn');
-            if (btnModalSave) btnModalSave.className = 'btn btn-secondary';
-            if (btnModalDelete) btnModalDelete.innerHTML = window.I18n.t('history.bulkDelete.button', { count });
-          }, 10);
         } else {
           window.Components.Modal.show({
             title: window.I18n.t('history.bulkRecurring.title'),
@@ -1062,6 +1161,11 @@ window.Views = {
             `,
             saveText: window.I18n.t('common.cancel'),
             showDelete: false,
+            // 1.0.1 (BUG-20): saveText is already the "Cancel" — no second
+            // footer Cancel, and it stays secondary under the in-content
+            // destructive options.
+            showCancel: false,
+            saveClass: 'btn-secondary',
             onSave: (closeModal) => closeModal()
           });
 
@@ -1129,6 +1233,8 @@ window.Views = {
               content: `<p style="color: var(--text-secondary); margin-bottom: 12px;">${window.I18n.t('history.recurringDelete.body')}</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 ${window.I18n.t('history.recurringDelete.onlyThis')}</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 ${window.I18n.t('history.recurringDelete.withFuture')}</button></div>`,
               saveText: window.I18n.t('common.cancel'),
               showDelete: false,
+              showCancel: false, // 1.0.1 (BUG-20): saveText is the Cancel
+              saveClass: 'btn-secondary',
               onSave: (closeModal) => closeModal()
             });
             setTimeout(() => {
@@ -1528,7 +1634,7 @@ window.Views = {
             <div class="form-group" id="group-category" style="display: ${initialType === 'transfer' ? 'none' : 'block'};">
               <div class="form-label" style="display:flex; justify-content: space-between;">
                 <label for="tx-category">${window.I18n.t('form.category')}</label>
-                <button id="btn-add-category" class="btn-text" style="color: var(--color-accent); cursor: pointer; border: none; background: transparent; font-weight: 600; font-size: inherit; padding: 0;">${window.I18n.t('form.addCustom')}</button>
+                <button id="btn-add-category" class="btn-text" style="color: var(--color-accent); cursor: pointer; border: none; background: transparent; font-weight: 600; font-size: inherit; padding: 16px 0 8px; margin: -16px 0 -8px;">${window.I18n.t('form.addCustom')}</button>
               </div>
               <select id="tx-category" class="form-control" style="appearance: none;" data-initial="${initialCategory}">
                 <!-- Will be populated via JS based on type -->
@@ -1635,11 +1741,26 @@ window.Views = {
       const btnDelete = document.getElementById('btn-delete-tx');
       const btnAddCategory = document.getElementById('btn-add-category');
       
+      // 1.0.1 (BUG-08): the row being edited, to keep its stored category
+      // selectable after that category was re-typed (e.g. 'both' → 'expense'
+      // while income rows still use it). Without this the typeHint filter
+      // resolved the select to '' — which used to wipe the category silently on
+      // save and would now block the save with "Choose a category."
+      const editIdEl = document.getElementById('tx-edit-id');
+      const editedTx = editIdEl ? (state.transactions || []).find(t => t.id === editIdEl.value) : null;
+      const editedType = editedTx
+        ? (editedTx.transferRef ? 'transfer' : (editedTx.type === 'opening_balance' ? 'income' : editedTx.type))
+        : null;
+
       // Update categories based on Type
       const updateCategories = () => {
         const type = typeInput.value;
         const latestCategories = window.Store.getState().categories;
-        const filteredCategories = latestCategories.filter(c => c.typeHint === type || c.typeHint === 'both');
+        let filteredCategories = latestCategories.filter(c => c.typeHint === type || c.typeHint === 'both');
+        if (editedTx && editedTx.categoryId && type === editedType && !filteredCategories.some(c => c.id === editedTx.categoryId)) {
+          const stored = latestCategories.find(c => c.id === editedTx.categoryId);
+          if (stored) filteredCategories = filteredCategories.concat(stored);
+        }
         // Retrieve initial selection constraint
         const initialSelected = categorySelect.getAttribute('data-initial') || categorySelect.value;
         categorySelect.innerHTML = createCategoryOptions(filteredCategories, initialSelected, true);
@@ -1683,12 +1804,53 @@ window.Views = {
           groupTransferTo.style.display = 'block';
           labelAccount.textContent = window.I18n.t('form.fromAccount');
         }
-        
+
+        // 1.0.1 (BUG-08): a type switch rebuilds the options without a change
+        // event — drop any stale message left in the (maybe hidden) groups.
+        clearFieldError(categorySelect);
+        clearFieldError(document.getElementById('tx-transfer-to'));
         updateCategories();
       };
-      
+
       // Initial populate
       updateUIVisibility();
+
+      // 1.0.1 (BUG-21): the To list never offers the From account. Rebuilding
+      // the options (rather than option.hidden, which native mobile pickers
+      // don't reliably honor) keeps the current To when it still differs from
+      // From; moving From onto the current To swaps (To takes the old From).
+      // Render HTML is untouched, so the initial `selected` markup stays.
+      const accountSelect = document.getElementById('tx-account');
+      const transferToSelect = document.getElementById('tx-transfer-to');
+      if (accountSelect && transferToSelect) {
+        let lastFrom = accountSelect.value;
+        const syncTransferTo = (isInitial) => {
+          const from = accountSelect.value;
+          const cur = transferToSelect.value;
+          const others = window.Store.getState().accounts.filter(a => a.id !== from);
+          // A legacy/corrupt transfer whose two legs sit on the same account:
+          // make the user pick To explicitly instead of silently rewriting the
+          // counterpart's account; the save check catches the '' placeholder.
+          if (isInitial && editIdEl && document.getElementById('tx-transfer-ref') && cur && cur === from && others.length) {
+            transferToSelect.innerHTML = `<option value="" selected disabled>${esc(window.I18n.t('form.toAccount'))}</option>` + createAccountOptions(others, '');
+            transferToSelect.value = '';
+            lastFrom = from;
+            return;
+          }
+          const keep = (cur && cur !== from) ? cur : (lastFrom !== from ? lastFrom : '');
+          transferToSelect.innerHTML = createAccountOptions(others, keep);
+          if (keep && others.some(a => a.id === keep)) transferToSelect.value = keep;
+          lastFrom = from;
+        };
+        syncTransferTo(true);
+        accountSelect.addEventListener('change', () => {
+          syncTransferTo(false);
+          clearFieldError(transferToSelect);
+          // Adjacent nit: the amount's currency symbol follows the account.
+          const sym = document.getElementById('currency-symbol');
+          if (sym) sym.textContent = window.Store.getCurrencySymbol(window.Store.getAccountCurrency(accountSelect.value));
+        });
+      }
       
       // Focus amount on load if not edit
       if (!document.getElementById('tx-edit-id')) {
@@ -1774,7 +1936,7 @@ window.Views = {
           title: window.I18n.t('form.newCategory'),
           content: `
             <div class="form-group">
-              <label class="form-label">${window.I18n.t('form.categoryName')}</label>
+              <label class="form-label" for="new-cat-name">${window.I18n.t('form.categoryName')}</label>
               <input type="text" id="new-cat-name" class="form-control" placeholder="${window.I18n.t('form.categoryNamePlaceholder')}">
             </div>
             <div class="form-group">
@@ -1787,28 +1949,41 @@ window.Views = {
           `,
           saveText: window.I18n.t('form.createCategory'),
           onSave: (closeModal) => {
-            const name = document.getElementById('new-cat-name').value.trim();
-            if (name) {
-              const newId = window.StackdDB.generateId();
-              window._pendingCategorySelection = newId;
-              const newCat = { 
-                id: newId,
-                name, 
-                icon: selectedIcon, 
-                typeHint: typeInput.value 
-              };
-              window.Store.dispatch('ADD_CATEGORY', newCat);
+            const nameInput = document.getElementById('new-cat-name');
+            const name = nameInput.value.trim();
+            // 1.0.1 (BUG-18): an empty name used to be ignored silently (the
+            // sheet just stayed open). 1.0.1 (BUG-11): names are unique across
+            // every type, trimmed and case-insensitive — a duplicate broke the
+            // by-name CSV restore. The sheet stays open on either error.
+            if (!name) {
+              showFieldError(nameInput, window.I18n.t('cat.nameRequired'));
+              return;
+            }
+            const clash = window.Store.findCategoryByName(name);
+            if (clash) {
+              showFieldError(nameInput, window.I18n.t('cat.duplicateName', { name: clash.name }));
+              return;
+            }
+            const newId = window.StackdDB.generateId();
+            window._pendingCategorySelection = newId;
+            const newCat = { 
+              id: newId,
+              name, 
+              icon: selectedIcon, 
+              typeHint: typeInput.value 
+            };
+            window.Store.dispatch('ADD_CATEGORY', newCat);
 
-              updateCategories();
-              categorySelect.value = newId;
-              categorySelect.setAttribute('data-initial', newId);
-              previousCategory = newId;
+            updateCategories();
+            categorySelect.value = newId;
+            categorySelect.setAttribute('data-initial', newId);
+            previousCategory = newId;
+            clearFieldError(categorySelect);
 
-              closeModal();
+            closeModal();
 
-              if (typeof onCreatedCallback === 'function') {
-                onCreatedCallback(newCat);
-              }
+            if (typeof onCreatedCallback === 'function') {
+              onCreatedCallback(newCat);
             }
           },
           onClose: () => {
@@ -1856,6 +2031,8 @@ window.Views = {
             categorySelect.value = catId;
             categorySelect.setAttribute('data-initial', catId);
             previousCategory = catId;
+            // 1.0.1 (BUG-08): a programmatic .value fires no change event.
+            clearFieldError(categorySelect);
             // v0.71: picking an existing category dispatches nothing, so no
             // re-render consumes the draft captured above. Left behind, it
             // would repopulate the NEXT #add visit — including a live
@@ -1982,7 +2159,10 @@ window.Views = {
          noteDebounceTimer = setTimeout(() => {
             const matches = window.Store.getAllUniqueNotes(val);
             if (matches.length > 0) {
-               noteAutocomplete.innerHTML = matches.map(n => `<div class="note-suggestion touch-target" data-note="${n}" style="padding: 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 14px;">${n}</div>`).join('');
+               // 1.0.1 (BUG-14): stored notes are free text (now incl. the
+               // "Transfer to deleted account …" note, which carries an account
+               // name) — escape both the attribute and the text.
+               noteAutocomplete.innerHTML = matches.map(n => `<div class="note-suggestion touch-target" data-note="${escapeAttr(n)}" style="padding: 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 14px;">${esc(n)}</div>`).join('');
                noteAutocomplete.style.display = 'block';
                
                container.querySelectorAll('.note-suggestion').forEach(item => {
@@ -2022,17 +2202,28 @@ window.Views = {
            addTag(tagsInput.value);
         }
 
+        // 1.0.1 (BUG-08/BUG-18): validate every required field in one pass —
+        // inline messages under each field, focus (and scroll to) the first.
+        // UI-only: the store stays ungated, imports legitimately insert ''
+        // categories. Applies to edits of imported uncategorized rows too.
+        clearFieldErrors(container);
         const type = typeInput.value;
         const amount = parseFloat(amountInput.value);
+        const categoryId = categorySelect.value;
+        const invalid = [];
         if (isNaN(amount) || amount <= 0) {
-          amountInput.style.backgroundColor = 'var(--color-expense-bg)';
-          setTimeout(() => amountInput.style.backgroundColor = 'transparent', 1000);
+          invalid.push([amountInput, 'form.amountRequired', { after: amountInput.closest('.amount-input-group') }]);
+        }
+        if (type !== 'transfer' && !categoryId) {
+          invalid.push([categorySelect, 'form.categoryRequired', {}]);
+        }
+        if (invalid.length) {
+          invalid.forEach(([el, key, o], i) => showFieldError(el, window.I18n.t(key), Object.assign({ focus: i === 0 }, o)));
           return;
         }
 
         const accountId = document.getElementById('tx-account').value;
         const toAccountId = document.getElementById('tx-transfer-to').value;
-        const categoryId = categorySelect.value;
         const date = document.getElementById('tx-date').value;
         const timeEl = document.getElementById('tx-time');
         const customTime = (timeEl && timeEl.value) ? (timeEl.value.length === 5 ? timeEl.value + ':00' : timeEl.value) : undefined;
@@ -2064,7 +2255,19 @@ window.Views = {
 
         // v0.67: validate the recurrence window before anything dispatches
         if (recurrenceData && recurrenceData.endDate && recurrenceData.endDate < date) {
-          alert(window.I18n.t('form.recurrenceEndBeforeDate'));
+          // 1.0.1 (BUG-21): inline, not a system alert()
+          showFieldError(document.getElementById('tx-recurrence-end-date'), window.I18n.t('form.recurrenceEndBeforeDate'));
+          return;
+        }
+
+        // 1.0.1 (BUG-21): the To check runs BEFORE the scope gate below, so the
+        // Recurring{Update,Creation}Modal never precedes a refusal. The To list
+        // already excludes From, so '' means a single-account user (nothing to
+        // pick) or the legacy same-account placeholder (must pick).
+        if (type === 'transfer' && (!toAccountId || toAccountId === accountId)) {
+          const hasOther = window.Store.getState().accounts.some(a => a.id !== accountId);
+          showFieldError(document.getElementById('tx-transfer-to'),
+            window.I18n.t(hasOther ? 'form.sameAccountTransfer' : 'form.transferNeedsTwoAccounts'));
           return;
         }
 
@@ -2095,11 +2298,6 @@ window.Views = {
         const doDispatch = (scope) => {
           // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
-            if (accountId === toAccountId) {
-              alert(window.I18n.t('form.sameAccountTransfer'));
-              return;
-            }
-
             if (isEditSave) {
               const transferRefEl = document.getElementById('tx-transfer-ref');
               const transferRef = transferRefEl ? transferRefEl.value : null;
@@ -2449,7 +2647,7 @@ Object.assign(window.Views, {
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group">
               <label class="form-label" for="edit-cat-name">${window.I18n.t('form.categoryName')}</label>
-              <input type="text" id="edit-cat-name" class="form-control" value="${name}" placeholder="${window.I18n.t('cat.namePlaceholder')}" autocomplete="off">
+              <input type="text" id="edit-cat-name" class="form-control" value="${escapeAttr(name)}" placeholder="${window.I18n.t('cat.namePlaceholder')}" autocomplete="off">
             </div>
 
             <div class="form-group">
@@ -2519,9 +2717,18 @@ Object.assign(window.Views, {
         saveCatBtn.addEventListener('click', () => {
           const nameInput = document.getElementById('edit-cat-name');
           const name = nameInput.value.trim();
+          // 1.0.1 (BUG-18): inline message + focus instead of a 1 s flash.
           if (!name) {
-            nameInput.style.backgroundColor = 'var(--color-expense-bg)';
-            setTimeout(() => nameInput.style.backgroundColor = 'transparent', 1000);
+            showFieldError(nameInput, window.I18n.t('cat.nameRequired'));
+            return;
+          }
+          // 1.0.1 (BUG-11): unique names across all types (trimmed, case-
+          // insensitive). Checked only when the name actually changes, so a
+          // pre-existing duplicate can still save an icon/type edit.
+          const nameChanged = !cat || name.toLowerCase() !== String(cat.name == null ? '' : cat.name).trim().toLowerCase();
+          const clash = nameChanged ? window.Store.findCategoryByName(name, catId) : null;
+          if (clash) {
+            showFieldError(nameInput, window.I18n.t('cat.duplicateName', { name: clash.name }));
             return;
           }
 
@@ -2606,19 +2813,33 @@ Object.assign(window.Views, {
           totalSpent += bdg.spent;
         }
 
-        const pct = hasBudget && bdg.finalLimit > 0
-          ? Math.min((bdg.spent / bdg.finalLimit) * 100, 100)
-          : 0;
-        const isOver = hasBudget && bdg.spent > bdg.finalLimit;
+        // 1.0.1 (BUG-13): the 100 cap is for the BAR only — the label shows the
+        // real usage ('195%'), or '—' when the effective limit is not positive.
+        // Over/rollover are decided in cents: spent and carryover are float
+        // sums, and dust must never read 'Over by €0.00' or '-€0.00 rollover'.
+        const usedPct = hasBudget && bdg.finalLimit > 0 ? (bdg.spent / bdg.finalLimit) * 100 : null;
+        const pct = usedPct === null ? 0 : Math.min(usedPct, 100); // bar width + colour thresholds
+        const overC = hasBudget ? Math.round((bdg.spent - bdg.finalLimit) * 100) : 0;
+        const isOver = overC > 0;
         const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
-        const pctColor = isOver || pct >= 90 ? 'var(--color-expense)' : pct >= 75 ? '#f59e0b' : 'var(--text-secondary)';
+        // Text colours use the AA-contrast pairs (as the Home budgets widget
+        // since v0.83) now that the label can carry an overspend figure.
+        const pctColor = isOver || pct >= 90 ? 'var(--color-expense-val)' : pct >= 75 ? 'var(--color-warning-text)' : 'var(--text-secondary)';
 
         let carryOverBadge = '';
-        if (hasBudget && bdg.carryover !== 0) {
-          const sign = bdg.carryover > 0 ? '+' : '';
-          const cf = window.Store.formatCurrency(Math.abs(bdg.carryover));
-          carryOverBadge = `<span style="font-size: 0.7rem; padding: 2px 6px; background: var(--bg-surface-sunken); border-radius: 12px; margin-left: 6px; color: var(--text-secondary);">${window.I18n.t('budget.rolloverBadge', { amount: sign + cf })}</span>`;
+        const coC = hasBudget ? Math.round(bdg.carryover * 100) : 0;
+        if (coC !== 0) {
+          // 1.0.1 (BUG-13): signed both ways (formatCurrency keeps the '-'); a
+          // deficit carried in takes the expense colour, a surplus stays neutral.
+          const amount = `${coC > 0 ? '+' : ''}${window.Store.formatCurrency(coC / 100)}`;
+          const tone = coC < 0
+            ? 'background: var(--color-expense-bg); color: var(--color-expense-text);'
+            : 'background: var(--bg-surface-sunken); color: var(--text-secondary);';
+          carryOverBadge = `<span class="budget-rollover-badge${coC < 0 ? ' is-deficit' : ''}" style="font-size: 0.7rem; padding: 2px 6px; ${tone} border-radius: 12px; margin-left: 6px;">${window.I18n.t('budget.rolloverBadge', { amount })}</span>`;
         }
+        const overByHtml = isOver
+          ? ` <span class="budget-over-by" style="color: var(--color-expense-val); font-weight: 600;">· ${window.I18n.t('budget.overBy', { amount: window.Store.formatCurrency(overC / 100) })}</span>`
+          : '';
 
         if (hasBudget) {
           const limitFormatted = window.Store.formatCurrency(bdg.finalLimit);
@@ -2630,10 +2851,10 @@ Object.assign(window.Views, {
                   <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${cat.name}${carryOverBadge}</div>
-                    <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span></div>
+                    <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span>${overByHtml}</div>
                   </div>
                 </div>
-                <div style="font-size: 0.8rem; font-weight: 700; color: ${pctColor};">${pct.toFixed(0)}%</div>
+                <div class="budget-used-pct" style="font-size: 0.8rem; font-weight: 700; color: ${pctColor};">${window.Store.formatPercent(usedPct)}</div>
               </div>
               <div style="width: 100%; height: 8px; background: var(--bg-surface-sunken); border-radius: 4px; overflow: hidden; margin-top: 4px;">
                 <div style="height: 100%; width: ${pct}%; background: ${barColor}; border-radius: 4px; transition: width 0.4s ease;"></div>
@@ -2678,7 +2899,7 @@ Object.assign(window.Views, {
                 <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
               </button>
 
-              <div id="bdg-month-picker-btn" tabindex="0" role="button" aria-label="${window.I18n.t('budget.currentMonthAria', { month: currMonthLabel })}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
+              <div id="bdg-month-picker-btn" class="hit-target" tabindex="0" role="button" aria-label="${window.I18n.t('budget.currentMonthAria', { month: currMonthLabel })}" style="cursor: pointer; align-self: stretch; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
                 ${currMonthLabel}
               </div>
 
@@ -2694,7 +2915,7 @@ Object.assign(window.Views, {
               <canvas id="budgetChart"></canvas>
               <div class="donut-chart-center">
                 <div class="donut-total-label">${overspent ? window.I18n.t('budget.overspent') : window.I18n.t('budget.allocated')}</div>
-                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(totalAllocated)}</div>
+                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? Math.round((totalSpent - totalAllocated) * 100) / 100 : totalAllocated)}</div>
               </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
@@ -3069,9 +3290,13 @@ Object.assign(window.Views, {
         row.addEventListener('click', () => {
           const tag = row.dataset.tagOpen;
           if (!tag) return;
-          // Span every transaction: a tag list is an all-time index, so the
-          // History period must not hide older matches behind "This Month".
-          const dates = state.transactions.map(t => t.date).filter(Boolean).sort();
+          // A tag list is an all-time index, so the History period must not
+          // hide older matches behind "This Month". 1.0.1 (BUG-04) span the
+          // TAG's own rows, not every transaction (a far-future recurring
+          // member of an unrelated series stretched the range by years).
+          const dates = state.transactions
+            .filter(t => Array.isArray(t.tags) && t.tags.includes(tag))
+            .map(t => t.date).filter(Boolean).sort();
           const pad = (n) => String(n).padStart(2, '0');
           const now = new Date();
           const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -3198,8 +3423,8 @@ Object.assign(window.Views, {
                 </div>
               </div>
               <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-sort-order">
-                <button id="btn-sort-desc" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'desc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'desc'}">DESC</button>
-                <button id="btn-sort-asc" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'asc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'asc'}">ASC</button>
+                <button id="btn-sort-desc" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'desc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'desc'}">DESC</button>
+                <button id="btn-sort-asc" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'asc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'asc'}">ASC</button>
               </div>
             </div>
 
@@ -3229,9 +3454,9 @@ Object.assign(window.Views, {
                 </div>
               </div>
               <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-theme-mode">
-                <button id="btn-theme-light" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">${window.I18n.t('others.themeLight')}</button>
-                <button id="btn-theme-dark" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">${window.I18n.t('others.themeDark')}</button>
-                <button id="btn-theme-system" class="btn" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">${window.I18n.t('others.themeSystem')}</button>
+                <button id="btn-theme-light" class="btn hit-target" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'light' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'light'}">${window.I18n.t('others.themeLight')}</button>
+                <button id="btn-theme-dark" class="btn hit-target" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.theme === 'dark' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.theme === 'dark'}">${window.I18n.t('others.themeDark')}</button>
+                <button id="btn-theme-system" class="btn hit-target" style="width: auto; white-space: nowrap; padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${(!state.theme || state.theme === 'system') ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${!state.theme || state.theme === 'system'}">${window.I18n.t('others.themeSystem')}</button>
               </div>
             </div>
           </div>
@@ -3446,29 +3671,55 @@ Object.assign(window.Views, {
           { code: 'GBP', symbol: '\u00a3', label: window.I18n.t('currency.GBP') },
           { code: 'CNY', symbol: '\u00a5', label: window.I18n.t('currency.CNY') },
         ];
+        // 1.0.1 (BUG-01): two-step picker. A tap (or Enter/Space) only
+        // SELECTS; Done continues; Cancel / backdrop / swipe / Back abort with
+        // nothing applied. A switch that would leave accounts out of totals
+        // goes through Components.CurrencySwitchConfirm (impact + relabel).
         const openCurrencyPicker = () => {
           const current = window.Store.getState().currency || 'USD';
-          const optionsHtml = CURRENCIES.map(c => `
-            <div class="currency-opt list-item" data-code="${c.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px var(--space-4); border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="button">
+          let selected = current;
+          const optionsHtml = () => CURRENCIES.map(c => `
+            <div class="currency-opt list-item" data-code="${c.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px var(--space-4); border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="radio" aria-checked="${c.code === selected ? 'true' : 'false'}">
               <span style="font-size: 1.4rem; width: 32px; text-align: center; font-family: var(--font-family-display); flex-shrink: 0;">${c.symbol}</span>
-              <span style="flex: 1; font-weight: ${c.code === current ? '700' : '400'}; color: ${c.code === current ? 'var(--text-primary)' : 'var(--text-secondary)'}">${c.label}</span>
-              ${c.code === current ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}
+              <span style="flex: 1; font-weight: ${c.code === selected ? '700' : '400'}; color: ${c.code === selected ? 'var(--text-primary)' : 'var(--text-secondary)'}">${c.label}</span>
+              ${c.code === selected ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}
             </div>
           `).join('');
           window.Components.Modal.show({
             title: window.I18n.t('others.chooseCurrency'),
-            content: `<div>${optionsHtml}</div>`,
+            content: `<div id="currency-opts" role="radiogroup" aria-label="${window.I18n.t('others.chooseCurrency')}">${optionsHtml()}</div>`,
             saveText: window.I18n.t('common.done'),
-            onSave: (close) => close()
+            onSave: (close) => {
+              if (selected === current) { close(); return; }
+              const impact = window.Store.currencySwitchImpact(selected);
+              if (impact.excluded === 0) {
+                // No account would drop out of totals: nothing to confirm.
+                window.Store.dispatch('SET_CURRENCY', selected);
+                close();
+                return;
+              }
+              // Hand off WITHOUT close(): Modal.show replaces #active-modal
+              // synchronously, and close() would hide the confirm sheet.
+              window.Components.CurrencySwitchConfirm.show({ prev: current, next: selected, impact });
+            }
           });
-          setTimeout(() => {
-            document.querySelectorAll('.currency-opt').forEach(opt => {
-              opt.addEventListener('click', () => {
-                window.Store.dispatch('SET_CURRENCY', opt.dataset.code);
-                window.Components.Modal.hide();
-              });
+          // Modal.show writes the DOM synchronously, so bind right away.
+          const bindOpts = () => {
+            const wrap = document.getElementById('currency-opts');
+            if (!wrap) return;
+            wrap.querySelectorAll('.currency-opt').forEach(opt => {
+              const pick = () => {
+                selected = opt.dataset.code;
+                wrap.innerHTML = optionsHtml();
+                bindOpts();
+                const chosen = wrap.querySelector(`.currency-opt[data-code="${selected}"]`);
+                if (chosen) chosen.focus();
+              };
+              opt.addEventListener('click', pick);
+              opt.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
             });
-          }, 50);
+          };
+          bindOpts();
         };
         btnCurrency.addEventListener('click', openCurrencyPicker);
         btnCurrency.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCurrencyPicker(); } });
@@ -3491,6 +3742,7 @@ Object.assign(window.Views, {
             title: window.I18n.t('others.chooseLanguage'),
             content: `<div>${optionsHtml}</div>`,
             saveText: window.I18n.t('common.done'),
+            showCancel: false, // 1.0.1 (BUG-20): dismiss-only, no "Done / Cancel"
             onSave: (close) => close()
           });
           setTimeout(() => {
@@ -3547,7 +3799,8 @@ Object.assign(window.Views, {
               // same flow (plan §4).
               if (result.kind === 'bank' || result.kind === 'statement') {
                 if (!state.accounts || state.accounts.length === 0) {
-                  alert(window.I18n.t('bankImport.noAccounts'));
+                  // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
+                  window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });
                 } else if (result.kind === 'statement') {
                   window.Views._ImportShared.startStatement(result.statement, file.name, state);
                   window.Router.navigate('#import-map');
@@ -3583,18 +3836,30 @@ Object.assign(window.Views, {
                   .join('\n');
                 message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
               }
-              alert(message);
+              window.Components.NoticeSheet.show({
+                id: 'import-result-modal',
+                tone: result.skippedCount ? 'info' : 'success',
+                title: window.I18n.t('bankImport.successTitle'),
+                body: message
+              });
               btnImport.textContent = window.I18n.t('others.importCsv');
               btnImport.disabled = false;
               fileInput.value = ''; // reset
             }, (err) => {
-              alert(window.I18n.t('others.importFailed', { message: err.message }));
+              window.Components.NoticeSheet.show({
+                id: 'import-result-modal',
+                tone: 'error',
+                title: window.I18n.t('others.importFailedTitle'),
+                // 1.0.1 (BUG-21): the title already says "Import failed" — the
+                // body carries only the reason (localized fallback when none).
+                body: (err && err.message) || window.I18n.t('others.importFailedBody')
+              });
               btnImport.textContent = window.I18n.t('others.importCsv');
               btnImport.disabled = false;
               fileInput.value = ''; // reset
             });
           } else {
-            alert(window.I18n.t('others.importModuleMissing'));
+            window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', body: window.I18n.t('others.importModuleMissing') });
             btnImport.textContent = window.I18n.t('others.importCsv');
             btnImport.disabled = false;
           }
@@ -3628,6 +3893,7 @@ Object.assign(window.Views, {
               <button id="modal-btn-new-account" class="btn btn-primary" style="width: 100%;">${window.I18n.t('others.createNewAccount')}</button>
             `,
             saveText: window.I18n.t('common.done'),
+            showCancel: false, // 1.0.1 (BUG-20): dismiss-only, no "Done / Cancel"
             onSave: (closeModal) => closeModal()
           });
 
@@ -3720,7 +3986,7 @@ Object.assign(window.Views, {
           <div class="card" style="margin-bottom: var(--space-6);">
             <div class="form-group">
               <label class="form-label" for="edit-acc-name">${window.I18n.t('account.name')}</label>
-              <input type="text" id="edit-acc-name" class="form-control" value="${nameValue}" placeholder="${window.I18n.t('account.namePlaceholder')}" autocomplete="off">
+              <input type="text" id="edit-acc-name" class="form-control" value="${escapeAttr(nameValue)}" placeholder="${window.I18n.t('account.namePlaceholder')}" autocomplete="off">
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
@@ -3986,9 +4252,9 @@ Object.assign(window.Views, {
           const makeDefault = document.getElementById('edit-acc-default').checked;
 
           if (!name) {
-            const nameInput = document.getElementById('edit-acc-name');
-            nameInput.style.backgroundColor = 'var(--color-expense-bg)';
-            setTimeout(() => nameInput.style.backgroundColor = '', 1000);
+            // 1.0.1 (BUG-18): the field may sit above the fold — message,
+            // scroll into view and focus instead of an off-screen 1 s flash.
+            showFieldError(document.getElementById('edit-acc-name'), window.I18n.t('account.nameRequired'));
             return;
           }
 
@@ -4041,6 +4307,8 @@ Object.assign(window.Views, {
             content: `<p>${window.I18n.t('account.deleteConfirm', { name: account.name })} <strong>${window.I18n.t('account.deleteWarning')}</strong></p>`,
             saveText: window.I18n.t('common.cancel'),
             showDelete: true,
+            // 1.0.1 (BUG-20): labelled up front (was a 10ms setTimeout relabel).
+            deleteText: window.I18n.t('account.deleteEverything'),
             onSave: (closeModal) => closeModal(),
             onDelete: (closeModal) => {
               window.Store.dispatch('DELETE_ACCOUNT', { id: account.id });
@@ -4048,12 +4316,6 @@ Object.assign(window.Views, {
               window.Router.navigate('#dashboard');
             }
           });
-          setTimeout(() => {
-            const btnModalSave = document.getElementById('modal-save-btn');
-            const btnModalDelete = document.getElementById('modal-delete-btn');
-            if (btnModalSave) btnModalSave.className = 'btn btn-secondary';
-            if (btnModalDelete) btnModalDelete.innerHTML = window.I18n.t('account.deleteEverything');
-          }, 10);
         });
       }
     }
@@ -4171,11 +4433,14 @@ Object.assign(window.Views, {
     // Hands the loan's monthly payment to the normal New Log form, prefilled and
     // armed as a monthly series. The user picks the account and confirms there;
     // the store links the loan only once that series actually exists.
-    // Only future, genuinely amortizing instalments can be armed: back-dating a
-    // series would fabricate historical expenses, and the interest-only stub
-    // would under-charge every month of the series.
+    // Only genuinely amortizing instalments due today or later can be armed:
+    // back-dating a series would fabricate historical expenses, and the
+    // interest-only stub would under-charge every month of the series.
+    // 1.0.1 (BUG-15): "today or later" — an instalment due today is still
+    // trackable. A paid-off loan offers nothing, even on its final payment
+    // day (that row is already counted as paid).
     trackablePayment(progress) {
-      return progress ? progress.nextRegularPayment : null;
+      return progress && !progress.isPaidOff ? progress.nextRegularPayment : null;
     },
 
     startRecurringPrefill(loan) {
@@ -4216,9 +4481,13 @@ Object.assign(window.Views, {
         || (loan.config.rateChanges || []).length > 0
         || (loan.config.earlyRepayments || []).length > 0;
 
-      // The store clamps recurring series to 60 months (_clampRecurrenceEndDate)
-      const monthsLeft = (Number(progress.lastPaymentDate.slice(0, 4)) - Number(next.date.slice(0, 4))) * 12
-        + (Number(progress.lastPaymentDate.slice(5, 7)) - Number(next.date.slice(5, 7)));
+      // 1.0.1 (BUG-16): ask the store's own 60-month window rule
+      // (_clampRecurrenceEndDate — it mutates its argument, hence the fresh
+      // literal) instead of re-deriving it, and name the date the series will
+      // actually stop at: the window is inclusive, so a count ("60 payments")
+      // was off by one.
+      const seriesEnd = window.Store._clampRecurrenceEndDate({ startDate: next.date, endDate: progress.lastPaymentDate }).endDate;
+      const capped = seriesEnd !== progress.lastPaymentDate;
 
       const noteLine = (text) => `<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-top: var(--space-2);">${text}</div>`;
 
@@ -4234,9 +4503,11 @@ Object.assign(window.Views, {
           </p>
           ${hasAccounts ? '' : noteLine(window.I18n.t('debt.track.needAccount'))}
           ${varies ? noteLine(window.I18n.t('debt.track.varies')) : ''}
-          ${monthsLeft > 60 ? noteLine(window.I18n.t('debt.track.capped')) : ''}
+          ${capped ? noteLine(window.I18n.t('debt.track.capped', { date: this.fmtDate(seriesEnd) })) : ''}
         `,
         saveText: hasAccounts ? window.I18n.t('debt.track.cta') : window.I18n.t('common.ok'),
+        // Without an account the sheet is info-only: its single OK dismisses it
+        showCancel: hasAccounts,
         onSave: (close) => {
           close();
           if (hasAccounts) this.startRecurringPrefill(loan);
@@ -4387,7 +4658,11 @@ Object.assign(window.Views, {
         S.draft = S.newDraft(params.type, loan);
       }
       const d = S.draft;
-      const title = d.editingLoanId ? window.I18n.t('debt.editSimulation') : window.I18n.t(S.TYPES[d.type].label);
+      // 1.0.1 (BUG-07): an active (tracked) loan is not a simulation
+      const editingLoan = d.editingLoanId ? (state.loans || []).find(l => l.id === d.editingLoanId) : null;
+      const title = d.editingLoanId
+        ? window.I18n.t(editingLoan && editingLoan.kind === 'active' ? 'debt.editLoan' : 'debt.editSimulation')
+        : window.I18n.t(S.TYPES[d.type].label);
 
       return `
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
@@ -4406,7 +4681,7 @@ Object.assign(window.Views, {
             ${d.type === 'mortgage' ? `
               <div class="form-group">
                 <label class="form-label" for="dsim-down">${window.I18n.t('debt.downPayment')} <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
-                <input type="number" id="dsim-down" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.downPayment}">
+                <input type="number" id="dsim-down" class="form-control" placeholder="0.00" min="0" step="0.01" inputmode="decimal" value="${d.downPayment}">
               </div>` : ''}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group">
@@ -4466,6 +4741,42 @@ Object.assign(window.Views, {
       `;
     },
 
+    // 1.0.1 (BUG-10): LoanEngine errors carry a stable .code; their .message is
+    // developer English and never reaches the UI. code → { key, field?, details? }
+    // — holds KEYS, not text (resolved by t() at call time, like _DebtShared.TYPES).
+    // `field` is the simulator input to mark aria-invalid; `details` means the
+    // fault sits in the collapsed Details section (lists / interest-only toggle).
+    _ENGINE_ERRORS: {
+      E_PRINCIPAL:      { key: 'debt.err.principal',       field: 'dsim-principal' },
+      E_DOWNPAYMENT:    { key: 'debt.err.downPayment',     field: 'dsim-down' },
+      E_DURATION:       { key: 'debt.err.duration',        field: 'dsim-duration' },
+      E_RATE:           { key: 'debt.err.rate',            field: 'dsim-rate' },
+      E_DATE:           { key: 'debt.err.firstPayment',    field: 'dsim-first-date' },
+      E_IO:             { key: 'debt.err.interestOnly',    details: true },
+      E_RATECHANGE:     { key: 'debt.err.rateChanges',     details: true },
+      E_EARLYREPAYMENT: { key: 'debt.err.earlyRepayments', details: true },
+      E_EXPENSE:        { key: 'debt.err.extraCosts',      details: true }
+    },
+
+    // Maps any simulate() failure to a localized { message, field, details }.
+    // E_CONFIG / E_AMORTIZATION / E_INTERNAL and non-engine errors fall back to
+    // the generic 'debt.checkInputs' — the raw message is never shown.
+    engineError(e, config) {
+      let code = e && e.name === 'LoanEngineError' ? e.code : null;
+      // loan-engine.js reuses E_DOWNPAYMENT for "financed principal < 0.01";
+      // with no down payment entered it is the AMOUNT that is wrong (and a
+      // personal loan has no down-payment field to highlight at all).
+      // 1.0.1 (BUG-10): only a 0/missing down payment remaps — a NEGATIVE one
+      // is the down-payment field's fault and gets its own message.
+      if (code === 'E_DOWNPAYMENT' && !(config && config.downPayment)) code = 'E_PRINCIPAL';
+      const m = code === 'E_DOWNPAYMENT' && config.downPayment < 0
+        ? { key: 'debt.err.downPaymentNegative', field: 'dsim-down' }
+        : (code ? this._ENGINE_ERRORS[code] : null);
+      return m
+        ? { message: window.I18n.t(m.key), field: m.field || null, details: !!m.details }
+        : { message: window.I18n.t('debt.checkInputs'), field: null, details: false };
+    },
+
     attachEvents(container) {
       const S = window.Views._DebtShared;
       const d = S.draft;
@@ -4478,7 +4789,7 @@ Object.assign(window.Views, {
         const pctEl = $('dsim-down-pct');
         if (!pctEl) return;
         const p = parseFloat(d.principal), dp = parseFloat(d.downPayment);
-        pctEl.textContent = p > 0 && dp > 0 ? `(${(dp / p * 100).toFixed(1)}%)` : '';
+        pctEl.textContent = p > 0 && dp > 0 ? `(${window.Store.formatPercent(dp / p * 100, { digits: 1 })})` : ''; // 1.0.1 (BUG-09)
       };
       const bind = (id, prop, evt = 'input') => {
         const el = $(id);
@@ -4524,6 +4835,7 @@ Object.assign(window.Views, {
           title: window.I18n.t('debt.ioModalTitle'),
           content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0;">${window.I18n.t('debt.ioModalBody')}</p>`,
           saveText: window.I18n.t('common.ok'),
+          showCancel: false, // info-only: the single OK dismisses it
           onSave: (close) => close()
         });
       });
@@ -4662,15 +4974,47 @@ Object.assign(window.Views, {
         toggleDetails();
       }
 
+      // 1.0.1 (BUG-10): one delegated listener clears every invalid mark and
+      // the error line on ANY edit — a duration error is often fixed via the
+      // unit select, a down-payment error by raising the amount, so a per-field
+      // clear would leave stale marks on fields the user never touched.
+      const clearInvalid = () => {
+        container.querySelectorAll('#debt-sim-form [aria-invalid]').forEach(el => {
+          el.removeAttribute('aria-invalid');
+          el.removeAttribute('aria-describedby');
+        });
+      };
+      const simForm = $('debt-sim-form');
+      if (simForm) {
+        const onEdit = () => {
+          clearInvalid();
+          const errEl = $('dsim-error');
+          if (errEl) errEl.style.display = 'none';
+        };
+        simForm.addEventListener('input', onEdit);
+        simForm.addEventListener('change', onEdit);
+      }
+
       $('btn-dsim-calculate').addEventListener('click', () => {
         const errEl = $('dsim-error');
         errEl.style.display = 'none';
+        clearInvalid();
         const config = S.buildConfig(d);
         try {
           window.LoanEngine.simulate({ ...config, computeSavings: false });
         } catch (e) {
-          errEl.textContent = (e && e.name === 'LoanEngineError') ? e.message : window.I18n.t('debt.checkInputs');
+          // 1.0.1 (BUG-10): localized message by engine code, offending field
+          // marked + focused, Details opened when the fault lives there.
+          const err = window.Views.DebtSimView.engineError(e, config);
+          errEl.textContent = err.message;
           errEl.style.display = 'block';
+          if (err.details && detailsBody && detailsBody.style.display === 'none') toggleDetails();
+          const f = err.field ? $(err.field) : null;
+          if (f) {
+            f.setAttribute('aria-invalid', 'true');
+            f.setAttribute('aria-describedby', 'dsim-error');
+            if (typeof f.focus === 'function') f.focus();
+          }
           return;
         }
         window.Store.dispatch('SET_DEBT_SIM', { config, fromForm: true, editingLoanId: d.editingLoanId });
@@ -4695,9 +5039,121 @@ Object.assign(window.Views, {
       }, 60);
     },
 
+    // 1.0.1 (BUG-07): after an active loan's terms were edited, offer to bring
+    // its linked payments in line. Same hand-off as _offerAfterPromote (floats
+    // over the hub, survives the naming modal's teardown). Shows nothing when
+    // the store sees nothing to sync (name-only edit, untracked loan, series
+    // already matching).
+    _offerSeriesSync(loanId, prevConfig) {
+      setTimeout(() => {
+        const S = window.Views._DebtShared;
+        const loan = (window.Store.getState().loans || []).find(l => l.id === loanId);
+        const plan = loan ? window.Store.getLoanSeriesSyncPlan(loan, prevConfig) : null;
+        if (!plan) return;
+        const para = (html) => `<p style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0 0 var(--space-2);">${html}</p>`;
+        const note = (text) => `<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-top: var(--space-2);">${text}</div>`;
+        let content;
+        let saveText;
+        let saveClass;
+        if (plan.mode === 'finish') {
+          content = para(window.I18n.t('debt.sync.finished', { count: plan.count }))
+            + note(window.I18n.t('debt.pastPaymentsKept'));
+          saveText = window.I18n.t('debt.sync.deleteCta');
+          // 1.0.1 (BUG-20): deleting the payments is the destructive choice
+          saveClass = 'btn-danger';
+        } else {
+          const endDate = plan.endDate ? S.fmtDate(plan.endDate) : '';
+          // 1.0.1 (BUG-07 review): a 60-month-capped series end is not the
+          // loan's end — name both instead of calling the cap "with the loan".
+          const loanEnd = plan.loanEnd ? S.fmtDate(plan.loanEnd) : endDate;
+          // review 5: payments left after the sync (never "Update its 0 …")
+          const remaining = plan.keepCount == null ? plan.count : plan.keepCount + (plan.addCount || 0);
+          // review 6: the end sentence counts the payments that exist; the
+          // "added" note counts the new ones (never both in one number)
+          const endCount = (plan.addCount && plan.keepCount) ? plan.keepCount : plan.count;
+          const endNote = !plan.endDate ? ''
+            : plan.capped
+              ? note(window.I18n.t('debt.sync.endNoteCapped', { date: endDate, loanEnd }))
+              : note(window.I18n.t('debt.sync.endNote', { count: plan.count, date: endDate }));
+          const amount = plan.amountC != null
+            ? `<strong style="color: var(--text-primary);">${S.fmtC(plan.amountC)}</strong>`
+            : '';
+          let lead;
+          if (plan.amountC != null && plan.varies) {
+            // 1.0.1 (BUG-07 review 2): the payments follow a schedule whose
+            // instalment changes more than once — name the first new amount
+            // and when it starts, not one amount for all of them.
+            lead = para(window.I18n.t('debt.sync.bodySchedule', { count: plan.count, amount, date: S.fmtDate(plan.firstDate) }))
+              + endNote;
+          } else if (plan.amountC != null) {
+            // 1.0.1 (BUG-07 review): a change that starts months ahead (rate
+            // change, reducePayment repayment) says from when.
+            lead = plan.fromDate
+              ? para(window.I18n.t('debt.sync.bodyFrom', { count: plan.count, amount, date: S.fmtDate(plan.fromDate) }))
+              : para(window.I18n.t('debt.sync.body', { count: plan.count, amount }));
+            lead += endNote;
+          } else if (plan.addCount && !plan.keepCount && plan.removeCount) {
+            // 1.0.1 (BUG-07 review 4): every upcoming payment is replaced by
+            // the loan's new run — never "Update its 0 upcoming payments".
+            lead = para(window.I18n.t('debt.sync.replaced', { count: plan.addCount, start: S.fmtDate(plan.startDate || plan.addFrom || plan.endDate), date: loanEnd }))
+              + (plan.capped ? endNote : '');
+          } else if (plan.addCount && !plan.keepCount) {
+            // review 6: nothing ahead yet — the longer loan only adds payments
+            lead = para(window.I18n.t('debt.sync.added', { count: plan.addCount, date: endDate }))
+              + (plan.capped ? endNote : '');
+          } else if (plan.capped && remaining) {
+            lead = para(window.I18n.t('debt.sync.endOnlyCapped', { count: endCount, loanEnd })) + endNote;
+          } else if (plan.endDate && remaining) {
+            lead = para(window.I18n.t('debt.sync.endOnly', { count: endCount, date: loanEnd }));
+          } else {
+            lead = '';
+          }
+          // 1.0.1 (BUG-07 review 4): a final payment that moves by more than
+          // rounding is named, even when the end is the headline.
+          if (plan.finalDate && plan.finalC != null) {
+            lead += note(window.I18n.t('debt.sync.finalNote', { date: S.fmtDate(plan.finalDate), amount: S.fmtC(plan.finalC) }));
+          }
+          // review 7: what the payments the sync creates will cost
+          if (plan.addCount && plan.addC != null) {
+            lead += note(window.I18n.t('debt.sync.newAmount', { count: plan.addCount, amount: S.fmtC(plan.addC) }));
+          }
+          // review 6: the old final payment going back to the regular amount
+          if (plan.revertDate && plan.revertC != null) {
+            lead += note(window.I18n.t('debt.sync.revertNote', { date: S.fmtDate(plan.revertDate), from: S.fmtC(plan.revertFromC), amount: S.fmtC(plan.revertC) }));
+          }
+          // 1.0.1 (BUG-07 review 4): a longer end adds payments — say how many.
+          if (plan.addCount && plan.keepCount) {
+            lead += note(window.I18n.t('debt.sync.added', { count: plan.addCount, date: endDate }));
+          }
+          // 1.0.1 (BUG-07 review 3): payments dated before the loan's (new)
+          // first instalment are deleted — say so; it is the whole message
+          // when nothing else changes.
+          if (plan.removeCount) {
+            const removeText = window.I18n.t('debt.sync.removeBefore', { count: plan.removeCount, date: S.fmtDate(plan.startDate) });
+            lead = lead ? lead + note(removeText) : para(removeText);
+          }
+          // review 8: never ask about nothing
+          if (!lead) return;
+          content = lead + note(window.I18n.t('debt.pastPaymentsKept'));
+          saveText = window.I18n.t('debt.sync.cta');
+          saveClass = 'btn-primary';
+        }
+        window.Components.Modal.show({
+          title: window.I18n.t('debt.sync.title'),
+          content,
+          saveText,
+          saveClass,
+          onSave: (close) => {
+            close();
+            window.Store.dispatch('SYNC_LOAN_SERIES', { id: loanId, prevConfig });
+          }
+        });
+      }, 60);
+    },
+
     _resolve(state) {
       const params = window.Router.getParams();
-      const out = { loan: null, config: null, name: null, fromForm: false, editingLoanId: null, res: null, error: null };
+      const out = { loan: null, config: null, name: null, fromForm: false, editingLoanId: null, editingActive: false, res: null, error: null };
       if (params.id) {
         out.loan = (state.loans || []).find(l => l.id === params.id) || null;
         if (out.loan) { out.config = out.loan.config; out.name = out.loan.name; }
@@ -4705,6 +5161,10 @@ Object.assign(window.Views, {
         out.config = state.debtSim.config;
         out.fromForm = !!state.debtSim.fromForm;
         out.editingLoanId = state.debtSim.editingLoanId || null;
+        // 1.0.1 (BUG-07): editing an already-active loan saves changes; it
+        // is not a simulation to save or promote
+        out.editingActive = !!(out.editingLoanId &&
+          (state.loans || []).some(l => l.id === out.editingLoanId && l.kind === 'active'));
       }
       if (out.config) {
         try { out.res = window.LoanEngine.simulate(out.config); } catch (e) { out.error = e; }
@@ -4717,7 +5177,8 @@ Object.assign(window.Views, {
       const r = this._resolve(state);
 
       if (!r.config || r.error) {
-        const msg = r.error ? window.I18n.t('debt.computeError', { message: S.esc(r.error.message) }) : window.I18n.t('debt.nothingToShow');
+        // 1.0.1 (BUG-10): the mapped, localized reason — never the engine's English.
+        const msg = r.error ? window.I18n.t('debt.computeError', { message: S.esc(window.Views.DebtSimView.engineError(r.error, r.config).message) }) : window.I18n.t('debt.nothingToShow');
         return `
           <div id="debt-results-view" class="container">
             <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4); margin-top: var(--space-8);">
@@ -4753,7 +5214,11 @@ Object.assign(window.Views, {
              </div>`;
       }
 
-      const actionsHtml = r.fromForm
+      const actionsHtml = r.fromForm && r.editingActive
+        ? `<div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6);">
+             <button class="btn btn-primary" id="btn-dres-save" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('debt.saveChanges')}</button>
+           </div>`
+        : r.fromForm
         ? `<div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6);">
              <button class="btn btn-primary" id="btn-dres-promote" style="padding: var(--space-4); border-radius: var(--radius-lg);">${window.I18n.t('debt.addToMyLoans')}</button>
              <button class="btn btn-secondary" id="btn-dres-save">${r.editingLoanId ? window.I18n.t('debt.updateSimulation') : window.I18n.t('debt.saveSimulation')}</button>
@@ -4916,12 +5381,22 @@ Object.assign(window.Views, {
           ? ((state.loans || []).find(l => l.id === r.editingLoanId) || {}).name
           : '';
         if (saveBtn) saveBtn.addEventListener('click', () => {
-          askName(r.editingLoanId ? window.I18n.t('debt.updateSimulation') : window.I18n.t('debt.saveSimulation'), currentName, (name) => {
+          const askTitle = r.editingActive
+            ? window.I18n.t('debt.saveChanges')
+            : (r.editingLoanId ? window.I18n.t('debt.updateSimulation') : window.I18n.t('debt.saveSimulation'));
+          askName(askTitle, currentName, (name) => {
             if (r.editingLoanId) {
+              // 1.0.1 (BUG-07): the terms BEFORE the edit, re-read at save
+              // time — the sync offer only fires when they actually changed
+              const prev = (window.Store.getState().loans || []).find(l => l.id === r.editingLoanId);
+              const prevConfig = prev ? prev.config : null;
               window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
-            } else {
-              window.Store.dispatch('ADD_LOAN', { name, kind: 'sim', config: r.config });
+              S.draft = null;
+              window.Router.navigate('#debt');
+              if (r.editingActive && prevConfig) window.Views.DebtResultsView._offerSeriesSync(r.editingLoanId, prevConfig);
+              return;
             }
+            window.Store.dispatch('ADD_LOAN', { name, kind: 'sim', config: r.config });
             S.draft = null;
             window.Router.navigate('#debt');
           });
@@ -4966,6 +5441,7 @@ Object.assign(window.Views, {
               ${r.loan.kind === 'sim' ? opt('promote', 'plus', window.I18n.t('debt.addToMyLoans')) : ''}
               ${opt('delete', 'trash-2', window.I18n.t('common.delete'), 'var(--color-expense-val)')}`,
             saveText: window.I18n.t('common.close'),
+            showCancel: false, // action sheet: its single Close dismisses it
             onSave: (close) => close()
           });
           document.querySelectorAll('.dres-menu-opt').forEach(el => {
@@ -4981,14 +5457,26 @@ Object.assign(window.Views, {
                 window.Router.navigate('#debt');
                 window.Views.DebtResultsView._offerAfterPromote(r.loan.id);
               } else if (act === 'delete') {
+                // 1.0.1 (BUG-06): a tracked loan's future payments can go with
+                // it (ticked by default — D4b); past ones always stay.
+                const futureCount = window.Store.getLoanFuturePayments(r.loan).length;
+                const futureRow = futureCount > 0 ? `
+                  <label for="dres-delete-future" style="display: flex; align-items: center; gap: var(--space-3); min-height: 44px; margin-top: var(--space-3); font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); cursor: pointer;">
+                    <input type="checkbox" id="dres-delete-future" class="import-check" checked>
+                    <span>${window.I18n.t('debt.deleteFuturePayments', { count: futureCount })}</span>
+                  </label>
+                  <div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5;">${window.I18n.t('debt.pastPaymentsKept')}</div>` : '';
                 window.Components.Modal.show({
                   title: window.I18n.t('debt.deleteLoanTitle'),
-                  content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">${window.I18n.t('debt.deleteLoanBody', { name: S.esc(r.loan.name) })}</p>`,
+                  content: `<p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">${window.I18n.t('debt.deleteLoanBody', { name: S.esc(r.loan.name) })}</p>${futureRow}`,
                   saveText: window.I18n.t('debt.keepIt'),
                   showDelete: true,
                   onSave: (close) => close(),
                   onDelete: (close) => {
-                    window.Store.dispatch('DELETE_LOAN', { id: r.loan.id });
+                    // read the box BEFORE dispatching (emits re-render)
+                    const cb = document.getElementById('dres-delete-future');
+                    const deleteFuturePayments = !!(cb && cb.checked);
+                    window.Store.dispatch('DELETE_LOAN', { id: r.loan.id, deleteFuturePayments });
                     close();
                     window.Router.navigate('#debt');
                   }
@@ -5448,7 +5936,9 @@ Object.assign(window.Views, {
 
       $('btn-imap-continue').addEventListener('click', () => {
         if (!d.accountId) {
-          alert(window.I18n.t('bankImport.noAccounts'));
+          // 1.0.1 (BUG-21): inline, like the mapping step, not alert()
+          const err = $('imap-error');
+          if (err) { err.textContent = window.I18n.t('bankImport.noAccounts'); err.hidden = false; }
           return;
         }
         S.rebuildItems(d); // v1.03

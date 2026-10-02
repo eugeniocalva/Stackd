@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -10,6 +10,11 @@ const executeFile = (path) => {
 
 describe('Unpaid Transaction Data Logic & Filtering Unit Tests', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49e) Pin Date (only Date) to 2026-08-15 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach, so no test relies on the previous test's leaked pin.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-id-' + Math.random().toString(36).substr(2, 9)
@@ -43,11 +48,9 @@ describe('Unpaid Transaction Data Logic & Filtering Unit Tests', () => {
     executeFile('views.js');
 
     global.window.Store.init();
-
-    // Set fixed date to 2026-08-15
-    const mockDate = new Date(2026, 7, 15);
-    vi.setSystemTime(mockDate);
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   it('excludes unpaid transactions (isPaid === false) from getBalanceAtDate and account balances', () => {
     // Account with opening balance of €1,000

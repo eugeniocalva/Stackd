@@ -18,10 +18,16 @@ const executeFile = (path) => {
 };
 
 let files;
+// 1.0.1 (BUG-02): ids are unique ACROSS boots. A restore now keeps the
+// backup's series ids, so a counter restarting at uuid-1 on the "new phone"
+// could mint an id equal to one kept from the old install and merge two
+// unrelated series (a false pass or a false failure).
+let bootNo = 0;
 const boot = (currency = 'EUR') => {
   let uid = 0;
+  const prefix = 'b' + (++bootNo) + '-uuid-';
   global.window = {
-    crypto: { randomUUID: () => 'uuid-' + (++uid) },
+    crypto: { randomUUID: () => prefix + (++uid) },
     localStorage: { getItem: vi.fn(), setItem: vi.fn() }
   };
   global.localStorage = global.window.localStorage;
@@ -29,7 +35,9 @@ const boot = (currency = 'EUR') => {
   global.FileReader = class {
     readAsText(file) { this.onload({ target: { result: file.text } }); }
   };
-  for (const f of ['db.js', 'i18n.js', 'i18n/en.js', 'store.js', 'export.js', 'import.js']) executeFile(f);
+  // 1.0.1 (BUG-02): loan-engine.js before store.js, as in index.html, so a
+  // loans import is validated by the engine and getLoanProgress can run.
+  for (const f of ['db.js', 'i18n.js', 'i18n/en.js', 'loan-engine.js', 'store.js', 'export.js', 'import.js']) executeFile(f);
   files = {};
   global.window.StackdExport._download = (name, content) => { files[name] = content; };
   global.window.Store.init();

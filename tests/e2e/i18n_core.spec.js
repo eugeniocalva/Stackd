@@ -43,6 +43,11 @@ test.describe('i18n core chrome (Italian)', () => {
 
     await page.click('#toggle-expense');
     await page.fill('#tx-amount', '25.50');
+    // 1.0.1 (BUG-08): a category is required, and the inline error is localized.
+    await page.click('#btn-save-tx');
+    await expect(page.locator('#tx-category-error')).toHaveText('Scegli una categoria.');
+    await page.selectOption('#tx-category', 'cat_groceries');
+    await expect(page.locator('#tx-category-error')).toHaveCount(0);
     await page.click('#btn-save-tx');
 
     // Lands on History, translated, with the day sum in Italian

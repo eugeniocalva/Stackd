@@ -481,3 +481,50 @@ repository gained a README.
 | 3 | ER interest convention: bank-standard accrue-first | **DECIDED** (§6.4.2) |
 | 4 | ✕ literal char for new screens | **DECIDED** (§3) |
 | 5 | Keep 60-month recurrence cap for loan series | **DECIDED** (§7) |
+
+## 10. 1.0.1 as built — linked-payment lifecycle (2026-10-02)
+
+The deep testing report of 2026-10-01 (`docs/deep-test-fixes-plan.md`, BUG-02,
+06, 07, 15, 16, 17) closed the gaps between a loan and its tracked series:
+
+- **Backup round trip.** `stackd_loans.csv` gained a `LinkedSeriesId` column.
+  On import, a series keeps its CSV id unless that id collides with a series
+  already in the store; `RELINK_LOAN_SERIES` re-links after a loans or
+  transactions import, in either file order. Backups made before the column
+  existed fall back to matching the localized `debt.paymentNote` in all five
+  languages, but only for loans that came from such a legacy file. A
+  re-imported loan never takes a series another loan already owns.
+- **Delete.** The delete sheet offers *Also delete the N future payments*,
+  ticked by default. `DELETE_LOAN {deleteFuturePayments}` removes the members
+  dated after today and disarms what remains; past payments and today's are kept.
+- **Edit.** After a change to an active loan's terms, the results view offers
+  `SYNC_LOAN_SERIES`. It follows the new schedule month by month: each future
+  member is re-priced to its own month's regular instalment, which excludes
+  one-off early repayments and includes the cent-adjusted final row. Only
+  months whose instalment the edit actually changed are touched, so a payment
+  the user customised elsewhere survives, and two rate changes or a time-boxed
+  monthly repayment come out exact. An interest-only first instalment counts
+  as its month's amount. If the series end followed the loan, the end moves
+  with it **in place** (`_moveSeriesEnd`), and never by regenerating the chain:
+  - a shorter end removes the members past the end's month, together with
+    their transfer counterparts;
+  - every member (both legs) carries the new end, placed on the series' own
+    day of the month;
+  - one tail is re-armed beyond the old window, so a longer end only adds
+    the new months, cloned from the real last payment.
+
+  Customised accounts, categories and notes survive, and deleted payments
+  stay deleted. Payments dated before a first instalment that moved later are
+  deleted. The sync offers to delete the future members if the loan now ends
+  before them. It never prompts when the schedule did not change. The prompt
+  says "the regular payment is now X" only when X holds to the series' end;
+  otherwise it describes the schedule. Active loans show *Save changes* and
+  *Edit Loan*.
+- **Tracking start.** `nextRegularPayment` is the first instalment dated today
+  or later (an instalment due today is still trackable), and is `null` once the
+  loan is paid off. Progress and `nextPayment` semantics are unchanged.
+- **60-month cap.** Unchanged (§9 #5); the track offer now names the date the
+  series stops ("…only created up to {date}"), not a payment count.
+- **Final instalment.** `_applyLoanFinalInstalment` stamps the schedule's
+  rounding-adjusted final amount on the series tail, only when the series is
+  uncapped, still at the regular amount, and the schedule is uniform.

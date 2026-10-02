@@ -323,7 +323,9 @@ window.Store = {
 
     // Initialize filters
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // 1.0.1 (BUG-19) local date, not toISOString(): in UTC+ zones the first
+    // hours of the 1st used to boot History/Analytics on the previous month.
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const monthStr = todayStr.substring(0, 7) + '-01';
     
     this.state.activeMonthFilter = todayStr.substring(0, 7);
@@ -452,6 +454,9 @@ window.Store = {
 
     // v0.98: heal poisoned generator state BEFORE the first generation pass —
     // a second armed member in a series doubles the chain on every pass.
+    // 1.0.1 (BUG-14): unlink orphaned transfer legs first, so an armed orphan
+    // tail generates plain rows instead of new orphan legs.
+    this._healOrphanTransferLegs();
     this._healRecurrenceGenerators();
     this._processRecurringTransactions();
 
@@ -588,6 +593,18 @@ window.Store = {
     return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true });
   },
 
+  // 1.0.1 (BUG-11): read helper for the category forms' uniqueness check.
+  // Trimmed + case-insensitive, across ALL types — every by-name path (CSV
+  // transactions/budgets/rules, import lookups) ignores typeHint. UI-only, like
+  // the Pro gates: ADD_CATEGORY/UPDATE_CATEGORY stay ungated for imports/tests.
+  findCategoryByName(name, exceptId) {
+    const key = String(name == null ? '' : name).trim().toLowerCase();
+    if (!key) return null;
+    return (this.state.categories || []).find(c =>
+      c.id !== exceptId && String(c.name == null ? '' : c.name).trim().toLowerCase() === key
+    ) || null;
+  },
+
   _getSystemTimeString() {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
@@ -664,6 +681,31 @@ window.Store = {
     else if (freq === 'years') d.setFullYear(d.getFullYear() + interval);
 
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  // 1.0.1 (BUG-14): a transfer leg whose counterpart is gone is not a transfer.
+  // Before 1.0.1, DELETE_ACCOUNT left the other account's leg holding a
+  // transferRef that pointed at nothing (shown as a transfer, hidden from
+  // analytics, and — when armed — spawning a NEW orphan leg per generation
+  // pass). Same rule as import.js _relinkTransfers: drop the ref, keep the
+  // row (categoryId stays ''). No note (the account name is gone) and no
+  // generator handover. Runs at boot BEFORE _processRecurringTransactions;
+  // saves only when something was healed.
+  _healOrphanTransferLegs() {
+    const counts = Object.create(null);
+    this.state.transactions.forEach(t => {
+      if (t.transferRef) counts[t.transferRef] = (counts[t.transferRef] || 0) + 1;
+    });
+    let healed = false;
+    let now;
+    this.state.transactions.forEach(t => {
+      if (t.transferRef && counts[t.transferRef] < 2) {
+        t.transferRef = null;
+        t.updatedAt = now || (now = new Date().toISOString());
+        healed = true;
+      }
+    });
+    if (healed) window.StackdDB.save('transactions', this.state.transactions);
   },
 
   // v0.98: enforce the one-armed-tail invariant on stored data. Exactly one
@@ -759,6 +801,12 @@ window.Store = {
           // EOM forecast (all skip isPaid === false). Members are marked
           // unpaid per-occurrence, by hand.
           delete generatedTx.isPaid;
+          // 1.0.1 (BUG-07 review 7): nor a bank identity — importKey/bankRef
+          // belong to the ONE booking a matched row absorbed. A clone carrying
+          // them can never be linked to its own bank row (the next import adds
+          // it a second time) and breaks the one-key-per-row dedup.
+          delete generatedTx.importKey;
+          delete generatedTx.bankRef;
 
           // If transfer, handle ref regenerations
           if (generatedTx.transferRef) {
@@ -782,6 +830,8 @@ window.Store = {
                    recurrence: cpRecurrence
                 };
                 delete cpGen.isPaid; // v0.82: same rule as generatedTx above
+                delete cpGen.importKey; // 1.0.1: nor a bank identity
+                delete cpGen.bankRef;
                 this.state.transactions.push(cpGen);
                 // Strip the old counterpart's own nextDate (if it had one) so it
                 // can never act as a second generator for the same pair.
@@ -801,6 +851,7 @@ window.Store = {
     
     if (changed) {
       this._sortTransactions();
+      this._importKeyIdx = null;
       window.StackdDB.save('transactions', this.state.transactions);
     }
   },
@@ -855,14 +906,29 @@ window.Store = {
     });
   },
 
+  // 1.0.1 (BUG-19) A 'YYYY-MM-DD' range label that is never ambiguous about
+  // the year: different years → year on both sides; one year other than the
+  // current one → year once, at the end; current year → month + day only.
+  // Noon-anchored local parse (no UTC drift), en dash, Store.getLocale().
+  _formatRangeLabel(start, end) {
+    const loc = this.getLocale();
+    const fmt = (s, opts) => new Date(s + 'T12:00:00').toLocaleDateString(loc, opts);
+    const md  = { month: 'short', day: 'numeric' };
+    const mdy = { month: 'short', day: 'numeric', year: 'numeric' };
+    const sY = String(start).slice(0, 4);
+    const eY = String(end).slice(0, 4);
+    if (sY !== eY) return `${fmt(start, mdy)} – ${fmt(end, mdy)}`;
+    if (sY !== String(new Date().getFullYear())) return `${fmt(start, md)} – ${fmt(end, mdy)}`;
+    return `${fmt(start, md)} – ${fmt(end, md)}`;
+  },
+
   _getPeriodLabel(period) {
     if (!period) return '';
     const { type, value, start, end } = period;
-    
+
     if (type === 'custom') {
       if (!start || !end) return window.I18n.t('period.customRange');
-      const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' });
-      return `${fmt(start)} - ${fmt(end)}`;
+      return this._formatRangeLabel(start, end); // 1.0.1 (BUG-19)
     }
 
     const d = new Date(value + 'T00:00:00');
@@ -872,19 +938,22 @@ window.Store = {
 
     const today = new Date();
     today.setHours(0,0,0,0);
-    const todayStr = today.toISOString().split('T')[0];
+    // 1.0.1 (BUG-19) local 'YYYY-MM-DD', never toISOString(): local midnight
+    // is the PREVIOUS UTC day in UTC+ zones, so 'Today' read as yesterday.
+    const fmtLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const todayStr = fmtLocal(today);
 
     switch (type) {
       case 'today': {
         if (bounds.start === todayStr) return window.I18n.t('period.today');
         const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-        if (bounds.start === yest.toISOString().split('T')[0]) return window.I18n.t('period.yesterday');
+        if (bounds.start === fmtLocal(yest)) return window.I18n.t('period.yesterday');
         return d.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
       }
-      
+
       case 'week':
         if (today >= startDt && today <= endDt) return window.I18n.t('period.thisWeek');
-        return `${startDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })} – ${endDt.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' })}`;
+        return this._formatRangeLabel(bounds.start, bounds.end); // 1.0.1 (BUG-19)
  
       case 'month':
         if (today.getFullYear() === d.getFullYear() && today.getMonth() === d.getMonth()) return window.I18n.t('period.thisMonth');
@@ -1152,14 +1221,59 @@ window.Store = {
         break;
       }
 
-      case 'DELETE_ACCOUNT':
+      case 'DELETE_ACCOUNT': {
+        const goneAcc = this.state.accounts.find(a => a.id === payload.id); // read BEFORE filtering
         this.state.accounts = this.state.accounts.filter(a => a.id !== payload.id);
         this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
+        // 1.0.1 (BUG-14): a transfer's other leg lives in ANOTHER account. Deleting
+        // this account removes only its own rows; the surviving counterpart is
+        // unlinked into a plain (Uncategorized) income/expense — the same rule as
+        // import.js _relinkTransfers ("an unpaired leg is not a transfer"). It keeps
+        // amount, date, type, recurrence/seriesId, tags and paid state, so no other
+        // account's balance or forecast moves. A note (UI language at deletion
+        // time) records where the money went.
+        const lostLegs = new Map(); // transferRef -> the leg being deleted
+        this.state.transactions.forEach(t => {
+          if (t.accountId === payload.id && t.transferRef) lostLegs.set(t.transferRef, t);
+        });
+        if (lostLegs.size) {
+          const now = new Date().toISOString();
+          this.state.transactions.forEach(t => {
+            if (t.accountId === payload.id || !t.transferRef || !lostLegs.has(t.transferRef)) return;
+            const lost = lostLegs.get(t.transferRef);
+            t.transferRef = null;
+            // One-armed-tail invariant: if the deleted leg was the series generator
+            // (the expense side of a recurring transfer), hand its nextDate to its
+            // pair partner — the surviving chain tail — so the series still runs to
+            // its endDate with exactly one armed member. Not handed over (accepted):
+            // a series whose armed tail in the deleted account was already a PLAIN
+            // row (a v0.69 'only'-scope conversion) — only a not-yet-fully-generated
+            // daily series would notice.
+            if (lost.recurrence && lost.recurrence.nextDate && t.recurrence &&
+                t.recurrence.seriesId === lost.recurrence.seriesId && !t.recurrence.nextDate) {
+              t.recurrence = { ...t.recurrence, nextDate: lost.recurrence.nextDate };
+            }
+            if (goneAcc && window.I18n) {
+              const key = t.type === 'expense' ? 'account.deletedTransferTo' : 'account.deletedTransferFrom';
+              const note = window.I18n.t(key, { name: goneAcc.name });
+              if (note !== key) { // never store a raw key (stale dictionary)
+                // Legacy rows may hold their text in .note (the form reads comment || note).
+                const base = String(t.comment || t.note || '').trim();
+                t.comment = base ? base + ' · ' + note : note;
+              }
+            }
+            t.updatedAt = now;
+          });
+        }
         this.state.transactions = this.state.transactions.filter(t => t.accountId !== payload.id);
         window.StackdDB.save('transactions', this.state.transactions);
+        // No-op unless the handover armed a tail that is not fully generated yet
+        // (a daily series past the 1000-iteration cap); sorts + saves only then.
+        this._processRecurringTransactions();
         changed = true;
         break;
+      }
 
       case 'ADD_TRANSACTION': {
         const tagsArray = Array.isArray(payload.tags) ? payload.tags.map(t => t.toLowerCase()) : [];
@@ -1202,8 +1316,16 @@ window.Store = {
           const linkedLoan = this.state.loans.find(l => l.id === pend.loanId);
           if (linkedLoan) {
             linkedLoan.linkedSeriesId = pend.seriesId;
+            delete linkedLoan.needsNoteRelink; // 1.0.1 (BUG-02)
             linkedLoan.updatedAt = new Date().toISOString();
             window.StackdDB.save('loans', this.state.loans);
+            // 1.0.1 (BUG-17): the chain is materialized by now (processed
+            // above) — give its last member the schedule's final amount. The
+            // series' own amount is the regular instalment it was armed with.
+            const regularC = Math.round(Math.abs(Number(newTransaction.amount)) * 100);
+            if (this._applyLoanFinalInstalment(linkedLoan, regularC)) {
+              window.StackdDB.save('transactions', this.state.transactions);
+            }
           }
           this.state.pendingLoanLink = null;
         }
@@ -2063,6 +2185,15 @@ window.Store = {
         // v0.71 Phase 4: arms {loanId, seriesId} before sending the user to the
         // prefilled transaction form; consumed by ADD_TRANSACTION on a match.
         this.state.pendingLoanLink = payload || null;
+        // 1.0.1 (BUG-02): the user is tracking this loan by hand — its link is
+        // theirs from now on, never the import's payment-note fallback.
+        if (payload && payload.loanId) {
+          const tracked = this.state.loans.find(l => l.id === payload.loanId);
+          if (tracked && tracked.needsNoteRelink) {
+            delete tracked.needsNoteRelink;
+            window.StackdDB.save('loans', this.state.loans);
+          }
+        }
         break;
 
       case 'SAVE_EXPANDED_GRAPH_FILTERS':
@@ -2211,6 +2342,12 @@ window.Store = {
           createdAt: new Date().toISOString(),
           updatedAt: null
         };
+        // 1.0.1 (BUG-02): an imported loan that may still be linked by its
+        // payment note (see _relinkLoanSeries). Persisted: the transactions
+        // file may be imported later, even in another session.
+        if (payload.needsNoteRelink && newLoan.kind === 'active' && !newLoan.linkedSeriesId) {
+          newLoan.needsNoteRelink = true;
+        }
         if (isLegacy) {
           newLoan.amount = payload.amount;
           newLoan.tan = payload.tan;
@@ -2243,10 +2380,77 @@ window.Store = {
           if (!payload.config && legacyTermsTouched) {
             merged.config = this._loanConfigFromLegacy(merged);
           }
+          // 1.0.1 (BUG-02): the user has edited the loan as it stands, so a
+          // later transactions import must not link it behind their back.
+          delete merged.needsNoteRelink;
           this.state.loans[lIdx] = merged;
           window.StackdDB.save('loans', this.state.loans);
           changed = true;
         }
+        break;
+      }
+
+      case 'SYNC_LOAN_SERIES': {
+        // 1.0.1 (BUG-07): payload { id, prevConfig } — bring an active loan's
+        // linked series in line with its edited terms, after the user accepted
+        // the prompt. The plan is recomputed here (never trusted from a stale
+        // view).
+        //  - 'finish': the loan now ends before the next linked payment →
+        //    "this and future" delete from the first future member;
+        //  - 'update' (review 3): the series end moves IN PLACE
+        //    (_moveSeriesEnd — never by regenerating the chain, which cloned one
+        //    member's account/category/note over every future payment and
+        //    brought deleted ones back), payments dated before the loan's new
+        //    first instalment go, then each future member is re-priced to its
+        //    own month's amount where the edit changed that month.
+        // Past members are never touched (beyond the series' end-date
+        // metadata). A series later converted to a transfer is handled on both
+        // legs by every step.
+        const loan = this.state.loans.find(l => l.id === payload.id);
+        const plan = loan ? this.getLoanSeriesSyncPlan(loan, payload.prevConfig) : null;
+        if (!plan) break;
+        if (plan.mode === 'finish') {
+          this.dispatch('DELETE_TRANSACTION', { id: plan.firstId, deleteFuture: true });
+          this._disarmSeries(loan.linkedSeriesId);
+          // review 6: the survivors carry the series' real end (their last
+          // date) — an old, later end would let a future "this and future"
+          // date edit regenerate every deleted payment.
+          const left = this.state.transactions.filter(t => t.recurrence && t.recurrence.seriesId === loan.linkedSeriesId);
+          const lastDate = left.reduce((acc, t) => (t.date > acc ? t.date : acc), '');
+          if (lastDate) {
+            left.forEach(t => {
+              if (t.recurrence.endDate !== lastDate) t.recurrence = { ...t.recurrence, endDate: lastDate };
+            });
+          }
+          window.StackdDB.save('transactions', this.state.transactions);
+        } else {
+          let newSim, oldSim;
+          try {
+            newSim = window.LoanEngine.simulate({ ...loan.config, computeSavings: false });
+            oldSim = window.LoanEngine.simulate({ ...payload.prevConfig, computeSavings: false });
+          } catch (e) {
+            break;
+          }
+          if (plan.endDate) this._moveSeriesEnd(loan.linkedSeriesId, plan.endDate);
+          // Payments dated before the loan's (new) first instalment — the
+          // first payment moved later — have nothing to pay.
+          const startMonth = newSim.schedule.length ? newSim.schedule[0].date.slice(0, 7) : '';
+          const orphans = this.getLoanFuturePayments(loan).filter(m => m.date.slice(0, 7) < startMonth);
+          if (orphans.length) this._removeSeriesMembers(orphans);
+          const now = new Date().toISOString();
+          let repriced = false;
+          this.getLoanFuturePayments(loan).forEach(m => {
+            const toC = this._loanMonthRegularC(loan.config, newSim, m.date);
+            if (toC == null) return;
+            const oldC = this._loanMonthRegularC(payload.prevConfig, oldSim, m.date);
+            if (oldC === toC || Math.round(Math.abs(Number(m.amount)) * 100) === toC) return;
+            this._setLoanMemberAmount(m, toC, now);
+            repriced = true;
+          });
+          if (repriced) this._budgetSpendIdx = null;
+          window.StackdDB.save('transactions', this.state.transactions);
+        }
+        changed = true;
         break;
       }
 
@@ -2263,10 +2467,24 @@ window.Store = {
       }
 
       case 'DELETE_LOAN': {
-        // payload: { id }
+        // payload: { id, deleteFuturePayments? }
         // v0.71 Phase 4: disarm a pending link aimed at the loan being removed
         if (this.state.pendingLoanLink && this.state.pendingLoanLink.loanId === payload.id) {
           this.state.pendingLoanLink = null;
+        }
+        // 1.0.1 (BUG-06): optionally take the linked series' FUTURE payments
+        // (dated after today) with the loan, through the recurring "this and
+        // future" delete; past and today's payments are history and stay.
+        // The lookup must happen before the loan is filtered out below.
+        if (payload.deleteFuturePayments) {
+          const loan = this.state.loans.find(l => l.id === payload.id);
+          const fut = loan ? this.getLoanFuturePayments(loan) : [];
+          if (fut.length) {
+            this.dispatch('DELETE_TRANSACTION', { id: fut[0].id, deleteFuture: true });
+            if (this._disarmSeries(loan.linkedSeriesId)) {
+              window.StackdDB.save('transactions', this.state.transactions);
+            }
+          }
         }
         this.state.loans = this.state.loans.filter(l => l.id !== payload.id);
         window.StackdDB.save('loans', this.state.loans);
@@ -2278,8 +2496,23 @@ window.Store = {
       // readers; the wallet deep-link goes through UPDATE_FILTERS {replace}.
 
       case 'SET_CURRENCY': {
-        this.state.currency = payload;
-        window.StackdDB.save('currency', payload);
+        // 1.0.1 (BUG-01): 'EUR' (onboarding, tests, cross-tab) or
+        // { code, relabel } from Components.CurrencySwitchConfirm. relabel
+        // moves EVERY account still in the OLD base to the new code, all or
+        // nothing (keeps same-currency transfer pairs on one currency). It is
+        // a label change only: amounts are never converted.
+        const code = typeof payload === 'string' ? payload : (payload && payload.code);
+        if (!code) break;
+        const prev = this.state.currency;
+        if (payload && typeof payload === 'object' && payload.relabel && code !== prev) {
+          let moved = false;
+          this.state.accounts.forEach(a => {
+            if ((a.currency || prev) === prev) { a.currency = code; moved = true; }
+          });
+          if (moved) window.StackdDB.save('accounts', this.state.accounts);
+        }
+        this.state.currency = code;
+        window.StackdDB.save('currency', code);
         changed = true;
         break;
       }
@@ -2353,6 +2586,18 @@ window.Store = {
         this.state.bankConnections = (this.state.bankConnections || []).filter(c => c.ref !== payload);
         if (this.state.bankConnections.length !== before) {
           window.StackdDB.save('bankConnections', this.state.bankConnections);
+          changed = true;
+        }
+        break;
+      }
+
+      case 'RELINK_LOAN_SERIES': {
+        // 1.0.1 (BUG-02): dispatched by import.js after a loans or a
+        // transactions import, so it works in either file order. Links loans
+        // from a backup made before the LinkedSeriesId column to their payment
+        // series by the payment note (see _relinkLoanSeries).
+        if (this._relinkLoanSeries()) {
+          window.StackdDB.save('loans', this.state.loans);
           changed = true;
         }
         break;
@@ -2548,6 +2793,35 @@ window.Store = {
     return `${isNeg ? '-' : ''}${symbol}${fmt.format(abs)}`;
   },
 
+  // 1.0.1 (BUG-09): locale-aware percentage — the single choke point for every
+  // displayed percent. `pct` is in percent units (59.9 → '59.9%' / '59,9 %').
+  // opts: { digits = min fraction digits (default 0), maxDigits (default =
+  // digits), signed = prefix '+' on a positive value }. Like formatCurrency the
+  // sign is applied OUTSIDE the cached formatter with an ASCII '-' (no
+  // signDisplay dependency on old WebViews), and it is decided from the
+  // FORMATTED string so a value that rounds to zero never reads '-0.0%'.
+  // null / undefined / non-finite → '—' (no basis). Never feed the result into
+  // a CSS `width:` — a comma decimal breaks the style.
+  _percentFormatCache: {},
+  formatPercent(pct, opts) {
+    if (pct === null || pct === undefined || typeof pct !== 'number' || !isFinite(pct)) return '—';
+    const o = opts || {};
+    const min = o.digits || 0;
+    const max = o.maxDigits != null ? Math.max(o.maxDigits, min) : min;
+    const locale = this.getLocale();
+    const key = locale + '|' + min + '|' + max;
+    let fmt = this._percentFormatCache[key];
+    if (!fmt) {
+      fmt = this._percentFormatCache[key] = new Intl.NumberFormat(locale, {
+        style: 'percent', minimumFractionDigits: min, maximumFractionDigits: max
+      });
+    }
+    const s = fmt.format(Math.abs(pct) / 100);
+    const isZero = !/[1-9]/.test(s);
+    const sign = isZero ? '' : (pct < 0 ? '-' : (o.signed ? '+' : ''));
+    return sign + s;
+  },
+
   _isPositiveTx(tx) {
     return tx.type === 'income' || tx.type === 'opening_balance' || tx.type === 'transfer_in';
   },
@@ -2633,6 +2907,25 @@ window.Store = {
 
   foreignAccountCount() {
     return this._ensureForeignIdx().size;
+  },
+
+  // 1.0.1 (BUG-01): what switching the base currency to `code` would do —
+  // read-only, drives Components.CurrencySwitchConfirm. A missing account
+  // currency counts as the current base (same rule as _ensureForeignIdx).
+  //   total        — every account
+  //   relabelable  — accounts SET_CURRENCY {relabel:true} would move (old base)
+  //   excluded     — accounts left out of totals after a plain switch
+  //   primaryAfter — accounts already in `code`
+  currencySwitchImpact(code) {
+    const prev = this.state.currency;
+    const accs = this.state.accounts || [];
+    const cur = a => a.currency || prev;
+    return {
+      total: accs.length,
+      relabelable: code === prev ? 0 : accs.filter(a => cur(a) === prev).length,
+      excluded: accs.filter(a => cur(a) !== code).length,
+      primaryAfter: accs.filter(a => cur(a) === code).length
+    };
   },
 
   // v1.01: first matching import rule wins (rules are newest-first). A rule
@@ -2997,6 +3290,80 @@ window.Store = {
     return { average: mtd, months: 0, currentMonth: true };
   },
 
+  /**
+   * 1.0.1 (BUG-02): restore fallback for loans files written before the
+   * LinkedSeriesId column. Such a loan arrives with no link at all and is
+   * flagged `needsNoteRelink` by the import (so is a re-imported loan whose
+   * link another loan already owned — import.js _releaseOwnedLoanLinks). Only
+   * flagged loans are considered: a loan the user left untracked must never
+   * be linked by a later transactions import. A flagged loan is matched to the recurring expense series whose note is its payment note
+   * ('debt.paymentNote') in ANY loaded language — the note is written in the
+   * language active when tracking started. Category and amount are not used:
+   * the user may have changed them. Only loans with NO link are touched: a
+   * dangling link (new-format file imported before its transactions, or a
+   * series the user deleted to un-track) is left alone, and a series that any
+   * loan already names (live or dangling) is never taken. Several matches
+   * (an already double-tracked restore) → earliest first member, then id.
+   * Mutates this.state.loans; the caller persists.
+   *
+   * @returns {boolean} true when at least one loan was linked
+   */
+  _relinkLoanSeries() {
+    const loans = this.state.loans || [];
+    const pending = loans.filter(l => l.kind !== 'sim' && !l.linkedSeriesId && l.needsNoteRelink);
+    if (!pending.length) return false;
+
+    const owned = new Set();
+    loans.forEach(l => { if (l.linkedSeriesId) owned.add(l.linkedSeriesId); });
+
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const byNote = new Map();   // note -> Set(seriesId)
+    const firstDate = new Map(); // seriesId -> earliest member date
+    for (const t of this.state.transactions) {
+      if (t.type !== 'expense' || !t.recurrence || !t.recurrence.seriesId) continue;
+      const sid = t.recurrence.seriesId;
+      if (owned.has(sid)) continue;
+      const note = norm(t.comment);
+      if (!note) continue;
+      if (!byNote.has(note)) byNote.set(note, new Set());
+      byNote.get(note).add(sid);
+      const d = t.date || '';
+      if (!firstDate.has(sid) || d < firstDate.get(sid)) firstDate.set(sid, d);
+    }
+    if (!byNote.size) return false;
+
+    const dicts = (window.I18n && window.I18n.dicts) || {};
+    const templates = Object.keys(dicts)
+      .map(lang => dicts[lang] && dicts[lang]['debt.paymentNote'])
+      .filter(tpl => typeof tpl === 'string' && tpl.indexOf('{name}') !== -1);
+    if (!templates.length) return false;
+
+    let linkedAny = false;
+    pending.forEach(loan => {
+      const name = String(loan.name || '');
+      const notes = new Set(templates.map(tpl => norm(tpl.replace(/\{name\}/g, () => name))));
+      const candidates = [];
+      notes.forEach(n => {
+        (byNote.get(n) || []).forEach(sid => {
+          if (!owned.has(sid) && candidates.indexOf(sid) === -1) candidates.push(sid);
+        });
+      });
+      if (!candidates.length) return;
+      candidates.sort((a, b) => {
+        const da = firstDate.get(a) || '';
+        const db = firstDate.get(b) || '';
+        if (da !== db) return da < db ? -1 : 1;
+        return a < b ? -1 : (a > b ? 1 : 0);
+      });
+      loan.linkedSeriesId = candidates[0];
+      delete loan.needsNoteRelink;
+      loan.updatedAt = new Date().toISOString();
+      owned.add(candidates[0]);
+      linkedAny = true;
+    });
+    return linkedAny;
+  },
+
   getAllUniqueTags(querySubstring = '') {
     const tagsSet = new Set();
     this.state.transactions.forEach(tx => {
@@ -3167,7 +3534,9 @@ window.Store = {
         const cat = this.state.categories.find(c => c.id === catId);
         categoryMap[catId] = {
           id: catId,
-          name: cat ? cat.name : (catId === 'uncategorized' ? 'Uncategorized' : 'Unknown'),
+          // 1.0.1 (BUG-08): localized label for rows without (or with a dangling)
+          // category. The 'uncategorized' bucket id stays — the drilldown filter keys on it.
+          name: cat ? cat.name : (window.I18n ? window.I18n.t('common.uncategorized') : 'Uncategorized'),
           color: cat ? cat.color : '#94a3b8',
           icon: cat ? cat.icon : 'help-circle',
           amount: 0
@@ -3295,6 +3664,19 @@ window.Store = {
     let nextPayment = null;
     let nextRegularPayment = null;
     res.schedule.forEach(row => {
+      // index 0 is the interest-only stub, which is NOT representative of the
+      // instalment: a recurring series armed from it would under-charge every
+      // month. Track the next true amortizing row separately.
+      // 1.0.1 (BUG-15): the armable row is picked BEFORE the paid cut, with
+      // `>= today`: an instalment due today is not in the ledger yet, so it is
+      // still trackable (tracking used to start a month late and skip it).
+      // Past rows are never armed (no back-dated series). Progress (paidCount,
+      // pct, nextPayment) keeps its "on or before today = paid" semantics.
+      if (!nextRegularPayment && row.index >= 1 && row.date >= today) {
+        // 1.0.1 (BUG-07 review): the regular instalment — a one-off early
+        // repayment due that month must not be armed into every payment.
+        nextRegularPayment = { date: row.date, amountC: this._loanRowRegularC(loan.config, row) };
+      }
       if (row.date <= today) {
         paidPrincipalC += row.principalC + row.extraPrincipalC;
         paidInterestC += row.interestC;
@@ -3303,12 +3685,6 @@ window.Store = {
       }
       if (!nextPayment) {
         nextPayment = { date: row.date, amountC: row.paymentC + row.extraPrincipalC };
-      }
-      // index 0 is the interest-only stub, which is NOT representative of the
-      // instalment: a recurring series armed from it would under-charge every
-      // month. Track the next true amortizing row separately.
-      if (!nextRegularPayment && row.index >= 1) {
-        nextRegularPayment = { date: row.date, amountC: row.paymentC + row.extraPrincipalC };
       }
     });
     const remainingC = Math.max(0, totalC - paidPrincipalC);
@@ -3343,6 +3719,552 @@ window.Store = {
       t => t.recurrence && t.recurrence.seriesId === loan.linkedSeriesId
     );
     return txs.length ? txs : null;
+  },
+
+  /**
+   * 1.0.1 (BUG-06): the linked series' members dated strictly AFTER today, one
+   * row per occurrence (a recurring-transfer pair counts once, by its expense
+   * leg), ascending. "Future" is the same split Upcoming and
+   * computeUpcomingImpact use: a payment dated today counts as booked.
+   *
+   * @param {Object} loan
+   * @param {string} [todayStr] - 'YYYY-MM-DD' override, for tests
+   * @returns {Array} [] when the loan is not tracked
+   */
+  getLoanFuturePayments(loan, todayStr) {
+    // 1.0.1 (BUG-02): a series another loan also claims (a loans file imported
+    // twice, a backup restored over its own install) is not this loan's to
+    // delete or rewrite — deleting the duplicate must not take the original's
+    // payments with it. Every per-loan series action (the delete sheet's
+    // checkbox, DELETE_LOAN deleteFuturePayments, the sync plan) reads
+    // through here, so they all stand down together.
+    if (this._loanSeriesShared(loan)) return [];
+    const today = todayStr || this._todayYMD();
+    return (this.getLoanLinkedTransactions(loan) || [])
+      .filter(t => t.date > today && (!t.transferRef || t.type === 'expense'))
+      .sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));
+  },
+
+  // 1.0.1 (BUG-02): true when ANOTHER loan names the same linked series.
+  _loanSeriesShared(loan) {
+    if (!loan || !loan.linkedSeriesId) return false;
+    return (this.state.loans || []).some(
+      l => l && l.id !== loan.id && l.linkedSeriesId === loan.linkedSeriesId
+    );
+  },
+
+  // 1.0.1 (BUG-07): a schedule row's REGULAR instalment — the payment plus
+  // only the recurring ('monthly') early repayments active in its month. A
+  // one-off ('once', the engine default) lump sum lands in the same row's
+  // extraPrincipalC but is not what the loan charges every month, so it must
+  // never become a series' uniform amount. Mirrors LoanEngine's slot rule: a
+  // monthly repayment is active from the first row dated on/after its date
+  // until its endDate. Capped at extraPrincipalC (the engine caps each
+  // repayment at the remaining balance).
+  _loanRowRegularC(config, row) {
+    if (!row) return null;
+    const ers = config && Array.isArray(config.earlyRepayments) ? config.earlyRepayments : [];
+    let recurringC = 0;
+    ers.forEach(er => {
+      if (!er || er.frequency !== 'monthly' || !er.date) return;
+      if (er.date > row.date) return;
+      if (er.endDate && er.endDate < row.date) return;
+      const c = Math.round(Number(er.amount) * 100);
+      if (Number.isFinite(c) && c > 0) recurringC += c;
+    });
+    return row.paymentC + Math.min(row.extraPrincipalC || 0, recurringC);
+  },
+
+  // 1.0.1 (BUG-06/07): once a series' future members are gone, none of the
+  // survivors may stay armed — a stray generator (one-armed-tail invariant
+  // broken by old data) would materialize the deleted payments right back on
+  // the next processing pass. Returns true when something was disarmed; the
+  // caller saves.
+  _disarmSeries(seriesId) {
+    if (!seriesId) return false;
+    let disarmed = false;
+    this.state.transactions.forEach((t, i) => {
+      if (!t.recurrence || t.recurrence.seriesId !== seriesId || !t.recurrence.nextDate) return;
+      const r = { ...t.recurrence };
+      delete r.nextDate;
+      this.state.transactions[i] = { ...t, recurrence: r };
+      disarmed = true;
+    });
+    return disarmed;
+  },
+
+  // 1.0.1 (BUG-07): the regular instalment (_loanRowRegularC) of the schedule
+  // row falling in ymd's month, or null when the loan has no instalment that
+  // month. Matching by month (not day) tolerates the 29th-31st drift of
+  // monthly series against the engine's anchor-day schedule. Review 3: any
+  // row counts — an interest-only first instalment (index 0) is what that
+  // month's payment is.
+  _loanMonthRegularC(config, sim, ymd) {
+    if (!sim || !sim.schedule || !ymd) return null;
+    const month = ymd.slice(0, 7);
+    const row = sim.schedule.find(r => r.date.slice(0, 7) === month);
+    return row ? this._loanRowRegularC(config, row) : null;
+  },
+
+  // 1.0.1 (BUG-07): a stable fingerprint of what a loan's terms produce. Two
+  // configs whose schedules match row for row are "unchanged" for the series,
+  // whatever their key order or shape (legacy-derived / imported configs).
+  _loanScheduleSignature(sim) {
+    if (!sim || !sim.schedule) return '';
+    return sim.lastPaymentDate + '|' + sim.schedule
+      .map(r => `${r.date}:${r.paymentC}:${r.extraPrincipalC}`).join(',');
+  },
+
+  /**
+   * 1.0.1 (BUG-07): what an edit of an active loan's terms means for its
+   * linked series. Only ever proposes something when the terms actually
+   * changed (prevConfig = the config before UPDATE_LOAN): a name-only edit, or
+   * an Italian loan whose instalment simply moved on since tracking started,
+   * never prompts. SYNC_LOAN_SERIES applies exactly what this describes.
+   *
+   * @param {Object} loan - the loan AFTER the edit
+   * @param {Object} prevConfig - its config BEFORE the edit
+   * @param {string} [todayStr]
+   * @returns {null|{mode:'finish', firstId, count}|{mode:'update', firstId, count, amountC, varies, endDate, firstDate?, fromDate?, removeCount?, startDate?, capped?, loanEnd?}}
+   *   'finish': the loan now ends before its next linked payment, so every
+   *   future payment should go. 'update':
+   *   - re-pricing (_loanSeriesAmountChanges): firstId/firstDate name the
+   *     first re-priced payment, amountC its new amount, count how many are
+   *     re-priced; `varies` says the new schedule does not keep that amount
+   *     (several steps, a temporary change, a final payment far from it).
+   *     fromDate is set when that payment is not the next one. With no
+   *     re-pricing, amountC is null and count is the future chain.
+   *   - endDate: the series' new end (on its own day of the month, possibly
+   *     60-month-capped — then capped/loanEnd), only when the series followed
+   *     the old loan end or now outlives the loan.
+   *   - removeCount/startDate: payments dated before the loan's (new) first
+   *     instalment, which the sync deletes.
+   *   - keepCount/addCount: the future payments that survive the sync and
+   *     the ones a longer end adds (review 4).
+   *   - finalDate/finalC: on an end-only plan, a final payment the sync
+   *     re-prices (or creates) by more than rounding; revertDate/revertFromC/
+   *     revertC: the old final payment going back to the regular amount by
+   *     more than rounding; addFrom/addC: the first payment a longer end adds
+   *     (after today only) and its amount.
+   *   Re-pricing and end moves apply to monthly series only.
+   */
+  getLoanSeriesSyncPlan(loan, prevConfig, todayStr) {
+    if (!loan || !loan.config || !prevConfig || !window.LoanEngine) return null;
+    if (this._loanSeriesShared(loan)) return null;
+    const future = this.getLoanFuturePayments(loan, todayStr);
+    // review 6: the chain is read from ALL its legs — once the last linked
+    // payment is due today or past, a longer loan can still extend it.
+    const seriesMembers = this.getLoanLinkedTransactions(loan) || [];
+    const seriesLegs = seriesMembers
+      .filter(t => !t.transferRef || t.type === 'expense')
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (!seriesLegs.length) return null;
+    let newSim, oldSim;
+    try {
+      newSim = window.LoanEngine.simulate({ ...loan.config, computeSavings: false });
+      oldSim = window.LoanEngine.simulate({ ...prevConfig, computeSavings: false });
+    } catch (e) {
+      return null;
+    }
+    if (this._loanScheduleSignature(newSim) === this._loanScheduleSignature(oldSim)) return null;
+
+    const month = (ymd) => String(ymd).slice(0, 7);
+    const first = future[0] || null;
+    const tail = seriesLegs[seriesLegs.length - 1];
+    const newEnd = newSim.lastPaymentDate;
+    const rec = tail.recurrence || {};
+    // The loan now ends before the next linked payment: every future payment
+    // goes. A monthly series compares by month (that month's payment IS its
+    // instalment); any other cadence by date (review 5).
+    const monthlyCadence = rec.frequency === 'months';
+    if (first && (monthlyCadence ? month(newEnd) < month(first.date) : newEnd < first.date)) {
+      return { mode: 'finish', firstId: first.id, count: future.length };
+    }
+    // 1.0.1 (BUG-07 review 4): re-pricing and moving the end are MONTHLY rules
+    // (one instalment per payment, ends by month). A series the user switched
+    // to weekly or every-N-months is left alone — only 'finish' (above)
+    // applies to any cadence.
+    if (!monthlyCadence || Number(rec.interval) !== 1) return null;
+    // 1.0.1 (BUG-07 review 3): a series end is a DAY on the series' own day of
+    // the month, while payments match the schedule by MONTH. Put the loan's
+    // last month on the series' day (clamped to the month's length), so a
+    // series on the 20th of a loan that now ends on the 5th keeps its
+    // final-month payment. Ends are compared by month.
+    const seriesDay = Number(tail.date.slice(8, 10)) || 1;
+    const onSeriesDay = (ymd) => {
+      const [y, m] = ymd.split('-').map(Number);
+      const dim = new Date(y, m, 0).getDate();
+      return `${month(ymd)}-${String(Math.min(seriesDay, dim)).padStart(2, '0')}`;
+    };
+    // _clampRecurrenceEndDate mutates its argument: always a fresh literal
+    const clamp = (end) => this._clampRecurrenceEndDate({ startDate: rec.startDate || seriesLegs[0].date, endDate: end }).endDate;
+    // review 6: never below a payment the series keeps in the loan's last
+    // month — a chain drifted to the 28th (or a last payment moved earlier)
+    // can hold that month's payment on a LATER day than the tail's; no member
+    // may be dated after its series' end.
+    const inEndMonth = future.filter(m => month(m.date) === month(newEnd)).map(m => m.date).sort();
+    let wantEndRaw = onSeriesDay(newEnd);
+    if (inEndMonth.length && inEndMonth[inEndMonth.length - 1] > wantEndRaw) wantEndRaw = inEndMonth[inEndMonth.length - 1];
+    const wantEnd = clamp(wantEndRaw);
+    const oldEnd = clamp(onSeriesDay(oldSim.lastPaymentDate));
+    const curEnd = rec.endDate;
+    // The series end follows the loan when the loan now ends before the
+    // series does — or, for a LONGER end, only when the series followed the
+    // old loan end (a deliberately shorter series stays as the user set it)
+    // and its chain is still live (review 4: a series the user stopped — a
+    // "this and future" delete, recurrence removed — has no armed member and
+    // is never restarted).
+    const chainLive = seriesMembers.some(t => t.recurrence && t.recurrence.nextDate);
+    // review 7: a stopped chain really ends at its last payment, whatever
+    // end its metadata still carries — it is "shorter" only past that.
+    const effCur = chainLive ? curEnd : tail.date;
+    const endChanged = !!curEnd && month(wantEnd) !== month(curEnd) &&
+      (month(wantEnd) < month(effCur) || (chainLive && month(curEnd) === month(oldEnd)));
+    // Nothing ahead: only a LONGER end has something to do (review 6).
+    if (!first && !(endChanged && month(wantEnd) > month(curEnd))) return null;
+
+    // Payments dated before the loan's (new) first instalment (the first
+    // payment moved later) have nothing to pay: the sync deletes them.
+    const startDate = newSim.schedule.length ? newSim.schedule[0].date : newEnd;
+    const orphans = future.filter(m => month(m.date) < month(startDate));
+
+    // 1.0.1 (BUG-07 review 2): follow the schedule MONTH BY MONTH — a single
+    // uniform amount cannot represent a schedule whose instalment changes
+    // more than once.
+    const changes = this._loanSeriesAmountChanges(loan.config, prevConfig, newSim, oldSim, future);
+    // What the prompt talks about. The NEW schedule's last row is the engine's
+    // cent-adjusted final instalment, and when the end moves the OLD last
+    // month just loses its old cent adjustment: SYNC re-prices both, but a
+    // cents-level adjustment is not "the loan's regular payment", so it never
+    // drives the prompt (unless it is the only payment left) — and a
+    // cents-only change to the final payment alone never prompts. Review 4:
+    // a final payment that changes by more than that (a lump sum shrinking
+    // it) IS a change worth asking about.
+    const lastMonth = month(newEnd);
+    const oldLastMonth = month(oldSim.lastPaymentDate);
+    const oldRows = oldSim.schedule || [];
+    const oldRegularC = oldRows.length >= 2
+      ? this._loanRowRegularC(prevConfig, oldRows[oldRows.length - 2]) : null;
+    const newRows = newSim.schedule || [];
+    const newRegularC = newRows.length >= 2
+      ? this._loanRowRegularC(loan.config, newRows[newRows.length - 2]) : null;
+    const isFinal = (c) => month(c.date) === lastMonth && (!first || c.id !== first.id);
+    // A final payment far (> 1 unit) from the new regular payment — a lump
+    // sum shrinking it — or (review 6) from what that month's instalment WAS
+    // is worth naming; a cents-level one is rounding.
+    const finalChange = changes.find(c => {
+      if (!isFinal(c)) return false;
+      const wasC = this._loanMonthRegularC(prevConfig, oldSim, c.date);
+      return newRegularC == null || Math.abs(c.toC - newRegularC) > 100 ||
+        (wasC != null && Math.abs(c.toC - wasC) > 100);
+    }) || null;
+    // review 6: the old final month going back to the regular payment is not
+    // a new regular payment — but a material jump (an old lump-sum final) is
+    // named, so the prompt never hides it.
+    const revert = endChanged ? changes.find(c => month(c.date) === oldLastMonth &&
+      month(c.date) !== lastMonth && c.toC === oldRegularC && Math.abs(c.toC - c.fromC) > 100) || null : null;
+    let priced = changes.filter(c => {
+      const mo = month(c.date);
+      if (isFinal(c)) return false;
+      // the old final month merely back at the old regular payment
+      if (endChanged && mo === oldLastMonth && mo !== lastMonth && c.toC === oldRegularC) return false;
+      return true;
+    });
+    // Only the final payment changes (the end stays): that IS the prompt.
+    if (!priced.length && finalChange && !endChanged) priced = [finalChange];
+    if (!priced.length && !endChanged && !orphans.length) return null;
+
+    const head = priced[0];
+    let varies = false;
+    if (head) {
+      // a final-payment-only change is not a new regular payment either
+      varies = priced.some(c => c.toC !== head.toC) || isFinal(head);
+      if (!varies) {
+        // 1.0.1 (BUG-07 review 3): "the regular payment is now X" must hold
+        // to the series' end — a change that does not last (a time-boxed
+        // monthly repayment) or a final payment far from X (a reduceDuration
+        // repayment) is a schedule, not a new regular payment. A cents-level
+        // final adjustment is not a change.
+        const endMo = month(endChanged ? wantEnd : (curEnd || wantEnd));
+        const lastRow = newSim.schedule[newSim.schedule.length - 1];
+        varies = newSim.schedule.some(r => {
+          const mo = month(r.date);
+          if (mo < month(head.date) || mo > endMo) return false;
+          const c = this._loanRowRegularC(loan.config, r);
+          return r === lastRow ? Math.abs(c - head.toC) > 100 : c !== head.toC;
+        });
+      }
+    }
+    // 1.0.1 (BUG-07 review 4): what the series holds AFTER the sync — the
+    // surviving future payments (inside the loan's new start..end) plus the
+    // months a longer end adds (mirroring _moveSeriesEnd: stepped from the
+    // chain's tail past its old end; months before the new start are deleted
+    // again, so they do not count).
+    const effEnd = endChanged ? wantEnd : curEnd;
+    const today = todayStr || this._todayYMD();
+    const keepCount = future.filter(m => month(m.date) >= month(startDate) &&
+      (!effEnd || month(m.date) <= month(effEnd))).length;
+    let addCount = 0;
+    let lastAdded = null;
+    let firstAdded = null;
+    if (endChanged && month(wantEnd) > month(curEnd)) {
+      const step = (d) => this._calculateNextRecurrenceDate(d, rec.interval, rec.frequency);
+      const floor = curEnd < wantEnd ? curEnd : wantEnd;
+      let next = step(tail.date);
+      let guard = 0;
+      while (next && next <= floor && guard++ < 1000) next = step(next);
+      // review 7: like tracking itself, a longer end never back-dates —
+      // only occurrences after today are created (_moveSeriesEnd agrees).
+      while (next && next <= today && guard++ < 1000) next = step(next);
+      while (next && next <= wantEnd && guard++ < 1000) {
+        if (month(next) >= month(startDate)) {
+          addCount++;
+          lastAdded = next;
+          if (!firstAdded) firstAdded = next;
+        }
+        next = step(next);
+      }
+    }
+    // review 8: nothing ahead and nothing a longer end adds after today —
+    // there is no payment to talk about (an empty prompt changed nothing)
+    if (!first && !addCount) return null;
+    const plan = {
+      mode: 'update',
+      firstId: head ? head.id : (first ? first.id : tail.id),
+      // every payment the sync re-prices — the cent-adjusted final one
+      // included ("…to match") — or, for an end-only change, every future
+      // payment the series holds afterwards
+      count: priced.length ? changes.length : keepCount + addCount,
+      amountC: head ? head.toC : null,
+      varies,
+      endDate: endChanged ? wantEnd : null
+    };
+    if (head) plan.firstDate = head.date;
+    if (head && first && head.id !== first.id) plan.fromDate = head.date;
+    if (orphans.length) {
+      plan.removeCount = orphans.length;
+      plan.startDate = startDate;
+    }
+    plan.keepCount = keepCount;
+    if (addCount) {
+      plan.addCount = addCount;
+      plan.addFrom = firstAdded;
+      // review 7: what the new payments cost (SYNC prices them to the new
+      // schedule — say so, it can differ from the series' current payment)
+      const addC = this._loanMonthRegularC(loan.config, newSim, firstAdded);
+      if (addC != null) plan.addC = addC;
+    }
+    if (!head && revert) {
+      plan.revertDate = revert.date;
+      plan.revertFromC = revert.fromC;
+      plan.revertC = revert.toC;
+    }
+    // An end-only plan still names a final payment that moves by more than
+    // rounding (review 4) — the end note alone would hide it.
+    if (!head && finalChange) {
+      plan.finalDate = finalChange.date;
+      plan.finalC = finalChange.toC;
+    } else if (!head && lastAdded && month(lastAdded) === lastMonth) {
+      // review 5: a final payment the end move CREATES, far from the regular
+      const fc = this._loanMonthRegularC(loan.config, newSim, lastAdded);
+      if (fc != null && (newRegularC == null || Math.abs(fc - newRegularC) > 100)) {
+        plan.finalDate = lastAdded;
+        plan.finalC = fc;
+      }
+    }
+    // The loan's own end, for every sentence about the loan (review 5: the
+    // series end sits on the series' day and may be 60-month-capped — it is
+    // not the loan's end). capped: the series stops before the loan does.
+    plan.loanEnd = newEnd;
+    if (endChanged && month(wantEnd) !== month(newEnd)) plan.capped = true;
+    return plan;
+  },
+
+  /**
+   * 1.0.1 (BUG-07 review 2): which future linked payments an edit of the
+   * loan's terms re-prices, and to what. Each member is compared with its OWN
+   * month's regular instalment (_loanMonthRegularC: one-off lump sums
+   * excluded, an interest-only first instalment included) — and only in
+   * months whose regular instalment the edit actually changed (old schedule
+   * vs new), so a payment the user customised in a month the edit did not
+   * touch keeps its amount. The schedule's cent-adjusted final row is just
+   * another month here (BUG-17 falls out of it). Members with no instalment
+   * in their month (past the new end, before the new start) are not listed:
+   * the end move and the start cleanup deal with them.
+   *
+   * @returns {Array<{id, date, fromC, toC}>} in member (date) order
+   */
+  _loanSeriesAmountChanges(config, prevConfig, newSim, oldSim, members) {
+    const out = [];
+    members.forEach(m => {
+      const toC = this._loanMonthRegularC(config, newSim, m.date);
+      if (toC == null) return;
+      const oldC = this._loanMonthRegularC(prevConfig, oldSim, m.date);
+      const fromC = Math.round(Math.abs(Number(m.amount)) * 100);
+      if (oldC === toC || fromC === toC) return;
+      out.push({ id: m.id, date: m.date, fromC, toC });
+    });
+    return out;
+  },
+
+  /**
+   * 1.0.1 (BUG-07 review 3): move a linked series' end IN PLACE — never by
+   * regenerating the chain, which cloned one member over every future payment
+   * (its account, category and note) and brought deleted payments back.
+   *  1. A shorter end: future members past the end's month go, with their
+   *     transfer counterparts.
+   *  2. Every member — both legs of a transfer pair, past members too (the
+   *     transaction form fills the end date from the tapped leg) — carries
+   *     the new end; all are disarmed.
+   *  3. One armed tail (unless the chain had been stopped), the latest member
+   *     (the expense leg of a pair), armed at its first occurrence beyond the
+   *     old window — the tail's own end: a longer end makes the
+   *     generator materialize exactly the months the chain gains, cloned from
+   *     the real tail; a shorter one leaves it dormant. A payment the user
+   *     deleted inside the old window stays deleted either way.
+   * The caller saves.
+   */
+  _moveSeriesEnd(seriesId, endDate, todayStr) {
+    if (!seriesId || !endDate) return;
+    const today = todayStr || this._todayYMD();
+    const endMonth = endDate.slice(0, 7);
+    const inSeries = t => t.recurrence && t.recurrence.seriesId === seriesId;
+    const isLeg = t => !t.transferRef || t.type === 'expense';
+    const byDate = (a, b) => a.date.localeCompare(b.date);
+    // review 4, read BEFORE anything is removed (a shorter end removes the
+    // armed tail itself): the old window is the LIVE chain's end — its tail's
+    // — not the latest end any member carries (past members keep the end
+    // they had when a "this and future" edit shortened the chain); and a
+    // chain the user stopped (no armed member) is never re-armed.
+    const all = this.state.transactions.filter(inSeries);
+    if (!all.length) return;
+    const oldLegs = all.filter(isLeg).sort(byDate);
+    const prevEnd = (oldLegs.length && oldLegs[oldLegs.length - 1].recurrence.endDate) || '';
+    const wasLive = all.some(t => t.recurrence.nextDate);
+    const beyond = all.filter(t => t.date > today && t.date.slice(0, 7) > endMonth);
+    if (beyond.length) this._removeSeriesMembers(beyond);
+    const members = this.state.transactions.filter(inSeries);
+    if (!members.length) return;
+    const legs = members.filter(isLeg).sort(byDate);
+    const tail = legs[legs.length - 1];
+    // review 6: no member may be dated after its series' end
+    if (tail && tail.date > endDate) endDate = tail.date;
+    members.forEach(t => {
+      const r = { ...t.recurrence, endDate };
+      delete r.nextDate;
+      t.recurrence = r;
+    });
+    if (!tail || !wasLive) {
+      this._budgetSpendIdx = null;
+      return;
+    }
+    const { interval, frequency } = tail.recurrence;
+    let floor = prevEnd && prevEnd < endDate ? prevEnd : endDate;
+    // review 7: never generate a back-dated payment (a series extended after
+    // its last payment was due starts at the next occurrence after today)
+    if (floor < today) floor = today;
+    let next = this._calculateNextRecurrenceDate(tail.date, interval, frequency);
+    let guard = 0;
+    while (next && next <= floor && guard++ < 1000) {
+      next = this._calculateNextRecurrenceDate(next, interval, frequency);
+    }
+    if (next) tail.recurrence = { ...tail.recurrence, nextDate: next };
+    this._processRecurringTransactions();
+    this._budgetSpendIdx = null;
+  },
+
+  // 1.0.1 (BUG-07 review 3): delete these series members and their transfer
+  // counterparts (no recurrence scope logic — callers pick exactly what goes).
+  // The caller saves.
+  _removeSeriesMembers(list) {
+    const ids = new Set(list.map(t => t.id));
+    const refs = new Set(list.filter(t => t.transferRef).map(t => t.transferRef));
+    this.state.transactions = this.state.transactions.filter(t =>
+      !ids.has(t.id) && !(t.transferRef && refs.has(t.transferRef)));
+    this._budgetSpendIdx = null;
+  },
+
+  // 1.0.1 (BUG-07 review 2): re-price one linked payment in place (and its
+  // transfer counterpart, for a series later converted to a transfer). The
+  // caller nulls _budgetSpendIdx and saves.
+  _setLoanMemberAmount(member, amountC, now) {
+    member.amount = amountC / 100;
+    member.updatedAt = now;
+    if (member.transferRef) {
+      this.state.transactions.forEach(t => {
+        if (t !== member && t.transferRef === member.transferRef) {
+          t.amount = amountC / 100;
+          t.updatedAt = now;
+        }
+      });
+    }
+  },
+
+  /**
+   * 1.0.1 (BUG-17): LoanEngine absorbs rounding into the LAST schedule row, but
+   * a tracked series is a uniform chain cloned from its generator. Stamp the
+   * series' last member with the schedule's final amount — only when that is
+   * honestly "the same series with a cent-adjusted last payment":
+   *  (a) the series ends on the loan's last payment date (not capped by the
+   *      60-month window, end not customised);
+   *  (b) its last member falls in the last payment's month;
+   *  (c) that member still carries the regular amount (not customised);
+   *  (d) every schedule row from the series' first month up to the last row
+   *      equals the regular amount (Italian / repriced loans are already an
+   *      approximation — stamping one odd row would be half-correct).
+   * Mutates the state objects in place; returns true when it did, and the
+   * caller saves 'transactions'.
+   *
+   * @param {Object} loan
+   * @param {number} regularC - the series' regular instalment, in cents
+   */
+  _applyLoanFinalInstalment(loan, regularC) {
+    const txs = this.getLoanLinkedTransactions(loan);
+    if (!txs || !loan.config || !window.LoanEngine || !Number.isFinite(regularC)) return false;
+    let sim;
+    try {
+      sim = window.LoanEngine.simulate({ ...loan.config, computeSavings: false });
+    } catch (e) {
+      return false;
+    }
+    const sched = sim.schedule || [];
+    if (!sched.length) return false;
+    const last = sched[sched.length - 1];
+    const finalC = this._loanRowRegularC(loan.config, last); // 1.0.1 (BUG-07 review): one-off extras excluded
+    if (finalC === regularC) return false;
+
+    const legs = txs
+      .filter(t => !t.transferRef || t.type === 'expense')
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (!legs.length) return false;
+    const head = legs[0];
+    const tail = legs[legs.length - 1];
+    if (!tail.recurrence || tail.recurrence.frequency !== 'months' || Number(tail.recurrence.interval) !== 1) return false; // review 4: monthly only
+    if (!tail.recurrence.endDate ||
+        tail.recurrence.endDate.slice(0, 7) !== sim.lastPaymentDate.slice(0, 7)) return false;   // (a) by month (review 3)
+    if (tail.date.slice(0, 7) !== sim.lastPaymentDate.slice(0, 7)) return false;                // (b)
+    if (Math.round(Math.abs(Number(tail.amount)) * 100) !== regularC) return false;              // (c)
+    const headMonth = head.date.slice(0, 7);
+    // 1.0.1 (BUG-07 review): compared on the REGULAR instalment — a one-off
+    // early repayment's lump sum is not part of what the series charges.
+    const uniform = sched
+      .filter(r => r.index >= 1 && r !== last && r.date.slice(0, 7) >= headMonth)
+      .every(r => this._loanRowRegularC(loan.config, r) === regularC);
+    if (!uniform) return false;                                                                  // (d)
+
+    const now = new Date().toISOString();
+    tail.amount = finalC / 100;
+    tail.updatedAt = now;
+    if (tail.transferRef) {
+      this.state.transactions.forEach(t => {
+        if (t !== tail && t.transferRef === tail.transferRef) {
+          t.amount = finalC / 100;
+          t.updatedAt = now;
+        }
+      });
+    }
+    this._budgetSpendIdx = null;
+    return true;
   },
 
   _todayYMD() {

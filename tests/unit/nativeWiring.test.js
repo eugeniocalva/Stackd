@@ -168,6 +168,21 @@ describe('Bank Connect B8 (v1.12) — native wiring', () => {
       expect(main).toMatch(/setTimeout\([^)]*initStore|initStore\(\)[\s\S]{0,40}catch/); // off the critical path, never throws
     });
 
+    // 1.0.1 (BUG-03): Back used to branch on activeView only (exitApp() on
+    // Home), killing the app under an open sheet. The listener now delegates
+    // the whole in-app chain to Router.handleBack and only a bare Home leaves
+    // — by backgrounding the app, with exitApp() as the fallback.
+    it('the backButton listener delegates to Router.handleBack and minimizes on a bare Home', () => {
+      const main = read('src/main.js');
+      const at = main.indexOf("addListener('backButton'");
+      expect(at).toBeGreaterThan(-1);
+      const block = main.slice(at, at + 600);
+      expect(block).toContain('Router.handleBack(');
+      expect(block).toContain('minimizeApp');
+      expect(block).toContain('exitApp');
+      expect(block).not.toContain('history.back');
+    });
+
     it('the three native plugins are declared for npm, gradle and CocoaPods', () => {
       const pkg = JSON.parse(read('package.json'));
       expect(Object.keys(pkg.dependencies)).toEqual(expect.arrayContaining(['@capacitor/browser', '@aparajita/capacitor-secure-storage', 'cordova-plugin-purchase']));

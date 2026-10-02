@@ -210,6 +210,8 @@ describe('CSV export/import round-trip (v0.68)', () => {
 
     const seriesIds = new Set(imported.map(t => t.recurrence.seriesId));
     expect(seriesIds.size).toBe(1);
+    // 1.0.1 (BUG-02): ids are re-keyed only on a collision — the original
+    // series is still in this store, so this re-import gets a fresh one.
     expect([...seriesIds][0]).not.toBe(originalSeriesId);
 
     expect(imported[0].recurrence.frequency).toBe('months');

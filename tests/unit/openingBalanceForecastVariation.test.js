@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -10,6 +10,11 @@ const executeFile = (path) => {
 
 describe('computeBalanceForecast with accounts opened in different months', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49e) Pin Date (only Date) to 2026-08-01 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach, so no test relies on the previous test's leaked pin.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 1, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-id-' + Math.random().toString(36).substr(2, 9)
@@ -31,11 +36,9 @@ describe('computeBalanceForecast with accounts opened in different months', () =
     executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
-
-    // Mock today to 2026-08-01
-    const mockDate = new Date(2026, 7, 1); // August 1, 2026
-    vi.setSystemTime(mockDate);
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   it('should not produce huge variance when an account opening balance date is in the current month', () => {
     // Account 1: opened in 2025 with €9,800

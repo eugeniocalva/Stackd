@@ -72,6 +72,9 @@ There is **no virtual DOM and no framework**. The render loop lives in `main.js`
 - Default categories are seeded from the `DEFAULT_CATEGORIES` constant at the top of `store.js` (stable ids like `cat_salary`, `cat_groceries`).
 - All mutations go through `Store.dispatch(ACTION, payload)`. To add behavior, add a `case` to the dispatch switch, mutate `this.state`, call `StackdDB.save(...)` for the affected slice, set `changed = true`, and let `emit()` re-render (coalesced — see Rendering model). The store also handles **cross-tab sync** via storage events.
 - The store keeps lazy per-dispatch indexes for hot lookups — `_openingIdx` (account opening dates) and `_budgetSpendIdx` (category×month expense sums) — both nulled at the top of `dispatch` and in `_sortData`, rebuilt in one O(T) pass on next use. If you add a mutation path that bypasses `dispatch`, invalidate them there too.
+- **Unpaid rows (`isPaid === false`) and rows dated before an account's opening date are excluded from every aggregate** — balances, forecasts, budgets, analytics and History START/END (1.0.1 BUG-05 routed History through `getBalanceAtDate`). New aggregates must follow the same rule.
+- Every account carries an explicit `currency`; accounts whose currency differs from the base are excluded from totals (v1.02: exclude, never convert). `SET_CURRENCY` takes a code string or `{code, relabel}` (1.0.1 BUG-01: relabel moves every old-base account to the new code, label only). The Settings picker and onboarding switch only through `Components.CurrencySwitchConfirm` after `Store.currencySwitchImpact(code)`.
+- `DELETE_ACCOUNT` turns each surviving transfer counterpart into a plain Uncategorized income/expense with a localized "Transfer to/from deleted account" note and hands the series generator over to it (1.0.1 BUG-14); `_healOrphanTransferLegs()` unlinks any unpaired `transferRef` at boot, before `_healRecurrenceGenerators()`.
 
 ### Loans / debt (v0.71 rebuild)
 
@@ -85,7 +88,16 @@ schedule, progress — is derived by `LoanEngine.simulate`, never stored. Routes
 `Store.getLoanProgress` gives schedule-derived paid/remaining/next-payment;
 `Store.getLoanLinkedTransactions` reads through to the linked recurring series so a
 deleted series un-tracks the loan. Loans are included in CSV export/import via a
-JSON `Config` column.
+JSON `Config` column plus a `LinkedSeriesId` column (1.0.1 BUG-02): import keeps a
+CSV series id unless it collides with one already in the store, and
+`RELINK_LOAN_SERIES` re-links after a loans/transactions import (old backups
+without the column fall back to the localized `debt.paymentNote`, all 5 languages).
+Linked-series lifecycle (1.0.1): `DELETE_LOAN {deleteFuturePayments}` removes
+members dated after today; after an edit to an active loan's terms the results
+view offers `SYNC_LOAN_SERIES {id, prevConfig}` (amount/end date, or deleting
+the future members if the loan now ends earlier); `_applyLoanFinalInstalment`
+stamps the schedule's rounding-adjusted final amount on an uncapped, uniform
+series tail; `nextRegularPayment` is the first instalment dated today or later.
 
 ### Home dashboard widgets (v0.72)
 
@@ -130,7 +142,7 @@ Two rules that are easy to get wrong:
 
 The app ships in **en / fr / it / es / pt**. `window.I18n` (`src/i18n.js`,
 loaded after `db.js` and **before** `store.js`) holds `t()`, `locale()`,
-`setLang()` and five flat dictionaries in `src/i18n/<lang>.js` — 816 keys
+`setLang()` and five flat dictionaries in `src/i18n/<lang>.js` — about 1,200 keys
 each. **`docs/i18n-plan.md` is the reference.** Live switching is free:
 `SET_LANGUAGE` sets `I18n.lang` and the emit re-renders the view.
 
@@ -151,12 +163,35 @@ Rules that are easy to get wrong:
 - Month/weekday names come from `I18n.monthNames()` / `weekdayInitials()`
   (Intl-derived, cached) — never dictionary keys.
 - All date/number/currency formatting goes through `Store.getLocale()`.
+  Percentages go through `Store.formatPercent(pct, {digits, maxDigits, signed})`
+  (1.0.1 BUG-09: Intl percent, ASCII `-`, `—` for no value), never `toFixed`
+  + `'%'`. `tests/unit/widgetsI18nGuard.test.js` renders every widget under a
+  pseudo-locale and fails on any bare English literal in `widgets.js`.
 - A structure that feeds `t()` at render time (widget registry, FAQ, manual,
   terms) must expose a **getter**, or it freezes in the boot language. Same
   reason `main.js` rebuilds the bottom nav when `state.language` changes: the
   nav is mounted once, outside the render loop.
 - Unit-test `executeFile` chains must load `i18n.js` + `i18n/en.js` right
   after `db.js`.
+
+### Sheets, dialogs and Android Back (1.0.1)
+
+- `Components.Modal.show` options `showCancel` (default `!showDelete` — in a
+  delete confirmation `saveText` IS the safe action), `saveClass` and
+  `deleteText`; footer order is delete → save → cancel. Never rely on
+  `#modal-cancel-btn` existing.
+- Android Back (key and gesture) runs `Router.handleBack()`: top sheet → FAB
+  menu → selection mode → widget edit mode → "discard changes?" on a dirty
+  add/edit/edit-account/edit-category form → back; on a bare Home it
+  minimizes the app. **Every new sheet needs a dismiss control —
+  `#modal-cancel-btn`, `.modal-btn-close`, `[data-back-dismiss]` — or a
+  backdrop-tap close**; a sheet that must ignore Back carries
+  `[data-back-swallow]`. Views must not call Router's Back helpers (unit tests
+  stub `Router` wholesale).
+- No `alert()` for validation or import results: field errors use the
+  `showFieldError`/`clearFieldError(s)` helpers at the top of `views.js`;
+  one-button results use `Components.NoticeSheet`. (Bank Connect, purchases
+  and export still use `alert()` — tests assert it; migrate together.)
 
 ### Icons
 
@@ -239,6 +274,7 @@ bite if forgotten:
 ## Working conventions in this repo
 
 - The app version is tracked in the `<title>` of `index.html` (e.g. `Stack'd v0.60`) and referenced in comments as `v0.xx`. Feature history is threaded through inline `// vX.xx` comments — grep these to understand when/why a behavior was added. Bump it via `npm run version:sync`, not by hand.
+- Post-launch changes are tagged with the public version, e.g. `// 1.0.1 (BUG-14)` (bug ids from the 2026-10-01 deep testing report, `docs/deep-test-fixes-plan.md`). Never tag new work `v1.0x`/`v1.1x`.
 - **Public version numbering restarted at 1.0 for the store launch (2026-09-27).** Every `// vX.xx` comment up to `v1.19` is an internal pre-launch iteration; the `v1.19` work is what shipped as public **1.0**. The stores show the public version with a zero patch dropped (`1.0.0` → `1.0`, `1.0.1` stays `1.0.1`) — `tools/version.cjs` owns that rule. Beware the grep collision this creates: a future public `v1.1` is not the historical `v1.10`–`v1.19`.
 - `src/store.js`, `src/views.js`, and `src/components.js` are large monolithic files; new logic is added inline to the relevant global rather than split into new files, to preserve the no-bundler / global-load model.
 - The `agents/` and `.agents/` folders document a Product Analyst → Architect → Vibe Engineer → QA workflow used to produce the code; they are process docs, not runtime code.

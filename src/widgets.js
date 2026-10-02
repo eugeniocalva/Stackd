@@ -159,9 +159,12 @@ window.Widgets = {
     if (pct === null || pct === undefined || !isFinite(pct)) {
       return `<span class="widget-delta">—</span>`;
     }
-    const cls = pct > 0 ? 'text-income' : (pct < 0 ? 'text-expense' : '');
-    const sign = pct > 0 ? '+' : '';
-    return `<span class="widget-delta ${cls}">${sign}${pct.toFixed(1)}%</span>`;
+    // 1.0.1 (BUG-09): locale-aware percent; sign AND colour follow the
+    // formatted value, so 0.04 reads a neutral '0.0%', never a green one.
+    const text = window.Store.formatPercent(pct, { digits: 1, signed: true });
+    const isZero = !/[1-9]/.test(text);
+    const cls = isZero ? '' : (pct > 0 ? 'text-income' : 'text-expense');
+    return `<span class="widget-delta ${cls}">${this._esc(text)}</span>`;
   },
 
   _configSection(label, inner) {
@@ -264,7 +267,7 @@ window.Widgets = {
           const isExpense = tx.type === 'expense';
           const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
           const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount), acc && acc.currency); // v1.02: row currency
-          const title = cat ? cat.name : window.I18n.t(tx.transferRef ? 'common.transfer' : 'common.unknown');
+          const title = cat ? cat.name : window.I18n.t(tx.transferRef ? 'common.transfer' : 'common.uncategorized'); // 1.0.1 (BUG-08) label, key added by the forms unit
           const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
 
           return `
@@ -338,11 +341,11 @@ window.Widgets = {
           return `
             <div class="widget-stat">
               <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net))}</span>
-              <span class="widget-stat-label">net · ${W._esc(cur.label)} · ${W._esc(window.I18n.t('widget.eomShort'))}</span>
+              <span class="widget-stat-label">${W._esc(window.I18n.t('widget.netflow.net'))} · ${W._esc(cur.label)} · ${W._esc(window.I18n.t('widget.eomShort'))}</span>
             </div>
             <div class="widget-minibars">
-              ${bar('In', cur.income, 'text-income')}
-              ${bar('Out', cur.expense, 'text-expense')}
+              ${bar(window.I18n.t('widget.netflow.in'), cur.income, 'text-income')}
+              ${bar(window.I18n.t('widget.netflow.out'), cur.expense, 'text-expense')}
             </div>`;
         }
 
@@ -500,7 +503,7 @@ window.Widgets = {
                 <div class="widget-legend-item">
                   <span class="widget-legend-dot" style="background: ${W._esc(d._color)};"></span>
                   <span class="widget-legend-name">${W._esc(d.name)}</span>
-                  <span class="widget-legend-pct">${W._esc(d.percentage.toFixed(1))}%</span>
+                  <span class="widget-legend-pct">${W._esc(window.Store.formatPercent(d.percentage, { digits: 1 }))}</span>
                 </div>`).join('')}
             </div>
           </div>`;
@@ -551,8 +554,8 @@ window.Widgets = {
                 callbacks: {
                   label: (ctx) => {
                     const totalVal = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                    const pct = totalVal > 0 ? ((ctx.parsed / totalVal) * 100).toFixed(1) : 0;
-                    return `  ${window.Store.formatCurrency(ctx.parsed)} (${pct}%)`;
+                    const pct = window.Store.formatPercent(totalVal > 0 ? (ctx.parsed / totalVal) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
+                    return `  ${window.Store.formatCurrency(ctx.parsed)} (${pct})`;
                   }
                 }
               }
@@ -626,7 +629,7 @@ window.Widgets = {
         return `
           <div class="widget-stat">
             <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(latest))}</span>
-            <span class="widget-stat-label">${W._deltaBadge(forecast.todayVariation)} vs. start of mo.</span>
+            <span class="widget-stat-label">${window.I18n.t('dash.vsStartOfMonth', { pct: W._deltaBadge(forecast.todayVariation) })}</span>
           </div>
           <div class="widget-chart-wrap ${instance.size === 'large' ? '' : 'widget-chart-wrap--spark'}">
             <canvas id="${W._canvasId(instance)}"></canvas>
@@ -749,7 +752,9 @@ window.Widgets = {
         const head = `
           <div class="widget-stat">
             <span class="widget-stat-value ${current.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(current.net))}</span>
-            <span class="widget-stat-label">${W._deltaBadge(pct)} vs. ${W._esc(previous ? previous.label : 'prev.')}</span>
+            <span class="widget-stat-label">${previous
+              ? window.I18n.t('widget.savings.vsMonth', { pct: W._deltaBadge(pct), month: W._esc(previous.label) })
+              : window.I18n.t('widget.savings.vsPrev', { pct: W._deltaBadge(pct) })}</span>
           </div>`;
 
         if (instance.size !== 'large') {
@@ -939,14 +944,14 @@ window.Widgets = {
             icon = debtCat ? debtCat.icon : 'landmark';
             title = row.name;
             amountHtml = `<span class="widget-row-value text-expense">-${W._esc(window.Store.formatCurrency(row.amount))}</span>`;
-            sub = isLarge ? `Loan · ${dateLabel}` : dateLabel;
+            sub = isLarge ? window.I18n.t('widget.upcoming.loanSub', { date: dateLabel }) : dateLabel; // 1.0.1 (BUG-09)
           } else {
             const cat = (state.categories || []).find(c => c.id === row.categoryId);
             const acc = (state.accounts || []).find(a => a.id === row.accountId);
             const isExpense = row.type === 'expense';
             const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
             icon = row.transferRef ? 'arrow-up-down' : (cat ? cat.icon : 'receipt');
-            title = cat ? cat.name : window.I18n.t(row.transferRef ? 'common.transfer' : 'common.unknown');
+            title = cat ? cat.name : window.I18n.t(row.transferRef ? 'common.transfer' : 'common.uncategorized'); // 1.0.1 (BUG-08) label
             amountHtml = `<span class="widget-row-value ${cls}">${isExpense ? '-' : '+'}${W._esc(window.Store.formatCurrency(Math.abs(row.amount)))}</span>`;
             sub = isLarge ? `${acc ? acc.name : window.I18n.t('common.account')} · ${dateLabel}` : dateLabel;
           }
@@ -973,7 +978,7 @@ window.Widgets = {
           const cls = net > 0 ? 'text-income' : (net < 0 ? 'text-expense' : '');
           footer = `
             <div class="widget-upcoming-footer">
-              <span class="widget-stat-label">Net impact · ${days} days</span>
+              <span class="widget-stat-label">${W._esc(window.I18n.t('widget.upcoming.netImpact', { count: days }))}</span>
               <span class="widget-row-value ${cls}">${net > 0 ? '+' : ''}${W._esc(window.Store.formatCurrency(net))}</span>
             </div>`;
         }
@@ -1065,7 +1070,7 @@ window.Widgets = {
         const { limit, spent } = this._totals(rows);
 
         if (instance.size !== 'large') {
-          const pctLabel = limit > 0 ? `${Math.round((spent / limit) * 100)}%` : '—';
+          const pctLabel = limit > 0 ? window.Store.formatPercent((spent / limit) * 100) : '—'; // 1.0.1 (BUG-09)
           return `
             <div class="widget-donut">
               <canvas id="${W._canvasId(instance)}"></canvas>
@@ -1081,8 +1086,12 @@ window.Widgets = {
         // Capped at 4 since v0.73 Phase 2: the card height is fixed, and 4 bars
         // plus the "+N more" line is what fits the box.
         const bars = rows.slice(0, 4).map(r => {
-          const pct = r.bdg.finalLimit > 0 ? Math.min((r.bdg.spent / r.bdg.finalLimit) * 100, 100) : 0;
-          const isOver = r.bdg.spent > r.bdg.finalLimit;
+          // 1.0.1 (BUG-13): the cap is for the BAR only — the label shows the
+          // real usage ('250%'), '—' when the effective limit is not positive.
+          // isOver compares in cents so float drift never flips the colour.
+          const usedPct = r.bdg.finalLimit > 0 ? (r.bdg.spent / r.bdg.finalLimit) * 100 : null;
+          const pct = usedPct === null ? 0 : Math.min(usedPct, 100);
+          const isOver = Math.round((r.bdg.spent - r.bdg.finalLimit) * 100) > 0;
           // v0.83: bar fills keep the vivid --color-expense (graphics, not
           // text); the pct TEXT uses the AA-contrast pair — the raw red fails
           // 4.5:1 on light cards and the amber literal failed both themes.
@@ -1092,7 +1101,7 @@ window.Widgets = {
             <div class="widget-minibar">
               <div class="widget-minibar-head">
                 <span class="widget-minibar-label">${W._esc(r.cat.name)}</span>
-                <span class="widget-minibar-value" style="color: ${pctColor};">${pct.toFixed(0)}%</span>
+                <span class="widget-minibar-value" style="color: ${pctColor};">${W._esc(window.Store.formatPercent(usedPct))}</span>
               </div>
               <div class="widget-minibar-track">
                 <div class="widget-minibar-fill" style="width: ${pct}%; color: ${barColor};"></div>
@@ -1101,13 +1110,13 @@ window.Widgets = {
         }).join('');
 
         const overflow = rows.length > 4
-          ? `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">+${rows.length - 4} more in Goals</span>`
+          ? `<span class="widget-stat-label" style="margin-top: var(--space-2); display: block;">${W._esc(window.I18n.t('widget.budget.moreInGoals', { count: rows.length - 4 }))}</span>`
           : '';
 
         return `
           <div class="widget-stat">
             <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(spent))}</span>
-            <span class="widget-stat-label">of ${W._esc(window.Store.formatCurrency(limit))} budgeted</span>
+            <span class="widget-stat-label">${window.I18n.t('widget.budget.ofBudgeted', { amount: W._esc(window.Store.formatCurrency(limit)) })}</span>
           </div>
           <div class="widget-minibars">${bars}</div>
           ${overflow}`;
@@ -1199,10 +1208,26 @@ window.Widgets = {
       // ignored by _cfg's merge; no migration needed.
       defaultConfig: { plannedIncome: null, pctNeeds: 50, pctWants: 30, pctSavings: 20 },
 
+      // 1.0.1 (BUG-09): one 'totals 100' rule for the fallback AND the config
+      // hint, compared at 0.001 precision so float sums (33.3+33.3+33.4) pass.
+      _splitOk(sum) {
+        return Math.round(sum * 1000) === 100000;
+      },
+
+      // 1.0.1 (BUG-09): the hint shows the sum rounded EXACTLY as _splitOk
+      // rounds it (to 0.001), so an invalid split (99.95, 100.04) can never
+      // read 'Currently 100% — the split must total 100%'.
+      _sumHint(sum) {
+        return window.I18n.t('widget.fifty.sumHint', {
+          pct: window.Store.formatPercent(Math.round(sum * 1000) / 1000, { maxDigits: 3 }),
+          total: window.Store.formatPercent(100)
+        });
+      },
+
       _pcts(cfg) {
         const ps = [cfg.pctNeeds, cfg.pctWants, cfg.pctSavings];
         const valid = ps.every(p => typeof p === 'number' && isFinite(p) && p >= 0)
-          && Math.round(ps[0] + ps[1] + ps[2]) === 100;
+          && this._splitOk(ps[0] + ps[1] + ps[2]);
         // An incomplete split renders nonsense amounts; fall back to the
         // classic rule rather than guessing what the user meant.
         return valid
@@ -1243,7 +1268,7 @@ window.Widgets = {
         const row = (label, pct, amount) => `
           <div class="widget-minibar">
             <div class="widget-minibar-head">
-              <span class="widget-minibar-label">${W._esc(label)} ${pct}%</span>
+              <span class="widget-minibar-label">${W._esc(label)} ${W._esc(window.Store.formatPercent(pct, { maxDigits: 1 }))}</span>
               <span class="widget-minibar-value">${W._esc(fmt(amount))}</span>
             </div>
             <div class="widget-minibar-track">
@@ -1254,7 +1279,7 @@ window.Widgets = {
         return `
           <div class="widget-stat">
             <span class="widget-stat-value">${W._esc(fmt(d.base))}</span>
-            <span class="widget-stat-label">planned monthly income${d.pcts.fallback ? ' · using 50/30/20 (fix the split)' : ''}</span>
+            <span class="widget-stat-label">${W._esc(window.I18n.t(d.pcts.fallback ? 'widget.fifty.baseLabelFallback' : 'widget.fifty.baseLabel'))}</span>
           </div>
           <div class="widget-minibars">
             ${row(window.I18n.t('widget.fifty.needs'), d.pcts.needs, d.targets.needs)}
@@ -1292,7 +1317,7 @@ window.Widgets = {
               ${pctInput('pctWants', window.I18n.t('widget.fifty.wantsPct'), config.pctWants)}
               ${pctInput('pctSavings', window.I18n.t('widget.fifty.savingsPct'), config.pctSavings)}
             </div>
-            <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${sum === 100 ? 'display: none;' : ''}">Currently ${sum}% — the split must total 100%</p>`)
+            <p class="widget-stat-label" id="fifty-sum-hint" style="margin-top: var(--space-2); ${this._splitOk(sum) ? 'display: none;' : ''}">${W._esc(this._sumHint(sum))}</p>`)
         ].join('');
       },
 
@@ -1317,8 +1342,8 @@ window.Widgets = {
             if (hint) {
               const cfg = ctx.getConfig();
               const sum = (cfg.pctNeeds || 0) + (cfg.pctWants || 0) + (cfg.pctSavings || 0);
-              hint.style.display = sum === 100 ? 'none' : 'block';
-              hint.textContent = `Currently ${sum}% — the split must total 100%`;
+              hint.style.display = this._splitOk(sum) ? 'none' : 'block';
+              hint.textContent = this._sumHint(sum);
             }
           });
         });

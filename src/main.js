@@ -385,11 +385,19 @@ document.addEventListener('DOMContentLoaded', async () => {
           CapacitorApp.getLaunchUrl().then(r => { if (r && r.url) return window.BankConnect.handleReturn(r.url); }).catch(() => {});
         }
       }
-      CapacitorApp.addListener('backButton', ({ canGoBack }) => {
-        const state = window.Store.getState();
-        if (state.activeView !== 'dashboard') {
-          window.history.back();
-        } else {
+      // 1.0.1 (BUG-03): Router.handleBack runs the in-app chain (open sheet →
+      // + menu → selection / widget edit mode → unsaved-form confirm → route
+      // back). Only a bare Home leaves, and it backgrounds the app (the
+      // Android 12+ root-activity default, warm resume) instead of killing it.
+      CapacitorApp.addListener('backButton', (ev) => {
+        const canGoBack = !ev || ev.canGoBack !== false;
+        if (window.Router.handleBack({ canGoBack }) !== 'exit') return;
+        try {
+          const left = typeof CapacitorApp.minimizeApp === 'function'
+            ? CapacitorApp.minimizeApp()
+            : CapacitorApp.exitApp();
+          Promise.resolve(left).catch(() => CapacitorApp.exitApp());
+        } catch (e) {
           CapacitorApp.exitApp();
         }
       });
@@ -717,8 +725,14 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
   ];
   const LANGUAGES = window.I18n.LANGUAGES; // v0.86 P8a: en/fr/it/es/pt
 
-  // Defaults: EUR + English
-  let selectedCurrency = initialCurrency || 'EUR';
+  // Defaults: EUR + English.
+  // 1.0.1 (BUG-01): the sheet also reappears when an earlier onboarding was
+  // dismissed before 'Get started' (setup_done missing) — with accounts that
+  // already carry the store's base. Preselect THAT base, not EUR, so Get
+  // started never silently flips it and zeroes every total.
+  const _st = window.Store.getState();
+  let selectedCurrency = initialCurrency ||
+    ((_st.accounts && _st.accounts.length && _st.currency) ? _st.currency : 'EUR');
   let selectedLanguage  = initialLanguage || 'en';
 
   const currencyLabel = () => (CURRENCIES.find(x => x.code === selectedCurrency) || {}).label || selectedCurrency;
@@ -792,7 +806,7 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
           <div class="list-item-icon" style="margin:0;"><i data-lucide="coins"></i></div>
           <div>
             <div class="list-item-title">${window.I18n.t('others.currency')}</div>
-            <div class="list-item-subtitle" id="setup-currency-subtitle">${window.I18n.t('currency.EUR')}</div>
+            <div class="list-item-subtitle" id="setup-currency-subtitle">${currencyLabel()}</div>
           </div>
         </div>
         <i data-lucide="chevron-right" style="color:var(--text-tertiary);width:20px;height:20px;flex-shrink:0;"></i>
@@ -818,18 +832,35 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
     title: window.I18n.t('setup.welcome'),
     content,
     saveText: window.I18n.t('setup.getStarted'),
+    // 1.0.1 (BUG-20): mandatory sheet — no footer Cancel (the manual hide
+    // below stays as a fallback for a cached pre-1.0.1 Modal).
+    showCancel: false,
     onSave: (close) => {
-      window.Store.dispatch('SET_CURRENCY', selectedCurrency);
+      // Language first, so a currency confirm below opens in it.
       window.Store.dispatch('SET_LANGUAGE', selectedLanguage);
       // v0.97: through StackdDB so the native file mirror sees it too
       // (stores the same '1' string the old raw setItem wrote).
       window.StackdDB.save('setup_done', 1);
+      // 1.0.1 (BUG-01): a switch that would leave existing accounts out of
+      // totals goes through the shared confirm (hand-off, no close()).
+      // Cancelling it finishes onboarding with the base unchanged.
+      const prev = window.Store.getState().currency;
+      if (selectedCurrency !== prev) {
+        const impact = window.Store.currencySwitchImpact(selectedCurrency);
+        if (impact.excluded > 0) {
+          window.Components.CurrencySwitchConfirm.show({ prev, next: selectedCurrency, impact });
+          return;
+        }
+      }
+      window.Store.dispatch('SET_CURRENCY', selectedCurrency);
       close();
     }
   });
 
   // Hide Cancel (mandatory modal) + wire up row taps
   setTimeout(() => {
+    // 1.0.1 (BUG-20): fallback only, null-safe: the 1.0.1 Modal honours
+    // showCancel:false and never renders the button.
     const cancelBtn = document.getElementById('modal-cancel-btn');
     if (cancelBtn) cancelBtn.style.display = 'none';
 

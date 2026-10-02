@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -10,6 +10,11 @@ const executeFile = (path) => {
 
 describe('Overview Balance Fix (Today Capping)', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49e) Pin Date (only Date) to 2026-04-17 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach, so no test relies on the previous test's leaked pin.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 3, 17, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-id'
@@ -31,11 +36,9 @@ describe('Overview Balance Fix (Today Capping)', () => {
     executeFile('i18n/en.js');
     executeFile('store.js');
     global.window.Store.init();
-    
-    // Set system time to a known date: 2026-04-17
-    const mockDate = new Date(2026, 3, 17); // Month is 0-indexed, so 3 is April
-    vi.setSystemTime(mockDate);
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   it('should NOT include future transactions in the current month balance for compute12MonthBalances', () => {
     // 1. Add account with an early opening date

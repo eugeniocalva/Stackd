@@ -179,7 +179,22 @@ window.Components = {
 
   Modal: {
     show(options) {
-      const { title, content, onSave, saveText = window.I18n.t('common.save'), showDelete = false, onDelete, showClose = false } = options;
+      // 1.0.1 (BUG-20): in a delete confirmation saveText IS the safe action
+      // ("Cancel", "Keep", "Keep Data"), so a footer Cancel would duplicate
+      // it: showCancel defaults to !showDelete and the safe button turns
+      // secondary. A caller that wants Delete + a real action + Cancel must
+      // pass showCancel: true; dismiss-only sheets ("Done", "OK") pass
+      // showCancel: false. deleteText labels the destructive button up front
+      // (no setTimeout relabel; its visible text is then its accessible name).
+      // Footer order is destructive first, safe action last (D4f), so the
+      // bottom thumb spot never holds Delete.
+      const {
+        title, content, onSave, saveText = window.I18n.t('common.save'),
+        showDelete = false, onDelete, showClose = false,
+        showCancel = !showDelete,
+        saveClass = showDelete ? 'btn-secondary' : 'btn-primary',
+        deleteText
+      } = options;
       const container = document.getElementById('modal-container');
       container.innerHTML = `
         <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -195,9 +210,9 @@ window.Components = {
             </div>
             <div class="modal-body">${content}</div>
             <div style="margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3);">
-              <button class="btn btn-primary" id="modal-save-btn">${saveText}</button>
-              ${showDelete ? `<button class="btn btn-danger" id="modal-delete-btn" aria-label="${window.I18n.t('modal.deleteAria')}">${window.I18n.t('common.delete')}</button>` : ''}
-              <button class="btn btn-secondary" id="modal-cancel-btn" aria-label="${window.I18n.t('modal.cancelAria')}">${window.I18n.t('common.cancel')}</button>
+              ${showDelete ? `<button class="btn btn-danger" id="modal-delete-btn"${deleteText ? '' : ` aria-label="${window.I18n.t('modal.deleteAria')}"`}>${deleteText || window.I18n.t('common.delete')}</button>` : ''}
+              <button class="btn ${saveClass}" id="modal-save-btn">${saveText}</button>
+              ${showCancel ? `<button class="btn btn-secondary" id="modal-cancel-btn" aria-label="${window.I18n.t('modal.cancelAria')}">${window.I18n.t('common.cancel')}</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -295,6 +310,60 @@ window.Components = {
 
   // v0.74: FAQ sheet (Others → Support → FAQ). Static Q&A accordion; reuses
   // the #active-modal id so Modal.hide() owns the teardown.
+  // (FaqModal follows the Android Back helpers below.)
+
+  // 1.0.1 (BUG-03): Android Back (the hardware key AND the edge gesture —
+  // Capacitor delivers both as one 'backButton' event) closes the TOPMOST
+  // open sheet THROUGH its own dismiss control, so each sheet's teardown runs
+  // exactly as a tap would (ExpandedGraph destroys its chart, AddWidget steps
+  // back, BankDisclosure reverts the toggle via its backdrop handler).
+  // Convention: every sheet needs one of these controls, or a backdrop-tap
+  // close (e.target === backdrop); otherwise Back is swallowed while it is
+  // open — safe (never navigates or exits underneath it), but it feels stuck.
+  // Priority order: an explicit [data-back-dismiss] wins over the generic ids.
+  _BACK_DISMISS: ['[data-back-dismiss]', '#modal-cancel-btn', '.modal-btn-close'],
+  // Sheets where Back must do nothing (D4h): the mandatory first-launch
+  // welcome sheet (recognised by its setup rows, whether its Cancel is hidden
+  // or absent) and the bank-waiting sheet, whose Cancel revokes the pending
+  // requisition over the network.
+  _BACK_SWALLOW: '[data-back-swallow], #bank-waiting-modal, #setup-row-currency, #setup-row-language',
+  // Returns true whenever a sheet was open: Back is then consumed even if the
+  // sheet refuses to close, and is never routed underneath it.
+  dismissTopSheet() {
+    let top = null;
+    let topZ = -Infinity;
+    document.querySelectorAll('.modal-backdrop.open').forEach(el => {
+      // Computed, not inline: pickers carry an inline 10000, the setup picker
+      // 10002, plain sheets the stylesheet's --z-modal-backdrop.
+      const z = parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
+      if (z >= topZ) { top = el; topZ = z; } // a tie goes to the later node (paints on top)
+    });
+    if (!top) return false;
+    if (top.matches(this._BACK_SWALLOW) || top.querySelector(this._BACK_SWALLOW)) return true;
+
+    let btn = null;
+    for (const sel of this._BACK_DISMISS) {
+      btn = top.querySelector(sel);
+      if (btn) break;
+    }
+    if (btn) {
+      const hidden = btn.hidden || btn.disabled || !!btn.closest('[hidden]') ||
+        window.getComputedStyle(btn).display === 'none';
+      if (!hidden) btn.click();
+      return true; // a hidden/disabled dismiss control means "not dismissable now"
+    }
+    // No dismiss control (e.g. a Modal.show delete sheet without Cancel):
+    // the sheet's own backdrop-tap close runs (HTMLElement.click() targets
+    // the backdrop itself)...
+    top.click();
+    // ...and the generic modal is closed through its own teardown if its
+    // backdrop handler did not (hide() drops .open synchronously).
+    if (top.id === 'active-modal' && top.classList.contains('open') && this.Modal && this.Modal.hide) {
+      this.Modal.hide();
+    }
+    return true;
+  },
+
   FaqModal: {
     // v0.91 P8f: 7 stable ids; the text lives in the dictionary, so the
     // list is rebuilt in the active language on every show().
@@ -707,7 +776,7 @@ window.Components = {
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; gap: var(--space-3);">
               <h3 id="ip-title" style="margin: 0; font-size: 1.25rem; font-family: var(--font-family-display); font-weight: 800;">${window.I18n.t('iconPicker.title')}</h3>
               <div style="display: flex; width: 100%; gap: var(--space-3);">
-                <button class="btn btn-secondary" id="ip-cancel" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
+                <button class="btn btn-secondary" id="ip-cancel" data-back-dismiss style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
                 <button class="btn btn-primary" id="ip-confirm" style="flex: 1; padding: 8px 16px; min-height: 40px;" aria-label="${window.I18n.t('picker.confirmAria')}">${window.I18n.t('common.done')}</button>
               </div>
             </div>
@@ -831,7 +900,7 @@ window.Components = {
         <div class="list-item-content">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
-              <span>${category ? category.name : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.unknown'))}</span>
+              <span>${category ? category.name : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
             </div>
             <div class="list-item-value ${amountClass}">${formattedAmount}</div>
           </div>
@@ -1453,7 +1522,7 @@ window.Components = {
         <div class="modal-backdrop" id="active-period-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="pp-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-              <button class="btn btn-secondary" id="pp-cancel" style="padding: 8px 16px; width: auto;" aria-label="${window.I18n.t('common.cancel')}">${window.I18n.t('common.cancel')}</button>
+              <button class="btn btn-secondary" id="pp-cancel" data-back-dismiss style="padding: 8px 16px; width: auto;" aria-label="${window.I18n.t('common.cancel')}">${window.I18n.t('common.cancel')}</button>
               <h3 id="pp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">Select ${type.charAt(0).toUpperCase() + type.slice(1)}</h3>
               <button class="btn btn-primary" id="pp-confirm" style="padding: 8px 16px; width: auto;" aria-label="${window.I18n.t('common.done')}">${window.I18n.t('common.done')}</button>
             </div>
@@ -1560,7 +1629,7 @@ window.Components = {
               </button>
 
               <!-- Cancel -->
-              <button id="rcm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
+              <button id="rcm-cancel" data-back-dismiss class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>`;
@@ -1663,7 +1732,7 @@ window.Components = {
               </button>
 
               <!-- Cancel -->
-              <button id="rdm-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
+              <button id="rdm-cancel" data-back-dismiss class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>`;
@@ -1795,8 +1864,8 @@ window.Components = {
                     <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">${window.I18n.t('recSettings.enableSub')}</div>
                   </div>
                   <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;">
-                    <button id="rs-toggle-off" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${!recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">OFF</button>
-                    <button id="rs-toggle-on" class="btn" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">ON</button>
+                    <button id="rs-toggle-off" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${!recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">OFF</button>
+                    <button id="rs-toggle-on" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${recurrence.enabled ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}">ON</button>
                   </div>
                 </div>
 
@@ -1836,7 +1905,7 @@ window.Components = {
                 </div>
 
                 <div style="display: flex; gap: var(--space-3); margin-top: var(--space-2);">
-                  <button id="rs-cancel" class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
+                  <button id="rs-cancel" data-back-dismiss class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
                   <button id="rs-save" class="btn btn-primary" style="flex: 2;">${window.I18n.t('recSettings.saveRules')}</button>
                 </div>
               </div>
@@ -1972,10 +2041,14 @@ window.Components = {
       div.innerHTML = `
         <div class="modal-backdrop" id="active-freq-picker" style="z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="fp-title">
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
-            <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-              <button class="btn btn-secondary" id="fp-cancel" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
-              <h3 id="fp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display);">${window.I18n.t('freqPicker.title')}</h3>
-              <button class="btn btn-primary" id="fp-confirm" style="padding: 8px 16px;" aria-label="${window.I18n.t('freqPicker.confirmAria')}">${window.I18n.t('common.done')}</button>
+            <!-- 1.0.1 (BUG-23): .btn is width:100%, which squeezed the title to
+                 one word per line; the header buttons size to their content
+                 and the title takes the remaining space (wraps only as a
+                 last resort, centred). -->
+            <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);">
+              <button class="btn btn-secondary" id="fp-cancel" data-back-dismiss style="width: auto; flex-shrink: 0; padding: 8px 14px; font-size: var(--text-sm);" aria-label="${window.I18n.t('freqPicker.cancelAria')}">${window.I18n.t('common.cancel')}</button>
+              <h3 id="fp-title" style="margin: 0; flex: 1; min-width: 0; text-align: center; line-height: 1.25; font-size: 1.1rem; font-family: var(--font-family-display);">${window.I18n.t('freqPicker.title')}</h3>
+              <button class="btn btn-primary" id="fp-confirm" style="width: auto; flex-shrink: 0; padding: 8px 14px; font-size: var(--text-sm);" aria-label="${window.I18n.t('freqPicker.confirmAria')}">${window.I18n.t('common.done')}</button>
             </div>
             
             <div style="position: relative; display: flex; height: 200px; background: var(--bg-surface);">
@@ -1995,6 +2068,18 @@ window.Components = {
             <style>
               #fp-col-interval::-webkit-scrollbar { display: none; }
               #fp-col-freq::-webkit-scrollbar { display: none; }
+              /* 1.0.1 (BUG-23): the absolutely positioned highlight band used to
+                 paint OVER the non-positioned columns at 60% opacity, greying
+                 the selected row. Lift the (transparent) columns above it, and
+                 fade rows away from the centre band so the selection reads as
+                 emphasised. The mask is fixed to the scroller box: no scroll
+                 listener needed. */
+              #fp-col-interval, #fp-col-freq {
+                position: relative;
+                z-index: 1;
+                -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.3), #000 40%, #000 60%, rgba(0,0,0,.3));
+                mask-image: linear-gradient(to bottom, rgba(0,0,0,.3), #000 40%, #000 60%, rgba(0,0,0,.3));
+              }
             </style>
           </div>
         </div>`;
@@ -2072,7 +2157,7 @@ window.Components = {
           <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh;">
             <div style="padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface);">
               <h3 id="lp-title" style="margin: 0; font-size: 1.1rem; font-family: var(--font-family-display); font-weight: 800;">${title}</h3>
-              <button class="btn-icon touch-target" id="lp-close" aria-label="${window.I18n.t('picker.closeAria')}" style="color: var(--text-secondary); width: 44px; height: 44px; margin-right: -10px;">
+              <button class="btn-icon touch-target" id="lp-close" data-back-dismiss aria-label="${window.I18n.t('picker.closeAria')}" style="color: var(--text-secondary); width: 44px; height: 44px; margin-right: -10px;">
                 <i data-lucide="x" style="width: 24px; height: 24px;"></i>
               </button>
             </div>
@@ -2485,7 +2570,7 @@ window.Components = {
                     <div class="list-item-icon" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
                     <div class="donut-legend-info" style="margin-left: 4px;">
                       <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(item.name)}</span>
-                      <span class="donut-legend-pct">${item.percentage.toFixed(1)}%</span>
+                      <span class="donut-legend-pct">${esc(window.Store.formatPercent(item.percentage, { digits: 1 }))}</span>
                     </div>
                     <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(window.Store.formatCurrency(item.amount))}</div>
                     ${item.isOthers ? '<div style="width: 8px; margin-left: 8px;"></div>' : '<div class="donut-legend-caret" aria-hidden="true">›</div>'}
@@ -2693,8 +2778,8 @@ window.Components = {
                 label: (ctx) => {
                   const val = ctx.parsed;
                   const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                  const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                  return `  ${window.Store.formatCurrency(val)} (${pct}%)`;
+                  const pct = window.Store.formatPercent(total > 0 ? (val / total) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
+                  return `  ${window.Store.formatCurrency(val)} (${pct})`;
                 }
               }
             }
@@ -2764,7 +2849,7 @@ window.Components = {
               </div>
 
               <div style="padding: var(--space-5); border-top: 1px solid var(--border-color); display: flex; gap: var(--space-3);">
-                <button id="tags-cancel" class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
+                <button id="tags-cancel" data-back-dismiss class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
                 <button id="tags-save" class="btn btn-primary" style="flex: 2;">${window.I18n.t('tagsModal.apply')}</button>
               </div>
             </div>
@@ -2957,7 +3042,7 @@ window.Components = {
               ${optionCard('ru-only-this', window.I18n.t('recUpdate.onlyThis'), window.I18n.t(recurrenceRemoved ? 'recUpdate.onlyThisSubUnlink' : 'recUpdate.onlyThisSub'))}
               ${optionCard('ru-this-future', window.I18n.t('recUpdate.thisFuture'), futureSub)}
               ${optionCard('ru-all-series', window.I18n.t('recUpdate.allSeries'), allSub)}
-              <button id="ru-cancel" class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
+              <button id="ru-cancel" data-back-dismiss class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -3200,7 +3285,7 @@ window.Components = {
             <h2 id="irm-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: 1.1rem;">${window.I18n.t('bankImport.rulesTitle')}</h2>
             <p style="color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.5; margin: 0 0 var(--space-3);">${window.I18n.t('bankImport.rulesDesc')}</p>
             <div id="irm-list" style="max-height: 50vh; overflow-y: auto;">${rules.length ? rules.map(row).join('') : emptyHtml}</div>
-            <button class="btn btn-secondary" id="irm-close" style="width: 100%; margin-top: var(--space-4);">${window.I18n.t('common.close')}</button>
+            <button class="btn btn-secondary" id="irm-close" data-back-dismiss style="width: 100%; margin-top: var(--space-4);">${window.I18n.t('common.close')}</button>
           </div>
         </div>`;
       container.appendChild(div.firstElementChild);
@@ -3377,7 +3462,7 @@ window.Components = {
           <div class="modal-content" style="height: 92vh; border-top-left-radius: 32px; border-top-right-radius: 32px; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface);">
             <!-- Top Bar with X (Left) and Filter (Right) -->
             <div class="modal-top-bar" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 20; background: var(--bg-surface);">
-              <button class="modal-btn-icon-left" id="egm-close" aria-label="${window.I18n.t('graphModal.closeAria')}">
+              <button class="modal-btn-icon-left" id="egm-close" data-back-dismiss aria-label="${window.I18n.t('graphModal.closeAria')}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x" data-hydrated="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <h3 style="font-family: var(--font-family-display); font-weight: 800; font-size: 1.1rem; margin: 0; color: var(--text-primary);">${window.I18n.t('graphModal.balanceTrend')}</h3>
@@ -4477,6 +4562,69 @@ Object.assign(window.Components, {
     }
   },
 
+  // 1.0.1 (BUG-01): confirm step of a base-currency switch, shared by the
+  // Settings currency picker and the onboarding welcome sheet. It summarises
+  // how many accounts the new base would leave out of totals and offers to
+  // relabel every account in the OLD base (label only, never converted). Only
+  // the primary button dispatches; Cancel / backdrop / swipe / Back abort with
+  // the base unchanged. Callers hand off to it WITHOUT closing their own sheet
+  // first (Modal.show replaces #active-modal synchronously).
+  //   show({ prev, next, impact, onApplied })
+  //   impact = Store.currencySwitchImpact(next)
+  CurrencySwitchConfirm: {
+    // Sentence for the live summary; `relabel` = state of the checkbox.
+    summary(impact, next, relabel) {
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      const left = relabel ? impact.excluded - impact.relabelable : impact.excluded;
+      let html = esc(window.I18n.t('others.currencySwitchExcluded', { count: left, currency: next }));
+      if (impact.total > 0 && left === impact.total) {
+        html += ` <strong style="color: var(--color-expense-val);">${esc(window.I18n.t('others.currencySwitchNoneCounted'))}</strong>`;
+      }
+      return html;
+    },
+
+    show(options) {
+      const o = options || {};
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      const prev = o.prev;
+      const next = o.next;
+      const impact = o.impact || window.Store.currencySwitchImpact(next);
+      // D4a: pre-ticked only when no account is already in the new currency
+      // (the "I picked the wrong currency at onboarding" case). Holding
+      // accounts in the target signals deliberate multi-currency use.
+      const relabelDefault = impact.relabelable > 0 && impact.primaryAfter === 0;
+
+      const relabelHtml = impact.relabelable > 0 ? `
+        <label style="display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer; margin-top: var(--space-4);">
+          <input type="checkbox" id="currency-switch-relabel" class="import-check" style="margin-top: 2px;" ${relabelDefault ? 'checked' : ''}>
+          <span>${esc(window.I18n.t('others.currencySwitchRelabel', { count: impact.relabelable, from: prev, to: next }))}</span>
+        </label>` : '';
+
+      window.Components.Modal.show({
+        title: esc(window.I18n.t('others.currencySwitchTitle', { currency: next })),
+        content: `
+          <p id="currency-switch-summary" style="margin: 0; font-size: var(--text-sm); color: var(--text-primary); line-height: 1.5;">${this.summary(impact, next, relabelDefault)}</p>
+          ${relabelHtml}
+          <p id="currency-switch-note" style="margin: var(--space-4) 0 0; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.5;">${esc(window.I18n.t('others.currencySwitchNote'))}</p>`,
+        saveText: esc(window.I18n.t('others.currencySwitchApply', { currency: next })),
+        onSave: (close) => {
+          const box = document.getElementById('currency-switch-relabel');
+          window.Store.dispatch('SET_CURRENCY', { code: next, relabel: !!(box && box.checked) });
+          close();
+          if (typeof o.onApplied === 'function') o.onApplied();
+        }
+      });
+
+      const box = document.getElementById('currency-switch-relabel');
+      if (box) {
+        box.addEventListener('change', () => {
+          const sum = document.getElementById('currency-switch-summary');
+          if (sum) sum.innerHTML = this.summary(impact, next, box.checked);
+        });
+      }
+    }
+  },
+
   // v1.06 U2 (docs/import-ux-plan.md §3): the import's ending. Shown over
   // Settings right after Confirm; counts as rows, the reconciliation verdict
   // as a visual state, and the "View transactions" deep link (the wallet
@@ -4530,6 +4678,57 @@ Object.assign(window.Components, {
         close();
         window.Router.navigate(o.accountId ? `#transactions?account=${encodeURIComponent(o.accountId)}` : '#transactions');
       });
+    }
+  },
+
+  // 1.0.1 (BUG-21): one-button in-app notice, the replacement for window.alert()
+  // (an unstyled system dialog titled with the page origin in the Android
+  // WebView). Built on _bankSheet, so it lives in #modal-container under its own
+  // id and survives the re-render of the view below it. The body is escaped
+  // and keeps '\n' line breaks (white-space: pre-line). OK carries
+  // [data-back-dismiss] for Android Back; a backdrop tap and Escape also close.
+  // show({ id, tone: 'info'|'success'|'error', title, body, okText, onClose })
+  NoticeSheet: {
+    show(options) {
+      const o = options || {};
+      const id = o.id || 'notice-sheet';
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      const tone = o.tone || 'info';
+      const icon = tone === 'error' ? 'alert-triangle' : (tone === 'success' ? 'circle-check' : 'info');
+      const color = tone === 'error' ? 'var(--color-expense)' : (tone === 'success' ? 'var(--color-income)' : 'var(--color-primary)');
+      // _bankSheet labels the dialog with `${id}-title`: the heading when there
+      // is one, otherwise the body itself.
+      const titleHtml = o.title
+        ? `<h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-3); font-size: 1.1rem;">${esc(o.title)}</h2>`
+        : '';
+      const backdrop = window.Components._bankSheet(id, `
+        ${titleHtml}
+        <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-5);">
+          <i data-lucide="${icon}" aria-hidden="true" style="width: 20px; height: 20px; color: ${color}; flex-shrink: 0; margin-top: 2px;"></i>
+          <p id="${id}-${o.title ? 'body' : 'title'}" style="margin: 0; white-space: pre-line; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);">${esc(o.body)}</p>
+        </div>
+        <button type="button" class="btn btn-primary" id="${id}-ok" data-back-dismiss>${esc(o.okText || window.I18n.t('common.ok'))}</button>`);
+      if (!backdrop) return null;
+      if (o.title) backdrop.setAttribute('aria-describedby', `${id}-body`);
+      const okBtn = backdrop.querySelector(`#${id}-ok`);
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop._close();
+        if (typeof o.onClose === 'function') o.onClose();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      okBtn.addEventListener('click', close);
+      document.addEventListener('keydown', onKey);
+      // alert() used to take focus; keep keyboard / screen-reader users on it.
+      setTimeout(() => { if (!closed && okBtn.isConnected) { try { okBtn.focus({ preventScroll: true }); } catch (e) { okBtn.focus(); } } }, 50);
+      return backdrop;
     }
   },
 

@@ -370,6 +370,9 @@ describe('budgets widget', () => {
     const { html } = renderOne('budgets', 'large', {});
     expect(html).toContain('width: 100%');
     expect(html).toContain('color: var(--color-expense)');
+    // 1.0.1 (BUG-13): the label shows the REAL usage; only the bar is capped.
+    expect(html).toContain('>250%</span>');
+    expect(html).not.toContain('>100%</span>');
   });
 
   it('shows a live cumulative budget deep in the red as a 0%-wide red bar, not dropped', () => {
@@ -382,6 +385,9 @@ describe('budgets widget', () => {
     expect(html).toContain('Groceries');           // allocated>0 keeps it listed
     expect(html).toContain('width: 0%');           // finalLimit<=0 forces 0 width
     expect(html).toContain('color: var(--color-expense)'); // but red — over budget
+    // 1.0.1 (BUG-13): no meaningful percentage of a non-positive limit.
+    expect(html).toContain('>—</span>');
+    expect(html).not.toContain('>0%</span>');
   });
 
   it('includes cumulative rollover in the effective limit', () => {

@@ -6,6 +6,11 @@ import { test, expect } from '@playwright/test';
 // too, and fired two dead dispatches on the way.
 test.describe('Wallet tile → History account filter', () => {
   const bootstrap = async (page) => {
+    // 1.0.1 (C-49f) Pin the clock to mid-month (history_scroll precedent): the
+    // seed below dates its rows on the 3rd and 4th of the current month, which
+    // are future rows on days 1-3 of a real month. Time still flows after
+    // install, so modal teardown timers keep working.
+    await page.clock.install({ time: new Date(2026, 8, 15, 12, 0, 0) });
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();

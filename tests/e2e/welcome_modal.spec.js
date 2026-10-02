@@ -6,8 +6,10 @@ test.describe('Welcome Region Setup Modal', () => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();
-      window.location.reload();
     });
+    // 1.0.1 (C-49): reload through Playwright, not from inside evaluate, so
+    // the first assertion never races the old page.
+    await page.reload();
   });
 
   test('should display welcome modal, select JPY and English, and dismiss modal on Get Started', async ({ page }) => {

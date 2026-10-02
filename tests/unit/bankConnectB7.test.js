@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -90,6 +90,19 @@ const renderHub = (w) => {
   w.Views.BankConnectHubView.attachEvents(root, state());
   return root;
 };
+
+const NOW = Date.parse('2026-09-07T12:00:00.000Z');
+
+// 1.0.1 (C-49d) Pin Date (only Date: real timers keep running for the fetch
+// stubs and waits) to the fixtures' epoch. The consent/entitlement expiries in
+// these fixtures are absolute, so on the real clock the suite would go red as
+// soon as they lapse. Registered at top level so it runs before any
+// describe-level boot().
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW));
+});
+afterEach(() => { vi.useRealTimers(); });
 
 describe('Bank Connect B7 (v1.11) — web session + pairing', () => {
   describe('availability and broker URL', () => {

@@ -7,10 +7,12 @@ test.describe('Dynamic Account Balance Logic', () => {
     await page.evaluate(() => {
       localStorage.clear();
       localStorage.setItem('stackd_v1_setup_done', '1');
-      window.location.reload();
     });
-    // Wait for the app to initialize
+    // 1.0.1 (C-49): reload through Playwright so the wait below cannot match
+    // the pre-reload page's #bottom-nav and race the fresh boot's Store.
+    await page.reload();
     await page.waitForSelector('#bottom-nav');
+    await page.waitForFunction(() => !!(window.Store && window.Store.getState));
   });
 
   test('should render opening balance and date without manual current balance input field', async ({ page }) => {

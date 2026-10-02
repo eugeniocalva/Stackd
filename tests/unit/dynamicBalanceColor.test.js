@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -10,6 +10,12 @@ const executeFile = (path) => {
 
 describe('Dynamic Balance Color Formatting', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49f) Pin Date (only Date) to 2026-06-15 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach: the fixtures below are built from "today", so on the real
+    // clock they were exposed to month boundaries and midnight races.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9)
@@ -61,6 +67,8 @@ describe('Dynamic Balance Color Formatting', () => {
     global.window.Store.state.currency = 'EUR';
   });
 
+  afterEach(() => { vi.useRealTimers(); });
+
   it('renders Green text-income for positive account tile balance on Home page', () => {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -108,7 +116,10 @@ describe('Dynamic Balance Color Formatting', () => {
   it('renders Start and End balances on History page with green for positive, red for negative, and default for zero', () => {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const prevMonthStr = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}-01`;
+    // 1.0.1 (C-49f) Real date math: the old `${getMonth()}` string read
+    // 'YYYY-00-01' in January (an invalid date).
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthStr = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-01`;
 
     global.window.Store.state.accounts = [
       { id: 'acc1', name: 'Bank', balance: 0, color: '#000' }

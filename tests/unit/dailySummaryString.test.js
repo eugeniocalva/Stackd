@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -8,8 +8,21 @@ const executeFile = (path) => {
   fn(global.window, global.window.localStorage, global.window.crypto);
 };
 
+// 1.0.1 (C-49f) Today as a LOCAL 'YYYY-MM-DD' (was toISOString, i.e. the UTC
+// date, which is a different day around midnight).
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 describe('HistoryView Daily Summary String', () => {
   beforeEach(() => {
+    // 1.0.1 (C-49f) Pin Date (only Date) to 2026-06-15 at noon BEFORE
+    // Store.init, which seeds the month filters from the clock, and restore it
+    // in afterEach: the fixtures below are built from "today", so on the real
+    // clock they were exposed to month boundaries and midnight races.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
     global.window = {
       crypto: {
         randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9)
@@ -35,8 +48,10 @@ describe('HistoryView Daily Summary String', () => {
     global.window.Store.init();
   });
 
+  afterEach(() => { vi.useRealTimers(); });
+
   it('renders daily summary string with positive sum colored green for income transactions', () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     
     global.window.Store.dispatch('ADD_TRANSACTION', {
       type: 'income',
@@ -54,7 +69,7 @@ describe('HistoryView Daily Summary String', () => {
   });
 
   it('renders daily summary string with negative sum colored red for net expenses', () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
 
     global.window.Store.dispatch('ADD_TRANSACTION', {
       type: 'income',
@@ -78,7 +93,7 @@ describe('HistoryView Daily Summary String', () => {
   });
 
   it('ignores transfer transactions when calculating the daily summary', () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
 
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Checking', openingBalance: 0 });
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Savings', openingBalance: 0 });
@@ -112,7 +127,7 @@ describe('HistoryView Daily Summary String', () => {
   });
 
   it('formats currency according to user currency settings (e.g. EUR)', () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
 
     global.window.Store.dispatch('SET_CURRENCY', 'EUR');
     global.window.Store.dispatch('ADD_TRANSACTION', {

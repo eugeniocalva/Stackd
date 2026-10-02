@@ -61,8 +61,11 @@ test.describe('Budget backup E2E', () => {
       mimeType: 'text/csv',
       buffer: Buffer.from(csv, 'utf8')
     });
-    await expect.poll(() => dialogs.length).toBe(1);
-    expect(dialogs[0]).toBe('Success! Imported 2 budgets.');
+    // 1.0.1 (BUG-21): the result is an in-app sheet, not a system alert().
+    await expect(page.locator('#import-result-modal')).toContainText('Success! Imported 2 budgets.');
+    await page.click('#import-result-modal-ok');
+    await expect(page.locator('#import-result-modal')).toHaveCount(0);
+    expect(dialogs).toEqual([]);
 
     const restored = await page.evaluate(() => {
       const s = window.Store.getState();
