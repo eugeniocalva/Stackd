@@ -149,11 +149,20 @@ keystore kept outside the repo). Without that file the build produces an
 UNSIGNED bundle Play refuses — create it from
 `android/keystore.properties.example` first. Verify the result:
 
-```powershell
-& "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.1.0\aapt.exe" dump badging app-release.aab
+`aapt dump badging` cannot read an `.aab`: it fails with "no
+AndroidManifest.xml found", because a bundle stores its manifest as protobuf
+under `base/manifest/`. Check the manifest Gradle merged into the bundle
+instead, and the signature on the bundle itself:
+
+```bash
+grep -o 'package="[^"]*"\|android:versionCode="[^"]*"\|android:versionName="[^"]*"' \
+  android/app/build/intermediates/bundle_manifest/release/processApplicationManifestReleaseForBundle/AndroidManifest.xml
+"/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe" -printcert \
+  -jarfile android/app/build/outputs/bundle/release/app-release.aab | grep -E 'Owner|SHA256'
 ```
 
-`package: name='com.stackd.finance'` and the expected `versionCode`.
+Expect `com.stackd.finance`, the expected `versionCode`/`versionName`, and
+the upload key's SHA-256 (`56:CC:…:5C:6E`).
 
 ## 7. iOS archive
 

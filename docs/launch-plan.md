@@ -587,6 +587,13 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   **production countries must be set to the EEA + UK (D7) when applying**).
   The only warning was "no deobfuscation file": expected, minify is off, and
   must stay off — R8 breaks reflection-loaded plugins like the purchase one.
+  **1.0.1 (10001) bundle BUILT 2026-10-02** from tag `v1.0.1` (commit
+  `e52340a`) with the same upload key: `com.stackd.finance`, versionName
+  1.0.1, minSdk 24, targetSdk 36, Play Billing 9.0.0. It replaces 1.0 (10000)
+  on *Closed testing – Alpha*, so Google's review restarts. The 12-testers ×
+  14-days clock counts opted-in testers, not builds, so it does not reset.
+  This build is the first to need "What's new" release notes in all five
+  languages. **Uploaded and SENT FOR GOOGLE'S REVIEW 2026-10-03.**
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
@@ -654,6 +661,13 @@ through while the Mac is still being arranged.
   DSA must show verified, or the EU storefronts may not carry the app.
   On release day: A-08 (website badge). The TestFlight check is the one step that still needs hardware —
   an iPhone, not a Mac.
+  **Superseded by 1.0.1 (2026-10-03).** The 2026-10-01 deep testing report
+  held the 1.0 build because of three high-severity bugs
+  (`docs/deep-test-fixes-plan.md`). The owner withdrew 1.0 from review and
+  renamed the version to **1.0.1**. Build **1.0.1 (10001)** was built and
+  uploaded by the workflow from tag **`v1.0.1`** (commit `e52340a`) and
+  **SUBMITTED FOR REVIEW 2026-10-03**, with Stack'd Pro attached. Release
+  stays MANUAL, behind the same DSA gate, and A-08 follows on release day.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
   `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
   deployed and verified**: `/.well-known/apple-app-site-association` serves
