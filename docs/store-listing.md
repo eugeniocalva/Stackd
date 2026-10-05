@@ -539,18 +539,64 @@ here. Everything below is for THIS release, with Bank Connect off.
 |---|---|
 | Sign-in required | **No** — there are no accounts |
 | Contact | your name, a phone number Apple can reach, and an email. Seen only by App Review, never published |
-| Notes | paste as-is, below |
-| Attachment | none |
+| Notes | paste as-is, below (Apple caps it at 4,000 characters; keep it under) |
+| Attachment | none in the Notes field; the screen recording goes in the Resolution Center reply |
 
-> Stack'd is a personal finance tracker that keeps all data on the device.
-> There is no account, no sign-in and no server: the app works fully offline
-> and contains no analytics or advertising SDKs. On first launch, choose a
-> currency and language.
->
-> In-app purchase: Stack'd Pro (stackd_pro), a one-time non-consumable. The
-> free plan allows 2 accounts and the default categories; Pro removes both
-> limits. To reach it: Settings → In-app purchases, or try to add a third
-> account. Restore purchase is on the same screen.
+**Revised 2026-09-29** after the first submission came back with *Guideline
+2.1 – Information Needed* ("developer account that has a limited App Review
+history"). Apple asked for seven items and wants them both in the reply
+and in this Notes field for future submissions. Point 1 is the screen
+recording itself (a physical iPhone on the latest iOS, starting at launch,
+showing the Pro purchase and Restore); points 2–7 are below. The short note
+this replaced was not enough on its own.
+
+**Keep it in sync.** When Bank Connect ships, rewrite points 4 and 6:
+Enable Banking Oy becomes an external service and the licensed AISP
+performing the account access (see `docs/launch-plan.md` §6, the 3.2.1(viii)
+answer), and point 7 gains the two subscriptions. The UI labels below are
+the English strings in `src/i18n/en.js`; if they change, update them here.
+
+```text
+1. SCREEN RECORDING
+Attached. It was recorded on a physical iPhone running the latest iOS. It starts at app launch and shows the typical flow, including the Stack'd Pro purchase and restore. Stack'd has no account registration, login or account deletion, because the app has no user accounts at all. There is no user-generated content.
+
+2. PURPOSE AND TARGET AUDIENCE
+Stack'd Finance is a personal finance tracker for adults who want to see where their money goes without handing their financial data to a cloud service. Users record their accounts (bank, card, cash, savings), expenses, income and transfers. They can set monthly budgets per category, schedule repeating items such as rent or salary, simulate a loan's repayment schedule, and import statements they downloaded from their own bank (CSV, camt.053, MT940). The problem it solves is that most budgeting apps require an account and store personal financial data on their servers. Stack'd keeps everything on the device: no sign-up, no cloud, no ads, no tracking.
+
+3. SETUP AND ACCESS
+No login, credentials or sample files are needed. The app works fully offline.
+- First launch: a Welcome sheet asks for currency and language. Tap Get started.
+- Create an account: tap the central + button, then Add Account, enter a name, type and opening balance, and Save.
+- Record a transaction: + then Add Log. Choose expense, income or transfer, then set the amount, category and date. Optionally make it repeating.
+- The bottom bar opens Dashboard, History, Goals (monthly budgets) and Analytics.
+- Loan simulator: + then Debt.
+- Settings: the Others screen holds region, theme, data export and import, FAQ, user manual, Terms of Use, Privacy Policy and In-app purchases.
+- Optional file test: in Others, export Transactions as CSV, then use Import CSV to load it back.
+
+4. EXTERNAL SERVICES
+The app's core functionality uses no external services. There are no servers, authentication services, data providers, analytics, advertising or AI services. All data is stored locally on the device.
+- Apple In-App Purchase (StoreKit) processes the single Stack'd Pro purchase. Entitlement is checked on the device, with no receipt server of our own.
+- The Terms of Use, Privacy Policy and Support pages are static pages on our website, stackdplatform.com.
+- "Send a Feedback" opens the user's own mail app, addressed to hi@stackdplatform.com.
+- The app bundles open-source libraries: Capacitor, cordova-plugin-purchase, Chart.js (MIT), Lucide icons (ISC), and the Inter and Manrope fonts (SIL OFL).
+
+5. REGIONAL DIFFERENCES
+The app is distributed in the EU, EEA and UK storefronts. It works the same in every region: there is no region-specific content or feature. The interface is available in English, French, Italian, Spanish and Portuguese, and users can choose any currency. The Stack'd Pro price is set per storefront by Apple.
+
+6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
+Stack'd is a record-keeping and budgeting tool, not a financial service. It does not connect to bank accounts, hold or move money, process payments, offer or broker credit, or give investment or financial advice. All figures are entered or imported by the user. The loan simulator is a calculator that works only on numbers the user types in. Because no licensed activity is performed, no licence applies. The app contains no protected third-party material.
+
+7. IN-APP PURCHASE
+There is one product: Stack'd Pro (product ID stackd_pro). It is a one-time, non-consumable purchase, not a subscription. The free plan allows 2 accounts and the built-in categories. Stack'd Pro removes both limits permanently.
+How to reach it:
+- Others, then In-app purchases, then "Unlock for <price>".
+- It is also offered when trying to add a third account (+ then Add Account) or to create a custom category.
+"Restore purchase" is on the same In-app purchases screen. The Terms of Use and Privacy Policy links are shown next to the price.
+```
+
+Before replying, confirm the **Paid Apps agreement is Active** and
+`stackd_pro` is attached to the version — a purchase the reviewer cannot
+complete is the likeliest next rejection (`docs/launch-plan.md` §6).
 
 The build already answers export compliance: `ITSAppUsesNonExemptEncryption`
 is `false` in `Info.plist`, so no encryption questionnaire appears.
