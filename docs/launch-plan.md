@@ -21,6 +21,12 @@ the broker has a deploy preflight, alerting and an incident runbook.
 owner task: the Play account, the identity that becomes public, twelve
 testers, a Mac, and a lawyer's read-through.
 
+**Update 2026-10-05: 1.0.2 (10002) replaces 1.0.1 on both stores.** The
+2026-10-04 deep test of 1.0.1 held the public release for 21 bugs; they are
+fixed in commit `6a4ea85`, tagged **`v1.0.2`** (`docs/deep-test-fixes-1.0.2-plan.md`).
+The signed bundle is built and the iOS build is uploaded; what remains is
+owner clicks in both consoles (O-16, O-26c).
+
 ### Where it stands (2026-09-27)
 
 | | Done | Open, in the order I would do them |
@@ -594,6 +600,14 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   14-days clock counts opted-in testers, not builds, so it does not reset.
   This build is the first to need "What's new" release notes in all five
   languages. **Uploaded and SENT FOR GOOGLE'S REVIEW 2026-10-03.**
+  **1.0.2 (10002) bundle BUILT 2026-10-05** from commit `6a4ea85` (tag
+  `v1.0.2`) with the same upload key (SHA-256 `56:CC:…:5C:6E`):
+  `com.stackd.finance`, versionName 1.0.2, Play Billing 9.0.0, and the new
+  `@capacitor/share` plugin compiled in (native CSV export, BUG-37). 4.8 MB.
+  It replaces 1.0.1 (10001) on *Closed testing – Alpha*; Google's review
+  restarts, the tester clock does not. "What's new" in en-GB, fr-FR, it-IT,
+  es-ES and pt-PT is at the end of `docs/deep-test-fixes-1.0.2-plan.md`
+  (each under 500 characters). **Owner: upload it and send it for review.**
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
@@ -668,6 +682,16 @@ through while the Mac is still being arranged.
   uploaded by the workflow from tag **`v1.0.1`** (commit `e52340a`) and
   **SUBMITTED FOR REVIEW 2026-10-03**, with Stack'd Pro attached. Release
   stays MANUAL, behind the same DSA gate, and A-08 follows on release day.
+  **Superseded by 1.0.2 (2026-10-05).** The 2026-10-04 deep test of 1.0.1
+  held the public release (`docs/deep-test-fixes-1.0.2-plan.md`, decision
+  D16). Build **1.0.2 (10002)** was built and uploaded by the workflow from
+  tag **`v1.0.2`** (commit `6a4ea85`, run 37325634681, upload succeeded).
+  **Owner, in App Store Connect:** remove 1.0.1 from review (it becomes
+  Developer Rejected), rename the version to **1.0.2**, swap build 10001 for
+  10002 once processed, check Stack'd Pro is still attached, and submit.
+  No "What's New" field: the app has never been released on the App Store.
+  Release stays MANUAL, behind the same DSA gate, and A-08 follows on
+  release day.
 - ~~**O-27 · Set `IOS_APP_ID`**~~ · **DONE 2026-09-27** —
   `YA3DTZR26U.com.stackd.finance`, in both broker environments. **Staging is
   deployed and verified**: `/.well-known/apple-app-site-association` serves
