@@ -272,8 +272,9 @@ rounds (each with fuzzing, by-construction checks and refuters):
   - after a "finish" sync (the loan ended before its next payment),
     correcting the loan back does not bring the deleted payments back: a
     stopped series is never restarted, so the user re-tracks by hand.
-- Stale deleted-account ids remain in widget configs, filters and
-  `defaultAccountId` (adjacent to C-06).
+- ~~Stale deleted-account ids remain in widget configs, filters and
+  `defaultAccountId` (adjacent to C-06).~~ Closed by 1.0.2 (BUG-29):
+  `Store._pruneAccountRefs` on delete, at boot and cross-tab.
 - A released duplicate loan keeps `needsNoteRelink` until it is linked, tracked
   or edited.
 

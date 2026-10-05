@@ -456,7 +456,13 @@ describe('Bank statement import (v0.99)', () => {
     expect(csv).toContain(keys[1]);
     expect(csv).toContain('TX-001');
 
-    // Feed it back through the restore path: keys survive on the rebuilt txs.
+    // Wipe the ledger (keep the opening balance) and feed the backup back
+    // through the restore path: keys survive on the rebuilt txs. 1.0.2
+    // (BUG-78): the wipe comes first — buildTransactions skips rows the store
+    // already holds (it reads store keys from state, so the stale
+    // _importKeyIdx this direct wipe leaves does not matter).
+    window.Store.state.transactions = window.Store.state.transactions
+      .filter(t => t.type === 'opening_balance');
     const rebuilt = window.StackdImport.buildTransactions(
       window.StackdImport.parseCSV(csv)
     ).transactions;
@@ -464,11 +470,8 @@ describe('Bank statement import (v0.99)', () => {
     expect(withKeys.map(t => t.importKey).sort()).toEqual([...keys].sort());
     expect(withKeys.find(t => t.importKey === keys[0]).bankRef).toBe('TX-001');
 
-    // Wipe the ledger (keep the opening balance), restore the backup, and the
-    // dedup index still recognises both keys — a later bank re-import of the
-    // same statement would be flagged duplicate.
-    window.Store.state.transactions = window.Store.state.transactions
-      .filter(t => t.type === 'opening_balance');
+    // Restore the backup, and the dedup index still recognises both keys — a
+    // later bank re-import of the same statement would be flagged duplicate.
     window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: rebuilt });
 
     keys.forEach(k => expect(window.Store.hasImportKey(k)).toBe(true));

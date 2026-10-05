@@ -322,8 +322,8 @@ budget month grid; desktop shadow-tree + indicator rules kept).
 including a negative assertion that the counterproductive `display:flex` host
 never comes back. Insight shipped with `Store.getCategoryMonthlyAverage`
 (trailing 6 full months, current month excluded, averaged over months WITH
-spend, isPaid-gated — deliberately stricter than getBudgetForMonth's spent
-figure); plural keys `budget.avgSpendHint.one/.other` ×5 (the `.one` variant
+spend, isPaid-gated — since 1.0.2 (BUG-55) the same row rules as
+getBudgetForMonth's spent figure); plural keys `budget.avgSpendHint.one/.other` ×5 (the `.one` variant
 drops `{count}` and reads "Recently you spent…" — "over the last 1 month" was
 wrong whenever the single active month wasn't last month). New unit suite
 `categoryMonthlyAverage.test.js` (6 specs: averaging, windowing, exclusions,

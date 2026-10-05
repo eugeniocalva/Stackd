@@ -30,8 +30,12 @@ describe('Account Color Selection', () => {
         }),
         getCurrencySymbol: () => '$',
         getAccountBalance: () => 100,
+        // 1.0.2 (BUG-30): new-mode saves look the name up (unguarded, as BUG-11's category call).
+        findAccountByName: () => null,
         dispatch: vi.fn(),
-        _isPositiveTx: () => true
+        _isPositiveTx: () => true,
+        // 1.0.2 (BUG-25/BUG-38): EditAccountView's opening-balance date default
+        _todayYMD: () => '2026-07-01'
       },
       Router: {
         getParams: () => ({ id: 'acc1' }),

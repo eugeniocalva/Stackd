@@ -206,6 +206,31 @@ describe('Import category rules (v1.01)', () => {
     expect(rules[2].categoryId).toBe(dogfood.id);
   });
 
+  // 1.0.2 (BUG-33): rules taught from (or stored with) a multi-line note.
+  describe('whitespace-collapsed matches', () => {
+    it('a stored legacy rule with a line break still matches the one-line note', () => {
+      window.Store.state.importRules = [{ id: 'r1', match: 'supermercato\nrossi', categoryId: 'cat_groceries', createdAt: '2026-01-01T00:00:00.000Z' }];
+      expect(window.Store.matchImportRule('Supermercato Rossi — Spesa')).toBe('cat_groceries');
+    });
+
+    it('ADD_IMPORT_RULE stores a multi-line match on one line', () => {
+      addRule('Supermercato\nRossi', 'cat_groceries');
+      expect(window.Store.getState().importRules.map(r => r.match)).toEqual(['supermercato rossi']);
+    });
+
+    it('re-teaching over a stored multi-line rule leaves exactly one rule', () => {
+      window.Store.state.importRules = [{ id: 'r1', match: 'supermercato\nrossi', categoryId: 'cat_groceries', createdAt: '2026-01-01T00:00:00.000Z' }];
+      addRule('supermercato rossi', 'cat_transport');
+      const rules = window.Store.getState().importRules;
+      expect(rules).toHaveLength(1);
+      expect(rules[0]).toMatchObject({ match: 'supermercato rossi', categoryId: 'cat_transport' });
+    });
+
+    it('suggestRuleMatch collapses a multi-line party', () => {
+      expect(window.StackdImport.suggestRuleMatch('Supermercato\n  Rossi — Spesa')).toBe('supermercato rossi');
+    });
+  });
+
   it('a rules CSV is not mistaken for a bank CSV or a backup', () => {
     const rows = window.StackdImport.parseCSV('Match,Category\nrossi,Groceries');
     expect(window.StackdImport.isRuleRows(rows)).toBe(true);

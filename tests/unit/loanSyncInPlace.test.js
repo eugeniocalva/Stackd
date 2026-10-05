@@ -288,7 +288,7 @@ describe('Loan series sync — review 3 (in-place end move and edges)', () => {
 
   // ── review 4 ───────────────────────────────────────────────────────────────
   describe('review 4', () => {
-    it('a longer end grows the chain even when past payments carry a later end', () => {
+    it('a longer end grows the chain', () => {
       const loan = track(KITCHEN);
       const shorter = { ...KITCHEN, earlyRepayments: [{ amount: 2000, date: '2027-01-01', frequency: 'once', mode: 'reduceDuration' }] };
       edit(loan, shorter); // the prompt is declined
@@ -298,8 +298,8 @@ describe('Loan series sync — review 3 (in-place end move and edges)', () => {
         recurrence: { ...nov.recurrence, endDate: sim(shorter).lastPaymentDate }
       });
       expect(month(legs()[legs().length - 1].date)).toBe('2027-11');
-      // past members still say 2028-07-01
-      expect(members().find(t => t.date === '2026-09-01').recurrence.endDate).toBe('2028-07-01');
+      // 1.0.2 (BUG-26): past members carry the series' (shorter) end too
+      expect(members().find(t => t.date === '2026-09-01').recurrence.endDate).toBe(sim(shorter).lastPaymentDate);
 
       const prev = edit(loan, KITCHEN);
       const plan = Store.getLoanSeriesSyncPlan(loanById(loan.id), prev);

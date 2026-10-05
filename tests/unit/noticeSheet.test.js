@@ -147,6 +147,48 @@ describe('Settings import results use the NoticeSheet (1.0.1 BUG-21)', () => {
     expect($('import-result-modal-body').textContent).toContain('invalid amount');
   });
 
+  // 1.0.2 (BUG-78, BUG-30): the restore reports rows already in Stack'd and
+  // rows it could only guess an account for; either makes the sheet 'info'.
+  it('reports rows already in Stack\'d, in an info sheet', () => {
+    global.window.StackdImport = {
+      importCSV: (file, state, ok) => ok({ kind: 'transactions', importedCount: 0, newAccounts: 0, newCategories: 0,
+        skippedCount: 0, skipped: {}, duplicateCount: 3, ambiguousRows: 0, ambiguousAccounts: [] })
+    };
+    const show = vi.spyOn(global.window.Components.NoticeSheet, 'show');
+    renderSettings();
+    pickFile();
+    const body = $('import-result-modal-body').textContent;
+    expect(body).toContain("3 rows were already in Stack'd, so they were skipped.");
+    expect(show.mock.calls[0][0].tone).toBe('info');
+    expect($('import-result-modal').querySelector('[data-lucide="info"]')).not.toBeNull();
+  });
+
+  it('reports the same-named accounts a pre-1.0.2 backup could not tell apart', () => {
+    global.window.StackdImport = {
+      importCSV: (file, state, ok) => ok({ kind: 'transactions', importedCount: 2, newAccounts: 0, newCategories: 0,
+        skippedCount: 0, skipped: {}, duplicateCount: 0, ambiguousRows: 2, ambiguousAccounts: ['Visa', '<b>Card</b>'] })
+    };
+    const show = vi.spyOn(global.window.Components.NoticeSheet, 'show');
+    renderSettings();
+    pickFile();
+    const body = $('import-result-modal-body');
+    expect(body.textContent).toContain('2 rows name accounts that share a name with another account (Visa, <b>Card</b>)');
+    expect(body.querySelector('b')).toBeNull(); // raw names, escaped by the sheet
+    expect(show.mock.calls[0][0].tone).toBe('info');
+  });
+
+  it('a clean restore stays a success sheet', () => {
+    global.window.StackdImport = {
+      importCSV: (file, state, ok) => ok({ kind: 'transactions', importedCount: 2, newAccounts: 0, newCategories: 0,
+        skippedCount: 0, skipped: {}, duplicateCount: 0, ambiguousRows: 0, ambiguousAccounts: [] })
+    };
+    const show = vi.spyOn(global.window.Components.NoticeSheet, 'show');
+    renderSettings();
+    pickFile();
+    expect(show.mock.calls[0][0].tone).toBe('success');
+    expect($('import-result-modal-body').textContent).not.toContain("already in Stack'd");
+  });
+
   it('a failure opens the sheet with the error title', () => {
     global.window.StackdImport = {
       importCSV: (file, state, ok, fail) => fail(new Error('boom'))

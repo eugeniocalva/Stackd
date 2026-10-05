@@ -613,6 +613,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   // splash dismissal below relies on the first render having happened.
   window.Store.emit({ sync: true });
 
+  // 1.0.2 (BUG-69): a WebView kept in memory resumes on a new day with
+  // History/Analytics still on yesterday's period. Two triggers — the page
+  // visibility event (also the web build) and Capacitor's native 'resume' —
+  // because ROLL_PERIODS is idempotent: whichever fires second is a no-op.
+  const rollPeriodsOnResume = () => {
+    const before = window.Store.state.historyFilters.period.value;
+    window.Store.dispatch('ROLL_PERIODS');
+    if (window.Store.state.activeView === 'transactions' &&
+        window.Store.state.historyFilters.period.value !== before) {
+      // the same-view re-render keeps the old scrollTop: land on today instead
+      setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-history-to-today')), 100);
+    }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') rollPeriodsOnResume();
+  });
+  if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()
+      && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    window.Capacitor.Plugins.App.addListener('resume', rollPeriodsOnResume);
+  }
+
   // v1.08 B4 (bank-connect-ux-plan §3.10): background refresh of linked
   // banks — after boot, off the critical path, and whenever the app returns
   // to the foreground. Results wait for review; nothing is auto-committed.
@@ -733,7 +754,10 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
   const _st = window.Store.getState();
   let selectedCurrency = initialCurrency ||
     ((_st.accounts && _st.accounts.length && _st.currency) ? _st.currency : 'EUR');
-  let selectedLanguage  = initialLanguage || 'en';
+  // 1.0.2 (BUG-40): the language is saved the moment it is picked, so a
+  // relaunch before Get started (or after a Factory reset, which keeps the
+  // language) reopens the sheet in it instead of claiming 'English'.
+  let selectedLanguage  = initialLanguage || _st.language || 'en';
 
   const currencyLabel = () => (CURRENCIES.find(x => x.code === selectedCurrency) || {}).label || selectedCurrency;
   const languageLabel = () => (LANGUAGES.find(x => x.code === selectedLanguage)  || {}).label || 'English';
@@ -835,6 +859,7 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
     // 1.0.1 (BUG-20): mandatory sheet — no footer Cancel (the manual hide
     // below stays as a fallback for a cached pre-1.0.1 Modal).
     showCancel: false,
+    dismissible: false, // 1.0.2 (BUG-40): a tap outside or a swipe used to close it unsaved
     onSave: (close) => {
       // Language first, so a currency confirm below opens in it.
       window.Store.dispatch('SET_LANGUAGE', selectedLanguage);
@@ -892,7 +917,10 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
           selectedLanguage = code;
           // Re-open in the chosen language rather than leaving translated
           // rows under an English heading.
-          window.I18n.setLang(code);
+          // 1.0.2 (BUG-40): through the store, so I18n.lang, state.language,
+          // storage and the bottom nav switch together (setLang alone left
+          // Settings reading 'Lingua: English' in an Italian UI).
+          window.Store.dispatch('SET_LANGUAGE', code);
           window.Components.Modal.hide();
           setTimeout(() => _showRegionSetupModal(selectedCurrency, selectedLanguage), 320);
         }

@@ -139,6 +139,10 @@ describe('CSV export/import round-trip (v0.68)', () => {
     });
 
     const csv = exportCsv();
+    // 1.0.2 (BUG-78): buildTransactions skips rows this store already holds,
+    // so restore into a wiped ledger (keep the opening balance), as below.
+    window.Store.state.transactions = window.Store.state.transactions
+      .filter(t => t.type === 'opening_balance');
     const { transactions } = window.StackdImport.buildTransactions(
       window.StackdImport.parseCSV(csv)
     );
@@ -163,6 +167,10 @@ describe('CSV export/import round-trip (v0.68)', () => {
     const csv = exportCsv();
     const originalRef = window.Store.getState().transactions.find(t => t.transferRef).transferRef;
 
+    // 1.0.2 (BUG-78): a pair already here is not re-added — restore into a
+    // wiped ledger (keep the opening balances).
+    window.Store.state.transactions = window.Store.state.transactions
+      .filter(t => t.type === 'opening_balance');
     const { transactions } = window.StackdImport.buildTransactions(
       window.StackdImport.parseCSV(csv)
     );
@@ -201,6 +209,10 @@ describe('CSV export/import round-trip (v0.68)', () => {
     const originalSeriesId = members[0].recurrence.seriesId;
 
     const csv = exportCsv();
+    // 1.0.2 (BUG-78, D11): a series this store holds is owned here, so its rows
+    // are never re-added — restore into a wiped ledger (opening balance kept).
+    window.Store.state.transactions = window.Store.state.transactions
+      .filter(t => t.type === 'opening_balance');
     const { transactions } = window.StackdImport.buildTransactions(
       window.StackdImport.parseCSV(csv)
     );
@@ -210,9 +222,10 @@ describe('CSV export/import round-trip (v0.68)', () => {
 
     const seriesIds = new Set(imported.map(t => t.recurrence.seriesId));
     expect(seriesIds.size).toBe(1);
-    // 1.0.1 (BUG-02): ids are re-keyed only on a collision — the original
-    // series is still in this store, so this re-import gets a fresh one.
-    expect([...seriesIds][0]).not.toBe(originalSeriesId);
+    // 1.0.1 (BUG-02): a series id is kept unless this store already uses it.
+    // 1.0.2: the series is no longer held here, so the CSV's own id comes back
+    // (the collision case lives in loanRestoreLink.test.js).
+    expect([...seriesIds][0]).toBe(originalSeriesId);
 
     expect(imported[0].recurrence.frequency).toBe('months');
     expect(imported[0].recurrence.interval).toBe(1);
@@ -285,5 +298,72 @@ describe('CSV export/import round-trip (v0.68)', () => {
     expect(category).toBeDefined();
     expect(category.icon).toBe('pin');
     expect(category.icon).toMatch(/^[a-z-]+$/);
+  });
+
+  // 1.0.2 (BUG-35, review 7): each transfer leg carries its own Amount and
+  // AccountCurrency, and the import re-pairs legs without touching amounts, so
+  // a cross-currency pair restores as 100 / 117 — not 1:1.
+  it('a cross-currency pair and series keep their per-leg amounts', () => {
+    window.Store.dispatch('SET_CURRENCY', 'EUR');
+    window.Store.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 2000, openingDate: '2026-01-01' });
+    window.Store.dispatch('ADD_ACCOUNT', { name: 'US Checking', openingBalance: 1000, openingDate: '2026-01-01', currency: 'USD' });
+    const accId = (n) => window.Store.getState().accounts.find(a => a.name === n).id;
+    const pairBase = { amount: 100, receivedAmount: 117, expenseAccountId: accId('Main'), incomeAccountId: accId('US Checking'), tags: [] };
+    window.Store.dispatch('ADD_TRANSFER', { ...pairBase, date: '2026-03-09', note: 'One-off' });
+    window.Store.dispatch('ADD_TRANSFER', {
+      ...pairBase, date: '2026-01-15', note: 'Top-up',
+      recurrence: { interval: 1, frequency: 'months', endDate: '2026-06-15' }
+    });
+    const legsBefore = window.Store.getState().transactions.filter(t => t.transferRef);
+    expect(legsBefore).toHaveLength(14); // 1 pair + 6 monthly pairs
+
+    const csv = exportCsv();
+
+    // a fresh install
+    let uid = 1000;
+    global.window = {
+      crypto: { randomUUID: () => 'uuid-' + (++uid) },
+      localStorage: { getItem: vi.fn(), setItem: vi.fn() }
+    };
+    global.localStorage = global.window.localStorage;
+    executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
+    executeFile('store.js');
+    executeFile('export.js');
+    executeFile('import.js');
+    window.Store.init();
+    window.Store.dispatch('SET_CURRENCY', 'EUR');
+
+    const { transactions } = window.StackdImport.buildTransactions(window.StackdImport.parseCSV(csv));
+    window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions });
+
+    const state = window.Store.getState();
+    const main = state.accounts.find(a => a.name === 'Main');
+    const usAcc = state.accounts.find(a => a.name === 'US Checking');
+    expect(main.currency).toBe('EUR');
+    expect(usAcc.currency).toBe('USD');
+
+    const legs = state.transactions.filter(t => t.transferRef);
+    expect(legs).toHaveLength(14);
+    const pairs = new Map();
+    legs.forEach(t => {
+      if (!pairs.has(t.transferRef)) pairs.set(t.transferRef, {});
+      pairs.get(t.transferRef)[t.type] = t;
+    });
+    expect(pairs.size).toBe(7);
+    pairs.forEach(p => {
+      expect(p.expense.amount).toBe(100);
+      expect(p.expense.accountId).toBe(main.id);
+      expect(p.income.amount).toBe(117);
+      expect(p.income.accountId).toBe(usAcc.id);
+    });
+    const series = legs.filter(t => t.recurrence);
+    expect(series).toHaveLength(12);
+    const armed = series.filter(t => t.recurrence.nextDate);
+    expect(armed).toHaveLength(1);
+    expect(armed[0].type).toBe('expense');
+    expect(window.Store.getBalanceAtDate('2026-12-31', [usAcc.id])).toBe(1000 + 7 * 117);
+    expect(window.Store.getBalanceAtDate('2026-12-31', [main.id])).toBe(2000 - 7 * 100);
   });
 });

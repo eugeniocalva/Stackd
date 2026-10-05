@@ -356,6 +356,11 @@ Shipped per §6. The mechanics a cold start needs:
   which the empty-branch guard alone would have missed. An EXPLICIT account
   selection (filters, expanded-graph checkboxes) is always respected, mixed
   currencies and all — the user's call.
+  **Superseded by 1.0.2 (BUG-36):** an explicit selection is resolved by
+  `Store.aggregateSelection` (the base currency wins; a selection with no
+  base account uses its largest same-currency group) and aggregates filter
+  with `Store.aggregatePredicate` — sums never mix currencies; lists still
+  keep every row.
 - **Formatting:** `formatCurrency(amount, currencyCode?)` /
   `getCurrencySymbol(currencyCode?)` — cache key stays `locale|digits` (the
   symbol is applied outside the cached formatter; decimals derive from the
@@ -385,6 +390,12 @@ Shipped per §6. The mechanics a cold start needs:
   selected foreign account format with the primary symbol; the dashboard
   chart tooltip formats per-account dashed lines with the primary symbol when
   a user explicitly mixes currencies in the expanded-graph filter.
+  **Superseded by 1.0.2 (BUG-36):** an explicit mixed selection no longer
+  sums or charts across currencies, so neither case arises. 1.0.2 accepted
+  limits instead (D-U8-11): after a relabel, an unequal transfer pair mirrors
+  once its sent amount or an account changes; `UPDATE_TRANSACTION`
+  future/all `propagate()` still mirrors within one currency; the store stays
+  permissive — imports and old callers without `receivedAmount` record 1:1.
 - **1.0.1 (BUG-01, `docs/deep-test-fixes-plan.md`): switching the base is
   two-step.** A tap in the Settings picker only selects; Done opens
   `Components.CurrencySwitchConfirm`, which summarises

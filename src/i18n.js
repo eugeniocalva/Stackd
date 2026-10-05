@@ -102,6 +102,20 @@ const I18n = {
     }
     return str;
   },
+
+  // 1.0.2 (BUG-24): THE HTML escaper. Every stored or imported text (account,
+  // category and tag names, account types, notes, ids from a file) that reaches
+  // innerHTML -- as element content or inside a quoted attribute -- goes
+  // through this, directly or via a renderer alias (views.js esc/escapeAttr,
+  // Components.esc, Widgets._esc, Insights._esc). It lives here because
+  // i18n.js loads before every renderer, in index.html and in every unit-test
+  // chain. Escape t() PARAMS, never t() output: dictionary strings may carry
+  // markup (<strong>{name}</strong>).
+  esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  },
 };
 
 window.I18n = I18n;

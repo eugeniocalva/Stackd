@@ -39,23 +39,98 @@ window.StackdImport = {
     return result;
   },
 
-  parseCSV(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length < 2) throw new Error("File is empty or missing headers");
+  // 1.0.2 (BUG-33): RFC 4180 records. A line break inside a quoted field is
+  // part of the field (export.js _toRow writes one for a multi-line note), so
+  // the file can no longer be split on every line break. A quote opens a
+  // quoted field only at the start of a field, so a stray quote inside a value
+  // ('5" screen') stays literal and line-local, as before. `""` is kept for
+  // _parseRow, a CRLF inside a field becomes LF. null = a quote never closes.
+  _splitRecords(text, delimiter) {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    let atStart = true;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cur += '""'; i++; }
+          else { inQ = false; atStart = false; cur += ch; }
+        } else if (!(ch === '\r' && text[i + 1] === '\n')) cur += ch; // CRLF in a field -> LF
+        continue;
+      }
+      if (ch === '\n') { out.push(cur.replace(/\r$/, '')); cur = ''; atStart = true; continue; }
+      if (ch === '"' && atStart) { inQ = true; cur += ch; continue; }
+      cur += ch;
+      if (ch === delimiter) atStart = true;
+      else if (ch !== ' ' && ch !== '\t') atStart = false;
+    }
+    if (inQ) return null; // never closed: not RFC 4180 (D8)
+    out.push(cur.replace(/\r$/, ''));
+    return out.filter(r => r.trim() !== '');
+  },
 
-    const delimiter = this._detectDelimiter(lines[0]);
+  _physicalLines(text) {
+    return String(text).split(/\r?\n/).filter(l => l.trim() !== '');
+  },
+
+  // 1.0.2 (BUG-33): { delimiter, records } for every CSV reader (backups, bank
+  // CSVs, the header-only check and the bank-candidate check). A file that is
+  // not RFC 4180 is never read worse than 1.0.1 did (D8):
+  //  - a quote that never closes → the whole file line by line;
+  //  - a record spanning 3+ physical lines whose INNER lines are complete rows
+  //    on their own is a stray opening quote closed far below, not a note →
+  //    that span line by line. A note's inner line never has a backup row's
+  //    20+ fields;
+  //  - (integrated review) a 2+-line record that does NOT parse to the
+  //    header's width while one of its lines does on its own: a stray quote
+  //    closed mid-field on the next line ('Shop "X" Milano') → line by line.
+  //    A real multi-line note always parses to exactly the header's width.
+  _readRecords(csvText) {
+    const text = String(csvText == null ? '' : csvText).replace(/^\uFEFF/, '');
+    const delimiter = this._detectDelimiter(this._physicalLines(text)[0] || '');
+    const recs = this._splitRecords(text, delimiter);
+    if (!recs) return { delimiter, records: this._physicalLines(text) }; // the 1.0.1 reading
+    const width = recs.length ? this._parseRow(recs[0], delimiter).length : 0;
+    const records = [];
+    recs.forEach(r => {
+      const parts = r.split('\n');
+      const stray = width > 1 && parts.length > 1 && (
+        (parts.length > 2 && parts.slice(1, -1).some(l => this._parseRow(l, delimiter).length >= width)) ||
+        (this._parseRow(r, delimiter).length !== width && parts.some(l => this._parseRow(l, delimiter).length === width)));
+      if (stray) parts.forEach(l => { if (l.trim() !== '') records.push(l); });
+      else records.push(r);
+    });
+    return { delimiter, records };
+  },
+
+  // 1.0.2 (BUG-33, D12): the note field is a one-line input, so every import
+  // writes notes on one line (a line break and the blanks around it → one space).
+  _oneLine(s) {
+    return String(s == null ? '' : s).replace(/[ \t]*[\r\n]+[ \t]*/g, ' ').trim();
+  },
+
+  parseCSV(csvText) {
+    // 1.0.2 (BUG-33): RFC 4180 records, not physical lines.
+    const { delimiter, records } = this._readRecords(csvText);
+    if (records.length < 2) throw new Error("File is empty or missing headers");
 
     // v0.68: squash case, spaces and punctuation so 'Transfer Ref', 'transfer_ref'
     // and 'TransferRef' all land on the same key.
-    const headers = this._parseRow(lines[0], delimiter).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-    return lines.slice(1).map(line => {
-      const values = this._parseRow(line, delimiter);
+    const headers = this._parseRow(records[0], delimiter).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    const rows = records.slice(1).map(rec => {
+      const values = this._parseRow(rec, delimiter);
       const row = {};
       headers.forEach((header, index) => {
         row[header] = values[index] !== undefined ? values[index] : '';
       });
       return row;
     });
+    // 1.0.2 (BUG-31): the restore builders pick the file's decimal convention
+    // with it (a ';' file is an EU spreadsheet). Non-enumerable, so a row
+    // array still compares and spreads as before.
+    Object.defineProperty(rows, 'delimiter', { value: delimiter });
+    return rows;
   },
 
   VALID_FREQUENCIES: ['days', 'weeks', 'months', 'years'],
@@ -139,26 +214,85 @@ window.StackdImport = {
 
   // v0.68: split out of importTransactions so the mapping — date normalisation,
   // transfer re-pairing, series re-linking — is testable without a FileReader.
+  // 1.0.2 (BUG-30/31/32/33/78): the restore path. Each non-opening row is
+  // checked BEFORE anything is created — its id, a series this install holds,
+  // its bank key (rebased through this import), then a content fingerprint —
+  // and only a row that is none of those creates its account and category.
   buildTransactions(rows) {
-    const stats = { importedCount: 0, newAccounts: 0, newCategories: 0, skippedCount: 0, skipped: {} };
+    const stats = {
+      importedCount: 0, newAccounts: 0, newCategories: 0, skippedCount: 0, skipped: {},
+      duplicateCount: 0, ambiguousRows: 0, ambiguousAccounts: []
+    };
     const skip = (reason) => {
       stats.skippedCount++;
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
+    const OWNED = 'opening balance rows are owned by the account';
     const txs = [];
     // v1.19 (A-17): accounts this import created, and so may give an opening
     // balance to. Anything not in here existed before and keeps its own.
     const createdHere = new Set();
+    const Store = window.Store;
+    const st0 = Store.getState();
+
+    // 1.0.2 (BUG-30, D10): Id/AccountId are trusted only in a Stack'd export
+    // (a migration file's 'ID' column numbered from 1 is not an account or row
+    // id), and every id cell goes through Store.fileId (BUG-24).
+    const trusted = this._isStackdTxFile(rows);
+    const idCell = (row, k) => (trusted ? (Store.fileId(row[k]) || '') : '');
+    const fileAccIds = new Set(rows.map(r => idCell(r, 'accountid')).filter(Boolean));
+    const resolve = this._restoreAccountResolver(fileAccIds);
+    const before = st0.accounts.slice(); // accounts that existed before this import
+    const obNth = {};
+    // 1.0.2 (BUG-32): each file account's name/currency, for _restoredKey.
+    const fileAcc = new Map();
+    rows.forEach(r => {
+      const id = idCell(r, 'accountid');
+      if (id && !fileAcc.has(id)) {
+        fileAcc.set(id, { name: String(r['account'] || '').trim(), ccy: this._currencyCode(r['accountcurrency']) });
+      }
+    });
+    // 1.0.2 (BUG-31): one decimal convention for the whole file.
+    const decimal = this._restoreDecimal(rows, ['amount']);
+    // 1.0.2 (BUG-78): what this install already holds. Read from state, not
+    // the memoized _importKeyIdx (a caller that replaced the slice leaves it stale).
+    const fileTxIds = new Set(rows.map(r => idCell(r, 'id')).filter(Boolean));
+    const storeIds = new Set(st0.transactions.map(t => t.id));
+    // Per bank key: whether a store row holding it belongs to a series or a
+    // transfer (D11 ownership follows the matched row, see dup() below).
+    const keyOwn = new Map();
+    st0.transactions.forEach(t => {
+      if (!t.importKey) return;
+      const o = keyOwn.get(t.importKey) || { series: false, transfer: false };
+      if (t.recurrence && t.recurrence.seriesId) o.series = true;
+      if (t.transferRef) o.transfer = true;
+      keyOwn.set(t.importKey, o);
+    });
+    const heldSeries = new Set(st0.transactions.map(t => t.recurrence && t.recurrence.seriesId).filter(Boolean));
+    const pool = this._fingerprintPool(st0.transactions, fileTxIds);
+    const seenIds = new Set();
+    const matchedSeries = new Set();
+    const dupRefs = new Set();
+    const legacy = [];
+    // Side effects wait until ownership is known (D11 can drop a row only
+    // after a LATER row of its series or transfer was recognised): categories
+    // are created after the ownership pass, and an account created for a row
+    // that pass drops goes again unless the file's opening balance uses it.
+    const pendingCat = new Map(); // built tx -> category name
+    const rowCreated = new Set(); // accounts created by step (f)
+    const opened = new Set();     // accounts this import created that got the file's opening balance
 
     rows.forEach(row => {
       const rawDate = row['date'];
       const amountStr = row['amount'];
-      const accountName = row['account'];
+      const accountName = String(row['account'] || '').trim();
       // Transfer legs are stored with an empty categoryId — don't invent an
       // "Uncategorized" category for them on the way back in.
-      const isTransferLeg = !!String(row['transferref'] || '').trim();
-      const categoryName = row['category'] || (isTransferLeg ? '' : 'Uncategorized');
-      const note = row['note'] || row['comment'] || '';
+      // 1.0.2 (live-U6-N1): nor for any other row. An empty cell is how the
+      // export writes categoryId '' (a bank row left at 'Choose category'), so
+      // the row comes back uncategorised instead of in a new user category.
+      const categoryName = String(row['category'] || '').trim();
+      const note = this._oneLine(row['note'] || row['comment'] || ''); // 1.0.2 (BUG-33, D12)
       let type = String(row['type'] || 'expense').trim().toLowerCase();
 
       if (!rawDate || !amountStr || !accountName) { skip('missing date, amount or account'); return; }
@@ -166,8 +300,12 @@ window.StackdImport = {
       const date = this._normalizeDate(rawDate);
       if (!date) { skip('unrecognised date format'); return; }
 
-      const amount = Math.abs(parseFloat(amountStr));
-      if (isNaN(amount)) { skip('invalid amount'); return; }
+      // 1.0.2 (BUG-31): the whole cell or nothing, in the file's convention.
+      // Signed on purpose: an opening balance can be negative (a card can
+      // open in debt); every other row stores the absolute value.
+      const signed = this._parseRestoreAmount(amountStr, decimal);
+      if (signed === null || isNaN(signed)) { skip('invalid amount'); return; }
+      const amount = Math.abs(signed);
 
       // v0.68: 'transfer' is not a type in this data model — a real transfer is a
       // paired expense/income sharing a transferRef. A single row can only name
@@ -181,68 +319,144 @@ window.StackdImport = {
       // (older backups do not), so an account re-created here keeps its own
       // currency instead of silently taking the new phone's primary one.
       const accountCurrency = this._currencyCode(row['accountcurrency']);
-      const findAccount = () => window.Store.getState().accounts
-        .find(a => a.name.toLowerCase() === accountName.toLowerCase());
+      const csvId = idCell(row, 'id');
+      const csvAccId = idCell(row, 'accountid');
+      const sid = String(row['seriesid'] || '').trim();
+      const ref = String(row['transferref'] || '').trim();
+      const nk = accountName.toLowerCase();
+      const trimName = (a) => String(a.name == null ? '' : a.name).trim();
+      const sameName = (a) => trimName(a).toLowerCase() === nk && (!accountCurrency || a.currency === accountCurrency);
+      const preNamed = before.filter(sameName);
+      // 1.0.2 (BUG-30, E8a): an account THIS import created answers only to its
+      // exact spelling (the file is internally consistent), so 'Revolut' and
+      // 'revolut', or 'Cash' and ' cash ', stay two accounts in either order.
+      const legacyCands = () => Store.getState().accounts
+        .filter(a => sameName(a) && (!createdHere.has(a.id) || trimName(a) === accountName));
+      // Creation always passes an explicit id (the file's, when trusted) and
+      // re-reads the account by that id, never by name.
+      const create = (fields) => {
+        const id = csvAccId || window.StackdDB.generateId();
+        Store.dispatch('ADD_ACCOUNT', Object.assign({ id, name: accountName },
+          accountCurrency ? { currency: accountCurrency } : {}, fields));
+        if (csvAccId) resolve.claim(csvAccId, id, false);
+        createdHere.add(id);
+        return Store.getState().accounts.find(a => a.id === id) || null;
+      };
 
-      // v1.19 (A-17): an opening balance belongs to its account. It used to be
-      // skipped outright, and the export dropped it too, so a restore onto a
-      // new phone rebuilt every account from zero. Now it is restored onto an
-      // account THIS import created — whether this row creates it or an
-      // earlier row did — and still skipped for an account that existed
-      // before, which is what stops a re-import double-counting it.
-      // Signed on purpose: a card can open in debt, and Math.abs above would
-      // have turned -500 into +500.
+      // v1.19 (A-17): an opening balance belongs to its account: restored onto
+      // an account THIS import created, skipped for one that existed before.
+      // 1.0.2 (BUG-30, D13): it never creates a second account for a name this
+      // install already had (a 1.0.1-merged 'Visa' would have gained the other
+      // card's opening balance), and the k-th same-spelt opening balance of a
+      // legacy file goes to the k-th account this import created, so two
+      // openings never fold into one.
       if (type === 'opening_balance') {
-        const obAmount = parseFloat(amountStr);
-        let obAccount = findAccount();
-        if (!obAccount) {
-          const created = { name: accountName, openingBalance: obAmount, openingDate: date };
-          if (accountCurrency) created.currency = accountCurrency;
-          window.Store.dispatch('ADD_ACCOUNT', created);
-          obAccount = findAccount();
-          if (obAccount) { createdHere.add(obAccount.id); stats.newAccounts++; }
+        let acc = null;
+        if (csvAccId) acc = resolve.find(csvAccId, csvAccId, accountName, accountCurrency).acc;
+        else {
+          const c = legacyCands();
+          if (c.some(a => !createdHere.has(a.id))) { skip(OWNED); return; }
+          const k = accountName + '|' + (accountCurrency || '');
+          obNth[k] = (obNth[k] || 0) + 1;
+          acc = c[obNth[k] - 1] || null; // the k-th opening never overwrites the first
+        }
+        if (acc && createdHere.has(acc.id)) {
+          Store.dispatch('UPDATE_ACCOUNT', { id: acc.id, openingBalance: signed, openingDate: date });
+          opened.add(acc.id);
           return;
         }
-        if (createdHere.has(obAccount.id)) {
-          window.Store.dispatch('UPDATE_ACCOUNT', { id: obAccount.id, openingBalance: obAmount, openingDate: date });
-          return;
-        }
-        skip('opening balance rows are owned by the account');
+        if (acc || preNamed.length) { skip(OWNED); return; }
+        if (create({ openingBalance: signed, openingDate: date })) stats.newAccounts++;
         return;
       }
       if (type !== 'expense' && type !== 'income') type = 'expense';
 
-      // Resolve Account
-      let account = findAccount();
-      if (!account) {
-        const created = { name: accountName, openingBalance: 0 };
-        if (accountCurrency) created.currency = accountCurrency;
-        window.Store.dispatch('ADD_ACCOUNT', created);
-        account = findAccount();
-        if (account) createdHere.add(account.id);
-        stats.newAccounts++;
-      }
+      // 1.0.2 (BUG-78): every duplicate is counted, and records its series and
+      // transfer as owned here (D11) so the rest of them is not re-added — but
+      // only when what it matched holds one: an id or a series held here does;
+      // a store row matched by bank key or fingerprint does only if IT belongs
+      // to a series / a transfer. A plain local row (a statement row, a hand-
+      // typed 'Rent') stands in for that one file row, never for the rest of
+      // the backup's series or the other leg of its transfer.
+      const dup = (ownSeries, ownTransfer) => {
+        stats.duplicateCount++;
+        if (sid && ownSeries) matchedSeries.add(sid);
+        if (ref && ownTransfer) dupRefs.add(ref);
+      };
+      // (a) D1: this very row is here (the local version wins).
+      if (csvId && storeIds.has(csvId)) { dup(true, true); return; }
+      // (b) D11: this series is owned here (a schedule edit, a loan sync or a
+      // conversion replaced members under the same series id).
+      if (sid && (heldSeries.has(sid) || heldSeries.has(Store.fileId(sid)))) { dup(true, true); return; }
 
-      // Resolve Category — icons are Lucide *names* rendered as
-      // `<i data-lucide="...">`, so a literal emoji here rendered as a blank box.
-      let category = null;
-      if (categoryName) {
-        category = window.Store.getState().categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
-        if (!category) {
-          window.Store.dispatch('ADD_CATEGORY', { name: categoryName, icon: 'pin', typeHint: 'both' });
-          category = window.Store.getState().categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
-          stats.newCategories++;
+      // (c) Placement, without creating anything yet (BUG-30).
+      let account = null;
+      let byId = false;
+      let hinted = false;
+      let guess = false;
+      const key0 = String(row['importkey'] || '').trim();
+      if (csvAccId) {
+        ({ acc: account, byId } = resolve.find(csvAccId, csvAccId, accountName, accountCurrency));
+      } else {
+        // D4: the account inside its ImportKey, then the exact spelling, then
+        // the first same-named (same-currency) account.
+        const c = legacyCands();
+        const seg = (/^(?:ref|fp):([^|]*)\|/.exec(key0) || [])[1];
+        account = (seg && c.find(a => a.id === seg)) || null;
+        hinted = !!account;
+        if (!account) {
+          const exact = c.filter(a => trimName(a) === accountName);
+          const pick = exact.length ? exact : c;
+          account = pick[0] || null;
+          guess = pick.length > 1;
         }
       }
+
+      // (d) The bank key, rebased through this import (BUG-32). The store row
+      // holding it leaves the fingerprint pool.
+      let key = key0
+        ? this._restoredKey(key0, { resolve, fileAcc, landingId: account ? account.id : (csvAccId || null) })
+        : '';
+      if (key && keyOwn.has(key)) {
+        this._dropFromPool(pool, key);
+        const o = keyOwn.get(key);
+        dup(o.series, o.transfer);
+        return;
+      }
+
+      // (e) Fingerprint (D2): a row Stack'd holds under another id. Only the
+      // account matched by id; otherwise also every same-named, same-currency
+      // account that existed before the import.
+      const fpAccs = byId ? [account.id]
+        : [...new Set([account && account.id].concat(preNamed.map(a => a.id)).filter(Boolean))];
+      const hit = this._takeFingerprint(pool, fpAccs, { date, time: row['time'], type, amount, note });
+      if (hit) { dup(hit.series, hit.transfer); return; }
+      // 1.0.2 (BUG-78 x BUG-14): the leg left behind when the other account was deleted.
+      const left = ref ? this._takeOrphanLeg(pool, fpAccs, { date, time: row['time'], type, amount }) : null;
+      if (left) { dup(left.series, true); return; }
+
+      // (f) A new row: only now is its account created (and taken back below
+      // if the ownership pass drops the row); its category after that pass.
+      if (!account) {
+        account = create({ openingBalance: 0 });
+        rowCreated.add(account.id);
+        stats.newAccounts++;
+      }
+      if (key0 && !key) key = Store.rebaseImportKey(key0, account.id); // its account exists only now
 
       const tx = {
         type: type,
         amount: amount,
         accountId: account.id,
-        categoryId: category ? category.id : '',
+        categoryId: '', // resolved after the ownership pass
         date: date,
         comment: note
       };
+      if (categoryName) pendingCat.set(tx, categoryName);
+      // 1.0.2 (BUG-78): the backup's own id is kept, so a second import of
+      // the same file recognises it. A repeat inside one file (a ledger that
+      // already held two copies) is imported under a fresh id (N8).
+      if (csvId && !seenIds.has(csvId)) { tx.id = csvId; seenIds.add(csvId); }
 
       const time = this._normalizeTime(row['time']);
       if (time) tx.time = time;
@@ -252,28 +466,186 @@ window.StackdImport = {
 
       if (this._parseBool(row['ispaid']) === false) tx.isPaid = false;
 
-      const csvRef = String(row['transferref'] || '').trim();
-      if (csvRef) tx._csvTransferRef = csvRef;
+      if (ref) tx._csvTransferRef = ref;
 
-      // v0.99: a backup of bank-imported rows carries their dedup identity —
-      // restore it verbatim so a later bank re-import still recognises them.
-      // No dedup happens here: restore semantics are unchanged.
-      const importKey = String(row['importkey'] || '').trim();
-      if (importKey) tx.importKey = importKey;
+      // v0.99: a backup of bank-imported rows carries their dedup identity, so
+      // a later bank re-import still recognises them. 1.0.2 (BUG-32): its
+      // account segment follows the account the row was restored onto.
+      if (key) tx.importKey = key;
       const bankRef = String(row['bankref'] || '').trim();
       if (bankRef) tx.bankRef = bankRef;
 
       const recurrence = this._buildRecurrence(row, date);
       if (recurrence) tx.recurrence = recurrence;
 
+      if (!csvAccId) legacy.push({ tx, name: accountName, ccy: accountCurrency, hinted, guess });
       txs.push(tx);
       stats.importedCount++;
     });
 
-    this._relinkTransfers(txs);
-    this._relinkSeries(txs);
+    // 1.0.2 (BUG-78, D11): a series one of whose rows is already here, and the
+    // other leg of a transfer one of whose legs is already here, are owned
+    // here: their missing rows count as duplicates and are not re-added (one
+    // pass — the legs of a recurring transfer share a series).
+    const out = txs.filter(t => {
+      const owned = (t.recurrence && t.recurrence.seriesId && matchedSeries.has(t.recurrence.seriesId))
+        || (t._csvTransferRef && dupRefs.has(t._csvTransferRef));
+      if (owned) { stats.duplicateCount++; stats.importedCount--; }
+      return !owned;
+    });
 
-    return { transactions: txs, stats: stats };
+    // 1.0.2 (BUG-78): an account created only for rows that pass dropped (no
+    // kept row lands on it, no opening balance of the file restored it) was a
+    // side effect of duplicates — it goes again. Created a moment ago, it
+    // holds no rows of its own.
+    const used = new Set(out.map(t => t.accountId));
+    rowCreated.forEach(accId => {
+      if (used.has(accId) || opened.has(accId)) return;
+      Store.dispatch('DELETE_ACCOUNT', { id: accId });
+      createdHere.delete(accId);
+      stats.newAccounts--;
+    });
+
+    // Categories, for kept rows only. Icons are Lucide *names* rendered as
+    // `<i data-lucide="...">`, so a literal emoji here rendered as a blank box.
+    out.forEach(tx => {
+      const categoryName = pendingCat.get(tx);
+      if (!categoryName) return;
+      const byName = () => Store.getState().categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+      let category = byName();
+      if (!category) {
+        Store.dispatch('ADD_CATEGORY', { name: categoryName, icon: 'pin', typeHint: 'both' });
+        category = byName();
+        stats.newCategories++;
+      }
+      tx.categoryId = category ? category.id : '';
+    });
+
+    // 1.0.2 (BUG-30, N12): an imported legacy row that was not placed by its
+    // ImportKey and either was a guess or names a spelling more than one
+    // account here shares is reported.
+    const kept = new Set(out);
+    const names = new Set();
+    const accs = Store.getState().accounts;
+    legacy.forEach(r => {
+      if (!kept.has(r.tx) || r.hinted) return;
+      const same = accs.filter(a => String(a.name == null ? '' : a.name).trim() === r.name
+        && (!r.ccy || a.currency === r.ccy)).length;
+      if (r.guess || same > 1) { stats.ambiguousRows++; names.add(r.name); }
+    });
+    stats.ambiguousAccounts = [...names];
+
+    this._relinkTransfers(out);
+    this._relinkSeries(out);
+
+    return { transactions: out, stats: stats };
+  },
+
+  // 1.0.2 (BUG-78): rows Stack'd already holds under another id — old
+  // backups, spreadsheet rows, installs restored before 1.0.2. Whitespace-
+  // collapsed note, ISO date, cents; each pool entry keeps its own time so a
+  // time-less row on either side matches any time.
+  _fpBase(date, type, amount, note) {
+    return [this._normalizeDate(date) || '', type, Math.round(Math.abs(Number(amount)) * 100),
+      String(note == null ? '' : note).replace(/\s+/g, ' ').trim()].join('|');
+  },
+
+  // A multiset: each store row absorbs ONE file row, so genuine twins survive.
+  // Opening balances (owned by the account) and store rows whose id the file
+  // names (matched by id instead) are left out -- except that an opening
+  // balance is also listed under its 1.0.1 'Adjustment' form (integrated
+  // review): the BUG-25 boot heal turns that income/expense row back into an
+  // opening balance under the same id, and a pre-1.0.2 file (no Id) still
+  // holds it as the income/expense row. 'orphans' lists, by account|date|
+  // type|cents with no note, the plain legs DELETE_ACCOUNT left behind
+  // (BUG-14: no transferRef, no category, a note with the deleted account's
+  // name appended). An entry taken through one list is 'taken' in both.
+  _fingerprintPool(storeTxs, excludeIds) {
+    const lists = new Map();
+    const byKey = new Map();
+    const orphans = new Map();
+    const push = (map, k, e) => { if (!map.has(k)) map.set(k, []); map.get(k).push(e); };
+    storeTxs.forEach(t => {
+      if (excludeIds.has(t.id)) return;
+      const e = { time: this._normalizeTime(t.time) || '',
+        series: !!(t.recurrence && t.recurrence.seriesId), transfer: !!t.transferRef };
+      if (t.type === 'opening_balance') { // 1.0.2 (BUG-25 x BUG-78)
+        const adj = Number(t.amount) < 0 ? 'expense' : 'income';
+        push(lists, t.accountId + '|' + this._fpBase(t.date, adj, t.amount, t.comment), e);
+        return;
+      }
+      const k = t.accountId + '|' + this._fpBase(t.date, t.type, t.amount, t.comment);
+      // series / transfer: whether the matched row owns the file row's (D11).
+      push(lists, k, e);
+      if (t.importKey) byKey.set(t.importKey, { k, e });
+      if (!t.transferRef && !t.categoryId && (t.type === 'income' || t.type === 'expense')) {
+        push(orphans, t.accountId + '|' + this._fpBase(t.date, t.type, t.amount, ''), e);
+      }
+    });
+    return { lists, byKey, orphans };
+  },
+
+  _takeFingerprint(pool, accountIds, r) {
+    const base = this._fpBase(r.date, r.type, r.amount, r.note);
+    const time = this._normalizeTime(r.time) || '';
+    for (const id of accountIds) {
+      const list = pool.lists.get(id + '|' + base);
+      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time)) : -1;
+      if (i !== -1) { const e = list.splice(i, 1)[0]; e.taken = true; return e; } // the pool entry it matched
+    }
+    return null;
+  },
+
+  // 1.0.2 (BUG-78 x BUG-14, integrated review): a transfer leg of a pre-1.0.2
+  // file whose counterpart account was deleted here. Its surviving leg lost
+  // the transferRef and gained a "Transfer to deleted account" note, so the
+  // fingerprint (which holds the note) misses it; match the leftover shape
+  // instead (same account, date, type and cents; note ignored).
+  _takeOrphanLeg(pool, accountIds, r) {
+    const base = this._fpBase(r.date, r.type, r.amount, '');
+    const time = this._normalizeTime(r.time) || '';
+    for (const id of accountIds) {
+      const list = pool.orphans.get(id + '|' + base);
+      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time)) : -1;
+      if (i !== -1) { const e = list.splice(i, 1)[0]; e.taken = true; return e; }
+    }
+    return null;
+  },
+
+  _dropFromPool(pool, key) {
+    const hit = pool.byKey.get(key);
+    if (!hit) return;
+    const list = pool.lists.get(hit.k);
+    const i = list ? list.indexOf(hit.e) : -1;
+    if (i !== -1) list.splice(i, 1);
+    hit.e.taken = true;
+    pool.byKey.delete(key);
+  },
+
+  // 1.0.2 (BUG-32): statement keys embed the account they were imported into
+  // ('ref:<accountId>|…'). Map a restored key's account through THIS import:
+  // a file account → what it resolves to here (itself when ids are kept, the
+  // merge target under D9, or the file id it is about to be created under);
+  // a live account → unchanged (a row the user moved keeps its key, D7);
+  // anything else → the account the row lands on. null = that account does
+  // not exist yet (the caller stamps the key once it is created).
+  _restoredKey(key, ctx) {
+    const m = /^(?:ref|fp):([^|]*)\|/.exec(key);
+    if (!m) return key;
+    const seg = m[1];
+    const Store = window.Store;
+    const fileSeg = ctx.fileAcc.has(seg) ? seg : (Store.fileId(seg) || '');
+    let to;
+    if (fileSeg && ctx.fileAcc.has(fileSeg)) {
+      const fa = ctx.fileAcc.get(fileSeg);
+      const { acc } = ctx.resolve.find(fileSeg, fileSeg, fa.name, fa.ccy);
+      to = acc ? acc.id : fileSeg;
+    } else if (Store.getState().accounts.some(a => a.id === seg)) {
+      to = seg;
+    } else {
+      to = ctx.landingId;
+    }
+    return to ? Store.rebaseImportKey(key, to) : null;
   },
 
   // v0.68: re-key the CSV's transferRef onto a fresh id. Re-importing the same
@@ -315,7 +687,11 @@ window.StackdImport = {
       const csvId = t.recurrence.seriesId;
       const key = csvId || `__row${i}`;
       if (!seriesMap[key]) {
-        seriesMap[key] = (csvId && !taken.has(csvId)) ? csvId : window.StackdDB.generateId();
+        // 1.0.2 (BUG-24): an id read from a file goes through Store.fileId (a
+        // safe id is kept, anything else maps to a stable safe one); rows
+        // still group by the original cell.
+        const fid = window.Store.fileId(csvId);
+        seriesMap[key] = (fid && !taken.has(fid)) ? fid : window.StackdDB.generateId();
       }
       t.recurrence.seriesId = seriesMap[key];
     });
@@ -351,10 +727,53 @@ window.StackdImport = {
         && Object.prototype.hasOwnProperty.call(r, 'firstpaymentdate'));
   },
 
-  _num(raw) {
-    if (raw === null || raw === undefined || String(raw).trim() === '') return null;
-    const n = parseFloat(String(raw).replace(',', '.'));
-    return isNaN(n) ? null : n;
+  // 1.0.2 (BUG-31): a restore file has ONE decimal convention. The app writes
+  // dot decimals with ','; an EU spreadsheet re-saves with ';', '1.850,00' and
+  // '12,50 €'. parseFloat read '12,50' as 12 and '1.850,00' as 1.85, and a
+  // truncated prefix is never NaN, so the cents vanished silently.
+  // _restoreAmountText: every space flavour, apostrophe groups, € $ £ ¥ and
+  // U+FFFD (what a cp1252 '€' becomes when the file is read as UTF-8) go;
+  // U+2212 becomes '-'.
+  _restoreAmountText(raw) {
+    return String(raw == null ? '' : raw).trim()
+      .replace(/[\s\u00A0\u2009\u202F'\u2019€$£¥\uFFFD]/g, '')
+      .replace(/\u2212/g, '-');
+  },
+
+  // 'comma' | 'dot' for the given columns of a whole file: a cell ending in a
+  // separator plus 1–2 or 4+ digits is evidence for it; the majority wins; a
+  // tie (all integers, or only an ambiguous '1.850') follows the delimiter —
+  // ';' is an EU spreadsheet, ',' is the app's own export (JS numbers).
+  _restoreDecimal(rows, keys) {
+    let comma = 0;
+    let dot = 0;
+    rows.forEach(r => keys.forEach(k => {
+      const s = this._restoreAmountText(r[k]).replace(/%$/, '').replace(/^[+-]/, '');
+      if (/,\d{1,2}$/.test(s) || /,\d{4,}$/.test(s)) comma++;
+      else if (/\.\d{1,2}$/.test(s) || /\.\d{4,}$/.test(s)) dot++;
+    }));
+    if (comma !== dot) return comma > dot ? 'comma' : 'dot';
+    return rows.delimiter === ';' ? 'comma' : 'dot';
+  },
+
+  // The whole cell or nothing: null = empty, NaN = not ONE number in that
+  // convention ('12abc', '1,2,3', '54.3' in a decimal-comma file).
+  _parseRestoreAmount(raw, decimal) {
+    if (String(raw == null ? '' : raw).trim() === '') return null;
+    const s = this._restoreAmountText(raw);
+    // An empty integer part ('.5', '-.75') or a bare trailing separator
+    // ('12.') is still one number, as parseFloat read it in 1.0.1.
+    const re = decimal === 'comma'
+      ? /^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d+)?(?:,\d*)?$/
+      : /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d*)?$/;
+    if (!re.test(s) || !/\d/.test(s)) return NaN;
+    return Number(decimal === 'comma' ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, ''));
+  },
+
+  // 1.0.2 (BUG-31): null = empty, NaN = unreadable (was: parseFloat, so a
+  // truncated prefix passed as a number).
+  _num(raw, decimal) {
+    return this._parseRestoreAmount(raw, decimal || 'dot');
   },
 
   buildLoans(rows) {
@@ -364,6 +783,8 @@ window.StackdImport = {
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
     const loans = [];
+    // 1.0.2 (BUG-31): one decimal convention for the flat columns of the file.
+    const decimal = this._restoreDecimal(rows, ['principal', 'downpayment', 'duration', 'annualrate']);
 
     rows.forEach((row, i) => {
       const name = String(row['name'] || '').trim() || `Loan ${i + 1}`;
@@ -376,11 +797,20 @@ window.StackdImport = {
 
       if (!config) {
         // Rebuild from the flat columns
-        const principal = this._num(row['principal']);
-        const duration = this._num(row['duration']);
+        const principal = this._num(row['principal'], decimal);
+        const duration = this._num(row['duration'], decimal);
+        const down = this._num(row['downpayment'], decimal);
+        // 1.0.2 (BUG-31): a spreadsheet writes a rate as '3,5 %'.
+        const rate = this._num(String(row['annualrate'] || '').trim().replace(/\s*%$/, ''), decimal);
         const firstPaymentDate = this._normalizeDate(row['firstpaymentdate']);
         if (principal === null || duration === null || !firstPaymentDate) {
           skip('missing principal, duration or first payment date');
+          return;
+        }
+        // 1.0.2 (BUG-31): a present but unreadable cell is reported, never
+        // read as 0 (an unreadable rate silently became a 0% loan).
+        if ([principal, duration, down, rate].some(v => v !== null && isNaN(v))) {
+          skip('invalid amount');
           return;
         }
         const unit = String(row['durationunit'] || '').trim().toLowerCase();
@@ -389,10 +819,10 @@ window.StackdImport = {
         config = {
           type: ['mortgage', 'personal', 'installment'].indexOf(type) === -1 ? 'personal' : type,
           principal: principal,
-          downPayment: this._num(row['downpayment']) || 0,
+          downPayment: down || 0,
           duration: Math.round(duration),
           durationUnit: unit === 'months' ? 'months' : 'years',
-          annualRate: this._num(row['annualrate']) || 0,
+          annualRate: rate || 0,
           firstPaymentDate: firstPaymentDate,
           amortization: amort === 'italian' ? 'italian' : 'french'
         };
@@ -420,7 +850,9 @@ window.StackdImport = {
       // loan is ever linked. An id whose series is not in the store yet is
       // harmless: every consumer reads through getLoanLinkedTransactions, and
       // the transactions file brings the series back under the same id.
-      const linkedSeriesId = String(row['linkedseriesid'] || '').trim();
+      // 1.0.2 (BUG-24): the same Store.fileId map as _relinkSeries, so an unsafe
+      // series id ('rent 2026') still meets its series in either file order.
+      const linkedSeriesId = window.Store.fileId(row['linkedseriesid']) || '';
       const loan = {
         name: name,
         kind: kind,
@@ -466,6 +898,41 @@ window.StackdImport = {
       }
     });
     return loans;
+  },
+
+  // 1.0.2 (BUG-78): a loan already in Stack'd (same kind, name and terms) is
+  // not added again — a second import of the loans file used to add every
+  // loan twice. A multiset: two identical loans in one file still restore onto
+  // an empty phone. No file-format change (D3). Counts into stats.
+  _skipKnownLoans(loans, stats) {
+    const sig = (l) => [l.kind === 'sim' ? 'sim' : 'active',
+      String(l.name == null ? '' : l.name).trim().toLowerCase(), this._stableJson(l.config)].join('|');
+    const have = new Map();
+    ((window.Store && window.Store.getState().loans) || []).forEach(l => {
+      const k = sig(l);
+      have.set(k, (have.get(k) || 0) + 1);
+    });
+    stats.duplicateCount = 0;
+    return loans.filter(l => {
+      const k = sig(l);
+      const n = have.get(k) || 0;
+      if (!n) return true;
+      have.set(k, n - 1);
+      stats.duplicateCount++;
+      stats.importedCount--;
+      return false;
+    });
+  },
+
+  // JSON with sorted keys (and undefined members dropped), so two equal
+  // configs compare equal whatever order their keys were written in.
+  _stableJson(v) {
+    if (Array.isArray(v)) return '[' + v.map(x => this._stableJson(x === undefined ? null : x)).join(',') + ']';
+    if (v && typeof v === 'object') {
+      return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort()
+        .map(k => JSON.stringify(k) + ':' + this._stableJson(v[k])).join(',') + '}';
+    }
+    return JSON.stringify(v === undefined ? null : v);
   },
 
   // v0.99 ── bank statements (docs/bank-import-plan.md §3) ──────────────────
@@ -595,12 +1062,12 @@ window.StackdImport = {
   // mapping guess (-1 for anything not confidently detected) that the mapping
   // view presents for correction.
   analyzeBankCSV(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length < 2) throw new Error("File is empty or missing headers");
+    // 1.0.2 (BUG-33): a quoted line break no longer splits a statement row.
+    const { delimiter, records } = this._readRecords(csvText);
+    if (records.length < 2) throw new Error("File is empty or missing headers");
 
-    const delimiter = this._detectDelimiter(lines[0]);
-    const headerLabels = this._parseRow(lines[0], delimiter);
-    const rowsRaw = lines.slice(1).map(line => this._parseRow(line, delimiter));
+    const headerLabels = this._parseRow(records[0], delimiter);
+    const rowsRaw = records.slice(1).map(rec => this._parseRow(rec, delimiter));
 
     const columns = headerLabels.map((label, index) => {
       const samples = [];
@@ -749,7 +1216,9 @@ window.StackdImport = {
       const date = this._normalizeBankDate(row[mapping.date], mapping.dateFormat);
       if (!date) { fail('unrecognised date format'); return; }
 
-      const description = String(row[mapping.description] !== undefined ? row[mapping.description] : '').trim();
+      // 1.0.2 (BUG-33, D12): one line, like every import (the key is unchanged:
+      // _stampImportKey's normDesc already collapses whitespace).
+      const description = this._oneLine(row[mapping.description] !== undefined ? row[mapping.description] : '');
 
       let type, amount;
       if (mapping.amountMode === 'split') {
@@ -793,7 +1262,9 @@ window.StackdImport = {
   // party is the stable merchant — so the suggestion is the party segment.
   suggestRuleMatch(description) {
     const base = String(description || '').split(' — ')[0];
-    return base.toLowerCase().trim().slice(0, 60).trim();
+    // 1.0.2 (BUG-33): collapse whitespace (a legacy multi-line note) — the
+    // store compares rule matches whitespace-collapsed.
+    return base.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60).trim();
   },
 
   // v1.00: shared by the CSV and statement builders so both formats produce
@@ -871,7 +1342,10 @@ window.StackdImport = {
         if (isNaN(amount)) return;
         const sign = text(bal, 'CdtDbtInd') === 'DBIT' ? -1 : 1;
         const dtEl = first(bal, 'Dt');
-        const rec = { amount: sign * amount, date: dtEl ? dtEl.textContent.trim().slice(0, 10) : '' };
+        // 1.0.2 (BUG-24): the balance date is file text that can become the
+        // account's opening date — keep it only when it is a real YMD (a
+        // DtTm's time part is dropped), else '' (no date offered).
+        const rec = { amount: sign * amount, date: dtEl ? (this._normalizeBankDate(dtEl.textContent, 'ymd') || '') : '' };
         // PRCD (previously closed booked) doubles as the opening balance in
         // several bank dialects — accept it only when no true OPBD exists.
         if (cd === 'OPBD' || (cd === 'PRCD' && !opening)) { if (cd === 'OPBD' || !opening) opening = rec; }
@@ -891,9 +1365,12 @@ window.StackdImport = {
 
         // Description: counterparty (creditor for money out, debtor for money
         // in) + unstructured remittance, else the bank's own AddtlNtryInf.
-        const party = type === 'expense' ? text(first(ntry, 'Cdtr'), 'Nm') : text(first(ntry, 'Dbtr'), 'Nm');
-        const ustrd = kids(ntry, 'Ustrd').map(u => u.textContent.trim()).filter(Boolean).join(' ');
-        const description = [party, ustrd].filter(Boolean).join(' — ') || text(ntry, 'AddtlNtryInf');
+        // 1.0.2 (BUG-33, D12): one line, as MT940 (_mt940Narrative) and Bank
+        // Connect already do — the note field cannot hold a line break.
+        const flat = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const party = flat(type === 'expense' ? text(first(ntry, 'Cdtr'), 'Nm') : text(first(ntry, 'Dbtr'), 'Nm'));
+        const ustrd = kids(ntry, 'Ustrd').map(u => flat(u.textContent)).filter(Boolean).join(' ');
+        const description = [party, ustrd].filter(Boolean).join(' — ') || flat(text(ntry, 'AddtlNtryInf'));
 
         // AcctSvcrRef is the bank's per-entry id (best dedup anchor);
         // EndToEndId is next, but its 'NOTPROVIDED' filler means "none".
@@ -1038,7 +1515,7 @@ window.StackdImport = {
       const amount = Math.abs(Number(e.amount));
       if (!isFinite(amount) || amount === 0) { fail('invalid amount'); return; }
 
-      const description = String(e.description || '').trim();
+      const description = this._oneLine(e.description); // 1.0.2 (BUG-33, D12)
       const tx = {
         type: e.type === 'expense' ? 'expense' : 'income',
         amount: amount,
@@ -1205,9 +1682,11 @@ window.StackdImport = {
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
 
+    const decimal = this._restoreDecimal(rows, ['amount']); // 1.0.2 (BUG-31)
+
     rows.forEach(row => {
       const catName = String(row['category'] || '').trim();
-      const amount = this._num(row['amount']);
+      const amount = this._num(row['amount'], decimal);
       const start = this._normalizeMonth(row['startmonth']);
       const end = this._normalizeMonth(row['endmonth']);
       if (!catName) { skip('missing category'); return; }
@@ -1242,6 +1721,8 @@ window.StackdImport = {
   // accounts and categories as side effects of the transactions file — with
   // default type, icon, colour and currency, and no opening balance.
   //
+  // 1.0.2 (BUG-30): accounts now resolve by id first (a Stack'd export keeps
+  // its ids), and by name only as the fallback below (_restoreAccountResolver).
   // Both UPSERT by name. An account or category that already exists — most
   // often one the transactions file just created with defaults — is brought
   // up to what the file says rather than skipped, so the files can be
@@ -1252,6 +1733,64 @@ window.StackdImport = {
   _currencyCode(raw) {
     const c = String(raw || '').trim().toUpperCase();
     return /^[A-Z]{3}$/.test(c) ? c : null;
+  },
+
+  // 1.0.2 (BUG-30, D10): ids in a file are trusted only in a Stack'd export.
+  // Every transactions export since 1.0 has these columns; the manual invites
+  // migration files from other apps, whose 'ID' column (1, 2, …) is no
+  // account or row id of this app.
+  _isStackdTxFile(rows) {
+    const r = (rows && rows[0]) || {};
+    return ['transferref', 'seriesid', 'nextdate', 'importkey', 'accountcurrency']
+      .every(k => Object.prototype.hasOwnProperty.call(r, k));
+  },
+
+  // The accounts file's full 1.0 header.
+  _isStackdAccountsFile(rows) {
+    const r = (rows && rows[0]) || {};
+    return ['id', 'createdat', 'currency', 'type', 'icon', 'color', 'openingdate']
+      .every(k => Object.prototype.hasOwnProperty.call(r, k));
+  },
+
+  // 1.0.2 (BUG-30): a restore identifies an account by its id. Names are not
+  // unique ('Visa' credit + 'Visa' debit), and upserting by name folded them
+  // into one. find(fileKey, csvId, name, currency):
+  //  (a) the account whose id is csvId;
+  //  (b) else (D9) a same-named (trimmed, case-insensitive; the exact spelling
+  //      first) account in the same currency when the file gives one, that no
+  //      id of THIS file names and no other file key claimed in this pass;
+  //  (c) else null — the caller creates the account under the file's id.
+  // Claims map a file key to one local account, so every row of one file
+  // account lands on one account. byId sticks to the claim (the fingerprint
+  // looks only at an account matched by id).
+  _restoreAccountResolver(fileIds) {
+    const claimed = new Map();
+    const taken = new Set();
+    const key = (n) => String(n == null ? '' : n).trim().toLowerCase();
+    return {
+      find(fileKey, csvId, name, currency) {
+        const accs = window.Store.getState().accounts;
+        if (claimed.has(fileKey)) {
+          const c = claimed.get(fileKey);
+          return { acc: accs.find(a => a.id === c.id) || null, byId: c.byId };
+        }
+        let acc = csvId ? (accs.find(a => a.id === csvId) || null) : null;
+        const byId = !!acc;
+        if (!acc) {
+          const nk = key(name);
+          const exact = String(name == null ? '' : name).trim();
+          const cands = accs.filter(a => key(a.name) === nk && (!currency || a.currency === currency)
+            && !fileIds.has(a.id) && !taken.has(a.id));
+          acc = cands.find(a => String(a.name == null ? '' : a.name).trim() === exact) || cands[0] || null;
+        }
+        if (acc) this.claim(fileKey, acc.id, byId);
+        return { acc, byId };
+      },
+      claim(fileKey, localId, byId) {
+        claimed.set(fileKey, { id: localId, byId: !!byId });
+        taken.add(localId);
+      }
+    };
   },
 
   isAccountRows(rows) {
@@ -1268,18 +1807,35 @@ window.StackdImport = {
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
 
-    rows.forEach(row => {
+    // 1.0.2 (BUG-30, D10): the id column is trusted only under the full 1.0
+    // header, and read through Store.fileId (BUG-24).
+    const trusted = this._isStackdAccountsFile(rows);
+    const idOf = (row) => (trusted ? (window.Store.fileId(row['id']) || '') : '');
+    const fileIds = new Set(rows.map(idOf).filter(Boolean));
+    const resolve = this._restoreAccountResolver(fileIds);
+    const decimal = this._restoreDecimal(rows, ['openingbalance']); // 1.0.2 (BUG-31)
+
+    rows.forEach((row, i) => {
       const name = String(row['name'] || '').trim();
       if (!name) { skip('missing name'); return; }
-      // Signed: a card can open in debt.
+      // Signed: a card can open in debt. 1.0.2 (BUG-31): one strict reader.
       const obRaw = String(row['openingbalance'] || '').trim();
-      const openingBalance = obRaw === '' ? 0 : parseFloat(obRaw.replace(',', '.'));
-      if (isNaN(openingBalance)) { skip('invalid opening balance'); return; }
+      const openingBalance = obRaw === '' ? 0 : this._parseRestoreAmount(obRaw, decimal);
+      if (openingBalance === null || isNaN(openingBalance)) { skip('invalid opening balance'); return; }
       // The opening date decides which transactions count toward the balance.
       // A file from before v1.19 has no opening_date column; created_at is the
       // date the app itself falls back to when an account has none.
+      // 1.0.2 (BUG-25): an account exported WITHOUT an opening balance (Bank
+      // Connect, CSV-created, or its row was deleted) has opening_balance 0 and
+      // an EMPTY opening_date. Dating a €0 opening balance at created_at put it
+      // after the account's history and hid every earlier row. Only a pre-v1.19
+      // file (no opening_date column) or a hand-edited non-zero amount still
+      // falls back to created_at, now as its LOCAL day (BUG-38).
+      const hasDateCol = Object.prototype.hasOwnProperty.call(row, 'openingdate');
+      const created = String(row['createdat'] || '').trim();
+      const createdDay = created.includes('T') ? window.Store._localYMD(created) : created;
       const openingDate = this._normalizeDate(row['openingdate'])
-        || this._normalizeDate(String(row['createdat'] || '').split('T')[0]);
+        || ((!hasDateCol || openingBalance !== 0) ? this._normalizeDate(createdDay) : null);
 
       const fields = { openingBalance: openingBalance };
       if (openingDate) fields.openingDate = openingDate;
@@ -1290,12 +1846,26 @@ window.StackdImport = {
         if (v) fields[k] = v;
       });
 
-      const existing = window.Store.getState().accounts.find(a => a.name.toLowerCase() === name.toLowerCase());
-      if (existing) {
-        window.Store.dispatch('UPDATE_ACCOUNT', Object.assign({ id: existing.id }, fields));
+      // 1.0.2 (BUG-30): by id first; an id-less row has its own key, so two
+      // file rows never fold into one account.
+      const csvId = idOf(row);
+      const fileKey = csvId || ('row' + i);
+      const { acc, byId } = resolve.find(fileKey, csvId, name, fields.currency);
+      if (acc) {
+        const upd = Object.assign({ id: acc.id }, fields);
+        // D5 (N6): the file's name only on an id match, never one another
+        // account here uses (that recreates a duplicate), never a mis-decoded
+        // one (an ANSI file read as UTF-8 carries U+FFFD).
+        if (byId && name !== acc.name && name.indexOf('\uFFFD') === -1
+            && !window.Store.findAccountByName(name, acc.id)) {
+          upd.name = name;
+        }
+        window.Store.dispatch('UPDATE_ACCOUNT', upd);
         stats.updated++;
       } else {
-        window.Store.dispatch('ADD_ACCOUNT', Object.assign({ name: name }, fields));
+        const id = csvId || window.StackdDB.generateId();
+        window.Store.dispatch('ADD_ACCOUNT', Object.assign({ id: id, name: name }, fields));
+        resolve.claim(fileKey, id, false);
         stats.created++;
       }
       stats.importedCount++;
@@ -1383,10 +1953,10 @@ window.StackdImport = {
   // our own headers and report "imported 0" instead; anything else still
   // fails as before.
   _stackdKindOfHeaderOnly(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length !== 1) return null;
+    const { delimiter, records } = this._readRecords(csvText); // 1.0.2 (BUG-33)
+    if (records.length !== 1) return null;
     const row = {};
-    this._parseRow(lines[0], this._detectDelimiter(lines[0]))
+    this._parseRow(records[0], delimiter)
       .forEach(h => { row[h.toLowerCase().replace(/[^a-z0-9]/g, '')] = ''; });
     const rows = [row];
     if (this.isLoanRows(rows)) return 'loans';
@@ -1442,8 +2012,17 @@ window.StackdImport = {
   // Stack'd backup is handed back as a bank statement ({ kind: 'bank' }) for
   // the column-mapping flow; the file itself is never imported blind.
   importCSV(file, state, onComplete, onError) {
+    // 1.0.2 (BUG-34, D-U7-5): a restore is ONE change — a file that does not
+    // fit, or a route that fails part-way, lands nothing. The routing body
+    // reports through these holders; the caller's callbacks run once the
+    // change has settled (still synchronously inside onload).
+    const done = onComplete;
+    const fail = onError;
+    let outcome = null;
+    onComplete = (result) => { outcome = { result }; };
+    onError = (error) => { outcome = { error }; };
     const reader = new FileReader();
-    reader.onload = (e) => {
+    const route = (e) => {
       try {
         const csvText = e.target.result;
         // v1.00: structured statements (camt.053/052 XML, MT940) are sniffed
@@ -1465,13 +2044,15 @@ window.StackdImport = {
         const rows = this.parseCSV(csvText);
         if (this.isLoanRows(rows)) {
           const { loans, stats } = this.buildLoans(rows);
+          // 1.0.2 (BUG-78): a loan already here is not added a second time.
+          const fresh = this._skipKnownLoans(loans, stats);
           // 1.0.1 (BUG-02): never two loans on one series (re-import).
-          this._releaseOwnedLoanLinks(loans);
-          loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
+          this._releaseOwnedLoanLinks(fresh);
+          fresh.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
           // 1.0.1 (BUG-02): a backup from before LinkedSeriesId (or a loan
           // whose link was released above) relinks by its payment note.
           // Emits coalesce: still one render.
-          if (loans.length > 0) window.Store.dispatch('RELINK_LOAN_SERIES');
+          if (fresh.length > 0) window.Store.dispatch('RELINK_LOAN_SERIES');
           if (onComplete) onComplete({ ...stats, kind: 'loans' });
           return;
         }
@@ -1517,8 +2098,8 @@ window.StackdImport = {
         }
         // Bank candidate: needs at least two RAW columns (the squashed row
         // keys can collapse duplicate/empty headers) and one data row.
-        const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-        const rawCols = this._parseRow(lines[0], this._detectDelimiter(lines[0]));
+        const { delimiter, records } = this._readRecords(csvText); // 1.0.2 (BUG-33)
+        const rawCols = this._parseRow(records[0], delimiter);
         if (rawCols.length >= 2 && rows.length >= 1) {
           if (onComplete) onComplete({ kind: 'bank', csvText: csvText });
           return;
@@ -1528,7 +2109,29 @@ window.StackdImport = {
         if (onError) onError(err);
       }
     };
-    reader.onerror = () => { if (onError) onError(new Error("Failed to read file")); };
+    reader.onload = (e) => {
+      let landed = false;
+      let thrown = null;
+      try {
+        landed = window.Store.batch(() => {
+          route(e);
+          if (outcome && outcome.error) throw outcome.error; // roll back whatever the route wrote
+        });
+      } catch (error) {
+        thrown = error || new Error('import failed');
+      }
+      if (landed) {
+        try {
+          if (done && outcome) done(outcome.result);
+        } catch (error) {
+          if (fail) fail(error); // as before: a throwing callback still ends in 'Import failed'
+        }
+        return;
+      }
+      const f = window.Store.takeSaveFailure(); // this flow reports it itself
+      if (fail) fail(thrown || new Error(window.I18n.t(f && f.quota ? 'others.importStorageFull' : 'storage.failedBody')));
+    };
+    reader.onerror = () => { if (fail) fail(new Error("Failed to read file")); };
     reader.readAsText(file);
   }
 };

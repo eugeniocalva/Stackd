@@ -139,6 +139,26 @@ describe('Statement import: camt.053 + MT940 (v1.00)', () => {
       expect(st.openingBalance).toEqual({ amount: -1000, date: '2026-01-01' }); // overdrawn
     });
 
+    // 1.0.2 (BUG-33, D12): the note field is one line — a camt description with
+    // line breaks used to be stored raw (and its words merged on the next save).
+    it('flattens line breaks in the party, remittance and AddtlNtryInf', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"><BkToCstmrStmt><Stmt>
+ <Ntry><Amt Ccy="EUR">45.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-01-03</Dt></BookgDt>
+  <NtryDtls><TxDtls><RltdPties><Cdtr><Nm>Supermercato
+   Rossi</Nm></Cdtr></RltdPties><RmtInf><Ustrd>Spesa
+settimanale</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+ <Ntry><Amt Ccy="EUR">3.20</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-01-04</Dt></BookgDt>
+  <AddtlNtryInf>PAGAMENTO POS
+BAR CENTRALE</AddtlNtryInf></Ntry>
+</Stmt></BkToCstmrStmt></Document>`;
+      const st = window.StackdImport.parseCamt(xml);
+      expect(st.entries.map(e => e.description)).toEqual([
+        'Supermercato Rossi — Spesa settimanale',
+        'PAGAMENTO POS BAR CENTRALE'
+      ]);
+    });
+
     it('throws on non-camt XML', () => {
       expect(() => window.StackdImport.parseCamt('<Document><Other/></Document>')).toThrow();
     });

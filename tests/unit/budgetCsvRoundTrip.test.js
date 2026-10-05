@@ -134,6 +134,13 @@ describe('Budgets in the CSV backup (v1.19)', () => {
       expect(b.isCumulative).toBe(true);
     });
 
+    // 1.0.2 (BUG-31): parseFloat('1.200,50'.replace(',', '.')) read 1.2.
+    it("reads grouped thousands with a decimal comma ('1.200,50')", () => {
+      const stats = restore('Category;Amount;StartMonth;EndMonth;Cumulative\nGroceries;1.200,50;2026-01;;false');
+      expect(stats.importedCount).toBe(1);
+      expect(S().getState().budgets.find(x => x.amount > 0).amount).toBe(1200.5);
+    });
+
     it('skips unreadable rows and says why, without dropping the good ones', () => {
       const csv = [
         'Category,Amount,StartMonth,EndMonth,Cumulative',

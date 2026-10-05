@@ -116,6 +116,31 @@ describe('Loan CSV export/import round-trip (v0.71)', () => {
     expect(window.LoanEngine.simulate(loans[0].config).initialPaymentC).toBe(43648);
   });
 
+  // 1.0.2 (BUG-31): an EU spreadsheet writes '200.000' and '3,5 %'. parseFloat
+  // read the principal as 200 and the rate as 3.
+  it("reads a ';' flat sheet with grouped thousands and a '3,5 %' rate", () => {
+    const csv = [
+      'Name;Kind;Type;Principal;DownPayment;Duration;DurationUnit;AnnualRate;FirstPaymentDate;Amortization',
+      'Mutuo;active;mortgage;200.000;0;20;years;3,5 %;01/10/2026;french'
+    ].join('\n');
+    const { loans, stats } = window.StackdImport.buildLoans(window.StackdImport.parseCSV(csv));
+    expect(stats.importedCount).toBe(1);
+    expect(loans[0].config.principal).toBe(200000);
+    expect(loans[0].config.annualRate).toBe(3.5);
+    expect(loans[0].config.firstPaymentDate).toBe('2026-10-01');
+  });
+
+  it('skips a flat row whose amount cell is present but unreadable (never a silent 0%)', () => {
+    const csv = [
+      'Name,Principal,Duration,DurationUnit,AnnualRate,FirstPaymentDate',
+      'Strano,5000,12,months,tre,2026-10-01',
+      'Buono,5000,12,months,3,2026-10-01'
+    ].join('\n');
+    const { loans, stats } = window.StackdImport.buildLoans(window.StackdImport.parseCSV(csv));
+    expect(loans.map(l => l.name)).toEqual(['Buono']);
+    expect(stats.skipped).toEqual({ 'invalid amount': 1 });
+  });
+
   it('accepts the legacy DD-MM-YYYY date form in flat columns', () => {
     const csv = [
       'Name,Principal,Duration,DurationUnit,AnnualRate,FirstPaymentDate',

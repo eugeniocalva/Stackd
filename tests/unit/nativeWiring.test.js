@@ -198,5 +198,15 @@ describe('Bank Connect B8 (v1.12) — native wiring', () => {
       expect(pod).toContain("pod 'AparajitaCapacitorSecureStorage'");
       expect(pod).toContain("pod 'CordovaPlugins'");
     });
+
+    // 1.0.2 (BUG-37): native CSV export opens the share sheet through @capacitor/share.
+    it('@capacitor/share is declared for npm, gradle and CocoaPods, with a FileProvider cache path', () => {
+      const pkg = JSON.parse(read('package.json'));
+      expect(Object.keys(pkg.dependencies)).toContain('@capacitor/share');
+      expect(read('android/capacitor.settings.gradle')).toContain("include ':capacitor-share'");
+      expect(read('android/app/capacitor.build.gradle')).toContain("implementation project(':capacitor-share')");
+      expect(read('ios/App/Podfile')).toContain("pod 'CapacitorShare'");
+      expect(read('android/app/src/main/res/xml/file_paths.xml')).toContain('<cache-path ');
+    });
   });
 });

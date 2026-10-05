@@ -4,7 +4,12 @@
 // v0.71: escapes a value destined for a double-quoted HTML attribute. Without
 // it a note like `Bob's "Big" Loan` truncates at the quote and the remainder is
 // parsed as further attributes.
+// 1.0.2 (BUG-24): one implementation, I18n.esc. The fallback (the same table)
+// only serves a WebView still holding a cached pre-1.0.2 i18n.js, which has no
+// I18n.esc: the views keep rendering instead of throwing (U5 review round 1).
 function escapeAttr(value) {
+  const I = window.I18n;
+  if (I && typeof I.esc === 'function') return I.esc(value);
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
@@ -15,6 +20,13 @@ function escapeAttr(value) {
 // the distinct name keeps call sites honest about context.
 function esc(text) {
   return escapeAttr(text);
+}
+
+// 1.0.2 (live-U1-N3): one tag-chip template for the first render and the
+// attach-time re-render, which used to drop the remover's <button> and its
+// aria-label (screen readers could not name or reach it).
+function tagChipHtml(t) {
+  return `<span class="tag-chip" data-tag="${escapeAttr(t)}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${esc(t)} <button type="button" style="cursor: pointer; color: var(--text-tertiary); background: transparent; border: none; padding: 0 4px;" class="remove-tag" aria-label="${escapeAttr(window.I18n.t('form.removeTag', { tag: t }))}">x</button></span>`;
 }
 
 // 1.0.1 (BUG-18): shared inline field validation. Replaces the old 1-second
@@ -77,11 +89,24 @@ function clearFieldErrors(root) {
   });
 }
 
+// 1.0.2 (BUG-87): leave a form (save, delete, close) or a dead-end page
+// without leaving its entry under the landing screen (navigate() pushes, so
+// Back reopened the form just closed). Router.leave rewrites the entry in
+// place and routes in the same pass. Router stubs in unit tests predate
+// leave(), hence the navigate() fallback. A navigation helper like
+// navigate(), not one of Router's Back helpers.
+function leaveTo(path) {
+  const R = window.Router;
+  if (!R) return;
+  if (typeof R.leave === 'function') R.leave(path);
+  else R.navigate(path);
+}
+
 function createCategoryOptions(categories, selectedId, includeDefaultOption = true) {
   let options = [...categories]
     .sort((a, b) => window.Store.compareAlpha(a, b))
     .map(cat => 
-      `<option value="${cat.id}" ${cat.id === selectedId ? 'selected' : ''}>${cat.name}</option>`
+      `<option value="${cat.id}" ${cat.id === selectedId ? 'selected' : ''}>${esc(cat.name)}</option>` // 1.0.2 (BUG-24)
     ).join('');
 
   if (includeDefaultOption) {
@@ -94,7 +119,7 @@ function createAccountOptions(accounts, selectedId) {
   return [...accounts]
     .sort((a, b) => window.Store.compareAlpha(a, b))
     .map(acc => 
-      `<option value="${acc.id}" ${acc.id === selectedId ? 'selected' : ''}>${acc.name}</option>`
+      `<option value="${acc.id}" ${acc.id === selectedId ? 'selected' : ''}>${esc(acc.name)}</option>` // 1.0.2 (BUG-24)
     ).join('');
 }
 
@@ -114,6 +139,7 @@ function captureDraftTxFormState(container) {
   const freqInput = root.querySelector('#tx-recurrence-freq');
   const seriesIdInput = root.querySelector('#tx-recurrence-series-id');
   const tagChips = Array.from(root.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
+  const receivedInput = root.querySelector('#tx-received-amount'); // 1.0.2 (BUG-35)
 
   if (typeInput || amountInput) {
     window._draftTxFormState = {
@@ -130,7 +156,13 @@ function captureDraftTxFormState(container) {
       recurrenceEndDate: endDateInput ? endDateInput.value : '',
       recurrenceInterval: intervalInput ? intervalInput.value : '1',
       recurrenceFreq: freqInput ? freqInput.value : 'months',
-      recurrenceSeriesId: seriesIdInput ? seriesIdInput.value : ''
+      recurrenceSeriesId: seriesIdInput ? seriesIdInput.value : '',
+      // 1.0.2 (BUG-35): a cross-currency transfer's "Amount received", with
+      // the currency it was typed for (data-ccy) — a hidden figure keeps its
+      // own currency through the round trip instead of taking the draft To's
+      // (D-U8-12).
+      receivedAmount: receivedInput ? receivedInput.value : undefined,
+      receivedCcy: receivedInput ? (receivedInput.dataset.ccy || '') : ''
     };
   }
 }
@@ -172,6 +204,9 @@ window.Views = {
 
       const currentBalance = window.Store.getBalanceAtDate(effectiveEnd, filters.accounts);
       const summary = window.Store.computeAnalyticalSummary(effectiveFilters);
+      // 1.0.2 (BUG-36): what the totals sum (a mixed selection keeps the base
+      // accounts) and the currency they are formatted in.
+      const aggSel = window.Store.aggregateSelection(filters.accounts);
 
       // v0.64 - Future-dated transactions inside the selected period (relative to today)
       const upcoming = rangeEnd > todayStr
@@ -236,23 +271,24 @@ window.Views = {
       const deltaLabel = window.I18n.t(`analytics.${clampToToday ? 'vsLastToDate' : 'vsLast'}.${activePeriod.type}`);
 
       const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
-      const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom');
+      const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom', aggSel.currency); // 1.0.2 (BUG-63)
 
       // v0.93: attachEvents runs right after render in the same synchronous
       // pass and needs the same context + bar-chart series — stash, don't
       // recompute (each computeNetFlowData is a 12-bucket scan).
-      this._pass = { ctx, chartData };
+      this._pass = { ctx, chartData, currency: aggSel.currency };
 
       const donutData = window.Store.computeCategoryDistribution(effectiveFilters, 'expense');
-      const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense');
+      const donutHtml = window.Components.CategoryDonutChart.render(donutData, 'expense', aggSel.currency); // 1.0.2 (BUG-63)
 
       // v0.61 - Same autosizing as the History summary bar. The hero figure is its own
       // group; the two tiles beneath it share a size with each other.
-      const balanceStr = window.Store.formatCurrency(currentBalance);
+      // 1.0.2 (BUG-36): formatted in the selection's currency
+      const balanceStr = window.Store.formatCurrency(currentBalance, aggSel.currency);
       // 1.0.1 (BUG-12): a real minus on a net outflow (formatCurrency prefixes
       // '-'), '+' only above zero — the History summary convention.
-      const deltaStr   = `${deltaC > 0 ? '+' : ''}${window.Store.formatCurrency(deltaC)}`;
-      const prevStr    = window.Store.formatCurrency(prevBalance);
+      const deltaStr   = `${deltaC > 0 ? '+' : ''}${window.Store.formatCurrency(deltaC, aggSel.currency)}`;
+      const prevStr    = window.Store.formatCurrency(prevBalance, aggSel.currency);
 
       // Card content width: container inner width less the card's 32px side padding.
       const heroWidth = '(min(600px, 100vw) - 96px)';
@@ -265,15 +301,17 @@ window.Views = {
       const statValueStyle = `font-weight: 700; font-size: ${statFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
 
       const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
-      const accountFilterIndicatorHtml = hasAccountFilter
+      // 1.0.2 (BUG-36): the Partial label AND the caption — a mixed explicit
+      // selection leaves accounts out too (v1.02 captioned only []).
+      const accountFilterIndicatorHtml = (hasAccountFilter
         ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
-        : (filters.accounts.length === 0 && window.Store.foreignAccountCount() > 0 // v1.02
-          ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); text-align: right; margin-top: 2px;">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>`
+        : '') + (aggSel.excluded > 0 // v1.02
+          ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); text-align: right; margin-top: 2px;">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</div>`
           : '');
 
       // v0.64 - Projection caveat + Today/period-end toggle
       const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
-      const upcomingNetStr = `${upcoming.net >= 0 ? '+' : '-'}${window.Store.formatCurrency(Math.abs(upcoming.net))}`;
+      const upcomingNetStr = `${upcoming.net >= 0 ? '+' : '-'}${window.Store.formatCurrency(Math.abs(upcoming.net), aggSel.currency)}`;
       const upcomingNoteHtml = (upcoming.count > 0 && rangeEnd > todayStr) ? `
             <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: var(--space-4);">
               <i data-lucide="clock" style="width: 13px; height: 13px; flex-shrink: 0;"></i>
@@ -348,11 +386,13 @@ window.Views = {
       const chartData = (pass && pass.chartData !== undefined)
         ? pass.chartData
         : window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
+      // 1.0.2 (BUG-63): the charts format in the selection's currency
+      const currency = (pass && pass.currency) || window.Store.aggregateSelection(filters.accounts).currency;
       if (filters.period.type !== 'custom') {
-        window.Components.NetFlowChart.attachEvents(container, chartData, filters);
+        window.Components.NetFlowChart.attachEvents(container, chartData, filters, currency);
       }
 
-      window.Components.CategoryDonutChart.attachEvents(container, ctx.effectiveFilters);
+      window.Components.CategoryDonutChart.attachEvents(container, ctx.effectiveFilters, currency);
 
       // v0.64 - Today / period-end balance mode toggle
       container.querySelectorAll('#balance-mode-toggle .chart-toggle-btn').forEach(btn => {
@@ -396,6 +436,10 @@ window.Views = {
         ? savedFilters.accounts
         : window.Store.primaryAccountIds(); // v1.02: default aggregate = primary-currency accounts only
       const selectedCategoryIds = savedFilters.categories || [];
+      // 1.0.2 (BUG-36): what the header total sums and its currency. A saved
+      // list equal to the base accounts reads as the default view (caption).
+      const savedAccounts = savedFilters.accounts || [];
+      const aggSel = window.Store.aggregateSelection(window.Store.isPrimarySelection(savedAccounts) ? [] : savedAccounts);
 
       const mainResult = window.Store.computeGraphBalances({
         interval: selectedInterval,
@@ -410,8 +454,8 @@ window.Views = {
       };
       const points = (mainResult && mainResult.points) ? mainResult.points : [];
       const globalBalance = points.length > 0 ? points[points.length - 1].balance : 0;
-      const formattedBalance = window.Store.formatCurrency(globalBalance);
-      
+      const formattedBalance = window.Store.formatCurrency(globalBalance, aggSel.currency); // 1.0.2 (BUG-36)
+
       let walletsHtml = `
         <div class="wallets-scroll-wrapper">
           ${(() => {
@@ -434,12 +478,12 @@ window.Views = {
                 const balClass = balance > 0 ? 'text-income' : (balance < 0 ? 'text-expense' : '');
 
                 return `
-                  <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${acc.color};">
+                  <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${escapeAttr(acc.color)};">
                     <div class="wallet-card-accent-bar"></div>
                     ${isDefault ? `<div class="wallet-card-default-badge">${window.I18n.t('dash.defaultBadge')}</div>` : ''}
                     
                     <div class="wallet-card-header">
-                      <div class="wallet-card-icon-box" style="color: ${acc.color};">
+                      <div class="wallet-card-icon-box" style="color: ${escapeAttr(acc.color)};">
                         <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
                       </div>
                       <div class="account-edit-trigger touch-target" data-id="${acc.id}" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; opacity: 0.8;" aria-label="${window.I18n.t('common.editAccount')}">
@@ -448,8 +492,8 @@ window.Views = {
                     </div>
 
                     <div class="wallet-card-info">
-                      <div class="wallet-card-type">${window.Store.accountTypeLabel(acc.type)}</div>
-                      <div class="wallet-card-name">${acc.name}</div>
+                      <div class="wallet-card-type">${!acc.type || window.Store.ACCOUNT_TYPES.includes(acc.type) ? window.Store.accountTypeLabel(acc.type) : esc(acc.type)}</div>
+                      <div class="wallet-card-name">${esc(acc.name)}</div>
                       <div class="wallet-card-balance ${balClass}" style="color: ${balColor};">${formattedBal}</div>
                     </div>
                   </div>
@@ -475,7 +519,7 @@ window.Views = {
         else if (absVal < 0 || pct < 0) color = 'var(--color-expense)';
         else color = 'var(--text-primary)';
 
-        const formattedAbs = window.Store.formatCurrency(absVal);
+        const formattedAbs = window.Store.formatCurrency(absVal, aggSel.currency); // 1.0.2 (BUG-36)
         const signedAbs = absVal > 0 ? `+${formattedAbs}` : formattedAbs;
         const signedPct = window.Store.formatPercent(pct, { digits: 1, signed: true }); // 1.0.1 (BUG-09)
 
@@ -498,12 +542,9 @@ window.Views = {
           <div style="margin-bottom: var(--space-8);">
             <p class="section-title">${window.I18n.t('dash.totalBalance')}</p>
             <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
-            ${(() => { // v1.02: honest totals — say when foreign-currency accounts are excluded
-              const foreign = window.Store.foreignAccountCount();
-              return foreign > 0 && !(savedFilters.accounts && savedFilters.accounts.length > 0)
-                ? `<p style="margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: foreign })}</p>`
-                : '';
-            })()}
+            ${aggSel.excluded > 0 // v1.02: honest totals; 1.0.2 (BUG-36): a saved mixed selection too
+              ? `<p style="margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</p>`
+              : ''}
             <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
               <div style="display: flex; flex-direction: column; gap: 1px;">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
@@ -642,9 +683,17 @@ window.Views = {
           const mainLineColor = isDark ? '#38bdf8' : '#5f5e5e';
           const mainFillColor = isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(95, 94, 94, 0.05)';
 
+          // 1.0.2 (BUG-36): the total's currency (as in render), and only the
+          // accounts the total sums get a dashed line (D-U8-9).
+          const savedAccounts = savedFilters.accounts || [];
+          const totalCurrency = window.Store.aggregateSelection(
+            window.Store.isPrimarySelection(savedAccounts) ? [] : savedAccounts).currency;
+          const inAgg = window.Store.aggregatePredicate(selectedAccountIds);
+
           const datasets = [{
             label: window.I18n.t('dash.totalBalance'),
             data: mainPoints,
+            currency: totalCurrency,
             borderColor: mainLineColor,
             backgroundColor: mainFillColor,
             borderWidth: 3,
@@ -657,7 +706,7 @@ window.Views = {
             pointBorderColor: mainLineColor
           }];
 
-          const visibleAccounts = state.accounts.filter(a => selectedAccountIds.includes(a.id));
+          const visibleAccounts = state.accounts.filter(a => selectedAccountIds.includes(a.id) && inAgg(a.id));
           visibleAccounts.forEach(acc => {
             const accResult = window.Store.computeGraphBalances({
               interval: selectedInterval,
@@ -668,6 +717,7 @@ window.Views = {
             datasets.push({
               label: acc.name,
               data: (accResult && accResult.points) ? accResult.points : [],
+              currency: acc.currency, // 1.0.2 (BUG-36)
               borderColor: acc.color,
               borderWidth: 1.5,
               borderDash: [5, 5],
@@ -717,7 +767,8 @@ window.Views = {
                   itemSort: (a, b) => b.parsed.y - a.parsed.y,
                   callbacks: {
                     title: (items) => items[0]?.raw?.fullLabel || items[0]?.raw?.label || '',
-                    label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y)}`
+                    // 1.0.2 (BUG-36): each line in its own currency
+                    label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y, ctx.dataset.currency)}`
                   }
                 }
               },
@@ -804,14 +855,19 @@ window.Views = {
       const rangeStart = filters.period.type === 'custom' ? filters.period.start : bounds.start;
       const rangeEnd = filters.period.type === 'custom' ? filters.period.end : bounds.end;
 
+      // 1.0.2 (BUG-36): the sums' accounts and currency — a mixed explicit
+      // filter keeps the base accounts (v1.02 guarded only []).
+      const histSel = window.Store.aggregateSelection(filters.accounts);
+      const inSums = window.Store.aggregatePredicate(filters.accounts);
+
       // 1.0.1 (BUG-04) One rule for the day footers AND the filtered summary:
-      // unpaid rows, transfer legs and (with no account filter) foreign-currency
-      // rows never count; opening_balance rows are signed by their amount.
+      // unpaid rows, transfer legs and foreign-currency rows never count;
+      // opening_balance rows are signed by their amount.
       const signedRowAmount = (tx) => {
         if (tx.isPaid === false) return 0;
-        // v1.02: with no account filter, foreign-currency rows stay VISIBLE
-        // in the list but out of the (primary-currency) sums.
-        if (filters.accounts.length === 0 && !window.Store._isPrimaryAccount(tx.accountId)) return 0;
+        // v1.02 / 1.0.2 (BUG-36): rows the sums leave out (foreign-currency
+        // accounts) stay VISIBLE in the list but out of the sums.
+        if (!inSums(tx.accountId)) return 0;
         if (tx.transferRef || tx.type === 'transfer' || tx.type === 'transfer_in' || tx.type === 'transfer_out') return 0;
         const isOpeningBalance = tx.type === 'opening_balance';
         if (tx.type === 'income' || (isOpeningBalance && tx.amount >= 0)) return Math.abs(tx.amount);
@@ -869,9 +925,10 @@ window.Views = {
       // v0.61 - Autosize the three figures as one group so they stay the same size as
       // each other. Net Change was the first to wrap because its leading '+' costs a
       // whole character the other two never pay.
-      const startStr = window.Store.formatCurrency(cell1Value);
-      const endStr   = window.Store.formatCurrency(cell2Value);
-      const netStr   = `${netChangeSign}${window.Store.formatCurrency(netChange)}`;
+      // 1.0.2 (BUG-36): in the selection's currency (a USD tile opens in $)
+      const startStr = window.Store.formatCurrency(cell1Value, histSel.currency);
+      const endStr   = window.Store.formatCurrency(cell2Value, histSel.currency);
+      const netStr   = `${netChangeSign}${window.Store.formatCurrency(netChange, histSel.currency)}`;
 
       // Usable width of one cell: container inner width (capped at 600px, less its 16px
       // side padding), split three ways, less this cell's 12px padding, its divider, and
@@ -886,8 +943,9 @@ window.Views = {
       const summaryValueStyle = `font-family: var(--font-family-display); font-weight: 700; font-size: ${summaryFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
 
       // v1.02: the summary bar and day footers exclude foreign-currency rows
-      const foreignNote = (!filters.accounts.length && window.Store.foreignAccountCount() > 0)
-        ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin: 0 2px var(--space-2);">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>`
+      // (1.0.2 BUG-36: for a mixed explicit filter too)
+      const foreignNote = histSel.excluded > 0
+        ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin: 0 2px var(--space-2);">${window.I18n.t('common.otherCurrencyExcluded', { count: histSel.excluded })}</div>`
         : '';
       // 1.0.1 (BUG-04) caption so In / Out / Net read as a total of the filtered rows
       const filteredNote = isRowFiltered
@@ -954,7 +1012,7 @@ window.Views = {
           const daySum = dayTxs.reduce((sum, tx) => sum + signedRowAmount(tx), 0);
 
           const sumColor = daySum > 0 ? 'var(--color-income)' : (daySum < 0 ? 'var(--color-expense)' : 'var(--text-secondary)');
-          const formattedSum = window.Store.formatCurrency(daySum);
+          const formattedSum = window.Store.formatCurrency(daySum, histSel.currency); // 1.0.2 (BUG-36)
 
           txListHtml += `
             <div id="tx-${date}" class="date-group-container">
@@ -1288,6 +1346,9 @@ window.Views = {
         let isDragging = false;
         let isHorizontal = false;
         let currentOffset = 0;
+        // 1.0.2 (live-U2-1): an opening balance has no Paid action to reveal.
+        const hasPaid = !!swipeContainer.querySelector('.swipe-action-btn.paid');
+        const maxRight = hasPaid ? 90 : 0;
 
         const handleStart = (clientX, clientY) => {
           const storeState = window.Store.getState();
@@ -1324,7 +1385,7 @@ window.Views = {
 
             let targetX = currentOffset + deltaX;
             if (targetX < -130) targetX = -130;
-            if (targetX > 90) targetX = 90;
+            if (targetX > maxRight) targetX = maxRight;
 
             swipeContent.style.transform = `translateX(${targetX}px)`;
           }
@@ -1341,7 +1402,7 @@ window.Views = {
             if (deltaX < -40 || (currentOffset < 0 && deltaX < 20)) {
               // Swipe Left: reveal Edit & Delete
               swipeContent.style.transform = 'translateX(-110px)';
-            } else if (deltaX > 40 || (currentOffset > 0 && deltaX > -20)) {
+            } else if (hasPaid && (deltaX > 40 || (currentOffset > 0 && deltaX > -20))) {
               // Swipe Right: reveal Paid
               swipeContent.style.transform = 'translateX(70px)';
             } else {
@@ -1476,6 +1537,35 @@ window.Views = {
   // ADD TRANSACTION VIEW (Phase 4)
   // -------------------------
   AddTransactionView: {
+    // 1.0.2 (BUG-25): an opening balance is owned by its account (UPDATE_ACCOUNT).
+    // The form has no opening-balance mode: it showed a -€450 card opening as
+    // "Income 450" and an untouched Update stored income +450. This read-only
+    // panel has no form fields, so attachEvents bails (no #tx-type) and the
+    // Router's dirty-form check stays false (Back is plain).
+    _renderOpeningBalancePanel(tx, state) {
+      const acc = state.accounts.find(a => a.id === tx.accountId);
+      const amount = window.Store.formatCurrency(Number(tx.amount) || 0, acc && acc.currency); // signed
+      let dateLabel = '';
+      try {
+        dateLabel = new Intl.DateTimeFormat(window.Store.getLocale(), { dateStyle: 'long' }).format(new Date(tx.date + 'T12:00:00'));
+      } catch (e) { /* undated or invalid row: no date line */ }
+      const meta = [acc ? acc.name : '', dateLabel].filter(Boolean).map(esc).join(' · ');
+      return `
+        <div class="container" id="ob-panel" style="padding-bottom: 100px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
+            <h1 class="header-title" style="margin: 0;">${esc(window.I18n.t('account.openingBalance'))}</h1>
+            <a href="#transactions" data-router-leave aria-label="${escapeAttr(window.I18n.t('common.close'))}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
+          </div>
+          <div class="card" style="text-align: center; margin-bottom: var(--space-6);">
+            <div class="${Number(tx.amount) < 0 ? 'text-expense' : 'text-balance'}" style="font-family: var(--font-family-display); font-size: var(--text-4xl); font-weight: 800; margin: var(--space-4) 0 var(--space-2);">${esc(amount)}</div>
+            ${meta ? `<p class="text-secondary" style="margin: 0 0 var(--space-4);">${meta}</p>` : ''}
+            <p style="font-size: var(--text-sm); color: var(--text-secondary); margin: 0;">${esc(window.I18n.t('form.openingBalanceInfo'))}</p>
+          </div>
+          ${acc ? `<a id="btn-ob-edit-account" class="btn btn-primary" href="#edit-account?id=${escapeAttr(encodeURIComponent(acc.id))}" style="display: block; width: 100%; padding: var(--space-4); font-size: 1.1rem; border-radius: var(--radius-lg); text-align: center; text-decoration: none;">${esc(window.I18n.t('account.editTitle'))}</a>` : ''}
+        </div>
+      `;
+    },
+
     render(state) {
       if (state.accounts.length === 0) {
         return `
@@ -1492,16 +1582,21 @@ window.Views = {
       const editId = params.id;
       const txToEdit = editId ? state.transactions.find(t => t.id === editId) : null;
       
-      if (editId && !txToEdit) {
-        return `<div class="container" style="padding-top: 40px; text-align: center;"><p>${window.I18n.t('form.txNotFound')}</p><a href="#transactions" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">${window.I18n.t('common.goBack')}</a></div>`;
+      if (editId && !txToEdit) { // 1.0.2 (BUG-87): Go Back leaves this dead end (data-router-leave), no loop
+        return `<div class="container" style="padding-top: 40px; text-align: center;"><p>${window.I18n.t('form.txNotFound')}</p><a href="#transactions" data-router-leave class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px;">${window.I18n.t('common.goBack')}</a></div>`;
       }
       
       const isEdit = !!txToEdit;
-      
+      // 1.0.2 (BUG-25): one guard for every entry point (History tap,
+      // swipe-edit, category detail).
+      if (txToEdit && txToEdit.type === 'opening_balance') {
+        return window.Views.AddTransactionView._renderOpeningBalancePanel(txToEdit, state);
+      }
+
       // Setup initial values
       let initialType = 'expense';
       let initialAmount = '';
-      let initialDate = new Date().toISOString().split('T')[0];
+      let initialDate = window.Store._todayYMD(); // 1.0.2 (BUG-38): the LOCAL day that balances and History use
       let initialTime = (window.Store && typeof window.Store._getSystemTimeString === 'function')
         ? window.Store._getSystemTimeString().substring(0, 5)
         : new Date().toTimeString().substring(0, 5);
@@ -1517,9 +1612,13 @@ window.Views = {
       let initialRecurrenceInterval = '1';
       let initialRecurrenceFreq = 'months';
       let initialRecurrenceSeriesId = '';
+      let initialReceived = ''; // 1.0.2 (BUG-35): a cross-currency transfer's received side
+      let initialReceivedCcy = ''; // 1.0.2 (BUG-35): its currency, when a draft says so (D-U8-12)
 
       if (txToEdit) {
-        initialAmount = Math.abs(txToEdit.amount);
+        // 1.0.2 (BUG-50): cents only. Under it/es a legacy 1.234 would be re-read as 1234.
+        const storedAmount = Number(txToEdit.amount);
+        initialAmount = Number.isFinite(storedAmount) ? String(Math.round(Math.abs(storedAmount) * 100) / 100) : '';
         initialIsPaid = txToEdit.isPaid !== false;
         initialDate = txToEdit.date;
         initialTime = txToEdit.time ? txToEdit.time.substring(0, 5) : initialTime;
@@ -1549,6 +1648,16 @@ window.Views = {
               initialAccount = counterpart.accountId;
               initialToAccount = txToEdit.accountId;
             }
+            // 1.0.2 (BUG-35): the amount field is the SENT side (From's
+            // symbol); the received side has its own field. Equal legs across
+            // currencies = the pre-1.0.2 1:1 signature → open EMPTY so a save
+            // needs what arrived (D-U8-4).
+            const sent = txToEdit.type === 'expense' ? txToEdit : counterpart;
+            const got = txToEdit.type === 'expense' ? counterpart : txToEdit;
+            initialAmount = String(Math.round(Math.abs(sent.amount) * 100) / 100);
+            if (!window.Store._sameCurrency(sent.accountId, got.accountId) && Math.abs(sent.amount) !== Math.abs(got.amount)) {
+              initialReceived = String(Math.round(Math.abs(got.amount) * 100) / 100);
+            }
           }
         } else {
           initialType = txToEdit.type === 'opening_balance' ? 'income' : txToEdit.type;
@@ -1556,9 +1665,13 @@ window.Views = {
 
         if (txToEdit.recurrence) {
           initialIsRecurrent = true;
-          initialRecurrenceEndDate = txToEdit.recurrence.endDate || '';
-          initialRecurrenceInterval = txToEdit.recurrence.interval || '1';
-          initialRecurrenceFreq = txToEdit.recurrence.frequency || 'months';
+          // 1.0.2 (BUG-26): the SERIES' schedule (armed member, or the last
+          // payment of a stopped series) — never this member's stale copy
+          const sched = (window.Store && typeof window.Store.getSeriesSchedule === 'function'
+            && window.Store.getSeriesSchedule(txToEdit.recurrence.seriesId)) || txToEdit.recurrence;
+          initialRecurrenceEndDate = sched.endDate || '';
+          initialRecurrenceInterval = sched.interval || '1';
+          initialRecurrenceFreq = sched.frequency || 'months';
           initialRecurrenceSeriesId = txToEdit.recurrence.seriesId || '';
         }
       }
@@ -1574,6 +1687,8 @@ window.Views = {
         if (draft.tags) initialTags = draft.tags;
         if (draft.account) initialAccount = draft.account;
         if (draft.transferTo) initialToAccount = draft.transferTo;
+        if (draft.receivedAmount !== undefined) initialReceived = draft.receivedAmount; // 1.0.2 (BUG-35)
+        if (draft.receivedCcy) initialReceivedCcy = draft.receivedCcy; // 1.0.2 (BUG-35, D-U8-12)
         if (draft.category) initialCategory = draft.category;
         if (draft.isRecurrent !== undefined) initialIsRecurrent = draft.isRecurrent;
         if (draft.isPaid !== undefined) initialIsPaid = draft.isPaid;
@@ -1589,13 +1704,24 @@ window.Views = {
         delete window._pendingCategorySelection;
       }
 
+      // 1.0.2 (BUG-39): a NEW log starts on the Default Wallet; if none is set or
+      // it was deleted, on the first account by name (createAccountOptions' order).
+      // Placed after the draft so the add-category round trip keeps the user's
+      // pick. It also repairs a draft or loan prefill carrying a deleted id.
+      // The currency prefix and the transfer From/To follow initialAccount.
+      if (!isEdit && !state.accounts.some(a => a.id === initialAccount)) {
+        const def = state.accounts.find(a => a.id === state.defaultAccountId);
+        const first = [...state.accounts].sort((a, b) => window.Store.compareAlpha(a, b))[0];
+        initialAccount = (def || first).id; // accounts is non-empty here (the empty state returned above)
+      }
+
       const disableToggles = ''; // Allow switching even in edit mode now that save logic is improved
       
       return `
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${isEdit ? window.I18n.t('form.editLog') : window.I18n.t('form.newLog')}</h1>
-            <a href="#${isEdit ? 'transactions' : 'dashboard'}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
+            <a href="#${isEdit ? 'transactions' : 'dashboard'}" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
           </div>
           
           <!-- Type Toggle -->
@@ -1612,8 +1738,8 @@ window.Views = {
           <!-- Large Amount Input -->
           <div class="amount-input-group">
             <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol(window.Store.getAccountCurrency(initialAccount))}</span>
-            <label for="tx-amount" class="sr-only">${window.I18n.t('form.amount')}</label>
-            <input type="number" id="tx-amount" class="amount-input ${initialType === 'expense' ? 'text-expense' : (initialType === 'income' ? 'text-income' : 'text-transfer')}" placeholder="0.00" step="0.01" inputmode="decimal" value="${initialAmount}" style="width: auto; max-width: 200px;">
+            <label for="tx-amount" class="visually-hidden">${window.I18n.t('form.amount')}</label>
+            <input type="text" id="tx-amount" class="amount-input ${initialType === 'expense' ? 'text-expense' : (initialType === 'income' ? 'text-income' : 'text-transfer')}" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${escapeAttr(initialAmount)}" style="width: auto; max-width: 200px;">
           </div>
           
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -1630,7 +1756,18 @@ window.Views = {
                 ${createAccountOptions(state.accounts, initialToAccount)}
               </select>
             </div>
-            
+
+            <!-- 1.0.2 (BUG-35): only for a transfer between two currencies -->
+            <div class="form-group" id="group-received" style="display: none;">
+              <label class="form-label" id="label-received" for="tx-received-amount"></label>
+              <div style="display: flex; align-items: center; gap: var(--space-2);">
+                <span id="received-currency-symbol" aria-hidden="true" style="color: var(--text-tertiary); font-weight: 700;"></span>
+                <input type="text" id="tx-received-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off"
+                       data-ccy="${escapeAttr(initialReceivedCcy || window.Store.getAccountCurrency(initialToAccount))}" value="${escapeAttr(initialReceived)}">
+              </div>
+              <p id="tx-received-hint" style="margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-tertiary);"></p>
+            </div>
+
             <div class="form-group" id="group-category" style="display: ${initialType === 'transfer' ? 'none' : 'block'};">
               <div class="form-label" style="display:flex; justify-content: space-between;">
                 <label for="tx-category">${window.I18n.t('form.category')}</label>
@@ -1655,7 +1792,7 @@ window.Views = {
             <div class="form-group" style="position: relative;">
               <label class="form-label" for="tx-tags-input">${window.I18n.t('form.tags')}</label>
               <div id="tx-tags-container" class="form-control" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; min-height: 44px; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-md); width: 100%; max-width: 100%; box-sizing: border-box;">
-                ${initialTags.map(t => `<span class="tag-chip" data-tag="${t}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${t} <button style="cursor: pointer; color: var(--text-tertiary); background: transparent; border: none; padding: 0 4px;" class="remove-tag" aria-label="${window.I18n.t('form.removeTag', { tag: t })}">x</button></span>`).join('')}
+                ${initialTags.map(tagChipHtml).join('')}
                 <input type="text" id="tx-tags-input" placeholder="${window.I18n.t('form.addTagPlaceholder')}" autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
               </div>
               <div id="tx-tags-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
@@ -1697,7 +1834,7 @@ window.Views = {
               </div>
               <input type="hidden" id="tx-recurrence-interval" value="${initialRecurrenceInterval}">
               <input type="hidden" id="tx-recurrence-freq" value="${initialRecurrenceFreq}">
-              <input type="hidden" id="tx-recurrence-series-id" value="${initialRecurrenceSeriesId}">
+              <input type="hidden" id="tx-recurrence-series-id" value="${escapeAttr(initialRecurrenceSeriesId)}">
             </div>
           </div>
           
@@ -1766,7 +1903,39 @@ window.Views = {
         categorySelect.innerHTML = createCategoryOptions(filteredCategories, initialSelected, true);
         if (initialSelected) categorySelect.value = initialSelected;
       };
-      
+
+      // 1.0.2 (BUG-35): "Amount received" shows only for a transfer whose From
+      // and To use different currencies. A received figure belongs to the To
+      // currency it was typed for (the input's data-ccy): a To change parks it
+      // and shows that currency's own (or an empty) field, restoring it on
+      // return (D-U8-12) — 117 typed for USD is never saved as £117. data-ccy
+      // (not a closure variable) holds it, so a draft round trip keeps it.
+      const receivedInput = document.getElementById('tx-received-amount');
+      const receivedMemo = {};
+      const syncReceived = () => {
+        const group = document.getElementById('group-received');
+        // by id: the accountSelect/transferToSelect consts below are still in
+        // their TDZ when updateUIVisibility first runs
+        const from = document.getElementById('tx-account');
+        const to = document.getElementById('tx-transfer-to');
+        if (!group || !receivedInput || !from || !to) return;
+        const fromCcy = window.Store.getAccountCurrency(from.value);
+        const toCcy = to.value ? window.Store.getAccountCurrency(to.value) : fromCcy;
+        const cross = typeInput.value === 'transfer' && fromCcy !== toCcy;
+        group.style.display = cross ? 'block' : 'none';
+        if (!cross) { clearFieldError(receivedInput); return; }
+        const receivedCcy = receivedInput.dataset.ccy || '';
+        if (toCcy !== receivedCcy) {
+          receivedMemo[receivedCcy] = receivedInput.value;
+          receivedInput.value = receivedMemo[toCcy] || '';
+          receivedInput.dataset.ccy = toCcy;
+          clearFieldError(receivedInput);
+        }
+        document.getElementById('label-received').textContent = window.I18n.t('form.amountReceived', { currency: toCcy });
+        document.getElementById('received-currency-symbol').textContent = window.Store.getCurrencySymbol(toCcy);
+        document.getElementById('tx-received-hint').textContent = window.I18n.t('form.crossCurrencyHint', { from: fromCcy, to: toCcy });
+      };
+
       // Update UI visibility based on Type
       const updateUIVisibility = () => {
         const type = typeInput.value;
@@ -1809,6 +1978,7 @@ window.Views = {
         // event — drop any stale message left in the (maybe hidden) groups.
         clearFieldError(categorySelect);
         clearFieldError(document.getElementById('tx-transfer-to'));
+        syncReceived(); // 1.0.2 (BUG-35)
         updateCategories();
       };
 
@@ -1843,13 +2013,29 @@ window.Views = {
           lastFrom = from;
         };
         syncTransferTo(true);
+        syncReceived(); // 1.0.2 (BUG-35): after BUG-21's initial To fix-up
         accountSelect.addEventListener('change', () => {
+          // 1.0.2 (BUG-35): read BEFORE syncTransferTo rebuilds To
+          const prevFrom = lastFrom;
+          const prevTo = transferToSelect.value;
+          const groupReceived = document.getElementById('group-received');
+          const wasCross = !!receivedInput && !!groupReceived && groupReceived.style.display !== 'none';
           syncTransferTo(false);
+          // From moved onto To → the accounts swapped (BUG-21): each figure
+          // follows its account and currency (D-U8-12).
+          if (wasCross && accountSelect.value === prevTo && transferToSelect.value === prevFrom) {
+            const s = amountInput.value;
+            amountInput.value = receivedInput.value;
+            receivedInput.value = s;
+            receivedInput.dataset.ccy = window.Store.getAccountCurrency(transferToSelect.value);
+          }
           clearFieldError(transferToSelect);
           // Adjacent nit: the amount's currency symbol follows the account.
           const sym = document.getElementById('currency-symbol');
           if (sym) sym.textContent = window.Store.getCurrencySymbol(window.Store.getAccountCurrency(accountSelect.value));
+          syncReceived(); // 1.0.2 (BUG-35)
         });
+        transferToSelect.addEventListener('change', syncReceived); // 1.0.2 (BUG-35)
       }
       
       // Focus amount on load if not edit
@@ -1883,9 +2069,9 @@ window.Views = {
           if (!endDateInput.value) {
             const dateInput = document.getElementById('tx-date');
             if (dateInput && dateInput.value) {
-               const d = new Date(dateInput.value);
-               d.setFullYear(d.getFullYear() + 5);
-               endDateInput.value = d.toISOString().split('T')[0];
+              // 1.0.2 (BUG-38): noon-anchored local math. new Date('YYYY-MM-DD') +
+              // toISOString() lost a day at DST edges (2026-10-26 -> 2031-10-25).
+              endDateInput.value = window.Store._calculateNextRecurrenceDate(dateInput.value, 5, 'years') || '';
             }
           }
         } else if (recurrentText) {
@@ -2073,13 +2259,13 @@ window.Views = {
       const autocompleteBox = document.getElementById('tx-tags-autocomplete');
 
       const renderTags = () => {
-        const chipsHtml = currentTags.map(t => `<span class="tag-chip" data-tag="${t}" style="background: var(--bg-surface-sunken); padding: 4px 8px; border-radius: 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">#${t} <span style="cursor: pointer; color: var(--text-tertiary);" class="remove-tag">x</span></span>`).join('');
+        const chipsHtml = currentTags.map(tagChipHtml).join(''); // 1.0.2 (live-U1-N3)
         container.querySelectorAll('.tag-chip').forEach(el => el.remove());
         tagsInput.insertAdjacentHTML('beforebegin', chipsHtml);
         
         container.querySelectorAll('.remove-tag').forEach(btn => {
            btn.addEventListener('click', (e) => {
-              const tag = e.target.closest('.tag-chip').dataset.tag;
+              const tag = btn.closest('.tag-chip').dataset.tag;
               currentTags = currentTags.filter(t => t !== tag);
               renderTags();
            });
@@ -2122,7 +2308,7 @@ window.Views = {
          debounceTimer = setTimeout(() => {
             const matches = window.Store.getAllUniqueTags(val).filter(t => !currentTags.includes(t));
             if (matches.length > 0) {
-               autocompleteBox.innerHTML = matches.map(t => `<div class="tag-suggestion touch-target" data-tag="${t}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color);">#${t}</div>`).join('');
+               autocompleteBox.innerHTML = matches.map(t => `<div class="tag-suggestion touch-target" data-tag="${escapeAttr(t)}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color);">#${esc(t)}</div>`).join('');
                autocompleteBox.style.display = 'block';
                
                container.querySelectorAll('.tag-suggestion').forEach(item => {
@@ -2208,17 +2394,44 @@ window.Views = {
         // categories. Applies to edits of imported uncategorized rows too.
         clearFieldErrors(container);
         const type = typeInput.value;
-        const amount = parseFloat(amountInput.value);
+        // 1.0.2 (BUG-50): the field is text; Store.parseAmount reads it in the UI
+        // language (NaN = can't be read without guessing, null = empty).
+        const amount = window.Store.parseAmount(amountInput.value);
         const categoryId = categorySelect.value;
+        // [field, i18n key, showFieldError opts, t() params] — first one gets focus.
         const invalid = [];
-        if (isNaN(amount) || amount <= 0) {
-          invalid.push([amountInput, 'form.amountRequired', { after: amountInput.closest('.amount-input-group') }]);
+        const amountAfter = { after: amountInput.closest('.amount-input-group') };
+        if (Number.isNaN(amount)) {
+          invalid.push([amountInput, 'form.amountInvalid', amountAfter, { example: window.Store.amountExample() }]);
+        } else if (amount === null || amount <= 0) {
+          invalid.push([amountInput, 'form.amountRequired', amountAfter]);
         }
         if (type !== 'transfer' && !categoryId) {
           invalid.push([categorySelect, 'form.categoryRequired', {}]);
         }
+        // 1.0.2 (BUG-35): "Amount received" is a plain required field of a
+        // transfer between two currencies — validated in the same pass
+        // (1.0.1 BUG-08/BUG-18). The same-account To check below keeps its own
+        // later return (crossCurrency is false there, so no stray error).
+        const receivedEl = document.getElementById('tx-received-amount');
+        const fromSel = document.getElementById('tx-account').value;
+        const toSel = document.getElementById('tx-transfer-to').value;
+        const crossCurrency = type === 'transfer' && !!toSel && toSel !== fromSel && !window.Store._sameCurrency(fromSel, toSel);
+        let receivedAmount;
+        if (crossCurrency && receivedEl) {
+          receivedAmount = window.Store.parseAmount(receivedEl.value);
+          if (Number.isNaN(receivedAmount)) invalid.push([receivedEl, 'form.amountInvalid', {}, { example: window.Store.amountExample() }]);
+          else if (receivedAmount === null || receivedAmount <= 0) invalid.push([receivedEl, 'form.receivedRequired', {}]);
+        }
+        // 1.0.2 (BUG-38 rider): a cleared date (Android picker's Clear) used to
+        // save an invisible row, or, for a series, throw RangeError on the end
+        // default.
+        const dateEl = document.getElementById('tx-date');
+        if (!dateEl.value) {
+          invalid.push([dateEl, 'form.dateRequired', {}]);
+        }
         if (invalid.length) {
-          invalid.forEach(([el, key, o], i) => showFieldError(el, window.I18n.t(key), Object.assign({ focus: i === 0 }, o)));
+          invalid.forEach(([el, key, o, vars], i) => showFieldError(el, window.I18n.t(key, vars), Object.assign({ focus: i === 0 }, o)));
           return;
         }
 
@@ -2244,17 +2457,33 @@ window.Views = {
             seriesId: sId || window.StackdDB.generateId(),
             interval: intervalVal,
             frequency: freqVal,
-            endDate: eDate || (() => {
-               const d = new Date(date);
-               d.setFullYear(d.getFullYear() + 5);
-               return d.toISOString().split('T')[0];
-            })(),
+            endDate: eDate || window.Store._calculateNextRecurrenceDate(date, 5, 'years'), // 1.0.2 (BUG-38): noon-anchored local math
             nextDate: (window.Store && typeof window.Store._calculateNextRecurrenceDate === 'function') ? window.Store._calculateNextRecurrenceDate(date, intervalVal, freqVal) : undefined
           };
         }
 
+        // 1.0.2 (BUG-26): a series member's End Date / interval / frequency are
+        // the SERIES' (pre-filled from Store.getSeriesSchedule) — compare the
+        // form with them, never with this member's own copy.
+        const editTx = isEditSave ? window.Store.getState().transactions.find(t => t.id === targetId) : null;
+        const editRec = editTx && editTx.recurrence;
+        const sched = editRec
+          ? ((typeof window.Store.getSeriesSchedule === 'function' && window.Store.getSeriesSchedule(editRec.seriesId))
+            || { ...editRec, lastDate: editTx.date })
+          : null;
+        // The End Date compares 60-month-clamped, as the store classifies it
+        // (an end past the cap that clamps back to the series end rebuilds nothing).
+        const endCmp = (sched && recurrenceData && typeof window.Store._clampRecurrenceEndDate === 'function')
+          ? window.Store._clampRecurrenceEndDate({ ...editRec, ...recurrenceData }, date).endDate
+          : (recurrenceData && recurrenceData.endDate);
+        const scheduleChanged = !!(sched && recurrenceData && (endCmp !== sched.endDate ||
+          String(recurrenceData.interval) !== String(sched.interval) || recurrenceData.frequency !== sched.frequency));
+
         // v0.67: validate the recurrence window before anything dispatches
-        if (recurrenceData && recurrenceData.endDate && recurrenceData.endDate < date) {
+        // 1.0.2 (BUG-26): only a window the user set — an untouched End Date on
+        // a series member never blocks (a payment 'Only this' moved past the
+        // series end is inert, and must stay editable).
+        if (recurrenceData && recurrenceData.endDate && recurrenceData.endDate < date && (!sched || scheduleChanged)) {
           // 1.0.1 (BUG-21): inline, not a system alert()
           showFieldError(document.getElementById('tx-recurrence-end-date'), window.I18n.t('form.recurrenceEndBeforeDate'));
           return;
@@ -2276,9 +2505,7 @@ window.Views = {
         // far the change should apply, mirroring the delete flow. Previously
         // only tag changes prompted (and the modal wiring was broken), so date
         // or amount edits silently re-armed the series and spawned duplicates.
-        const txToEditCurrent = isEditSave
-          ? window.Store.getState().transactions.find(t => t.id === targetId)
-          : null;
+        const txToEditCurrent = editTx; // 1.0.2 (BUG-26): looked up above
         const seriesId = (txToEditCurrent && txToEditCurrent.recurrence) ? txToEditCurrent.recurrence.seriesId : null;
         const dateChanged = !!(txToEditCurrent && date !== txToEditCurrent.date);
         const recurrenceRemoved = !!(seriesId && !recurrenceData);
@@ -2292,10 +2519,39 @@ window.Views = {
         const paidToggle = document.getElementById('tx-is-paid');
         const paidChecked = paidToggle ? paidToggle.checked : true;
         const wasUnpaid = !!(txToEditCurrent && txToEditCurrent.isPaid === false);
-        const isPaidPayload = paidChecked ? (wasUnpaid ? true : undefined) : false;
+        // 1.0.2 (BUG-27): an edit carries isPaid only when the user FLIPPED the
+        // switch (a switch merely pre-filled from an unpaid record sends
+        // nothing, so a scoped save can never un-pay the series); new rows
+        // keep the switch's absolute state.
+        const isPaidFlip = paidChecked === !wasUnpaid ? undefined : paidChecked; // UPDATE_*
+        const isPaidNew = paidChecked ? undefined : false;                       // ADD_*
+        const paidChanged = isPaidFlip !== undefined;
+
+        // 1.0.2 (BUG-52, D-U3-5a): moving a series payment LATER with 'This and
+        // future' / 'All' and an untouched End Date keeps the number of
+        // payment SLOTS from the edited one to the series end: count the slots
+        // from the old date up to the end, step as many from the new date, and
+        // raise the end only when that last slot falls after it (the store's
+        // 60-month window still applies). 'Only this' never moves the end.
+        // Slots, not days (review r2): a day shift from an End Date between
+        // payment days added a payment after the user's end.
+        const seriesRec = (scope) => {
+          if (!recurrenceData || !sched || scheduleChanged || scope === 'only' || !editTx || !(date > editTx.date)) return recurrenceData;
+          // from the series END, not the latest member: a payment 'Only this'
+          // moved past the end is inert and must not stretch the shift
+          const limit = sched.endDate || sched.lastDate || editTx.date;
+          const step = (d) => window.Store._calculateNextRecurrenceDate(d, Number(sched.interval), sched.frequency);
+          let n = 0;
+          for (let d = editTx.date; d && d <= limit && n < 1000; d = step(d)) n++;
+          if (n < 1) return recurrenceData;
+          let shifted = date;
+          for (let i = 1; i < n && shifted; i++) shifted = step(shifted);
+          return shifted && shifted > recurrenceData.endDate ? { ...recurrenceData, endDate: shifted } : recurrenceData;
+        };
 
         // Build the actual dispatch logic as a callable function
-        const doDispatch = (scope) => {
+        const doDispatch = (scope) => window.Store.batch(() => applyChange(scope)); // 1.0.2 (BUG-34): a type conversion lands whole or not at all
+        const applyChange = (scope) => {
           // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
             if (isEditSave) {
@@ -2305,14 +2561,15 @@ window.Views = {
                 window.Store.dispatch('UPDATE_TRANSFER', {
                   transferRef,
                   amount,
+                  ...(crossCurrency ? { receivedAmount } : {}), // 1.0.2 (BUG-35)
                   expenseAccountId: accountId,
                   incomeAccountId: toAccountId,
                   date,
                   time: customTime,
                   note: comment,
-                  recurrence: recurrenceData,
+                  recurrence: seriesRec(scope),
                   tags: currentTags,
-                  isPaid: isPaidPayload,
+                  ...(isPaidFlip !== undefined ? { isPaid: isPaidFlip } : {}),
                   updateFuture: scope === 'future',
                   updateAll: scope === 'all'
                 });
@@ -2336,11 +2593,12 @@ window.Views = {
                     // exactly as configured (no scope modal was shown)
                     transferRecurrence = recurrenceData;
                   } else if (scope !== 'only') {
-                    transferRecurrence = { ...recurrenceData, seriesId: window.StackdDB.generateId() };
+                    transferRecurrence = { ...seriesRec(scope), seriesId: window.StackdDB.generateId() };
                   }
                 }
                 window.Store.dispatch('ADD_TRANSFER', {
                   amount,
+                  ...(crossCurrency ? { receivedAmount } : {}), // 1.0.2 (BUG-35)
                   expenseAccountId: accountId,
                   incomeAccountId: toAccountId,
                   date,
@@ -2348,12 +2606,13 @@ window.Views = {
                   note: comment,
                   recurrence: transferRecurrence,
                   tags: currentTags,
-                  ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
+                  ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
                 });
               }
             } else {
               window.Store.dispatch('ADD_TRANSFER', {
                 amount,
+                ...(crossCurrency ? { receivedAmount } : {}), // 1.0.2 (BUG-35)
                 expenseAccountId: accountId,
                 incomeAccountId: toAccountId,
                 date,
@@ -2361,7 +2620,7 @@ window.Views = {
                 note: comment,
                 recurrence: recurrenceData,
                 tags: currentTags,
-                ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
+                ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
               });
             }
           } else if (isEditSave) {
@@ -2379,10 +2638,10 @@ window.Views = {
               date: date,
               time: customTime,
               comment: comment,
-              recurrence: recurrenceData,
+              recurrence: seriesRec(scope),
               tags: currentTags,
-              // undefined = leave the record's paid state alone (v0.67 merge)
-              isPaid: isPaidPayload,
+              // 1.0.2 (BUG-27): no key = leave the record's paid state alone
+              ...(isPaidFlip !== undefined ? { isPaid: isPaidFlip } : {}),
               updateFuture: scope === 'future',
               updateAll: scope === 'all'
             });
@@ -2397,11 +2656,15 @@ window.Views = {
               comment: comment,
               recurrence: recurrenceData,
               tags: currentTags,
-              ...(isPaidPayload !== undefined ? { isPaid: isPaidPayload } : {})
+              ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
             });
           }
 
-          window.Router.navigate('#transactions');
+          // 1.0.2 (BUG-34 x BUG-87): this runs inside doDispatch's Store.batch,
+          // and Router.leave routes synchronously, so its SET_VIEW joins the
+          // change. Harmless: SET_VIEW persists nothing, so a change that does
+          // not land still leaves for History (D-U7-4).
+          leaveTo('#transactions'); // 1.0.2 (BUG-87): never leave the form's entry under History
         };
 
         // If creation of a new recurring tx with tags:
@@ -2419,9 +2682,32 @@ window.Views = {
         }
         // Editing a member of a recurrent series: always ask for the scope
         else if (isEditSave && seriesId) {
+          // 1.0.2 (BUG-27, D-U3-3a): a 'This and future' / 'All' save that
+          // rebuilds the later payments (date or schedule changed) makes them
+          // start as paid — say so when it matters (Paid flipped, or a later
+          // payment is unpaid). Otherwise a Paid flip changes this one only.
+          const rebuilds = (dateChanged || scheduleChanged) && !recurrenceRemoved;
+          const from = date < txToEditCurrent.date ? date : txToEditCurrent.date;
+          const unpaidAhead = rebuilds && window.Store.getState().transactions.some(t =>
+            t.recurrence && t.recurrence.seriesId === seriesId && t.id !== targetId &&
+            !(txToEditCurrent.transferRef && t.transferRef === txToEditCurrent.transferRef) &&
+            t.date >= from && t.isPaid === false);
+          const paidNote = rebuilds && (paidChanged || unpaidAhead) ? 'rebuild' : (paidChanged ? 'only' : null);
+          // 1.0.2 (live-U3-N1): a rebuild clones this payment's amount onto the
+          // later ones, so one with its own amount (a hand-edited loan payment,
+          // BUG-74) takes this amount. Same-type legs only: a cross-currency
+          // transfer's other leg always differs.
+          const newAbs = Math.abs(Number(amount));
+          const amountAhead = rebuilds && window.Store.getState().transactions.some(t =>
+            t.recurrence && t.recurrence.seriesId === seriesId && t.id !== targetId &&
+            t.type === txToEditCurrent.type && t.date >= from &&
+            Math.abs(Math.abs(Number(t.amount)) - newAbs) > 0.0001);
           window.Components.RecurringUpdateModal.show({
             dateChanged,
             recurrenceRemoved,
+            scheduleChanged, // 1.0.2 (BUG-26, D-U3-2a)
+            paidNote,
+            amountNote: amountAhead,
             onSelection: (chosen) => doDispatch(chosen === 'single' ? 'only' : chosen)
           });
         } else {
@@ -2442,7 +2728,7 @@ window.Views = {
 
           const executeDelete = (options) => {
             window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, ...options });
-            window.Router.navigate('#transactions');
+            leaveTo('#transactions'); // 1.0.2 (BUG-87): no 'Transaction not found' entry left under History
           };
 
           if (seriesId) {
@@ -2497,7 +2783,7 @@ Object.assign(window.Views, {
                     <div class="category-main-link touch-target" data-id="${cat.id}" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); flex-grow: 1; cursor: pointer;">
                       <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                       <div style="flex-grow: 1;">
-                        <div class="list-item-title" style="margin-bottom: 2px;">${cat.name}</div>
+                        <div class="list-item-title" style="margin-bottom: 2px;">${esc(cat.name)}</div>
                         <div class="list-item-subtitle">${window.I18n.t('cat.txCount', { count: txCount })}</div>
                       </div>
                       <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
@@ -2566,7 +2852,7 @@ Object.assign(window.Views, {
         return `
           <div class="container" style="padding-top: 40px; text-align: center;">
             <p class="text-secondary">${window.I18n.t('cat.notFound')}</p>
-            <a href="#categories" class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">${window.I18n.t('common.goBack')}</a>
+            <a href="#categories" data-router-leave class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">${window.I18n.t('common.goBack')}</a>
           </div>
         `;
       }
@@ -2595,7 +2881,7 @@ Object.assign(window.Views, {
           <div style="margin-bottom: var(--space-6);">
             <div style="display: flex; align-items: center; gap: var(--space-3);">
               <div class="list-item-icon" style="color: var(--color-primary);"><i data-lucide="${category.icon}"></i></div>
-              <h1 class="header-title" style="margin: 0;">${category.name}</h1>
+              <h1 class="header-title" style="margin: 0;">${esc(category.name)}</h1>
             </div>
             <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-1); margin-left: 60px;">
               ${window.I18n.t('cat.txCount', { count: txs.length })}
@@ -2628,6 +2914,14 @@ Object.assign(window.Views, {
       const catId = params.id;
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
+      // 1.0.2 (BUG-87): an id that no longer exists (Back onto a deleted
+      // category's editor, a stale link) is a dead end, never a blank editable
+      // form whose Save silently does nothing.
+      if (isEdit && !cat) return `
+        <div class="container" style="padding-top: 40px; text-align: center;">
+          <p class="text-secondary">${window.I18n.t('cat.notFound')}</p>
+          <a href="#categories" data-router-leave class="btn btn-primary" style="display: inline-block; width: auto; padding: 8px 16px; margin-top: 16px;">${window.I18n.t('common.goBack')}</a>
+        </div>`;
       // v1.13 Stack'd Pro: custom categories are a Pro feature.
       if (!isEdit && window.Pro && !window.Pro.canAddCategory(state)) return window.Views._proLockedPage('categories', '#categories');
 
@@ -2641,7 +2935,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#categories" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+            <a href="#categories" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -2689,6 +2983,7 @@ Object.assign(window.Views, {
       const catId = params.id;
       const isEdit = !!catId;
       const cat = isEdit ? state.categories.find(c => c.id === catId) : null;
+      if (isEdit && !cat) return; // 1.0.2 (BUG-87): not-found page, nothing to bind
 
       let selectedEmoji = cat ? cat.icon : 'pin';
 
@@ -2739,7 +3034,7 @@ Object.assign(window.Views, {
           } else {
             window.Store.dispatch('ADD_CATEGORY', { name, icon: selectedEmoji, typeHint: type });
           }
-          window.Router.navigate('#categories');
+          leaveTo('#categories'); // 1.0.2 (BUG-87)
         });
       }
 
@@ -2755,7 +3050,7 @@ Object.assign(window.Views, {
             onDelete: (close) => {
               window.Store.dispatch('DELETE_CATEGORY', { id: catId });
               close();
-              window.Router.navigate('#categories');
+              leaveTo('#categories'); // 1.0.2 (BUG-87): no blank Edit Category left under Categories
             }
           });
         });
@@ -2769,6 +3064,7 @@ Object.assign(window.Views, {
   BudgetView: {
     editCategoryId: null,
     currentBudgetFilter: 'expense',
+    _editBaseline: null, // 1.0.2 (BUG-86): the limit editor's values when it opened
 
     render(state) {
       if (this.editCategoryId) return this.renderEdit(state);
@@ -2845,12 +3141,12 @@ Object.assign(window.Views, {
           const limitFormatted = window.Store.formatCurrency(bdg.finalLimit);
           const spentFormatted = window.Store.formatCurrency(bdg.spent);
           return `
-            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.editForAria', { name: cat.name })}">
+            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.editForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
-                    <div class="list-item-title">${cat.name}${carryOverBadge}</div>
+                    <div class="list-item-title">${esc(cat.name)}${carryOverBadge}</div>
                     <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span>${overByHtml}</div>
                   </div>
                 </div>
@@ -2863,12 +3159,12 @@ Object.assign(window.Views, {
           `;
         } else {
           return `
-            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.setForAria', { name: cat.name })}">
+            <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.setForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
                   <div>
-                    <div class="list-item-title">${cat.name}</div>
+                    <div class="list-item-title">${esc(cat.name)}</div>
                     <div class="list-item-subtitle" style="color: var(--text-tertiary);">${window.I18n.t('budget.noLimit')}</div>
                   </div>
                 </div>
@@ -2979,7 +3275,7 @@ Object.assign(window.Views, {
             <button class="btn btn-icon" id="btn-bdg-back" style="color: var(--text-secondary);">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
             </button>
-            <h2 style="font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 8px;"><i data-lucide="${cat.icon}" style="width: 20px; height: 20px;"></i> ${cat.name}</h2>
+            <h2 style="font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 8px;"><i data-lucide="${cat.icon}" style="width: 20px; height: 20px;"></i> ${esc(cat.name)}</h2>
             <button class="btn btn-icon" id="btn-bdg-save" style="color: var(--color-accent);">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </button>
@@ -2990,7 +3286,7 @@ Object.assign(window.Views, {
               <label class="form-label" for="bdg-amount">${window.I18n.t('budget.monthlyLimit')}</label>
               <div style="position: relative;">
                 <span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1.5rem; pointer-events: none;" aria-hidden="true">${currSym}</span>
-                <input type="number" id="bdg-amount" class="form-control" placeholder="0.00" value="${budget.amount || ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;" step="0.01" inputmode="decimal">
+                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${Number(budget.amount) ? Math.round(Number(budget.amount) * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
               </div>
             </div>
             ${insightHtml}
@@ -3038,14 +3334,12 @@ Object.assign(window.Views, {
       if (this.editCategoryId) {
         // Edit Mode Events — use container.querySelector for reliable binding
         const savedCategoryId = this.editCategoryId;
+        // 1.0.2 (BUG-86): what the editor showed when it opened (before the
+        // +100 ms autofocus), so Android Back can ask before dropping an edit.
+        this._editBaseline = this._editorValues(container);
 
         const bdgBackBtn = container.querySelector('#btn-bdg-back');
-        if (bdgBackBtn) {
-          bdgBackBtn.addEventListener('click', () => {
-            this.editCategoryId = null;
-            window.Store.emit();
-          });
-        }
+        if (bdgBackBtn) bdgBackBtn.addEventListener('click', () => this.closeEditor()); // explicit discard
 
         setTimeout(() => {
           const amtInput = container.querySelector('#bdg-amount');
@@ -3076,7 +3370,14 @@ Object.assign(window.Views, {
         if (bdgSaveBtn) {
           bdgSaveBtn.addEventListener('click', () => {
             const amtElem = container.querySelector('#bdg-amount');
-            const amt = amtElem ? parseFloat(amtElem.value) : 0;
+            // 1.0.2 (BUG-50): same reader as the transaction form; an error keeps
+            // the editor open (D-U2-9: a negative limit is refused too). Empty
+            // saves 0, the "no limit" sentinel Remove limit also sends.
+            const amt = amtElem ? window.Store.parseAmount(amtElem.value) : null;
+            if (Number.isNaN(amt) || amt < 0) {
+              showFieldError(amtElem, window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }));
+              return;
+            }
             const startElem = container.querySelector('#bdg-start');
             const start = startElem ? startElem.value : '';
             const endElem = container.querySelector('#bdg-end');
@@ -3088,7 +3389,7 @@ Object.assign(window.Views, {
             this.editCategoryId = null;
             window.Store.dispatch('SAVE_BUDGET', {
               categoryId: savedCategoryId,
-              amount: amt,
+              amount: amt === null ? 0 : amt,
               startDate: start,
               endDate: end || null,
               isCumulative: isCum
@@ -3232,6 +3533,35 @@ Object.assign(window.Views, {
         try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
         this._budgetChart = null;
       }
+      // 1.0.2 (BUG-86): leaving Goals closes the limit editor. It used to
+      // survive navigation and reopen, stale and autofocused (keyboard up,
+      // bottom bar hidden), on the next visit.
+      this.editCategoryId = null;
+      this._editBaseline = null;
+    },
+
+    // 1.0.2 (BUG-86): the limit editor is a step inside #budget, not a route.
+    // Router.handleBack closes it through these (guarded lookup there).
+    closeEditor() {
+      const a = document.activeElement;
+      if (a && a !== document.body && typeof a.blur === 'function') a.blur(); // KeyboardManager drops keyboard-active
+      this.editCategoryId = null;
+      this._editBaseline = null;
+      window.Store.emit();
+    },
+
+    isEditorDirty(root) {
+      return !!this.editCategoryId && this._editBaseline !== null && !!root &&
+        this._editorValues(root) !== this._editBaseline;
+    },
+
+    _editorValues(root) {
+      const amt = root.querySelector('#bdg-amount');
+      const val = (id) => { const el = root.querySelector('#' + id); return el ? el.value : ''; };
+      const cum = root.querySelector('#bdg-cumulative');
+      // badInput: a type=number field holding '1,500' reports value '' (BUG-50 class)
+      return JSON.stringify([amt ? amt.value : '', !!(amt && amt.validity && amt.validity.badInput),
+        val('bdg-start'), val('bdg-end'), !!(cum && cum.checked)]);
     }
   },
 
@@ -3825,20 +4155,32 @@ Object.assign(window.Views, {
                 ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
                 : result.kind === 'categories' // v1.19 (A-17)
                 ? window.I18n.t('others.importedCategories', { count: result.importedCount })
-                : window.I18n.t('others.importedTransactions', {
-                    count: result.importedCount,
-                    accounts: result.newAccounts,
-                    categories: result.newCategories
-                  });
+                // 1.0.2 (live-U6-N2): whole-sentence plurals; a 'Created 0 …' line is left out
+                : [window.I18n.t('others.importedTx', { count: result.importedCount })]
+                    .concat(result.newAccounts > 0 ? [window.I18n.t('others.importCreatedAccounts', { count: result.newAccounts })] : [])
+                    .concat(result.newCategories > 0 ? [window.I18n.t('others.importCreatedCategories', { count: result.newCategories })] : [])
+                    .join('\n');
               if (result.skippedCount) {
                 const reasons = Object.keys(result.skipped)
                   .map(r => `• ${result.skipped[r]} — ${r}`)
                   .join('\n');
                 message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
               }
+              // 1.0.2 (BUG-78): rows (or loans) already in Stack'd were skipped.
+              if (result.duplicateCount) {
+                message += '\n\n' + window.I18n.t('others.importDuplicates', { count: result.duplicateCount });
+              }
+              // 1.0.2 (BUG-30): a backup from before 1.0.2 cannot tell two
+              // same-named accounts apart. Raw names: the sheet escapes its body.
+              if (result.ambiguousRows) {
+                message += '\n\n' + window.I18n.t('others.importAmbiguousAccounts', {
+                  count: result.ambiguousRows,
+                  names: (result.ambiguousAccounts || []).join(', ')
+                });
+              }
               window.Components.NoticeSheet.show({
                 id: 'import-result-modal',
-                tone: result.skippedCount ? 'info' : 'success',
+                tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
                 title: window.I18n.t('bankImport.successTitle'),
                 body: message
               });
@@ -3873,10 +4215,10 @@ Object.assign(window.Views, {
           let accountsListHtml = [...state.accounts]
             .sort((a, b) => window.Store.compareAlpha(a, b))
             .map(acc => `
-              <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.editAccountAria', { name: acc.name })}">
+              <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.editAccountAria', { name: esc(acc.name) })}">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 12px; height: 12px; border-radius: 4px; background-color: ${acc.color}; flex-shrink: 0;"></div>
-                  <strong>${acc.name}</strong>
+                  <div style="width: 12px; height: 12px; border-radius: 4px; background-color: ${escapeAttr(acc.color)}; flex-shrink: 0;"></div>
+                  <strong>${esc(acc.name)}</strong>
                 </div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
               </div>
@@ -3932,9 +4274,10 @@ Object.assign(window.Views, {
               // v1.08 B4 (§3.11): revoke every bank connection at the broker,
               // best effort, before the slices are wiped and the page reloads.
               if (window.BankConnect) window.BankConnect.revokeAll(window.Store.getState(), true).catch(() => {});
-              window.Store.dispatch('RESET_APP');
+              const reset = window.Store.dispatch('RESET_APP');
               closeModal();
-              window.location.reload();
+              // 1.0.2 (BUG-34): a reset that did not fit leaves the storage sheet up
+              if (reset !== false) window.location.reload();
             }
           });
         });
@@ -3961,7 +4304,15 @@ Object.assign(window.Views, {
       ) : null;
       const currentObAmt = currentOb ? currentOb.amount : 0;
       const isNegativeOb = currentObAmt < 0;
-      const currentObDate = currentOb ? currentOb.date : new Date().toISOString().split('T')[0];
+      // 1.0.2 (BUG-25/BUG-38): an account WITHOUT an opening-balance row (Bank
+      // Connect / CSV-created, or its row was deleted) must not default to
+      // today: entering an amount would date it after the account's history and
+      // hide every row. Earliest DATED row, never after today; new = local today.
+      const todayKey = window.Store._todayYMD();
+      const firstRowDate = account
+        ? state.transactions.reduce((m, t) => (t.accountId === account.id && t.date && t.date < m ? t.date : m), todayKey)
+        : todayKey;
+      const currentObDate = currentOb ? currentOb.date : firstRowDate;
       // v1.02: the form (and its opening-balance prefix) follows the ACCOUNT's
       // currency; new accounts default to the primary one.
       const currencyValue = (account && account.currency) || state.currency;
@@ -3980,7 +4331,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 160px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#dashboard" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+            <a href="#dashboard" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -4041,7 +4392,7 @@ Object.assign(window.Views, {
 
             <div class="form-group" style="margin-bottom: var(--space-5);">
               <label class="form-label" for="edit-acc-date">${window.I18n.t('account.openingBalanceDate')}</label>
-              <input type="date" id="edit-acc-date" class="form-control" value="${currentObDate}">
+              <input type="date" id="edit-acc-date" class="form-control" value="${escapeAttr(currentObDate)}">
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-2);">
@@ -4244,7 +4595,8 @@ Object.assign(window.Views, {
       const btnSave = document.getElementById('btn-edit-acc-save');
       if (btnSave) {
         btnSave.addEventListener('click', () => {
-          const name = document.getElementById('edit-acc-name').value.trim();
+          const nameInput = document.getElementById('edit-acc-name');
+          const name = nameInput.value.trim();
           const absOb = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
           const ob = isNegativeOb ? -absOb : absOb;
           const dDate = document.getElementById('edit-acc-date').value;
@@ -4254,16 +4606,32 @@ Object.assign(window.Views, {
           if (!name) {
             // 1.0.1 (BUG-18): the field may sit above the fold — message,
             // scroll into view and focus instead of an off-screen 1 s flash.
-            showFieldError(document.getElementById('edit-acc-name'), window.I18n.t('account.nameRequired'));
+            showFieldError(nameInput, window.I18n.t('account.nameRequired'));
+            return;
+          }
+          // 1.0.2 (BUG-30): unique names (trimmed, case-insensitive, any
+          // currency/type) — backups identify accounts by name, and a restore
+          // merged two "Visa" accounts into one. Checked only when the name
+          // changes, so an existing duplicate can still save other edits.
+          // showFieldError writes textContent: the name is NOT escaped here.
+          const nameChanged = !account || name.toLowerCase() !== String(account.name == null ? '' : account.name).trim().toLowerCase();
+          const clash = nameChanged ? window.Store.findAccountByName(name, account ? account.id : undefined) : null;
+          if (clash) {
+            showFieldError(nameInput, window.I18n.t('account.duplicateName', { name: clash.name }));
             return;
           }
 
           if (account) {
+            // 1.0.2 (BUG-25): an untouched save (rename, colour) creates no opening
+            // balance on an account that has none. An empty date (the Android
+            // picker's Clear) means the prefilled one (D-U2-8).
+            const dateEl = document.getElementById('edit-acc-date');
+            const obDate = dDate || dateEl.defaultValue;
+            const obTouched = !!currentOb || absOb !== 0 || obDate !== dateEl.defaultValue;
             window.Store.dispatch('UPDATE_ACCOUNT', { 
               id: account.id, 
               name, 
-              openingBalance: ob, 
-              openingDate: dDate,
+              ...(obTouched ? { openingBalance: ob, openingDate: obDate } : {}),
               icon: selectedIcon,
               color: selectedColor,
               type: type,
@@ -4295,7 +4663,7 @@ Object.assign(window.Views, {
               window.Store.dispatch('SET_DEFAULT_ACCOUNT', newId);
             }
           }
-          window.Router.navigate('#dashboard');
+          leaveTo('#dashboard'); // 1.0.2 (BUG-87): Back never reopens the account form
         });
       }
 
@@ -4304,7 +4672,11 @@ Object.assign(window.Views, {
         btnDelete.addEventListener('click', () => {
           window.Components.Modal.show({
             title: window.I18n.t('account.deleteTitle'),
-            content: `<p>${window.I18n.t('account.deleteConfirm', { name: account.name })} <strong>${window.I18n.t('account.deleteWarning')}</strong></p>`,
+            // 1.0.2 (BUG-24): the name is user text going into the sheet's
+            // innerHTML, and I18n.t does not escape params. Escaped exactly
+            // once, with the file-local esc(): no dependency on a fresh
+            // i18n.js (a cached pre-1.0.2 copy has no I18n.esc).
+            content: `<p>${window.I18n.t('account.deleteConfirm', { name: esc(account.name) })} <strong>${window.I18n.t('account.deleteWarning')}</strong></p>`,
             saveText: window.I18n.t('common.cancel'),
             showDelete: true,
             // 1.0.1 (BUG-20): labelled up front (was a 10ms setTimeout relabel).
@@ -4313,7 +4685,7 @@ Object.assign(window.Views, {
             onDelete: (closeModal) => {
               window.Store.dispatch('DELETE_ACCOUNT', { id: account.id });
               closeModal();
-              window.Router.navigate('#dashboard');
+              leaveTo('#dashboard'); // 1.0.2 (BUG-87)
             }
           });
         });
@@ -4668,12 +5040,12 @@ Object.assign(window.Views, {
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#debt" id="dsim-close" aria-label="${window.I18n.t('debt.closeSimAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+            <a href="#debt" id="dsim-close" data-router-leave aria-label="${window.I18n.t('debt.closeSimAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
           </div>
 
           <div class="amount-input-group">
             <span style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
-            <label for="dsim-principal" class="sr-only">${window.I18n.t('debt.loanAmount')}</label>
+            <label for="dsim-principal" class="visually-hidden">${window.I18n.t('debt.loanAmount')}</label>
             <input type="number" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.principal}" style="width: auto; max-width: 220px;">
           </div>
 
@@ -5134,6 +5506,13 @@ Object.assign(window.Views, {
           }
           // review 8: never ask about nothing
           if (!lead) return;
+          // 1.0.2 (BUG-74): the payments the user changed by hand keep their
+          // amounts — named, never counted (a note never opens a sheet alone)
+          if (plan.customCount) {
+            lead += note(window.I18n.t('debt.sync.customKept', {
+              count: plan.customCount, date: S.fmtDate(plan.customDate), amount: S.fmtC(plan.customC)
+            }));
+          }
           content = lead + note(window.I18n.t('debt.pastPaymentsKept'));
           saveText = window.I18n.t('debt.sync.cta');
           saveClass = 'btn-primary';
@@ -5183,7 +5562,7 @@ Object.assign(window.Views, {
           <div id="debt-results-view" class="container">
             <div class="card" style="text-align: center; padding: var(--space-8) var(--space-4); margin-top: var(--space-8);">
               <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${msg}</div>
-              <a href="#debt" class="btn btn-primary" style="text-decoration: none;">${window.I18n.t('debt.backToLoans')}</a>
+              <a href="#debt" data-router-leave class="btn btn-primary" style="text-decoration: none;">${window.I18n.t('debt.backToLoans')}</a>
             </div>
           </div>`;
       }
@@ -5268,7 +5647,7 @@ Object.assign(window.Views, {
             <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : window.I18n.t(t.label)}</h1>
             <div style="display: flex; gap: var(--space-2);">
               ${r.loan ? `<button id="btn-dres-menu" aria-label="${window.I18n.t('common.moreActions')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: none; border-radius: 10px; cursor: pointer;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></button>` : ''}
-              <a href="${backHref}" aria-label="${window.I18n.t('debt.closeResultsAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+              <a href="${backHref}" data-router-leave aria-label="${window.I18n.t('debt.closeResultsAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
             </div>
           </div>
 
@@ -5317,7 +5696,7 @@ Object.assign(window.Views, {
     attachEvents(container, state) {
       const S = window.Views._DebtShared;
       const r = this._resolve(state);
-      if (!r.config) { window.Router.navigate('#debt'); return; }
+      if (!r.config) { leaveTo('#debt'); return; } // 1.0.2 (BUG-87): a stale results entry leaves for the hub, never pushes it again (Back trap)
       if (window.StackdHydrateIcons) window.StackdHydrateIcons();
       if (r.error) return;
       const res = r.res;
@@ -5392,28 +5771,33 @@ Object.assign(window.Views, {
               const prevConfig = prev ? prev.config : null;
               window.Store.dispatch('UPDATE_LOAN', { id: r.editingLoanId, name, config: r.config });
               S.draft = null;
-              window.Router.navigate('#debt');
+              leaveTo('#debt'); // 1.0.2 (BUG-87): no live results page (Save) left under the hub
               if (r.editingActive && prevConfig) window.Views.DebtResultsView._offerSeriesSync(r.editingLoanId, prevConfig);
               return;
             }
             window.Store.dispatch('ADD_LOAN', { name, kind: 'sim', config: r.config });
             S.draft = null;
-            window.Router.navigate('#debt');
+            leaveTo('#debt'); // 1.0.2 (BUG-87): Back then Save no longer duplicates the simulation
           });
         });
         if (promoteBtn) promoteBtn.addEventListener('click', () => {
           askName(window.I18n.t('debt.addToMyLoans'), currentName, (name) => {
             let loanId = r.editingLoanId;
-            if (loanId) {
-              window.Store.dispatch('UPDATE_LOAN', { id: loanId, name, config: r.config });
-              window.Store.dispatch('PROMOTE_LOAN', { id: loanId });
-            } else {
-              window.Store.dispatch('ADD_LOAN', { name, kind: 'active', config: r.config });
-              const added = window.Store.getState().loans;
-              loanId = added[added.length - 1].id;
-            }
+            // 1.0.2 (BUG-34): one change; when it does not land there is
+            // nothing to open or track (the store's sheet says why)
+            const landed = window.Store.batch(() => {
+              if (loanId) {
+                window.Store.dispatch('UPDATE_LOAN', { id: loanId, name, config: r.config });
+                window.Store.dispatch('PROMOTE_LOAN', { id: loanId });
+              } else {
+                window.Store.dispatch('ADD_LOAN', { name, kind: 'active', config: r.config });
+                const added = window.Store.getState().loans;
+                loanId = added[added.length - 1].id; // still in memory inside the change
+              }
+            });
+            if (!landed) return;
             S.draft = null;
-            window.Router.navigate('#debt');
+            leaveTo('#debt'); // 1.0.2 (BUG-87)
             // v0.71 Phase 4: offer the recurring expense over the hub
             window.Views.DebtResultsView._offerAfterPromote(loanId);
           });
@@ -5454,7 +5838,7 @@ Object.assign(window.Views, {
               } else if (act === 'promote') {
                 window.Components.Modal.hide();
                 window.Store.dispatch('PROMOTE_LOAN', { id: r.loan.id });
-                window.Router.navigate('#debt');
+                leaveTo('#debt'); // 1.0.2 (BUG-87)
                 window.Views.DebtResultsView._offerAfterPromote(r.loan.id);
               } else if (act === 'delete') {
                 // 1.0.1 (BUG-06): a tracked loan's future payments can go with
@@ -5478,7 +5862,7 @@ Object.assign(window.Views, {
                     const deleteFuturePayments = !!(cb && cb.checked);
                     window.Store.dispatch('DELETE_LOAN', { id: r.loan.id, deleteFuturePayments });
                     close();
-                    window.Router.navigate('#debt');
+                    leaveTo('#debt'); // 1.0.2 (BUG-87): Back can get past the deleted loan's results
                   }
                 });
               }
@@ -5779,8 +6163,8 @@ Object.assign(window.Views, {
           <div class="card" style="margin-bottom: var(--space-4);">
             ${infoRow(window.I18n.t('bankImport.stmtFormat'), formatName)}
             ${st.currency ? infoRow(window.I18n.t('bankImport.stmtCurrency'), esc(st.currency)) : ''}
-            ${st.openingBalance ? infoRow(window.I18n.t('bankImport.openingBalance'), `${S.fmtStatementAmount(st.openingBalance.amount, st.currency)}${st.openingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${st.openingBalance.date}</span>` : ''}`) : ''}
-            ${st.closingBalance ? infoRow(window.I18n.t('bankImport.closingBalance'), `${S.fmtStatementAmount(st.closingBalance.amount, st.currency)}${st.closingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${st.closingBalance.date}</span>` : ''}`, true) : ''}
+            ${st.openingBalance ? infoRow(window.I18n.t('bankImport.openingBalance'), `${esc(S.fmtStatementAmount(st.openingBalance.amount, st.currency))}${st.openingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${esc(st.openingBalance.date)}</span>` : ''}`) : ''}
+            ${st.closingBalance ? infoRow(window.I18n.t('bankImport.closingBalance'), `${esc(S.fmtStatementAmount(st.closingBalance.amount, st.currency))}${st.closingBalance.date ? ` <span style="color: var(--text-tertiary); font-weight: 400;">${esc(st.closingBalance.date)}</span>` : ''}`, true) : ''}
           </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
@@ -5790,7 +6174,7 @@ Object.assign(window.Views, {
             </div>
             <label id="imap-opening-wrap" style="display: ${canOpen ? 'flex' : 'none'}; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer;">
               <input type="checkbox" id="imap-set-opening" class="import-check" style="margin-top: 2px;" ${d.setOpening ? 'checked' : ''}>
-              <span>${st.openingBalance ? window.I18n.t('bankImport.setOpening', { amount: S.fmtStatementAmount(st.openingBalance.amount, st.currency), date: st.openingBalance.date || '—' }) : ''}</span>
+              <span>${st.openingBalance ? window.I18n.t('bankImport.setOpening', { amount: esc(S.fmtStatementAmount(st.openingBalance.amount, st.currency)), date: esc(st.openingBalance.date || '—') }) /* 1.0.2 (BUG-24): file text */ : ''}</span>
             </label>
           </div>
 
@@ -6188,31 +6572,38 @@ Object.assign(window.Views, {
         }));
         const pairs = chosen.filter(isPair).map(it => ({ existingTxId: it.transfer.txId, tx: it.tx }));
         const selected = chosen.filter(it => !isLink(it) && !isPair(it)).map(it => it.tx);
-        // v1.00: honour the opening-balance offer BEFORE the batch lands —
-        // eligibility means "no real activity yet", which the import ends.
-        if (d.kind === 'statement' && d.setOpening && S.canSetOpening(window.Store.getState())) {
-          const ob = d.statement.openingBalance;
-          window.Store.dispatch('UPDATE_ACCOUNT', {
-            id: d.accountId,
-            openingBalance: ob.amount,
-            openingDate: ob.date || undefined
-          });
-        }
-        // v0.99 review fix: report what the store ACCEPTED, not what was
-        // selected — the dispatch's dedup defence may skip rows (state
-        // mutates synchronously, so the before/after delta is exact).
-        const before = window.Store.getState().transactions.length;
-        if (links.length || pairs.length) {
-          window.Store.dispatch('APPLY_IMPORT_MATCHES', { links: links, transfers: pairs }); // v1.03
-        }
-        if (selected.length) {
-          window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
-        }
-        // total new rows = plain inserts + pair legs; links add none
-        const imported = window.Store.getState().transactions.length - before;
-        if (d.kind !== 'statement') { // v1.00: presets only exist for mapped CSVs
-          window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
-        }
+        let imported = 0;
+        // 1.0.2 (BUG-34): opening balance, matches, rows and preset land as
+        // ONE change — never an opening balance without its rows.
+        const landed = window.Store.batch(() => {
+          // v1.00: honour the opening-balance offer BEFORE the batch lands —
+          // eligibility means "no real activity yet", which the import ends.
+          if (d.kind === 'statement' && d.setOpening && S.canSetOpening(window.Store.getState())) {
+            const ob = d.statement.openingBalance;
+            window.Store.dispatch('UPDATE_ACCOUNT', {
+              id: d.accountId,
+              openingBalance: ob.amount,
+              // 1.0.2 (BUG-24): file text — only a real YMD may date the row
+              openingDate: /^\d{4}-\d{2}-\d{2}$/.test(ob.date || '') ? ob.date : undefined
+            });
+          }
+          // v0.99 review fix: report what the store ACCEPTED, not what was
+          // selected — the dispatch's dedup defence may skip rows (state
+          // mutates synchronously, so the before/after delta is exact).
+          const before = window.Store.getState().transactions.length;
+          if (links.length || pairs.length) {
+            window.Store.dispatch('APPLY_IMPORT_MATCHES', { links: links, transfers: pairs }); // v1.03
+          }
+          if (selected.length) {
+            window.Store.dispatch('BATCH_IMPORT_BANK_TRANSACTIONS', { transactions: selected });
+          }
+          // total new rows = plain inserts + pair legs; links add none
+          imported = window.Store.getState().transactions.length - before;
+          if (d.kind !== 'statement') { // v1.00: presets only exist for mapped CSVs
+            window.Store.dispatch('SAVE_IMPORT_PRESET', { signature: d.analysis.signature, mapping: d.mapping });
+          }
+        });
+        if (!landed) return; // nothing landed; the store's sheet says why; the preview stays for a retry
         const acc = (window.Store.getState().accounts || []).find(a => a.id === d.accountId);
         // v1.06 U2 (docs/import-ux-plan.md §3): the ending is a success sheet
         // over Settings instead of an alert() chain — counts as rows, the
@@ -6799,6 +7190,25 @@ Object.assign(window.Views, {
   BankMapView: {
     _selection: null, // {ref, choices: {bankAccountId: 'skip'|'new'|<stackdAccountId>}} — survives re-renders
 
+    // 1.0.2 (BUG-30): account names are unique (trimmed, case-insensitive, as
+    // Store.findAccountByName). The name each bank account would be created
+    // under, in row order, each row reserving its own — so the "Create “…”"
+    // option shows exactly the name the import creates.
+    _newAccountNames(conn) {
+      const BC = window.BankConnect;
+      const key = (s) => String(s).trim().toLowerCase();
+      const reserved = new Set();
+      const out = {};
+      (conn.accounts || []).forEach(a => {
+        const base = BC.accountLabel(conn, a);
+        let name = base;
+        for (let n = 2; window.Store.findAccountByName(name) || reserved.has(key(name)); n++) name = `${base} (${n})`;
+        reserved.add(key(name));
+        out[a.bankAccountId] = name;
+      });
+      return out;
+    },
+
     render(state) {
       const BC = window.BankConnect;
       const t = (k, p) => window.I18n.t(k, p);
@@ -6817,6 +7227,7 @@ Object.assign(window.Views, {
       const choices = this._selection.choices;
       const accounts = state.accounts || [];
       const used = new Set(BC.connections(state).flatMap(c => (c.accounts || []).map(a => a.stackdAccountId)).filter(Boolean));
+      const newNames = this._newAccountNames(conn); // 1.0.2 (BUG-30)
 
       const rows = (conn.accounts || []).map((a, i) => {
         const ccy = a.currency || state.currency;
@@ -6829,7 +7240,7 @@ Object.assign(window.Views, {
         const label = a.ibanTail ? `•••• ${esc(a.ibanTail)}` : esc(a.name || t('bank.accountUnnamed'));
         const options = [
           ...candidates.map(x => `<option value="${escapeAttr(x.id)}" ${sel === x.id ? 'selected' : ''}>${esc(x.name)}</option>`),
-          `<option value="new" ${sel === 'new' ? 'selected' : ''}>${esc(t('bank.mapCreate', { name: BC.accountLabel(conn, a) }))}</option>`,
+          `<option value="new" ${sel === 'new' ? 'selected' : ''}>${esc(t('bank.mapCreate', { name: newNames[a.bankAccountId] }))}</option>`,
           `<option value="skip" ${sel === 'skip' ? 'selected' : ''}>${esc(t('bank.mapSkip'))}</option>`
         ].join('');
         return `
@@ -6866,44 +7277,72 @@ Object.assign(window.Views, {
       container.querySelectorAll('.bank-map-select').forEach(el => {
         el.addEventListener('change', () => { if (sel) sel.choices[el.dataset.acc] = el.value; });
       });
+      // 1.0.2 (R-bank): the busy flag and the error live on _selection, not on
+      // DOM nodes. The emit after ADD_ACCOUNT / UPDATE_BANK_CONNECTION
+      // re-renders this view while startImport is in flight, so nodes captured
+      // at click time are detached when it settles: the error went to a node
+      // nobody saw and the live button was enabled again. paint() re-reads the
+      // live nodes, and every attachEvents pass repaints the saved state.
+      const paint = () => {
+        if (!sel || this._selection !== sel) return; // navigated away, or a newer visit
+        const b = container.querySelector('#bank-map-import');
+        const e = container.querySelector('#bank-map-error');
+        if (b) { b.disabled = !!sel.busy; b.textContent = t(sel.busy ? 'bank.fetching' : 'bank.mapImport'); }
+        if (e) { e.textContent = sel.error ? t(sel.error.key, sel.error.params) : ''; e.hidden = !sel.error; }
+      };
+      paint();
       const btn = container.querySelector('#bank-map-import');
       if (btn && BC && sel) {
         btn.addEventListener('click', async () => {
+          if (sel.busy) return; // 1.0.2 (R-bank): a second tap while the fetch runs
           const conn = BC.findConnection(window.Store.getState(), sel.ref);
           if (!conn) return;
-          const err = container.querySelector('#bank-map-error');
-          const mapped = (conn.accounts || []).map(a => {
-            const choice = sel.choices[a.bankAccountId] || 'skip';
-            if (choice === 'skip') return { ...a, stackdAccountId: null };
-            if (choice === 'new') {
-              const ccy = a.currency || window.Store.getState().currency;
-              window.Store.dispatch('ADD_ACCOUNT', { name: BC.accountLabel(conn, a), openingBalance: 0, currency: ccy });
-              const created = window.Store.getState().accounts.slice(-1)[0];
-              return { ...a, stackdAccountId: created ? created.id : null };
-            }
-            // v1.02 guard: the target must be in the bank account's currency
-            const ccy = a.currency || window.Store.getState().currency;
-            if (window.Store.getAccountCurrency(choice) !== ccy) {
-              if (err) { err.textContent = t('bank.mapCurrencyMismatch', { currency: ccy }); err.hidden = false; }
-              throw new Error('currency_mismatch');
-            }
-            return { ...a, stackdAccountId: choice };
+          const fail = (key, params) => { sel.error = { key, params }; paint(); };
+          const baseCcy = window.Store.getState().currency;
+          // 1.0.2 (BUG-30): validate every row BEFORE creating anything. A
+          // currency mismatch used to throw (unhandled, outside the try below)
+          // after earlier 'new' rows had created their accounts, and every
+          // retry created another one.
+          const rows = (conn.accounts || []).map(a => ({ a, choice: sel.choices[a.bankAccountId] || 'skip', ccy: a.currency || baseCcy }));
+          // v1.02 guard: an existing target must be in the bank account's currency
+          const bad = rows.find(r => r.choice !== 'skip' && r.choice !== 'new' && window.Store.getAccountCurrency(r.choice) !== r.ccy);
+          if (bad) { fail('bank.mapCurrencyMismatch', { currency: bad.ccy }); return; }
+          if (!rows.some(r => r.choice !== 'skip')) { fail('bank.mapNothing'); return; }
+          const names = this._newAccountNames(conn);
+          const created = [];
+          let mapped = [];
+          // 1.0.2 (BUG-34): the new accounts and the mapping land together or
+          // not at all. A rolled-back ADD_ACCOUNT used to leave the row (and
+          // the saved connection) mapped to an id that names no account, and a
+          // retry passed the currency guard with it (unknown id = base currency).
+          const landed = window.Store.batch(() => {
+            mapped = rows.map(({ a, choice, ccy }) => {
+              if (choice === 'skip') return { ...a, stackdAccountId: null };
+              if (choice !== 'new') return { ...a, stackdAccountId: choice };
+              // 1.0.2 (BUG-30 rider): explicit id — ADD_ACCOUNT re-sorts by name, so slice(-1)
+              // was whichever account sorts last, not the one just created.
+              const newId = window.StackdDB.generateId();
+              window.Store.dispatch('ADD_ACCOUNT', { id: newId, name: names[a.bankAccountId], openingBalance: 0, currency: ccy });
+              created.push([a.bankAccountId, newId]);
+              return { ...a, stackdAccountId: newId };
+            });
+            window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, accounts: mapped });
           });
-          if (!mapped.some(a => a.stackdAccountId)) {
-            if (err) { err.textContent = t('bank.mapNothing'); err.hidden = false; }
-            return;
-          }
-          window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: conn.ref, accounts: mapped });
-          btn.disabled = true;
-          btn.textContent = t('bank.fetching');
+          const accs = window.Store.getState().accounts;
+          if (!landed || !created.every(([, id]) => accs.some(x => x.id === id))) return; // the storage sheet explains
+          // 1.0.2 (R-bank): the row now selects the account just created, so
+          // a retry after a failed fetch maps to it instead of creating another.
+          created.forEach(([bankId, id]) => { sel.choices[bankId] = id; });
+          sel.busy = true;
+          sel.error = null;
+          paint();
           const first = mapped.find(a => a.stackdAccountId);
           try {
             await BC.startImport(BC.findConnection(window.Store.getState(), conn.ref), first.bankAccountId, window.Store.getState());
           } catch (e) {
-            if (e && e.message === 'currency_mismatch') { btn.disabled = false; btn.textContent = t('bank.mapImport'); return; }
-            if (err) { err.textContent = t(BC.fetchErrorKey(e), { bank: conn.institutionName }); err.hidden = false; }
-            btn.disabled = false;
-            btn.textContent = t('bank.mapImport');
+            sel.busy = false;
+            if (!(e && e.message === 'currency_mismatch')) sel.error = { key: BC.fetchErrorKey(e), params: { bank: conn.institutionName } };
+            paint();
           }
         });
       }
@@ -7005,7 +7444,7 @@ Object.assign(window.Views, {
       <div class="container" style="padding-bottom: 100px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
           <h1 class="header-title" style="margin: 0;">${isAcc ? t('account.newTitle') : t('form.newCategory')}</h1>
-          <a href="${backHref}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+          <a href="${backHref}" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
         </div>
         <div class="card card-elevated" id="pro-locked" data-feature="${feature}" style="padding: var(--space-6) var(--space-5); text-align: center;">
           <div class="list-item-icon" style="margin: 0 auto var(--space-4); width: 56px; height: 56px;" aria-hidden="true"><i data-lucide="lock" style="width: 26px; height: 26px;"></i></div>
@@ -7027,7 +7466,7 @@ Object.assign(window.Views, {
     const cta = container.querySelector('#pro-locked-cta');
     const back = container.querySelector('#pro-locked-back');
     if (cta) cta.addEventListener('click', () => window.Router.navigate('#purchases'));
-    if (back) back.addEventListener('click', () => window.Router.navigate(backHref));
+    if (back) back.addEventListener('click', () => leaveTo(backHref)); // 1.0.2 (BUG-87): Back never reopens the lock card
     if (window.StackdHydrateIcons) window.StackdHydrateIcons();
     return true;
   },

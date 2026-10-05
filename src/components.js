@@ -34,6 +34,14 @@ window.Components = {
     return `clamp(${minRem}rem, calc(${widthExpr} / ${emNeeded}), ${maxRem}rem)`;
   },
 
+  // 1.0.2 (BUG-24): the components' alias of I18n.esc, for every stored text
+  // (names, tags, types) placed in markup. A METHOD on purpose: a top-level
+  // `const esc` here would collide with views.js's global `function esc` in
+  // the classic-script (defer) build and stop views.js loading at all.
+  esc(value) {
+    return window.I18n.esc(value);
+  },
+
   BottomNav: {
     render() {
       return `
@@ -193,13 +201,19 @@ window.Components = {
         showDelete = false, onDelete, showClose = false,
         showCancel = !showDelete,
         saveClass = showDelete ? 'btn-secondary' : 'btn-primary',
-        deleteText
+        deleteText,
+        // 1.0.2 (BUG-40): false = a mandatory sheet (first-run welcome): no
+        // backdrop-tap or swipe-down close, and Android Back swallowed via
+        // [data-back-swallow] (D4h). Only its own buttons, or its owner's
+        // Modal.hide(), close it. The drag handle stays as an invisible
+        // spacer so the layout matches every other sheet.
+        dismissible = true
       } = options;
       const container = document.getElementById('modal-container');
       container.innerHTML = `
-        <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-backdrop" id="active-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"${dismissible ? '' : ' data-back-swallow'}>
           <div class="modal-content">
-            <div class="modal-handle"></div>
+            <div class="modal-handle"${dismissible ? '' : ' style="visibility: hidden;" aria-hidden="true"'}></div>
             <div class="modal-header-container">
               <h2 id="modal-title" class="header-title" style="margin-bottom: 0; font-size: var(--text-2xl);">${title}</h2>
               ${showClose ? `
@@ -258,9 +272,11 @@ window.Components = {
         currentY = 0;
       };
 
-      backdrop.addEventListener('touchstart', onStart, { passive: true });
-      backdrop.addEventListener('touchmove', onMove, { passive: true });
-      backdrop.addEventListener('touchend', onEnd);
+      if (dismissible) { // 1.0.2 (BUG-40)
+        backdrop.addEventListener('touchstart', onStart, { passive: true });
+        backdrop.addEventListener('touchmove', onMove, { passive: true });
+        backdrop.addEventListener('touchend', onEnd);
+      }
 
       const boundClose = () => this.hide();
       const saveBtn = document.getElementById('modal-save-btn');
@@ -284,7 +300,7 @@ window.Components = {
         });
       }
       const backdropEl = document.getElementById('active-modal');
-      if (backdropEl) {
+      if (backdropEl && dismissible) { // 1.0.2 (BUG-40)
         backdropEl.addEventListener('click', (e) => {
           if (e.target === backdropEl) boundClose();
         });
@@ -825,10 +841,10 @@ window.Components = {
     render(account, balance) {
       const formattedBalance = window.Store.formatCurrency(balance); // v0.87 P8b: was pinned en-US/USD
       return `
-        <div class="card card-elevated account-card touch-target" data-id="${account.id}" style="cursor: pointer; padding: var(--space-5); width: 100%; justify-content: space-between;" tabindex="0" role="button" aria-label="${window.I18n.t('account.viewAria', { name: account.name })}">
+        <div class="card card-elevated account-card touch-target" data-id="${account.id}" style="cursor: pointer; padding: var(--space-5); width: 100%; justify-content: space-between;" tabindex="0" role="button" aria-label="${window.I18n.t('account.viewAria', { name: window.Components.esc(account.name) })}">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
-              <p style="font-size: var(--text-sm); font-family: var(--font-family-body); color: var(--text-secondary); margin-bottom: var(--space-2);">${account.name}</p>
+              <p style="font-size: var(--text-sm); font-family: var(--font-family-body); color: var(--text-secondary); margin-bottom: var(--space-2);">${window.Components.esc(account.name)}</p>
               <h3 style="font-size: var(--text-2xl); font-family: var(--font-family-display); font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">${formattedBalance}</h3>
             </div>
             <div style="width: 48px; height: 48px; border-radius: 14px; background: var(--bg-surface-sunken); display: flex; align-items: center; justify-content: center; color: var(--color-primary);">
@@ -841,6 +857,7 @@ window.Components = {
 
   TransactionItem: {
     render(transaction, category, accountData, options = {}) {
+      const esc = window.Components.esc; // 1.0.2 (BUG-24)
       let amountClass = 'text-expense';
       let sign = '';
       
@@ -890,6 +907,10 @@ window.Components = {
 
       // v0.63: Tags render inline on line 2 (after account name) so tile height stays uniform
       const TAG_PILL_STYLE = 'flex-shrink: 0; font-size: 0.7rem; color: var(--text-secondary); background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 12px; font-weight: 600;';
+      // 1.0.2 (live-U1-N1): a long unbroken category or account name (an
+      // IBAN-style bank name) ellipsizes instead of pushing the icon and the
+      // amount out of the row. Inline: stylesheets carry no ?v= cache-busting.
+      const ELLIPSIS = 'min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
 
       const innerContent = `
         ${unpaidBarHtml}
@@ -897,20 +918,20 @@ window.Components = {
         <div class="list-item-icon">
           <i data-lucide="${category ? category.icon : 'receipt'}"></i>
         </div>
-        <div class="list-item-content">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div class="list-item-title" style="display: flex; align-items: center; gap: 6px;">
-              <span>${category ? category.name : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
+        <div class="list-item-content" style="min-width: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div class="list-item-title" style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
+              <span class="tx-item-title-text" style="${ELLIPSIS}">${category ? esc(category.name) : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
             </div>
-            <div class="list-item-value ${amountClass}">${formattedAmount}</div>
+            <div class="list-item-value ${amountClass}" style="flex-shrink: 0; white-space: nowrap;">${formattedAmount}</div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px;">
             <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
-              <div class="list-item-subtitle" style="flex-shrink: 0;">${accountData ? accountData.name : window.I18n.t('common.account')}</div>
+              <div class="list-item-subtitle tx-item-account" style="flex: 0 1 auto; ${ELLIPSIS}">${accountData ? esc(accountData.name) : window.I18n.t('common.account')}</div>
               ${transaction.tags && transaction.tags.length > 0 ? `
               <div class="tx-tags-inline" style="display: flex; align-items: center; gap: 4px; overflow: hidden; min-width: 0; flex: 1;">
                 ${transaction.tags.map(tag => `
-                  <span class="tx-tag-pill" style="${TAG_PILL_STYLE}">#${tag}</span>
+                  <span class="tx-tag-pill" style="${TAG_PILL_STYLE}">#${esc(tag)}</span>
                 `).join('')}
                 <span class="tx-tag-more" style="display: none; ${TAG_PILL_STYLE}"></span>
               </div>` : ''}
@@ -927,12 +948,17 @@ window.Components = {
           </div>`;
       }
 
-      return `
-        <div class="swipe-container" data-id="${transaction.id}">
-          <div class="swipe-actions left">
+      // 1.0.2 (live-U2-1): an opening balance cannot be marked unpaid (one tap
+      // moved the balance by the whole opening amount; the store ignores it
+      // too). One already unpaid keeps the action, as its only way back.
+      const paidActionHtml = (isOpeningBalance && !isUnpaid) ? '' : `
             <button class="swipe-action-btn paid ${isUnpaid ? 'is-unpaid' : ''}" data-id="${transaction.id}" aria-label="${isUnpaid ? window.I18n.t('tx.markPaid') : window.I18n.t('tx.markUnpaid')}">
               <i data-lucide="check" style="width: 20px; height: 20px;"></i>
-            </button>
+            </button>`;
+
+      return `
+        <div class="swipe-container" data-id="${transaction.id}">
+          <div class="swipe-actions left">${paidActionHtml}
           </div>
           <div class="swipe-actions right">
             <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.editAria')}">
@@ -1095,7 +1121,18 @@ window.Components = {
       if (btnNext) btnNext.addEventListener('click', () => window.Store.dispatch('NAVIGATE_PERIOD', { offset: 1, page: pageKey }));
       if (btnToday) btnToday.addEventListener('click', () => {
         if (pageKey === 'history') {
-          window.Views.TransactionsView.scrollToToday(container);
+          // 1.0.2 (BUG-69) a period still on yesterday rolls first; the
+          // same-view re-render keeps the old scrollTop, so scroll after it.
+          // ROLL_PERIODS re-renders History only when History's own slice was
+          // replaced (an Analytics-only roll is silent here), so that is the
+          // test: a queued re-render would detach the synchronous target.
+          const before = window.Store.state.historyFilters;
+          window.Store.dispatch('ROLL_PERIODS');
+          if (window.Store.state.historyFilters !== before) {
+            setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-history-to-today')), 100);
+          } else {
+            window.Views.TransactionsView.scrollToToday(container);
+          }
         } else {
           const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
           window.Store.dispatch('UPDATE_FILTERS', { 
@@ -1128,8 +1165,11 @@ window.Components = {
       const filters = pageKey === 'history' ? window.Store.state.historyFilters : window.Store.state.analyticsFilters;
       let { start, end } = filters.period;
       
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
+      // 1.0.2 (BUG-67) local dates throughout this sheet: the device's day,
+      // never toISOString() or a bare 'YYYY-MM-DD' parse (both are UTC).
+      const S = window.Store;
+      const todayStr = S._todayYMD();
+      const ymdDate = (ymd) => new Date(ymd + 'T12:00:00'); // noon: no UTC/DST edge
       if (!start) start = todayStr;
       if (!end) end = todayStr;
 
@@ -1175,6 +1215,16 @@ window.Components = {
 
       let currentStart = start;
       let currentEnd = end;
+      // 1.0.2 (BUG-68) each calendar shows its own month, separate from the
+      // selection, so ‹ › browse without moving the range.
+      const monthOf = (ymd) => ymd.slice(0, 7) + '-01';
+      let viewStart = monthOf(currentStart);
+      let viewEnd = monthOf(currentEnd);
+      // 1.0.2 (BUG-68) with the arrows working, 'set the end first' picks an
+      // end before the start: the range is always the two picked days in
+      // order (summary, highlight, Apply). The picks themselves stay, so the
+      // next tap on the other calendar completes the intended range.
+      const ordered = () => (currentStart <= currentEnd ? [currentStart, currentEnd] : [currentEnd, currentStart]);
 
       const updateSummary = () => {
         const summary = document.getElementById('crm-range-summary');
@@ -1182,23 +1232,26 @@ window.Components = {
           summary.innerText = window.I18n.t('range.pickDates');
           return;
         }
-        const s = new Date(currentStart);
-        const e = new Date(currentEnd);
-        const diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
-        const fmt = (d) => new Date(d).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
-        summary.innerHTML = `${fmt(currentStart)} - ${fmt(currentEnd)} <span style="color: var(--color-primary); margin-left: 8px;">${window.I18n.t('range.dayCount', { count: diff })}</span>`;
+        const [s, e] = ordered();
+        // 1.0.2 (BUG-67) noon-anchored local days; Math.round absorbs a 23/25 h DST day
+        const diff = Math.round((ymdDate(e) - ymdDate(s)) / 86400000) + 1;
+        const fmt = (d) => ymdDate(d).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
+        summary.innerHTML = `${fmt(s)} - ${fmt(e)} <span style="color: var(--color-primary); margin-left: 8px;">${window.I18n.t('range.dayCount', { count: diff })}</span>`;
       };
 
       const renderCalendars = () => {
         const startTarget = document.getElementById('calendar-container-start');
         const endTarget = document.getElementById('calendar-container-end');
         
-        const startMonth = currentStart ? new Date(currentStart) : new Date();
-        const endMonth = currentEnd ? new Date(currentEnd) : new Date();
+        const startMonth = ymdDate(viewStart); // 1.0.2 (BUG-67/68) the viewed month, local
+        const endMonth = ymdDate(viewEnd);
 
         const monthsStr = window.I18n.monthNames('long');
 
+        // 1.0.2 (live-U4-N1): each calendar names its role. With working
+        // arrows both can show the same month.
         const navHeader = (title, target, dt) => `
+          <div class="filter-group-title crm-calendar-label" style="padding: 0 var(--space-4); margin-bottom: var(--space-2);">${title}</div>
           <div class="calendar-nav-header">
             <button class="btn-month-nav" data-target="${target}" data-offset="-1">
               <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
@@ -1210,8 +1263,9 @@ window.Components = {
           </div>
         `;
 
-        startTarget.innerHTML = navHeader(window.I18n.t('range.startDate'), 'start', startMonth) + this._renderCalendar(startMonth, currentStart, currentStart, currentEnd);
-        endTarget.innerHTML = navHeader(window.I18n.t('range.endDate'), 'end', endMonth) + this._renderCalendar(endMonth, currentEnd, currentStart, currentEnd);
+        const [rangeStart, rangeEnd] = ordered(); // 1.0.2 (BUG-68) highlight the range in order
+        startTarget.innerHTML = navHeader(window.I18n.t('range.startDate'), 'start', startMonth) + this._renderCalendar(startMonth, currentStart, rangeStart, rangeEnd);
+        endTarget.innerHTML = navHeader(window.I18n.t('range.endDate'), 'end', endMonth) + this._renderCalendar(endMonth, currentEnd, rangeStart, rangeEnd);
         
         // Attach day clicks
         startTarget.querySelectorAll('.calendar-day:not(.empty)').forEach(d => {
@@ -1219,6 +1273,16 @@ window.Components = {
         });
         endTarget.querySelectorAll('.calendar-day:not(.empty)').forEach(d => {
           d.onclick = () => { currentEnd = d.dataset.date; renderCalendars(); updateSummary(); };
+        });
+        // 1.0.2 (BUG-68) bound here: the buttons only exist after this render.
+        // They browse the calendar's viewed month; the selection stays.
+        div.querySelectorAll('.btn-month-nav').forEach(btn => {
+          btn.onclick = () => {
+            const step = parseInt(btn.dataset.offset, 10);
+            if (btn.dataset.target === 'start') viewStart = S._calculateNextRecurrenceDate(viewStart, step, 'months');
+            else viewEnd = S._calculateNextRecurrenceDate(viewEnd, step, 'months');
+            renderCalendars();
+          };
         });
         
         window.StackdHydrateIcons();
@@ -1231,9 +1295,10 @@ window.Components = {
 
       document.getElementById('crm-close').onclick = close;
       document.getElementById('crm-apply').onclick = () => {
+        const [rangeStart, rangeEnd] = ordered(); // 1.0.2 (BUG-68) never a reversed range
         window.Store.dispatch('UPDATE_FILTERS', {
           page: pageKey,
-          filters: { period: { type: 'custom', start: currentStart, end: currentEnd, value: '' } }
+          filters: { period: { type: 'custom', start: rangeStart, end: rangeEnd, value: '' } }
         });
         close();
       };
@@ -1241,43 +1306,28 @@ window.Components = {
       // Preset clicks
       div.querySelectorAll('.multi-select-chip[data-days], .multi-select-chip[data-months], .multi-select-chip[data-years], .multi-select-chip[data-type="all"]').forEach(btn => {
         btn.onclick = () => {
-          const now = new Date();
-          const fmt = (dt) => dt.toISOString().split('T')[0];
-          currentEnd = fmt(now);
+          // 1.0.2 (BUG-67) N units ENDING today, both ends included: 'Last 7
+          // Days' = today + the 6 days before; '6 Months' = from the day after
+          // the same date 6 months ago (month-end clamped; years = 12·N months
+          // so 29 Feb clamps too). Local, noon-anchored string maths.
+          currentEnd = S._todayYMD();
+          const shift = (ymd, n, unit) => S._calculateNextRecurrenceDate(ymd, n, unit);
           if (btn.dataset.days) {
-            const d = new Date(); d.setDate(d.getDate() - parseInt(btn.dataset.days));
-            currentStart = fmt(d);
-          } else if (btn.dataset.months) {
-            const d = new Date(); d.setMonth(d.getMonth() - parseInt(btn.dataset.months));
-            currentStart = fmt(d);
-          } else if (btn.dataset.years) {
-            const d = new Date(); d.setFullYear(d.getFullYear() - parseInt(btn.dataset.years));
-            currentStart = fmt(d);
+            currentStart = shift(currentEnd, -(parseInt(btn.dataset.days, 10) - 1), 'days');
+          } else if (btn.dataset.months || btn.dataset.years) {
+            const months = btn.dataset.months ? parseInt(btn.dataset.months, 10) : 12 * parseInt(btn.dataset.years, 10);
+            currentStart = shift(shift(currentEnd, -months, 'months'), 1, 'days');
           } else if (btn.dataset.type === 'all') {
             currentStart = '2000-01-01';
           }
+          viewStart = monthOf(currentStart); // 1.0.2 (BUG-68) a preset shows its own range
+          viewEnd = monthOf(currentEnd);
           renderCalendars();
           updateSummary();
         };
       });
 
-      // Month navigation
-      div.querySelectorAll('.btn-month-nav').forEach(btn => {
-        btn.onclick = () => {
-          const target = btn.dataset.target; // 'start' or 'end'
-          const offset = parseInt(btn.dataset.offset);
-          if (target === 'start') {
-            const d = new Date(currentStart);
-            d.setMonth(d.getMonth() + offset);
-            currentStart = d.toISOString().split('T')[0];
-          } else {
-            const d = new Date(currentEnd);
-            d.setMonth(d.getMonth() + offset);
-            currentEnd = d.toISOString().split('T')[0];
-          }
-          renderCalendars();
-        };
-      });
+      // Month navigation: bound inside renderCalendars (1.0.2 BUG-68).
 
       updateSummary();
       renderCalendars();
@@ -1374,7 +1424,7 @@ window.Components = {
               <div class="multi-select-row">
                 ${accounts.map(acc => `
                   <button class="multi-select-chip ${currentFilters.accounts.includes(acc.id) ? 'active' : ''}" data-acc="${acc.id}">
-                    ${acc.name}
+                    ${esc(acc.name)}
                   </button>
                 `).join('')}
               </div>
@@ -1383,7 +1433,7 @@ window.Components = {
               <div class="multi-select-row">
                 ${categories.map(cat => `
                   <button class="multi-select-chip ${currentFilters.categories.includes(cat.id) ? 'active' : ''}" data-cat="${cat.id}">
-                    ${cat.name}
+                    ${esc(cat.name)}
                   </button>
                 `).join('')}
               </div>
@@ -1459,9 +1509,12 @@ window.Components = {
       };
 
       const apply = () => {
+        // 1.0.2 (BUG-69) this sheet never edits the period: sending back the
+        // snapshot taken at open would undo a roll that happened meanwhile.
+        const { period: _period, ...rest } = currentFilters;
         window.Store.dispatch('UPDATE_FILTERS', {
           page: pageKey,
-          filters: currentFilters
+          filters: rest
         });
         close();
       };
@@ -1819,7 +1872,7 @@ window.Components = {
       let recurrence = initialRecurrence || {
         enabled: false,
         period: 'monthly',
-        startDate: new Date().toISOString().split('T')[0],
+        startDate: window.Store._todayYMD(), // 1.0.2 (D-U4-7) local day, not the UTC day
         endDate: '',
         interval: 1,
         frequency: 'months' // matches store freq parameter
@@ -2146,7 +2199,7 @@ window.Components = {
           cursor: pointer; transition: background 0.2s;
         ">
           <span style="font-weight: 600; font-size: 1rem; color: ${item.id === selectedValue ? 'var(--color-primary)' : 'var(--text-primary)'};">
-            ${item.name}
+            ${window.Components.esc(item.name)}
           </span>
           ${item.id === selectedValue ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-primary);"></i>' : ''}
         </div>
@@ -2258,7 +2311,10 @@ window.Components = {
       };
     },
 
-    render(data, isCustom = false) {
+    // 1.0.2 (BUG-63): `currency` (optional, last) = the selection's currency
+    // (Store.aggregateSelection); stored so attachEvents can default to it.
+    render(data, isCustom = false, currency) {
+      this._currency = currency;
       if (isCustom) {
         return `
           <div class="card card-elevated" style="padding: var(--space-6); margin-top: var(--space-4); text-align: center; border-radius: var(--radius-2xl); border: 2px dashed var(--border-color); background: var(--bg-surface-sunken);">
@@ -2291,16 +2347,15 @@ window.Components = {
             <canvas id="netFlowChart"></canvas>
           </div>
 
-          <div style="font-size: 0.7rem; color: var(--text-tertiary); margin-top: var(--space-4); text-align: center; opacity: 0.6; font-style: italic;">
-            Note: Custom date ranges do not apply to this view
-          </div>
         </div>
       `;
     },
 
-    attachEvents(container, data, filters) {
+    attachEvents(container, data, filters, currency) {
       const canvas = container.querySelector('#netFlowChart');
       if (!canvas || !data || !window.Chart) return;
+      // 1.0.2 (BUG-63): captured per mount for the chart callbacks below
+      const ccy = currency || this._currency || undefined;
 
       const labels = data.map(d => d.label);
       const values = data.map(d => d.net);
@@ -2382,7 +2437,7 @@ window.Components = {
               padding: 12,
               displayColors: false,
               callbacks: {
-                label: (ctx) => `Net: ${window.Store.formatCurrency(ctx.parsed.y)}`
+                label: (ctx) => `Net: ${window.Store.formatCurrency(ctx.parsed.y, ccy)}`
               }
             }
           },
@@ -2418,7 +2473,7 @@ window.Components = {
                 font: { size: 10, family: 'Manrope', weight: '600' },
                 color: tickColor,
                 callback: (val) => {
-                  const symbol = window.Store.getCurrencySymbol();
+                  const symbol = window.Store.getCurrencySymbol(ccy); // 1.0.2 (BUG-63)
                   const sign = val < 0 ? '-' : '';
                   const formattedAbs = Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 });
                   return `${sign}${symbol}${formattedAbs}`;
@@ -2528,8 +2583,11 @@ window.Components = {
       return top5;
     },
 
-    render(rawData, type = 'expense') {
+    // 1.0.2 (BUG-63): `currency` (optional, last) = the selection's currency;
+    // kept on the singleton so the type toggle, drilldown and tooltip reuse it.
+    render(rawData, type = 'expense', currency) {
       this._currentType = type;
+      this._currency = currency;
       const isExpense = type === 'expense';
       const rawCapped = this._capData(rawData);
       const data = this._assignColors(rawCapped);
@@ -2552,7 +2610,7 @@ window.Components = {
               <canvas id="categoryDonutChart"></canvas>
               <div class="donut-chart-center">
                 <div class="donut-total-label">${window.I18n.t('charts.total')}</div>
-                <div class="donut-total-value">${window.Store.formatCurrency(totalAmount)}</div>
+                <div class="donut-total-value">${window.Store.formatCurrency(totalAmount, this._currency)}</div>
               </div>
             </div>
             <div class="donut-legend">
@@ -2572,7 +2630,7 @@ window.Components = {
                       <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(item.name)}</span>
                       <span class="donut-legend-pct">${esc(window.Store.formatPercent(item.percentage, { digits: 1 }))}</span>
                     </div>
-                    <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(window.Store.formatCurrency(item.amount))}</div>
+                    <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(window.Store.formatCurrency(item.amount, this._currency))}</div>
                     ${item.isOthers ? '<div style="width: 8px; margin-left: 8px;"></div>' : '<div class="donut-legend-caret" aria-hidden="true">›</div>'}
                   </div>`;
                 if (item.isOthers) return row;
@@ -2603,23 +2661,25 @@ window.Components = {
       `;
     },
 
-    attachEvents(container, filters) {
+    attachEvents(container, filters, currency) {
       const canvas = container.querySelector('#categoryDonutChart');
       const toggleBtns = container.querySelectorAll('.chart-toggle-btn');
-      
+      if (currency !== undefined) this._currency = currency; // 1.0.2 (BUG-63)
+      const ccy = this._currency; // captured per mount for the chart callbacks
+
       const updateChart = (type) => {
         this._currentType = type;
         // v0.85: an expense category's tag breakdown means nothing under the
         // income lens — collapse rather than restore something stale.
         this._expandedCatId = null;
         const newData = window.Store.computeCategoryDistribution(filters, type);
-        
+
         const card = container.querySelector('.donut-chart-layout') || container.querySelector('[style*="height: 200px"]');
         if (card) {
           const outerCard = container.querySelector('.donut-chart-layout')?.closest('.card') || container.querySelector('[style*="height: 200px"]')?.closest('.card');
           if (outerCard) {
-            outerCard.outerHTML = this.render(newData, type);
-            this.attachEvents(container, filters);
+            outerCard.outerHTML = this.render(newData, type, ccy); // 1.0.2 (BUG-63): same currency
+            this.attachEvents(container, filters, ccy);
           }
         }
       };
@@ -2665,7 +2725,7 @@ window.Components = {
           <div class="donut-tag-row touch-target" data-tag-row="${esc(r.tag)}" role="button" tabindex="0">
             <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${r.isUntagged ? window.I18n.t('history.noTag') : '#' + esc(r.tag)}</span>
             <span class="donut-tag-count">${r.count}</span>
-            <span class="donut-tag-amount">${esc(window.Store.formatCurrency(r.amount))}</span>
+            <span class="donut-tag-amount">${esc(window.Store.formatCurrency(r.amount, ccy))}</span>
           </div>`).join('');
         // Always offer the whole category too — the pre-v0.85 behaviour, and
         // the only route to a category whose rows are all tagged differently.
@@ -2674,7 +2734,7 @@ window.Components = {
             ${rows}
             <div class="donut-tag-row donut-tag-row--all touch-target" data-tag-row="__all__" role="button" tabindex="0">
               <span class="donut-tag-name">All ${breakdown.count} transaction${breakdown.count === 1 ? '' : 's'}</span>
-              <span class="donut-tag-amount">${esc(window.Store.formatCurrency(breakdown.total))}</span>
+              <span class="donut-tag-amount">${esc(window.Store.formatCurrency(breakdown.total, ccy))}</span>
             </div>
           </div>`;
         panel.querySelectorAll('.donut-tag-row').forEach(row => {
@@ -2779,7 +2839,7 @@ window.Components = {
                   const val = ctx.parsed;
                   const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                   const pct = window.Store.formatPercent(total > 0 ? (val / total) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
-                  return `  ${window.Store.formatCurrency(val)} (${pct})`;
+                  return `  ${window.Store.formatCurrency(val, ccy)} (${pct})`; // 1.0.2 (BUG-63)
                 }
               }
             }
@@ -2827,8 +2887,8 @@ window.Components = {
                   <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.active')}</label>
                   <div id="current-tags-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
                     ${currentTags.length > 0 ? currentTags.map(tag => `
-                      <div class="tag-chip active" data-tag="${tag}">
-                        <span>#${tag}</span>
+                      <div class="tag-chip active" data-tag="${window.Components.esc(tag)}">
+                        <span>#${window.Components.esc(tag)}</span>
                         <i data-lucide="x" style="width: 14px; margin-left: 4px; cursor: pointer;"></i>
                       </div>
                     `).join('') : `<p style="color: var(--text-tertiary); font-size: var(--text-sm); font-style: italic;">${window.I18n.t('tagsModal.none')}</p>`}
@@ -2841,7 +2901,7 @@ window.Components = {
                     <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.recent')}</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                       ${suggestions.slice(0, 10).map(tag => `
-                        <div class="tag-chip suggestion" data-tag="${tag}">#${tag}</div>
+                        <div class="tag-chip suggestion" data-tag="${window.Components.esc(tag)}">#${window.Components.esc(tag)}</div>
                       `).join('')}
                     </div>
                   </div>
@@ -2991,11 +3051,15 @@ window.Components = {
   // Accepts either { onSelection(scope) } with scope 'single'|'future'|'all',
   // or the delete-modal-style { onlyThis, thisAndFuture, allTransactions }
   // callbacks (the v0.32 caller used the latter shape and crashed — B3).
-  // Optional flags tune the copy: dateChanged, recurrenceRemoved.
+  // Optional flags tune the copy: dateChanged, recurrenceRemoved,
+  // scheduleChanged (1.0.2 BUG-26: 'Only this' keeps the series' end date and
+  // frequency), paidNote (1.0.2 BUG-27: 'only' | 'rebuild' | null) and
+  // amountNote (1.0.2 live-U3-N1: a rebuild would replace a later member's
+  // different amount, e.g. a hand-edited loan payment).
   // -----------------------------------------------------------------------
   RecurringUpdateModal: {
     show(options) {
-      const { dateChanged = false, recurrenceRemoved = false } = options;
+      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false } = options;
       const onSelection = options.onSelection || ((scope) => {
         if (scope === 'single' && options.onlyThis) options.onlyThis();
         else if (scope === 'future' && options.thisAndFuture) options.thisAndFuture();
@@ -3003,11 +3067,12 @@ window.Components = {
       });
       const container = document.getElementById('modal-container');
 
-      let description = "This transaction is part of a repeating series. How far should your changes apply? Past transactions always keep their dates.";
+      // 1.0.2 (live-U8-PRE-2): translated (was English in every language)
+      let description = window.I18n.t('recUpdate.description');
       let futureSub = window.I18n.t('recUpdate.futureSub');
       let allSub = window.I18n.t('recUpdate.allSub');
       if (recurrenceRemoved) {
-        description = "You turned off Recurrent on a transaction that belongs to a repeating series. What should happen to the series?";
+        description = window.I18n.t('recUpdate.stopDescription');
         futureSub = window.I18n.t('recUpdate.futureSubStop');
         allSub = window.I18n.t('recUpdate.allSubStop');
       } else if (dateChanged) {
@@ -3036,10 +3101,12 @@ window.Components = {
             <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
               <h2 id="rum-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-xl);">${window.I18n.t(recurrenceRemoved ? 'recUpdate.stopTitle' : 'recUpdate.title')}</h2>
               <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${description}</p>
+              ${amountNote ? `<p id="ru-amount-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.rebuildAmountNote')}</p>` : ''}
+              ${paidNote ? `<p id="ru-paid-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t(paidNote === 'rebuild' ? 'recUpdate.rebuildPaidNote' : 'recUpdate.paidNote')}</p>` : ''}
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
-              ${optionCard('ru-only-this', window.I18n.t('recUpdate.onlyThis'), window.I18n.t(recurrenceRemoved ? 'recUpdate.onlyThisSubUnlink' : 'recUpdate.onlyThisSub'))}
+              ${optionCard('ru-only-this', window.I18n.t('recUpdate.onlyThis'), window.I18n.t(recurrenceRemoved ? 'recUpdate.onlyThisSubUnlink' : scheduleChanged ? 'recUpdate.onlyThisSubSchedule' : 'recUpdate.onlyThisSub'))}
               ${optionCard('ru-this-future', window.I18n.t('recUpdate.thisFuture'), futureSub)}
               ${optionCard('ru-all-series', window.I18n.t('recUpdate.allSeries'), allSub)}
               <button id="ru-cancel" data-back-dismiss class="btn btn-secondary" style="margin-top: var(--space-1);">${window.I18n.t('common.cancel')}</button>
@@ -3355,7 +3422,7 @@ window.Components = {
                   <div class="list-item touch-target category-select-item" data-id="${cat.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-lg); ${isSelected ? 'background: var(--bg-surface-sunken); border: 2px solid var(--color-primary);' : ''}">
                     <div style="display: flex; align-items: center; gap: var(--space-3);">
                       <div class="list-item-icon" style="flex-shrink: 0;"><i data-lucide="${cat.icon || 'pin'}"></i></div>
-                      <div class="list-item-title" style="font-weight: 600;">${cat.name}</div>
+                      <div class="list-item-title" style="font-weight: 600;">${window.Components.esc(cat.name)}</div>
                     </div>
                     ${isSelected ? '<i data-lucide="check" style="width: 20px; height: 20px; color: var(--color-primary);"></i>' : ''}
                   </div>
@@ -3446,6 +3513,12 @@ window.Components = {
 
       let showFilterPanel = false;
 
+      // 1.0.2 (BUG-36): what the total sums and its currency. Ticking exactly
+      // the base accounts IS the default view (caption, saved as []). A shared
+      // closure: initExpandedChart cannot see renderModalContent's locals.
+      const resolveSel = () => window.Store.aggregateSelection(
+        window.Store.isPrimarySelection(selectedAccountIds) ? [] : selectedAccountIds);
+
       const renderModalContent = () => {
         const visibleAccounts = accounts.filter(a => selectedAccountIds.includes(a.id));
         const computeIds = visibleAccounts.map(a => a.id);
@@ -3456,7 +3529,8 @@ window.Components = {
         });
         const balances = (result && result.points) ? result.points : [];
         const latestBalance = (balances && balances.length > 0) ? balances[balances.length - 1].balance : 0;
-        const formattedTotal = window.Store.formatCurrency(latestBalance);
+        const aggSel = resolveSel(); // 1.0.2 (BUG-36)
+        const formattedTotal = window.Store.formatCurrency(latestBalance, aggSel.currency);
 
         modalBackdrop.innerHTML = `
           <div class="modal-content" style="height: 92vh; border-top-left-radius: 32px; border-top-right-radius: 32px; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface);">
@@ -3477,6 +3551,7 @@ window.Components = {
               <div style="margin-bottom: var(--space-4);">
                 <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em;">${window.I18n.t('dash.totalBalance')}</span>
                 <div style="font-family: var(--font-family-display); font-size: 2.2rem; font-weight: 850; color: var(--text-primary); margin-top: 2px;">${formattedTotal}</div>
+                ${aggSel.excluded > 0 ? `<div class="egm-currency-note" style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px;">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</div>` : ''}
               </div>
 
               <!-- Collapsible Filter Menu -->
@@ -3504,8 +3579,8 @@ window.Components = {
                       ${accounts.map(acc => `
                         <label class="filter-checkbox-label">
                           <input type="checkbox" class="egm-acc-checkbox" data-acc-id="${acc.id}" ${selectedAccountIds.includes(acc.id) ? 'checked' : ''} />
-                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${acc.color || '#64748B'}; display: inline-block; flex-shrink: 0;"></span>
-                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${acc.name}</span>
+                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${window.Components.esc(acc.color || '#64748B')}; display: inline-block; flex-shrink: 0;"></span>
+                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${window.Components.esc(acc.name)}</span>
                         </label>
                       `).join('')}
                     </div>
@@ -3523,7 +3598,7 @@ window.Components = {
                       ${categories.map(cat => `
                         <label class="filter-checkbox-label">
                           <input type="checkbox" class="egm-cat-checkbox" data-cat-id="${cat.id}" ${selectedCategoryIds.length === 0 || selectedCategoryIds.includes(cat.id) ? 'checked' : ''} />
-                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${cat.name}</span>
+                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${window.Components.esc(cat.name)}</span>
                         </label>
                       `).join('')}
                     </div>
@@ -3633,7 +3708,9 @@ window.Components = {
           saveFiltersBtn.onclick = () => {
             window.Store.dispatch('SAVE_EXPANDED_GRAPH_FILTERS', {
               interval: activeInterval,
-              accounts: selectedAccountIds,
+              // 1.0.2 (BUG-36, D-U8-7): exactly the base accounts = the default
+              // view, saved as [] (an account added later joins the total)
+              accounts: window.Store.isPrimarySelection(selectedAccountIds) ? [] : selectedAccountIds,
               categories: selectedCategoryIds
             });
             showFilterPanel = false;
@@ -3666,8 +3743,12 @@ window.Components = {
           window.Components.ExpandedGraphModal._chartInstance = null;
         }
 
-        const visibleAccounts = accounts.filter(a => selectedAccountIds.includes(a.id));
-        const visibleIds = visibleAccounts.map(a => a.id);
+        const visibleIds = accounts.filter(a => selectedAccountIds.includes(a.id)).map(a => a.id);
+        // 1.0.2 (BUG-36, D-U8-9): only the accounts the total sums get a line;
+        // every figure carries its own currency.
+        const aggSel = resolveSel();
+        const inAgg = window.Store.aggregatePredicate(selectedAccountIds);
+        const visibleAccounts = accounts.filter(a => visibleIds.includes(a.id) && inAgg(a.id));
 
         const graphResult = window.Store.computeGraphBalances({
           interval: activeInterval,
@@ -3690,6 +3771,7 @@ window.Components = {
         const datasets = [{
           label: window.I18n.t('analytics.totalNetBalance'),
           data: (mainResult && mainResult.points) ? mainResult.points : [],
+          currency: aggSel.currency, // 1.0.2 (BUG-36)
           borderColor: isDark ? '#38bdf8' : '#111111',
           backgroundColor: isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(17, 17, 17, 0.05)',
           borderWidth: 3,
@@ -3712,6 +3794,7 @@ window.Components = {
           datasets.push({
             label: acc.name,
             data: (accResult && accResult.points) ? accResult.points : [],
+            currency: acc.currency, // 1.0.2 (BUG-36)
             borderColor: acc.color,
             borderWidth: 2,
             borderDash: [4, 4],
@@ -3753,7 +3836,8 @@ window.Components = {
                     const item = items[0];
                     return item.raw?.fullLabel || item.raw?.label || '';
                   },
-                  label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y)}`
+                  // 1.0.2 (BUG-36): each line in its own currency
+                  label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y, ctx.dataset.currency)}`
                 }
               }
             },
@@ -3794,7 +3878,7 @@ window.Components = {
                 ticks: {
                   font: { size: 10, family: 'Inter' },
                   color: tickColor,
-                  callback: (val) => window.Store.formatCurrency(val)
+                  callback: (val) => window.Store.formatCurrency(val, aggSel.currency) // 1.0.2 (BUG-36)
                 }
               }
             }
@@ -4835,7 +4919,7 @@ Object.assign(window.Components, {
         // Modal.show owns #modal-container's innerHTML → this sheet is gone by then.
         setTimeout(() => {
           window.Components.Modal.show({
-            title: t('bank.disconnectTitle', { bank: conn.institutionName }),
+            title: t('bank.disconnectTitle', { bank: BC.esc(conn.institutionName) }), // 1.0.2 (BUG-24)
             content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6;">${t('bank.disconnectBody')}</p>`,
             saveText: t('common.cancel'),
             showDelete: true,

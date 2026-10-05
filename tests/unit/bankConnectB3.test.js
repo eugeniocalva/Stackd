@@ -251,5 +251,207 @@ describe('Bank Connect B3 (v1.07)', () => {
       expect(html).toContain('class="btn btn-secondary bank-acc-link"');
       expect(html).toContain('Not linked');
     });
+
+    // 1.0.2 (BUG-30 + Bank Connect rider): 'Create account' creates a uniquely
+    // named account (the option label shows the exact name), maps the bank
+    // account to THAT account by explicit id (ADD_ACCOUNT re-sorts by name, so
+    // slice(-1) was whichever account sorts last), and validates every row
+    // before creating anything.
+    const mount = (w) => {
+      const root = document.createElement('div');
+      document.body.appendChild(root);
+      root.innerHTML = w.Views.BankMapView.render(state());
+      w.Views.BankMapView.attachEvents(root, state());
+      return root;
+    };
+    const flush = () => new Promise(r => setTimeout(r, 0));
+
+    it('the "Create" option shows the suffixed name when the bank label is already taken', () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      w.Store.dispatch('ADD_ACCOUNT', { name: 'Mock ASPSP · Ella Virtanen', currency: 'EUR', openingBalance: 0 });
+      w.Store.dispatch('ADD_ACCOUNT', { name: 'Zeta', currency: 'EUR', openingBalance: 0 });
+      w.BankConnect.recordConnection(PUBLIC);
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_2: 'new' } };
+      const html = w.Views.BankMapView.render(state());
+      expect(html).toContain('<option value="new" selected>Create “Mock ASPSP · Ella Virtanen (2)”</option>');
+      w.Views.BankMapView.destroy();
+    });
+
+    it('Import with "Create" makes a NEW uniquely named account and maps to it, not to the last-sorting one', async () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      w.Store.dispatch('ADD_ACCOUNT', { name: 'Mock ASPSP · Ella Virtanen', currency: 'EUR', openingBalance: 0 });
+      w.Store.dispatch('ADD_ACCOUNT', { name: 'Zeta', currency: 'EUR', openingBalance: 0 });
+      const zetaId = state().accounts.find(a => a.name === 'Zeta').id;
+      const sameNameId = state().accounts.find(a => a.name === 'Mock ASPSP · Ella Virtanen').id;
+      w.BankConnect.recordConnection(PUBLIC);
+      w.BankConnect.startImport = vi.fn(async () => {});
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_1: 'skip', acc_2: 'new' } };
+      const root = mount(w);
+
+      root.querySelector('#bank-map-import').click();
+      await flush();
+
+      const created = state().accounts.find(a => a.name === 'Mock ASPSP · Ella Virtanen (2)');
+      expect(created).toBeTruthy();
+      expect(created.currency).toBe('EUR');
+      expect(state().accounts).toHaveLength(4);
+      const mapped = state().bankConnections[0].accounts;
+      expect(mapped.find(a => a.bankAccountId === 'acc_2').stackdAccountId).toBe(created.id);
+      expect(mapped.find(a => a.bankAccountId === 'acc_2').stackdAccountId).not.toBe(zetaId);
+      expect(mapped.find(a => a.bankAccountId === 'acc_2').stackdAccountId).not.toBe(sameNameId);
+      expect(mapped.find(a => a.bankAccountId === 'acc_1').stackdAccountId).toBeNull();
+      expect(w.BankConnect.startImport).toHaveBeenCalledTimes(1);
+      w.Views.BankMapView.destroy();
+      root.remove();
+    });
+
+    it('validates every row first: a currency mismatch creates nothing, and a retry creates exactly one account', async () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      const mainId = state().accounts[0].id;
+      w.BankConnect.recordConnection(PUBLIC);
+      w.BankConnect.startImport = vi.fn(async () => {});
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_1: 'new', acc_2: mainId } }; // acc_2 is EUR, Main is USD
+      const root = mount(w);
+
+      root.querySelector('#bank-map-import').click();
+      await flush();
+
+      const err = root.querySelector('#bank-map-error');
+      expect(err.hidden).toBe(false);
+      expect(err.textContent).toBe('Pick an account in EUR, or create a new one.');
+      expect(state().accounts).toHaveLength(1);
+      expect(state().bankConnections[0].accounts.every(a => !a.stackdAccountId)).toBe(true);
+      expect(w.BankConnect.startImport).not.toHaveBeenCalled();
+
+      w.Views.BankMapView._selection.choices.acc_2 = 'skip';
+      root.querySelector('#bank-map-import').click();
+      await flush();
+
+      expect(state().accounts).toHaveLength(2);
+      const created = state().accounts.find(a => a.id !== mainId);
+      expect(created.currency).toBe('USD');
+      const mapped = state().bankConnections[0].accounts;
+      expect(mapped.find(a => a.bankAccountId === 'acc_1').stackdAccountId).toBe(created.id);
+      expect(mapped.find(a => a.bankAccountId === 'acc_2').stackdAccountId).toBeNull();
+      w.Views.BankMapView.destroy();
+      root.remove();
+    });
+
+    // 1.0.2 (R-bank, review round 1): the emit after ADD_ACCOUNT /
+    // UPDATE_BANK_CONNECTION re-renders the view (main.js's render loop) while
+    // startImport is in flight. The fetch error and the busy button must
+    // survive that re-render, and a retry must map to the account already
+    // created instead of creating "… (2)".
+    const rerenderLikeMain = (w, root) => w.Store.subscribe(() => {
+      root.innerHTML = w.Views.BankMapView.render(state());
+      w.Views.BankMapView.attachEvents(root, state());
+    });
+
+    it('a failed fetch shows its error on the re-rendered view, and the retry maps to the account already created', async () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      const mainId = state().accounts[0].id;
+      w.BankConnect.recordConnection(PUBLIC);
+      w.BankConnect.startImport = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_1: 'skip', acc_2: 'new' } };
+      const root = mount(w);
+      const unsub = rerenderLikeMain(w, root);
+      const firstBtn = root.querySelector('#bank-map-import');
+
+      firstBtn.click();
+      await flush();
+
+      expect(root.querySelector('#bank-map-import')).not.toBe(firstBtn); // the view did re-render
+      const err = root.querySelector('#bank-map-error');
+      expect(err.hidden).toBe(false);
+      expect(err.textContent).toBe(w.I18n.t('bank.fetchError', { bank: 'Mock ASPSP' }));
+      const live = root.querySelector('#bank-map-import');
+      expect(live.disabled).toBe(false);
+      expect(live.textContent).toBe('Import transactions');
+      expect(state().accounts).toHaveLength(2);
+      const created = state().accounts.find(a => a.id !== mainId);
+      expect(created.name).toBe('Mock ASPSP · Ella Virtanen');
+      expect(root.querySelector('.bank-map-select[data-acc="acc_2"]').value).toBe(created.id);
+
+      live.click();
+      await flush();
+
+      expect(state().accounts).toHaveLength(2); // no "Mock ASPSP · Ella Virtanen (2)"
+      expect(state().bankConnections[0].accounts.find(a => a.bankAccountId === 'acc_2').stackdAccountId).toBe(created.id);
+      expect(w.BankConnect.startImport).toHaveBeenCalledTimes(2);
+      unsub();
+      w.Views.BankMapView.destroy();
+      root.remove();
+    });
+
+    // 1.0.2 (BUG-34, integrated review): a rolled-back ADD_ACCOUNT must not
+    // leave the row or the saved connection mapped to an id with no account.
+    it('"Create" whose account cannot be saved maps nothing, starts no import, and a retry creates it', async () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      w.BankConnect.recordConnection(PUBLIC);
+      w.BankConnect.startImport = vi.fn(async () => {});
+      w.Components.NoticeSheet = { show: vi.fn() };
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_1: 'skip', acc_2: 'new' } };
+      const root = mount(w);
+      const ls = w.localStorage;
+      const realSet = ls.setItem;
+      let failed = 0;
+      ls.setItem = (k, v) => {
+        if (k === 'stackd_v1_accounts' && !failed) { failed++; const e = new Error('full'); e.name = 'QuotaExceededError'; throw e; }
+        return realSet(k, v);
+      };
+
+      root.querySelector('#bank-map-import').click();
+      await flush();
+
+      expect(failed).toBe(1); // precondition
+      expect(state().accounts).toHaveLength(1);
+      expect(state().bankConnections[0].accounts.every(a => !a.stackdAccountId)).toBe(true);
+      expect(w.Views.BankMapView._selection.choices.acc_2).toBe('new');
+      expect(w.BankConnect.startImport).not.toHaveBeenCalled();
+
+      root.querySelector('#bank-map-import').click(); // space is back
+      await flush();
+
+      expect(state().accounts).toHaveLength(2);
+      const created = state().accounts.find(a => a.name === 'Mock ASPSP · Ella Virtanen');
+      expect(state().bankConnections[0].accounts.find(a => a.bankAccountId === 'acc_2').stackdAccountId).toBe(created.id);
+      expect(w.BankConnect.startImport).toHaveBeenCalledTimes(1);
+      w.Views.BankMapView.destroy();
+      root.remove();
+    });
+
+    it('a second tap while the fetch runs creates nothing: the re-rendered button stays busy', async () => {
+      const w = boot({ stub: makeStub() });
+      w.Router.getParams = () => ({ ref: PUBLIC.ref });
+      w.BankConnect.recordConnection(PUBLIC);
+      let release;
+      w.BankConnect.startImport = vi.fn(() => new Promise(r => { release = r; }));
+      w.Views.BankMapView._selection = { ref: PUBLIC.ref, choices: { acc_1: 'skip', acc_2: 'new' } };
+      const root = mount(w);
+      const unsub = rerenderLikeMain(w, root);
+
+      root.querySelector('#bank-map-import').click();
+      await flush();
+
+      const live = root.querySelector('#bank-map-import');
+      expect(live.disabled).toBe(true);
+      expect(live.textContent).toBe('Fetching…');
+      live.click();
+      live.dispatchEvent(new MouseEvent('click', { bubbles: true })); // past the disabled attribute: the handler's own guard
+      await flush();
+
+      expect(state().accounts).toHaveLength(2);
+      expect(w.BankConnect.startImport).toHaveBeenCalledTimes(1);
+      release();
+      await flush();
+      unsub();
+      w.Views.BankMapView.destroy();
+      root.remove();
+    });
   });
 });

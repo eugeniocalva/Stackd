@@ -234,9 +234,7 @@ window.Insights = {
   },
 
   _esc(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return window.I18n.esc(value); // 1.0.2 (BUG-24): one implementation
   },
 
   _renderCard(card) {

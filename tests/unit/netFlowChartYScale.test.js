@@ -9,7 +9,8 @@ describe('NetFlowChart Y-Axis Scaling', () => {
   it('contains computeYScale logic with strict base multipliers [10, 50, 100, 200, 250, 500]', () => {
     expect(componentsCode).toContain('const baseMultipliers = [10, 50, 100, 200, 250, 500];');
     expect(componentsCode).toContain('display: true');
-    expect(componentsCode).toContain('window.Store.getCurrencySymbol()');
+    // 1.0.2 (BUG-63): the y-axis symbol follows the selection's currency
+    expect(componentsCode).toContain('window.Store.getCurrencySymbol(ccy)');
   });
 
   const computeYScale = (vals) => {

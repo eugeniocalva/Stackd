@@ -49,6 +49,14 @@ window.Router = {
     if (rv) {
       ['pointerdown', 'focusin', 'keydown'].forEach(type =>
         rv.addEventListener(type, () => this._armFormBaseline(), true));
+      // 1.0.2 (BUG-87): close / not-found links marked data-router-leave leave
+      // their screen without pushing an entry (the href stays as the fallback).
+      rv.addEventListener('click', (e) => {
+        const a = e.target && e.target.closest ? e.target.closest('a[data-router-leave]') : null;
+        if (!a || e.defaultPrevented) return;
+        e.preventDefault();
+        this.leave(a.getAttribute('href'));
+      });
     }
     // Initial route handling
     this.handleRouteChange();
@@ -100,17 +108,95 @@ window.Router = {
 
   // An empty WebView history (cold start on a deep route) cannot go back.
   _back(canGoBack) {
-    if (canGoBack) window.history.back();
-    else this.navigate('#dashboard');
+    if (canGoBack) {
+      this._noOrigin = true; // 1.0.2 (BUG-87): an unstamped entry reached this way has an unknown origin
+      window.history.back();
+    } else this.navigate('#dashboard');
+  },
+
+  // 1.0.2 (BUG-86): the one "Discard changes?" sheet (route forms + the Goals
+  // limit editor). A second Back hits its Cancel = keep editing.
+  _confirmDiscard(onDiscard) {
+    window.Components.Modal.show({
+      title: window.I18n.t('form.discardTitle'),
+      content: `<p>${window.I18n.t('form.discardBody')}</p>`,
+      saveText: window.I18n.t('form.discard'),
+      saveClass: 'btn-danger', // 1.0.1 (BUG-20): Discard is the destructive choice
+      onSave: (close) => { close(); onDiscard(); }
+    });
+  },
+
+  // ── 1.0.2 (BUG-87): leaving a screen ────────────────────────────────────
+  // navigate() pushes, so the jump after a save/delete left the form's entry
+  // under the landing screen and Back reopened it. Each fresh entry is stamped
+  // with the hash it was pushed from (history.state = {stackdNav, from}); no
+  // other code may write history.state.
+  _curHash: null,
+  _noOrigin: false,
+  _norm(h) { return (!h || h === '#') ? '#dashboard' : h; },
+
+  _entryState() {
+    try {
+      const st = window.history ? window.history.state : null;
+      return st && st.stackdNav ? st : null;
+    } catch (e) { return null; }
+  },
+
+  _stampEntry() {
+    const unknown = this._noOrigin;
+    this._noOrigin = false;
+    try {
+      const H = window.history;
+      if (H && typeof H.replaceState === 'function' && !this._entryState()) {
+        const from = unknown ? null : this._curHash;
+        H.replaceState({ stackdNav: 1, from: typeof from === 'string' ? from : null }, '');
+      }
+    } catch (e) { /* unstamped: leave() replaces, which is always safe */ }
+    this._curHash = window.location ? window.location.hash : null;
+  },
+
+  // Leave the current screen for `path` without keeping its entry. The entry
+  // is rewritten in place and the route applied at once, so the save/delete
+  // and the landing screen render in ONE coalesced pass (the closed form never
+  // re-renders: no 'not found' frame, no live Save in between). When the entry
+  // underneath already shows `path`, the now-identical entry is then dropped:
+  // history.back() lands on the same URL (no hashchange, no second render).
+  leave(path) {
+    const H = window.history, L = window.location;
+    if (!L || typeof path !== 'string') return;
+    if (this._norm(L.hash) === this._norm(path)) return;                          // already there (double tap)
+    if (!H || typeof H.replaceState !== 'function') { this.navigate(path); return; } // windows without the History API
+    const st = this._entryState();
+    if (st && st.left) return;                                                     // a step back is still landing
+    const from = st ? st.from : null;
+    const route = (h) => this._norm(h).split('?')[0];
+    const under = from !== null && typeof H.back === 'function' &&
+      (this._norm(from) === this._norm(path) ||
+       (path.indexOf('?') === -1 && route(from) === this._norm(path)));            // D-U9-8: filtered History
+    try {
+      if (under) H.replaceState({ stackdNav: 1, from: null, left: 1 }, '', from || L.href.split('#')[0]);
+      else H.replaceState({ stackdNav: 1, from }, '', path);
+    } catch (e) {          // WebKit refuses >100 history calls in 30 s: replace the old way
+      this._noOrigin = true;
+      this._replaceHash(path);
+      return;
+    }
+    this.handleRouteChange(); // render the landing screen in this same pass
+    if (under) H.back();      // drop the duplicate entry: same URL, no hashchange
+  },
+  _replaceHash(path) {
+    const L = window.location;
+    if (L && typeof L.replace === 'function') L.replace(path); else this.navigate(path);
   },
 
   // The Android Back priority chain (the Capacitor 'backButton' event covers
   // both the hardware key and the edge gesture): open sheet → + menu →
-  // History selection mode → Home widget edit mode → confirm leaving a dirty
-  // form → route back. Returns what it did; 'exit' (bare Home) means leave
-  // the app, which the native caller performs. The in-app close links on the
-  // forms stay explicit discards. Views must never call this (unit tests stub
-  // Router wholesale).
+  // History selection mode → Home widget edit mode → Goals limit editor
+  // (closes it, 'step'; after the discard confirm when a field changed) →
+  // confirm leaving a dirty form → route back. Returns what it did; 'exit'
+  // (bare Home) means leave the app, which the native caller performs. The
+  // in-app close links on the forms stay explicit discards. Views must never
+  // call this (unit tests stub Router wholesale).
   handleBack(opts) {
     const canGoBack = !opts || opts.canGoBack !== false;
     const C = window.Components;
@@ -136,18 +222,24 @@ window.Router = {
       return 'mode';
     }
 
+    // 1.0.2 (BUG-86): the Goals limit editor is a step INSIDE #budget
+    // (BudgetView.editCategoryId), not a route. Back closes it to the budget
+    // list (after the discard confirm when a field changed) and never leaves
+    // Goals. It used to route back to Home and leave the editor armed. The
+    // lookup is guarded: router-only tests and a stale views.js see no step.
+    const BV = window.Views && window.Views.BudgetView;
+    if (state.activeView === 'budget' && BV && BV.editCategoryId && typeof BV.closeEditor === 'function') {
+      const rv = document.getElementById('router-view');
+      if (rv && typeof BV.isEditorDirty === 'function' && BV.isEditorDirty(rv)) {
+        this._confirmDiscard(() => BV.closeEditor());
+        return 'confirm';
+      }
+      BV.closeEditor();
+      return 'step';
+    }
+
     if (this.FORM_VIEWS.includes(state.activeView) && this._isFormDirty()) {
-      C.Modal.show({
-        title: window.I18n.t('form.discardTitle'),
-        content: `<p>${window.I18n.t('form.discardBody')}</p>`,
-        saveText: window.I18n.t('form.discard'),
-        saveClass: 'btn-danger', // 1.0.1 (BUG-20): Discard is the destructive choice
-        onSave: (close) => {
-          close();
-          this._formBaseline = null;
-          this._back(canGoBack);
-        }
-      });
+      this._confirmDiscard(() => { this._formBaseline = null; this._back(canGoBack); });
       return 'confirm'; // a second Back hits the sheet's Cancel = keep editing
     }
 
@@ -158,6 +250,8 @@ window.Router = {
 
   handleRouteChange() {
     this._formBaseline = null; // 1.0.1 (BUG-03): a new route starts clean
+    const prevHash = this._curHash; // 1.0.2 (live-U3-N2)
+    this._stampEntry();        // 1.0.2 (BUG-87): record where this entry came from
     const hash = window.location.hash;
     // Strip query string for route lookup
     const baseHash = hash.split('?')[0];
@@ -189,6 +283,13 @@ window.Router = {
     // v0.36: State-Aware Scroll Integration
     const oldView = window.Store.getState() ? window.Store.getState().activeView : null;
     window.Store.dispatch('SET_VIEW', viewId);
+    // 1.0.2 (live-U3-N2): #edit?id=A -> #edit?id=B (address bar, web) keeps
+    // the view, so SET_VIEW renders nothing and the form kept A's fields: a
+    // save then edited A. A form whose query changed renders afresh.
+    if (oldView === viewId && this.FORM_VIEWS.includes(viewId) && prevHash !== null && prevHash !== hash &&
+        typeof window.Store.emit === 'function') {
+      window.Store.emit();
+    }
 
     // Reset scroll position based on whether the view actually changed
     if (window.ScrollUtils) {

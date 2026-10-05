@@ -1,6 +1,16 @@
 // export.js - CSV & PDF Export Utilities
 window.StackdExport = {
+  _busy: false, // 1.0.2 (BUG-37): a native share sheet is open
+
   _download(filename, content, type = 'text/csv;charset=utf-8;') {
+    // 1.0.2 (BUG-37): Android's WebView has no DownloadListener and iOS's no
+    // download delegate, so the <a download> below was silently dropped in the
+    // native apps. There the file goes through the system share sheet (Save to
+    // Files / Drive / mail). Returns a Promise of whether the file went out.
+    const cap = window.Capacitor;
+    if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+      return this._shareNative(filename, '\uFEFF' + content);
+    }
     const blob = new Blob(['\uFEFF' + content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -10,12 +20,58 @@ window.StackdExport = {
     link.click();
     document.body.removeChild(link);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return Promise.resolve(true);
+  },
+
+  // 1.0.2 (BUG-37): the CSV (with its BOM) is written to the app cache \u2014
+  // covered by the existing FileProvider \u2014 and handed to @capacitor/share
+  // through the native plugin proxies (no JS wrapper is bundled, as in
+  // db.js). A cancel is silent; any other failure, including a build that
+  // lacks the Share plugin, shows a sheet instead of doing nothing.
+  async _shareNative(filename, text) {
+    if (this._busy) return false; // a second tap while the sheet is up
+    this._busy = true;
+    try {
+      const P = (window.Capacitor && window.Capacitor.Plugins) || {};
+      if (!P.Filesystem || !P.Share) throw new Error('export plugins unavailable');
+      const written = await P.Filesystem.writeFile({
+        path: 'exports/' + filename,
+        data: text,
+        directory: 'CACHE',
+        encoding: 'utf8',
+        recursive: true
+      });
+      if (!written || !written.uri) throw new Error('export file not written');
+      await P.Share.share({
+        title: filename,
+        files: [written.uri],
+        // Android's chooser title is otherwise a hard-coded English 'Share'
+        dialogTitle: window.I18n.t('export.shareTitle', { file: filename })
+      });
+      return true;
+    } catch (error) {
+      if (/cancel/i.test(String((error && error.message) || error))) return false; // the user closed the sheet
+      console.error('Export failed:', error);
+      const C = window.Components;
+      if (C && C.NoticeSheet) {
+        C.NoticeSheet.show({
+          id: 'export-result-modal',
+          tone: 'error',
+          title: window.I18n.t('export.failedTitle'),
+          body: window.I18n.t('export.failedBody')
+        });
+      }
+      return false;
+    } finally {
+      this._busy = false;
+    }
   },
 
   _toRow(values, delimiter = ',') {
     return values.map(v => {
       const str = (v === null || v === undefined) ? '' : String(v);
-      const needsQuotes = str.includes(delimiter) || str.includes('"') || str.includes('\n');
+      // 1.0.2 (BUG-33): a lone CR is a line break to a spreadsheet too.
+      const needsQuotes = str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r');
       return needsQuotes ? `"${str.replace(/"/g, '""')}"` : str;
     }).join(delimiter);
   },
@@ -157,7 +213,13 @@ window.StackdExport = {
     // v1.19 (A-17): the currency of the row's account. Without it a restore
     // re-created every account in the new phone's primary currency, so a USD
     // account's dollar amounts were silently read as euros.
-    'AccountCurrency'],
+    'AccountCurrency',
+    // 1.0.2 (BUG-30, BUG-78): the row's account by id (names are not unique:
+    // two 'Visa' accounts folded into one on restore) and the row's own id (a
+    // second import of the same backup duplicated every row). import.js keeps
+    // both and trusts them only in a Stack'd export. Columns are only ever
+    // appended.
+    'AccountId', 'Id'],
 
   exportTransactions(state, options = {}) {
     const delimiter = options.delimiter || ',';
@@ -209,7 +271,9 @@ window.StackdExport = {
         rec.seriesId ? (rec.propagateTags === false ? 'false' : 'true') : '',
         t.importKey || '', // v0.99
         t.bankRef || '',
-        acc ? (acc.currency || '') : '' // v1.19 (A-17)
+        acc ? (acc.currency || '') : '', // v1.19 (A-17)
+        acc ? acc.id : '', // 1.0.2 (BUG-30)
+        t.id || '' // 1.0.2 (BUG-78)
       ], delimiter);
     });
 
@@ -315,6 +379,6 @@ window.StackdExport = {
       }
     });
 
-    doc.save(`stackd_export_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`stackd_export_${window.Store._todayYMD()}.pdf`); // 1.0.2 (D-U4-7) local day, not the UTC day
   }
 };

@@ -367,6 +367,172 @@ describe('Loan series sync — 1.0.1 review fixes', () => {
       expect(body).toContain("The loan's schedule changed.");
       expect(body).toContain('starting with $271.95 on 01/01/27');
     });
+
+    // ── 1.0.2 (BUG-74): a payment changed by hand keeps its amount ──────────
+    describe('a payment the user changed by hand (1.0.2 BUG-74)', () => {
+      const handEditDec = (amount = 300) => {
+        const dec = future().find(t => t.date === '2026-12-01');
+        Store.dispatch('UPDATE_TRANSACTION', { id: dec.id, amount }); // 'Only this'
+        return members().find(t => t.id === dec.id);
+      };
+
+      it('a rate change keeps the hand-edited December, out of the count, and re-prices the rest', () => {
+        const loan = trackKitchen();
+        const dec = handEditDec();
+        expect(dec.amountEdited).toBe(true);
+        const cfg = { ...KITCHEN, annualRate: 9 };
+        const prev = edit(loan, cfg);
+        const plan = Store.getLoanSeriesSyncPlan(loanById(loan.id), prev);
+        expect(plan.count).toBe(future().length - 1);
+        expect(plan.customCount).toBe(1);
+        expect(plan.customDate).toBe('2026-12-01');
+        expect(plan.customC).toBe(30000);
+        expect(plan.customIds).toEqual([dec.id]);
+
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        const regular = regularOf(cfg);
+        expect(cents(future().find(t => t.date === '2026-12-01').amount)).toBe(30000);
+        future().filter(t => t.date !== '2026-12-01').forEach(t => expect(cents(t.amount)).toBe(regular(t.date)));
+        expect(armed().length).toBe(1);
+      });
+
+      it('the sheet names the kept payment', async () => {
+        const loan = trackKitchen();
+        handEditDec();
+        const prev = edit(loan, { ...KITCHEN, annualRate: 9 });
+        const body = await openSyncSheet(loan.id, prev);
+        expect(body).toContain('The 01/12/26 payment you changed by hand keeps its amount ($300.00).');
+      });
+
+      it('no hand edit: no custom keys on the plan', () => {
+        const loan = trackKitchen();
+        const prev = edit(loan, { ...KITCHEN, annualRate: 9 });
+        const plan = Store.getLoanSeriesSyncPlan(loanById(loan.id), prev);
+        ['customIds', 'customCount', 'customDate', 'customC'].forEach(k => expect(k in plan).toBe(false));
+      });
+
+      it('a plan with nothing but a kept payment is no plan', () => {
+        // a rate change in the loan's last month re-prices that month only
+        const cfg = { ...KITCHEN, rateChanges: [{ annualRate: 99, effectiveFrom: '2028-07-01' }] };
+        const control = trackKitchen();
+        const prevC = edit(control, cfg);
+        const controlPlan = Store.getLoanSeriesSyncPlan(loanById(control.id), prevC);
+        expect(controlPlan).not.toBeNull(); // unmarked: the final payment is re-priced
+        expect(controlPlan.firstDate).toBe('2028-07-01');
+        Store.dispatch('DELETE_LOAN', { id: control.id, deleteFuturePayments: false });
+        Store.state.transactions = Store.state.transactions.filter(t => !(t.recurrence && t.recurrence.seriesId === 'series-1'));
+
+        const loan = trackKitchen();
+        const tail = future().find(t => t.date === '2028-07-01');
+        Store.dispatch('UPDATE_TRANSACTION', { id: tail.id, amount: 300 }); // 'Only this'
+        const prev = edit(loan, cfg);
+        expect(Store.getLoanSeriesSyncPlan(loanById(loan.id), prev)).toBeNull();
+      });
+
+      it('guard (review blocker): a longer loan keeps December and prices the 6 added months', () => {
+        const loan = trackKitchen();
+        handEditDec();
+        const cfg = { ...KITCHEN, duration: 30 };
+        const prev = edit(loan, cfg);
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        const regular = regularOf(cfg);
+        expect(cents(future().find(t => t.date === '2026-12-01').amount)).toBe(30000);
+        const added = future().filter(t => t.date >= '2028-08-01');
+        expect(added.map(t => t.date)).toEqual(['2028-08-01', '2028-09-01', '2028-10-01', '2028-11-01', '2028-12-01', '2029-01-01']);
+        future().filter(t => t.date !== '2026-12-01').forEach(t => expect(cents(t.amount)).toBe(regular(t.date)));
+        added.forEach(t => expect(t.amountEdited).toBeUndefined());
+        expect(armed().length).toBe(1);
+      });
+
+      it('mark lifecycle (a): a scoped amount edit makes the amount the series\' own again', () => {
+        const loan = trackKitchen();
+        handEditDec();
+        const nov = future().find(t => t.date === '2026-11-01');
+        Store.dispatch('UPDATE_TRANSACTION', { id: nov.id, amount: 280, updateFuture: true });
+        const dec = future().find(t => t.date === '2026-12-01');
+        expect(cents(dec.amount)).toBe(28000);
+        expect(dec.amountEdited).toBeUndefined();
+        const cfg = { ...KITCHEN, annualRate: 9 };
+        const prev = edit(loan, cfg);
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        expect(cents(future().find(t => t.date === '2026-12-01').amount)).toBe(regularOf(cfg)('2026-12-01'));
+      });
+
+      it('mark lifecycle (b): a hand-edited last payment stays; the months a longer loan adds are unmarked and priced', () => {
+        const loan = trackKitchen();
+        const tail = future().find(t => t.date === '2028-07-01');
+        Store.dispatch('UPDATE_TRANSACTION', { id: tail.id, amount: 300 });
+        expect(members().find(t => t.id === tail.id).amountEdited).toBe(true);
+        const cfg = { ...KITCHEN, duration: 30 };
+        const prev = edit(loan, cfg);
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        const regular = regularOf(cfg);
+        expect(cents(members().find(t => t.id === tail.id).amount)).toBe(30000);
+        const added = future().filter(t => t.date > '2028-07-01');
+        expect(added).toHaveLength(6);
+        added.forEach(t => {
+          expect(t.amountEdited).toBeUndefined();
+          expect(cents(t.amount)).toBe(regular(t.date));
+        });
+      });
+
+      it('mark lifecycle (c): typed back to the regular amount, it is re-priced and unmarked', () => {
+        const loan = trackKitchen();
+        handEditDec(300);
+        const dec = handEditDec(263.23);
+        expect(dec.amountEdited).toBe(true);
+        const cfg = { ...KITCHEN, annualRate: 9 };
+        const prev = edit(loan, cfg);
+        const plan = Store.getLoanSeriesSyncPlan(loanById(loan.id), prev);
+        expect(plan.customIds).toBeUndefined();
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        const after = members().find(t => t.id === dec.id);
+        expect(cents(after.amount)).toBe(regularOf(cfg)('2026-12-01'));
+        expect(after.amountEdited).toBeUndefined();
+      });
+
+      it('guard (Italian, second sync): an unmarked series is re-priced as in 1.0.1', () => {
+        const cfg0 = { ...KITCHEN, amortization: 'italian' };
+        const loan = addLoan(cfg0, 'Italian');
+        const firstRow = sim(cfg0).schedule.find(r => r.index >= 1);
+        track(loan, { amount: firstRow.paymentC / 100, date: '2026-08-01', endDate: sim(cfg0).lastPaymentDate });
+        const cfg1 = { ...cfg0, rateChanges: [{ annualRate: 9, effectiveFrom: '2027-06-01' }] };
+        const prev1 = edit(loan, cfg1);
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev1 });
+        const cfg2 = { ...cfg0, rateChanges: [{ annualRate: 9, effectiveFrom: '2026-11-01' }] };
+        const prev2 = edit(loan, cfg2);
+        const plan = Store.getLoanSeriesSyncPlan(loanById(loan.id), prev2);
+        expect(plan).not.toBeNull();
+        expect(plan.customIds).toBeUndefined();
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev2 });
+        const regular = regularOf(cfg2);
+        future().filter(t => t.date >= '2026-11-01' && t.date <= '2027-05-01')
+          .forEach(t => expect(cents(t.amount)).toBe(regular(t.date)));
+      });
+
+      it('guard: a series tracked at a rounded amount is still fully re-priced', () => {
+        const loan = addLoan(KITCHEN);
+        track(loan, { amount: 263, date: '2026-08-01', endDate: sim(KITCHEN).lastPaymentDate });
+        const cfg = { ...KITCHEN, annualRate: 9 };
+        const prev = edit(loan, cfg);
+        Store.dispatch('SYNC_LOAN_SERIES', { id: loan.id, prevConfig: prev });
+        const regular = regularOf(cfg);
+        future().forEach(t => expect(cents(t.amount)).toBe(regular(t.date)));
+      });
+
+      it('the mark is not exported (no new CSV column)', () => {
+        executeFile('export.js');
+        let out = null;
+        global.window.StackdExport._download = (name, content) => { out = content; };
+        trackKitchen();
+        global.window.StackdExport.exportTransactions(Store.getState());
+        const before = out;
+        handEditDec();
+        global.window.StackdExport.exportTransactions(Store.getState());
+        expect(out.split('\n')[0]).toBe(before.split('\n')[0]);
+        expect(out).not.toMatch(/amountEdited/i);
+      });
+    });
   });
 
   describe('a capped series end is not called the loan\'s end', () => {

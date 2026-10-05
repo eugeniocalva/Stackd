@@ -59,6 +59,88 @@ window.Store = {
     '#374151': '#64748B', // Graphite
     '#161618': '#78716C', // Obsidian Black -> Warm Stone
   },
+
+  // 1.0.2 (BUG-24): markup-safety validators. Account colours and icons are
+  // ENUMERATIONS written unescaped into style="" and data-lucide="" (~30
+  // sites), and ids into data-id/value attributes, so the write paths validate
+  // them (and a boot heal repairs what 1.0-1.0.1 imports stored). Free text
+  // (names, tags, types, notes) is never rewritten: it is escaped at render
+  // through I18n.esc.
+  //
+  // A colour is a palette swatch (the only thing the form can produce); legacy
+  // hues map 1:1, case-insensitively. Anything else returns null, and the
+  // caller keeps its fallback -- the same rule the boot migration in init()
+  // already enforces, applied on write instead of one start later.
+  normalizeAccountColor(value) {
+    const c = String(value == null ? '' : value).trim().toUpperCase();
+    if (this.LEGACY_ACCOUNT_COLOR_MAP[c]) return this.LEGACY_ACCOUNT_COLOR_MAP[c];
+    return this.ACCOUNT_COLORS.includes(c) ? c : null;
+  },
+
+  // A Lucide name or a legacy emoji (main.js EMOJI_MAP): never whitespace, a
+  // quote, a bracket, an ampersand, a backslash, a backtick or '='.
+  isSafeIcon(value) {
+    return typeof value === 'string' && /^[^\s<>"'&\\`=]{1,40}$/.test(value);
+  },
+
+  // Generated ids are UUIDs or 'cat_x'; an id read from a file must look the
+  // same, or it is replaced (callers generate a fresh one). Returns the
+  // TRIMMED id when safe, otherwise null.
+  safeId(value) {
+    const s = String(value == null ? '' : value).trim();
+    return /^[A-Za-z0-9_.:-]{1,64}$/.test(s) ? s : null;
+  },
+
+  // An id cell read from a file: kept when safe, otherwise mapped to a
+  // STABLE safe id ('f-' + 64-bit FNV-1a-style hash of the trimmed cell), so
+  // every file that names the same id (SeriesId <-> LinkedSeriesId, AccountId
+  // <-> the accounts file's id, a re-imported Id) still meets on the same
+  // value. '' / null / undefined -> null.
+  fileId(value) {
+    const s = String(value == null ? '' : value).trim();
+    if (!s) return null;
+    const safe = this.safeId(s);
+    if (safe) return safe;
+    let h1 = 0x811c9dc5, h2 = 0x9747b28c;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193);
+      h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+    }
+    return 'f-' + (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+  },
+
+  // 1.0.2 (BUG-24): boot heal for icons stored before 1.0.2 (colours are
+  // healed by the account migration in init()). Only values that could
+  // never be an icon are replaced -- they rendered as a blank box anyway.
+  // Idempotent; saves only the slice it changed. Returns whether it did.
+  _healMarkupFields() {
+    const { accs, cats } = this._sanitizeMarkupFields();
+    if (accs) window.StackdDB.save('accounts', this.state.accounts);
+    if (cats) window.StackdDB.save('categories', this.state.categories);
+    return accs || cats;
+  },
+
+  // 1.0.2 (BUG-24): the in-memory half of the heal -- never saves. Also run
+  // whenever accounts/categories are read back from disk (a change or a boot
+  // rolled back at the quota, another tab's write), so memory never holds an
+  // unsafe icon or colour even while disk still does: the icon sinks write
+  // data-lucide="..." unescaped. 'which' limits it to one slice.
+  _sanitizeMarkupFields(which) {
+    let accs = false, cats = false;
+    if (which !== 'categories') {
+      (this.state.accounts || []).forEach((a, i) => {
+        if (!a) return;
+        if (!this.isSafeIcon(a.icon)) { a.icon = 'wallet'; accs = true; }
+        const color = this.normalizeAccountColor(a.color) || this.ACCOUNT_COLORS[i % this.ACCOUNT_COLORS.length];
+        if (a.color !== color) { a.color = color; accs = true; }
+      });
+    }
+    if (which !== 'accounts') {
+      (this.state.categories || []).forEach(c => { if (c && !this.isSafeIcon(c.icon)) { c.icon = 'pin'; cats = true; } });
+    }
+    return { accs, cats };
+  },
   state: {
     accounts: [],
     categories: [],
@@ -205,7 +287,21 @@ window.Store = {
     return saved && typeof saved === 'object' ? Object.assign(d, saved) : d;
   },
 
+  // 1.0.2 (BUG-34, D-U7-10): the boot (seeds, migrations, heals, the
+  // recurring pass) is one change too — a boot save that does not fit puts
+  // memory back to what is on disk before the first render, and the launch
+  // variant of the storage sheet explains it. Returns false in that case.
+  _booting: false,
   init() {
+    this._booting = true;
+    try {
+      return this.batch(() => this._initState());
+    } finally {
+      this._booting = false;
+    }
+  },
+
+  _initState() {
     this.state.accounts = window.StackdDB.load('accounts', []);
     this.state.categories = window.StackdDB.load('categories', []);
     this.state.transactions = window.StackdDB.load('transactions', []);
@@ -292,6 +388,7 @@ window.Store = {
     if (accountsChanged) {
       window.StackdDB.save('accounts', this.state.accounts);
     }
+    this._healMarkupFields(); // 1.0.2 (BUG-24)
 
     // v0.71 Phase 4: one-time seed of the 'Loan Payment' category for existing
     // installs. Flag-guarded so it is never resurrected once the user deletes it.
@@ -337,6 +434,7 @@ window.Store = {
     // Initialize Page Filters (v0.55)
     this.state.historyFilters.period.value = monthStr;
     this.state.analyticsFilters.period.value = monthStr;
+    this._liveDay = todayStr; // 1.0.2 (BUG-69) the local day both periods were last reconciled on
     
     // v0.29 Migration: Deprecate 'balance_adjustment' type
     let migrationChanged = false;
@@ -458,6 +556,18 @@ window.Store = {
     // tail generates plain rows instead of new orphan legs.
     this._healOrphanTransferLegs();
     this._healRecurrenceGenerators();
+    // 1.0.2 (BUG-29): installs that deleted an account on 1.0/1.0.1 still
+    // hold its id in the saved Home view, widget scopes, default wallet and
+    // bank mappings. Skipped when there are rows but no accounts: only an
+    // unreadable accounts key gives that state (DELETE_ACCOUNT removes the
+    // account's rows, a reset removes all), and pruning then would wipe every
+    // reference for good, file mirror included.
+    if (this.state.accounts.length > 0 || this.state.transactions.length === 0) this._pruneAccountRefs();
+    this._healConvertedOpeningBalances(); // 1.0.2 (BUG-25)
+    // 1.0.2 (BUG-26): every member carries its series' real schedule
+    if (this._healSeriesSchedules()) window.StackdDB.save('transactions', this.state.transactions);
+    this._healRestoredImportKeys(); // 1.0.2 (BUG-32)
+    this._healMultilineNotes(); // 1.0.2 (R1)
     this._processRecurringTransactions();
 
     // ── Cross-Tab Synchronization ──────────────────────────────────────────
@@ -470,8 +580,13 @@ window.Store = {
         let changed = false;
 
         // Sync Plain Data
-        if (e.key === 'stackd_v1_accounts') { this.state.accounts = window.StackdDB.load('accounts', []); changed = true; }
-        if (e.key === 'stackd_v1_categories') { this.state.categories = window.StackdDB.load('categories', []); changed = true; }
+        if (e.key === 'stackd_v1_accounts') {
+          this.state.accounts = window.StackdDB.load('accounts', []);
+          this._sanitizeMarkupFields('accounts'); // 1.0.2 (BUG-24): memory only
+          this._pruneAccountRefs({ sessionOnly: true }); // 1.0.2 (BUG-29): this tab's History/Analytics filters
+          changed = true;
+        }
+        if (e.key === 'stackd_v1_categories') { this.state.categories = window.StackdDB.load('categories', []); this._sanitizeMarkupFields('categories'); changed = true; } // 1.0.2 (BUG-24)
         if (e.key === 'stackd_v1_transactions') { this.state.transactions = window.StackdDB.load('transactions', []); changed = true; }
         if (e.key === 'stackd_v1_budgets') { this.state.budgets = window.StackdDB.load('budgets', []); changed = true; }
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
@@ -484,6 +599,8 @@ window.Store = {
         if (e.key === 'stackd_v1_bankConnect') { this.state.bankConnect = this._loadBankConnect(); changed = true; } // v1.05
         if (e.key === 'stackd_v1_bankConnections') { this.state.bankConnections = window.StackdDB.load('bankConnections', []); changed = true; } // v1.05
         if (e.key === 'stackd_v1_pro') { this.state.pro = this._loadPro(); changed = true; } // v1.13
+        if (e.key === 'stackd_v1_expandedGraphFilters') { this.state.expandedGraphFilters = window.StackdDB.load('expandedGraphFilters', { interval: 'monthly', accounts: [], categories: [] }); changed = true; } // 1.0.2 (BUG-29)
+        if (e.key === 'stackd_v1_defaultAccountId') { this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', ''); changed = true; } // 1.0.2 (BUG-29)
         if (e.key === 'stackd_v1_theme') {
           this.state.theme = window.StackdDB.load('theme', 'system');
           this.applyTheme();
@@ -605,6 +722,18 @@ window.Store = {
     ) || null;
   },
 
+  // 1.0.2 (BUG-30): same rule for accounts — trimmed, case-insensitive,
+  // across every currency and type, because backups name an account by its
+  // name. UI-only like findCategoryByName: ADD_ACCOUNT/UPDATE_ACCOUNT stay
+  // ungated (imports, tests, Bank Connect).
+  findAccountByName(name, exceptId) {
+    const key = String(name == null ? '' : name).trim().toLowerCase();
+    if (!key) return null;
+    return (this.state.accounts || []).find(a =>
+      a.id !== exceptId && String(a.name == null ? '' : a.name).trim().toLowerCase() === key
+    ) || null;
+  },
+
   _getSystemTimeString() {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
@@ -683,6 +812,46 @@ window.Store = {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
+  // 1.0.2 (BUG-25): before 1.0.2, an untouched save of an opening balance from
+  // History stored it as income (+|amount|, cat_balance, comment 'Opening
+  // Balance', the literal ADD_/UPDATE_ACCOUNT store, never translated). A user
+  // who then tapped Expense stored an expense. Restore the type ONLY where no
+  // balance moves: the account has no opening_balance row, exactly one such
+  // candidate, and no other row dated before it or undated ('' sorts first and
+  // would drop out). An income keeps its amount; an expense becomes negative.
+  // Both count as before. The sign lost by the income conversion is not guessed:
+  // Edit Account shows the amount with its Positive/Negative toggle.
+  // Idempotent (a healed row is an opening_balance, so its account is skipped
+  // next boot); saves the transactions slice only when it healed something.
+  _healConvertedOpeningBalances() {
+    const txs = this.state.transactions;
+    const hasOb = new Set();
+    const cands = Object.create(null);
+    txs.forEach(t => {
+      if (!t.accountId) return;
+      if (t.type === 'opening_balance') hasOb.add(t.accountId);
+      else if ((t.type === 'income' || t.type === 'expense') && t.categoryId === 'cat_balance'
+        && t.comment === 'Opening Balance' && !t.transferRef && !t.recurrence && t.isPaid !== false) {
+        (cands[t.accountId] = cands[t.accountId] || []).push(t);
+      }
+    });
+    let now = null;
+    Object.keys(cands).forEach(id => {
+      const c = cands[id];
+      if (hasOb.has(id) || c.length !== 1 || !c[0].date) return;
+      const row = c[0];
+      if (txs.some(t => t.accountId === id && t !== row && (!t.date || t.date < row.date))) return;
+      if (row.type === 'expense') row.amount = -Math.abs(row.amount);
+      row.type = 'opening_balance';
+      row.updatedAt = now || (now = new Date().toISOString());
+    });
+    if (now) {
+      this._openingIdx = null;
+      this._budgetSpendIdx = null;
+      window.StackdDB.save('transactions', txs);
+    }
+  },
+
   // 1.0.1 (BUG-14): a transfer leg whose counterpart is gone is not a transfer.
   // Before 1.0.1, DELETE_ACCOUNT left the other account's leg holding a
   // transferRef that pointed at nothing (shown as a transfer, hidden from
@@ -706,6 +875,55 @@ window.Store = {
       }
     });
     if (healed) window.StackdDB.save('transactions', this.state.transactions);
+  },
+
+  // 1.0.2 (BUG-29): every slice that names accounts by id. Readers treat an
+  // empty list as "all accounts", so a list left holding only a deleted id
+  // matched nothing (Home and scoped widgets read €0.00, History showed a
+  // raw-id chip). Drops every id that no longer names an account and saves
+  // only what changed; dropping an id only widens a selection back towards
+  // "all", it never hides a live account. { sessionOnly: true } (cross-tab)
+  // touches only the never-saved History/Analytics filters: the tab that
+  // deleted saves the persisted slices itself. Non-array slices (a corrupt
+  // key) are left alone rather than crash boot.
+  _pruneAccountRefs(opts) {
+    const known = new Set((this.state.accounts || []).map(a => a && a.id));
+    const stale = (ids) => Array.isArray(ids) && ids.some(id => !known.has(id));
+    const live = (ids) => ids.filter(id => known.has(id));
+    ['historyFilters', 'analyticsFilters'].forEach(key => {
+      const f = this.state[key];
+      if (f && stale(f.accounts)) this.state[key] = { ...f, accounts: live(f.accounts) };
+    });
+    if (opts && opts.sessionOnly) return;
+    const eg = this.state.expandedGraphFilters;
+    if (eg && stale(eg.accounts)) {
+      this.state.expandedGraphFilters = { ...eg, accounts: live(eg.accounts) };
+      window.StackdDB.save('expandedGraphFilters', this.state.expandedGraphFilters);
+    }
+    const ws = this.state.homeWidgets;
+    if (Array.isArray(ws) && ws.some(w => w && w.config && stale(w.config.accountIds))) {
+      this.state.homeWidgets = ws.map(w => (w && w.config && stale(w.config.accountIds))
+        ? { ...w, config: { ...w.config, accountIds: live(w.config.accountIds) } } : w);
+      window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+    }
+    const def = this.state.defaultAccountId;
+    if (def && !known.has(def)) {
+      // D-U5-1: the first primary-currency account by name (the test
+      // _ensureForeignIdx uses, inlined: at boot the memo may predate this
+      // state), else the first by name, else ''.
+      const byName = (this.state.accounts || []).slice().sort((a, b) => this.compareAlpha(a, b));
+      const pick = byName.find(a => !a.currency || a.currency === this.state.currency) || byName[0];
+      this.state.defaultAccountId = pick ? pick.id : '';
+      window.StackdDB.save('defaultAccountId', this.state.defaultAccountId);
+    }
+    const dead = (m) => m && m.stackdAccountId && !known.has(m.stackdAccountId);
+    const hasDead = (c) => c && Array.isArray(c.accounts) && c.accounts.some(dead);
+    const cs = this.state.bankConnections;
+    if (Array.isArray(cs) && cs.some(hasDead)) { // D-U5-8
+      this.state.bankConnections = cs.map(c => hasDead(c)
+        ? { ...c, accounts: c.accounts.map(m => dead(m) ? { ...m, stackdAccountId: null } : m) } : c);
+      window.StackdDB.save('bankConnections', this.state.bankConnections);
+    }
   },
 
   // v0.98: enforce the one-armed-tail invariant on stored data. Exactly one
@@ -736,6 +954,110 @@ window.Store = {
       healed = true;
     });
     if (healed) window.StackdDB.save('transactions', this.state.transactions);
+  },
+
+  // 1.0.2 (BUG-26): endDate / interval / frequency are SERIES-level values.
+  // Members carry copies, but only the armed member's copy is real (it alone
+  // bounds generation in _processRecurringTransactions); a series with no
+  // armed member was stopped and ends ON its last payment (the SYNC 'finish'
+  // rule). Every path that ends a series early used to leave the old end on
+  // the payments it kept, and a later 'This and future' / 'All' edit re-armed
+  // from that stale copy and brought the deleted payments back.
+  // { endDate, interval, frequency, live, lastDate } — null for no members.
+  // A stopped series ends on its last payment, but a payment 'Only this'
+  // moved past the end (it keeps the series end as its copy, D-U3-2a) counts
+  // at that copy, not at its own date — so the move never extends the series.
+  // Each member contributes min(date, its endDate copy): stale 1.0/1.0.1
+  // copies are LATER than the dates, so the heal still lands on the last
+  // payment. lastDate is the latest member inside the window.
+  _scheduleOf(members) {
+    let armed = null;
+    let last = null;
+    let stopEnd = null;
+    members.forEach(t => {
+      if (!t.recurrence) return;
+      if (t.recurrence.nextDate && (!armed || t.date > armed.date)) armed = t;
+      if (!last || t.date > last.date || (t.date === last.date && t.type === 'expense')) last = t;
+      const own = (t.recurrence.endDate && t.recurrence.endDate < t.date) ? t.recurrence.endDate : t.date;
+      if (!stopEnd || own > stopEnd) stopEnd = own;
+    });
+    if (!last) return null;
+    const r = (armed || last).recurrence;
+    const endDate = armed ? r.endDate : stopEnd;
+    let lastIn = null;
+    members.forEach(t => {
+      if (t.recurrence && (!endDate || t.date <= endDate) && (!lastIn || t.date > lastIn)) lastIn = t.date;
+    });
+    return {
+      endDate,
+      interval: r.interval,
+      frequency: r.frequency,
+      live: !!armed,
+      lastDate: lastIn || last.date
+    };
+  },
+
+  // 1.0.2 (BUG-26): the schedule of a series (read-only), or null.
+  getSeriesSchedule(seriesId) {
+    if (!seriesId) return null;
+    return this._scheduleOf(this.state.transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId));
+  },
+
+  // 1.0.2 (BUG-26): write a schedule onto every member (both legs, past ones
+  // too). Metadata only — no updatedAt bump. Mutates; returns true when a
+  // member changed (the caller saves).
+  _stampSchedule(members, s) {
+    const K = ['endDate', 'interval', 'frequency'];
+    let changed = false;
+    members.forEach(t => {
+      if (!t.recurrence) return;
+      const next = { ...t.recurrence };
+      K.forEach(k => { if (s[k] != null) next[k] = s[k]; });
+      if (K.some(k => String(next[k]) !== String(t.recurrence[k]))) {
+        t.recurrence = next;
+        changed = true;
+      }
+    });
+    return changed;
+  },
+
+  // 1.0.2 (BUG-26): bring one series' members in line with its schedule.
+  // Returns true when something changed (the caller saves).
+  _syncSeriesSchedule(seriesId) {
+    if (!seriesId) return false;
+    const members = this.state.transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId);
+    const s = this._scheduleOf(members);
+    return s ? this._stampSchedule(members, s) : false;
+  },
+
+  // 1.0.2 (BUG-26): UPDATE_TRANSACTION / UPDATE_TRANSFER — a value the form
+  // left out is the series'; without a 'This and future' / 'All' scope the
+  // series values always win, so 'Only this' never reschedules (D-U3-2a).
+  _resolveSeriesRec(rec, sched, scoped) {
+    const out = { ...rec };
+    ['endDate', 'interval', 'frequency'].forEach(k => {
+      if (sched[k] != null && (out[k] == null || !scoped)) out[k] = sched[k];
+    });
+    return out;
+  },
+
+  // 1.0.2 (BUG-26): boot + restore repair — stale endDate/interval/frequency
+  // copies left by 1.0/1.0.1 on the members a shortened series kept. One O(T)
+  // pass; never adds, removes or re-arms a row, never touches an amount, a
+  // date or the paid flag. Idempotent; returns true when it healed something
+  // (the caller saves).
+  _healSeriesSchedules() {
+    const by = {};
+    this.state.transactions.forEach(t => {
+      const sid = t.recurrence && t.recurrence.seriesId;
+      if (sid) (by[sid] = by[sid] || []).push(t);
+    });
+    let healed = false;
+    Object.keys(by).forEach(sid => {
+      const s = this._scheduleOf(by[sid]);
+      if (s && this._stampSchedule(by[sid], s)) healed = true;
+    });
+    return healed;
   },
 
   _processRecurringTransactions() {
@@ -807,6 +1129,7 @@ window.Store = {
           // it a second time) and breaks the one-key-per-row dedup.
           delete generatedTx.importKey;
           delete generatedTx.bankRef;
+          delete generatedTx.amountEdited; // 1.0.2 (BUG-74): a clone is not a hand edit
 
           // If transfer, handle ref regenerations
           if (generatedTx.transferRef) {
@@ -832,6 +1155,7 @@ window.Store = {
                 delete cpGen.isPaid; // v0.82: same rule as generatedTx above
                 delete cpGen.importKey; // 1.0.1: nor a bank identity
                 delete cpGen.bankRef;
+                delete cpGen.amountEdited; // 1.0.2 (BUG-74)
                 this.state.transactions.push(cpGen);
                 // Strip the old counterpart's own nextDate (if it had one) so it
                 // can never act as a second generator for the same pair.
@@ -858,6 +1182,61 @@ window.Store = {
 
   // --- Period Helpers (v0.52) ---
   
+  // 1.0.2 (BUG-28) THE local calendar-day formatter: a Date, epoch ms or ISO
+  // timestamp -> 'YYYY-MM-DD' in the device zone. No argument = now (same as
+  // _todayYMD()); null, undefined, '' or an invalid value -> '' (a missing
+  // timestamp never silently becomes 1970 or today: guard at the call site).
+  // A bare 'YYYY-MM-DD' is already a local day and comes back unchanged (Date
+  // would parse it as UTC midnight). Never toISOString().split('T')[0]: that
+  // is the UTC day, yesterday in UTC+ zones until 01:00/02:00 and tomorrow in
+  // UTC- zones every evening. Shift a 'YYYY-MM-DD' with
+  // _calculateNextRecurrenceDate (noon-anchored; negative steps are fine).
+  _localYMD(value) {
+    if (arguments.length === 0) value = new Date();
+    if (value == null || value === '') return '';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d)) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  // 1.0.2 (BUG-69) A History/Analytics period that showed the CURRENT day,
+  // week, month or year follows the calendar: once the local date has moved
+  // past it (app left open across midnight, resumed the next morning) it
+  // rolls to the period containing today. A period the user moved away from
+  // (‹ ›, a donut/tag drill-down) or a custom range is a choice and stays.
+  // `_liveDay` = the local day of the last reconcile (boot, then every
+  // SET_VIEW / ROLL_PERIODS / filter action; transient, never persisted).
+  // `keepPage` ('history' | 'analytics') is skipped: the action is about to
+  // set that page's period from what is on screen, and is then judged against
+  // today's calendar. Writes no StackdDB slice. Returns the pages whose period
+  // moved (['history', 'analytics'] subset; [] when none), so a caller
+  // re-renders only when the page ON SCREEN moved (round-1 review).
+  _rollLivePeriods(keepPage) {
+    const today = this._todayYMD();
+    const prevDay = this._liveDay;
+    this._liveDay = today;
+    if (!prevDay || prevDay === today) return [];
+    const rolled = [];
+    [['history', 'historyFilters'], ['analytics', 'analyticsFilters']].forEach(([page, key]) => {
+      if (page === keepPage) return;
+      const p = this.state[key] && this.state[key].period;
+      if (!p || p.type === 'custom' || !p.value) return;
+      if (!this.isDateInPeriod(prevDay, p) || this.isDateInPeriod(today, p)) return;
+      const value = p.type === 'month' ? today.slice(0, 7) + '-01'          // boot-style anchors:
+        : (p.type === 'year' ? today.slice(0, 4) + '-01-01' : today);       // never a 29th-31st
+      this.state[key] = { ...this.state[key], period: { ...p, value } };
+      rolled.push(page);
+    });
+    return rolled;
+  },
+
+  // 1.0.2 (BUG-69) the filter page a view renders from: History reads only
+  // historyFilters, Analytics only analyticsFilters; any other view neither.
+  _livePageOf(view) {
+    return view === 'transactions' ? 'history' : (view === 'analytics' ? 'analytics' : null);
+  },
+
   _getPeriodBounds(type, anchorDateStr) {
     // v0.93: pure function, memoized — hot callers used to re-derive identical
     // bounds thousands of times per render. Key space stays tiny (period type ×
@@ -993,6 +1372,12 @@ window.Store = {
         ? { start: period.start, end: period.end }
         : this._getPeriodBounds(period.type, period.value));
 
+    // v1.02: analytics is aggregate math — an empty account filter means
+    // primary-currency accounts only; 1.0.2 (BUG-36): an explicit list that
+    // mixes currencies keeps only the accounts aggregateSelection resolves.
+    // History (a ledger, not a sum) deliberately keeps every account visible.
+    const inAggregate = pageKey === 'analytics' ? this.aggregatePredicate(accounts) : null;
+
     return this.state.transactions.filter(tx => {
       if (pageKey === 'analytics') {
         if (tx.isPaid === false) return false; // Exclude unpaid transactions from analytics
@@ -1003,14 +1388,8 @@ window.Store = {
 
       if (bounds && (tx.date < bounds.start || tx.date > bounds.end)) return false;
       if (types.length > 0 && !types.includes(tx.type)) return false;
-      if (accounts.length > 0) {
-        if (!accounts.includes(tx.accountId)) return false;
-      } else if (pageKey === 'analytics' && !this._isPrimaryAccount(tx.accountId)) {
-        // v1.02: analytics is aggregate math — an empty account filter means
-        // primary-currency accounts only. History (a ledger, not a sum)
-        // deliberately keeps every account visible.
-        return false;
-      }
+      if (accounts.length > 0 && !accounts.includes(tx.accountId)) return false;
+      if (inAggregate && !inAggregate(tx.accountId)) return false;
       const matchCategory = categories.length === 0 ||
                             categories.includes(tx.categoryId) ||
                             (categories.includes('uncategorized') && !tx.categoryId);
@@ -1049,7 +1428,7 @@ window.Store = {
     if (type === 'custom') {
       const sDt = new Date(start + 'T00:00:00');
       const eDt = new Date(end + 'T00:00:00');
-      const diffDays = Math.ceil((eDt - sDt) / (1000 * 60 * 60 * 24)) + 1;
+      const diffDays = Math.round((eDt - sDt) / (1000 * 60 * 60 * 24)) + 1; // 1.0.2 (BUG-67) a DST change makes one day 23/25 h
       
       const prevEnd = new Date(sDt);
       prevEnd.setDate(prevEnd.getDate() - 1);
@@ -1119,7 +1498,140 @@ window.Store = {
     else Promise.resolve().then(flush);
   },
 
+  // ── Changes are all-or-nothing (1.0.2, BUG-34) ──────────────────────────
+  // Every dispatch is one journaled change (StackdDB.begin/end). When a save
+  // does not fit (or the reducer throws) every key the change wrote is put
+  // back, the touched slices are reloaded from disk so memory equals disk
+  // again, one deferred "Storage is full" sheet is shown and dispatch
+  // returns false. Store.batch(fn) makes a multi-dispatch flow one change;
+  // nested scopes join the outer one. A flow that reports the failure itself
+  // claims it with takeSaveFailure() before the sheet's timer fires.
   dispatch(action, payload) {
+    return this.batch(() => this._reduce(action, payload));
+  },
+
+  batch(fn) {
+    const db = window.StackdDB;
+    if (!db || typeof db.begin !== 'function') { fn(); return true; } // unit-test doubles
+    db.begin();
+    let threw = false;
+    let thrown = null;
+    try {
+      fn();
+    } catch (error) {
+      threw = true;
+      thrown = error;
+      db.abort(error || new Error('change aborted'));
+    }
+    const ok = this._settleChange(db.end());
+    if (threw) throw thrown;
+    return ok;
+  },
+
+  _settleChange(j) {
+    const db = window.StackdDB;
+    if (!j) return !(db._journal && db._journal.failed); // nested: the outer scope settles
+    if (!j.failed) return true;
+    j.touched.forEach((key) => {
+      try {
+        if (!this._reloadSlice(key)) console.error('Store: no reload for', key);
+      } catch (error) {
+        console.error('Store: reload failed for', key, error);
+      }
+    });
+    if (j.touched.size) { this._sortData(); this.emit(); } // memory = disk again
+    this._announceSaveFailure(j.failed);
+    return false;
+  },
+
+  // Must list EVERY persisted key, with init's own defaults and seeds, so a
+  // rolled-back change leaves memory equal to disk (storageFull.test.js scans
+  // store.js/main.js for StackdDB.save/remove keys and fails on a missing one).
+  _reloadSlice(key) {
+    const L = (k, d) => window.StackdDB.load(k, d);
+    const s = this.state;
+    switch (key) {
+      case 'accounts':
+        s.accounts = L('accounts', []);
+        this._sanitizeMarkupFields('accounts'); // 1.0.2 (BUG-24): disk may predate the heal
+        return true;
+      case 'transactions': case 'budgets': case 'loans':
+      case 'importPresets': case 'importRules': case 'bankConnections':
+        s[key] = L(key, []);
+        return true;
+      case 'categories': // as init: an empty store gets the defaults
+        s.categories = L('categories', []);
+        if (!s.categories.length) s.categories = [...DEFAULT_CATEGORIES];
+        this._sanitizeMarkupFields('categories'); // 1.0.2 (BUG-24)
+        return true;
+      case 'homeWidgets': // as init: an ABSENT key means the seed
+        s.homeWidgets = localStorage.getItem(window.StackdDB.PREFIX + 'homeWidgets') === null
+          ? this._defaultHomeWidgets()
+          : L('homeWidgets', []);
+        return true;
+      case 'currency': s.currency = L('currency', 'USD'); return true;
+      case 'language':
+        s.language = L('language', 'en');
+        if (window.I18n) window.I18n.setLang(s.language);
+        return true;
+      case 'theme': s.theme = L('theme', 'system'); this.applyTheme(); return true;
+      case 'enableTimeInput': s.enableTimeInput = L('enableTimeInput', false); return true;
+      case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
+      case 'historyFilterSortOrder': s.historyFilters.sortOrder = L('historyFilterSortOrder', 'asc'); return true;
+      case 'defaultAccountId': s.defaultAccountId = L('defaultAccountId', ''); return true;
+      case 'analyticsBalanceMode': s.analyticsBalanceMode = L('analyticsBalanceMode', 'today'); return true;
+      case 'expandedGraphFilters':
+        s.expandedGraphFilters = L('expandedGraphFilters', { interval: 'monthly', accounts: [], categories: [] });
+        return true;
+      case 'bankConnect': s.bankConnect = this._loadBankConnect(); return true;
+      case 'pro': s.pro = this._loadPro(); return true;
+      case 'catDebtSeeded': case 'setup_done': return true; // flags with no state
+      default: return false;
+    }
+  },
+
+  _saveFailure: null,
+
+  // Claim the pending failure: the caller reports it, so the sheet is skipped.
+  takeSaveFailure() {
+    const f = this._saveFailure;
+    this._saveFailure = null;
+    return f;
+  },
+
+  _announceSaveFailure(error) {
+    const prev = this._saveFailure;
+    this._saveFailure = {
+      quota: window.StackdDB.isQuotaError(error) || !!(prev && prev.quota),
+      boot: !!this._booting || !!(prev && prev.boot)
+    };
+    if (prev) return; // one sheet per burst
+    let waits = 0;
+    const show = () => { // after this change's render; a caller may have claimed it
+      // A Components.Modal closed around the failed change (factory reset,
+      // loan promote, any onSave) clears all of #modal-container 300 ms
+      // later: show the sheet once that teardown has run, or it is wiped.
+      if (this._saveFailure && waits < 4 && typeof document !== 'undefined' &&
+          document.querySelector('#active-modal:not(.open)')) {
+        waits += 1;
+        setTimeout(show, 350);
+        return;
+      }
+      const f = this.takeSaveFailure();
+      const C = window.Components;
+      const I = window.I18n;
+      if (!f || !C || !C.NoticeSheet || !I) return;
+      C.NoticeSheet.show({
+        id: 'storage-full-modal',
+        tone: 'error',
+        title: I.t(f.quota ? 'storage.fullTitle' : 'storage.failedTitle'),
+        body: I.t(f.quota ? (f.boot ? 'storage.bootBody' : 'storage.fullBody') : 'storage.failedBody')
+      });
+    };
+    setTimeout(show, 0);
+  },
+
+  _reduce(action, payload) {
     // v0.93: any mutation may touch transactions/accounts — drop the memoized
     // indexes; they rebuild lazily in one O(T) pass on next use.
     this._openingIdx = null;
@@ -1132,10 +1644,10 @@ window.Store = {
       case 'ADD_ACCOUNT': {
         const existingCount = this.state.accounts.length;
         const newAccount = {
-          id: payload.id || window.StackdDB.generateId(),
+          id: this.safeId(payload.id) || window.StackdDB.generateId(), // 1.0.2 (BUG-24)
           name: payload.name,
-          color: payload.color || this.ACCOUNT_COLORS[existingCount % this.ACCOUNT_COLORS.length],
-          icon: payload.icon || 'wallet',
+          color: this.normalizeAccountColor(payload.color) || this.ACCOUNT_COLORS[existingCount % this.ACCOUNT_COLORS.length],
+          icon: this.isSafeIcon(payload.icon) ? payload.icon : 'wallet',
           type: payload.type || 'Account',
           currency: payload.currency || this.state.currency, // v1.02: plan §6
           createdAt: new Date().toISOString()
@@ -1152,7 +1664,7 @@ window.Store = {
             amount: obAmount,
             accountId: newAccount.id,
             categoryId: 'cat_balance',
-            date: payload.openingDate || newAccount.createdAt.split('T')[0],
+            date: payload.openingDate || this._todayYMD(), // 1.0.2 (BUG-38): createdAt is now; use its LOCAL day
             time: '00:00',
             comment: 'Opening Balance',
             createdAt: new Date().toISOString()
@@ -1174,9 +1686,10 @@ window.Store = {
         const accountIndex = this.state.accounts.findIndex(a => a.id === payload.id);
         if (accountIndex !== -1) {
           if (payload.name !== undefined) this.state.accounts[accountIndex].name = payload.name;
-          if (payload.icon !== undefined) this.state.accounts[accountIndex].icon = payload.icon;
+          // 1.0.2 (BUG-24): an unsafe icon or a non-palette colour is ignored.
+          if (payload.icon !== undefined && this.isSafeIcon(payload.icon)) this.state.accounts[accountIndex].icon = payload.icon;
           if (payload.type !== undefined) this.state.accounts[accountIndex].type = payload.type;
-          if (payload.color !== undefined) this.state.accounts[accountIndex].color = payload.color;
+          if (payload.color !== undefined && this.normalizeAccountColor(payload.color)) this.state.accounts[accountIndex].color = this.normalizeAccountColor(payload.color);
           if (payload.currency !== undefined) this.state.accounts[accountIndex].currency = payload.currency; // v1.02
           
           this._sortData();
@@ -1186,7 +1699,14 @@ window.Store = {
             const existingObIdx = this.state.transactions.findIndex(
               t => t.accountId === payload.id && t.type === 'opening_balance'
             );
-            const newDate = payload.openingDate || (existingObIdx !== -1 ? this.state.transactions[existingObIdx].date : this.state.accounts[accountIndex].createdAt.split('T')[0]);
+            // 1.0.2 (BUG-38): the createdAt fallback is its LOCAL day (createdAt
+            // is a UTC ISO timestamp); a missing createdAt means today, never ''.
+            const createdAt = this.state.accounts[accountIndex].createdAt;
+            // 1.0.2 (BUG-24): a non-YMD openingDate (file text) is ignored.
+            const obDate = typeof payload.openingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.openingDate) ? payload.openingDate : '';
+            const newDate = obDate || (existingObIdx !== -1
+              ? this.state.transactions[existingObIdx].date
+              : (createdAt ? this._localYMD(createdAt) : this._todayYMD()));
             if (existingObIdx !== -1) {
               if (newObAmt !== null) this.state.transactions[existingObIdx].amount = newObAmt;
               this.state.transactions[existingObIdx].date = newDate;
@@ -1213,8 +1733,8 @@ window.Store = {
 
       case 'UPDATE_ACCOUNT_COLOR': {
         const accountIndex = this.state.accounts.findIndex(a => a.id === payload.id);
-        if (accountIndex !== -1) {
-          this.state.accounts[accountIndex].color = payload.color;
+        if (accountIndex !== -1 && this.normalizeAccountColor(payload.color)) { // 1.0.2 (BUG-24)
+          this.state.accounts[accountIndex].color = this.normalizeAccountColor(payload.color);
           window.StackdDB.save('accounts', this.state.accounts);
           changed = true;
         }
@@ -1226,6 +1746,7 @@ window.Store = {
         this.state.accounts = this.state.accounts.filter(a => a.id !== payload.id);
         this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
+        this._pruneAccountRefs(); // 1.0.2 (BUG-29)
         // 1.0.1 (BUG-14): a transfer's other leg lives in ANOTHER account. Deleting
         // this account removes only its own rows; the surviving counterpart is
         // unlinked into a plain (Uncategorized) income/expense — the same rule as
@@ -1339,10 +1860,21 @@ window.Store = {
         
         const existingTx = this.state.transactions[index];
 
-        // Amounts in the DB are always stored as absolute, unsigned numbers
+        // 1.0.2 (BUG-25): an opening balance belongs to its account. Only
+        // UPDATE_ACCOUNT changes its sign; nothing moves it to another account,
+        // a series or a transfer, whatever the caller sends.
+        const isOpening = existingTx.type === 'opening_balance';
+        if (isOpening) {
+          payload = { ...payload };
+          ['type', 'accountId', 'categoryId', 'recurrence', 'transferRef', 'convertFromTransfer',
+            'updateFuture', 'updateAll', 'regenerateSeries'].forEach(k => { delete payload[k]; });
+        }
+        // Amounts in the DB are stored as absolute numbers, except an opening
+        // balance, which keeps its stored sign.
         let absoluteAmount = payload.amount;
         if (absoluteAmount !== undefined) {
-           absoluteAmount = Math.abs(absoluteAmount);
+          absoluteAmount = Math.abs(absoluteAmount);
+          if (isOpening && existingTx.amount < 0) absoluteAmount = -absoluteAmount;
         }
 
         // v0.69: transfer leg -> plain expense/income conversion. The form
@@ -1358,7 +1890,13 @@ window.Store = {
           const counterpartIndex = this.state.transactions.findIndex(t => t.transferRef === existingTx.transferRef && t.id !== existingTx.id);
           if (counterpartIndex !== -1) {
             const counterpartTx = this.state.transactions[counterpartIndex];
-            if (absoluteAmount !== undefined) counterpartTx.amount = absoluteAmount; 
+            // 1.0.2 (BUG-35): UPDATE_TRANSFER's rule — never copy a figure into
+            // another currency; a save changing neither the amount nor this
+            // leg's account leaves the other leg alone (D-U8-11).
+            const legAccountId = payload.accountId !== undefined ? payload.accountId : existingTx.accountId;
+            const amountTouched = absoluteAmount !== undefined &&
+              (absoluteAmount !== Math.abs(existingTx.amount) || legAccountId !== existingTx.accountId);
+            if (amountTouched && this._sameCurrency(legAccountId, counterpartTx.accountId)) counterpartTx.amount = absoluteAmount;
             if (payload.date !== undefined) counterpartTx.date = payload.date;
             if (payload.note !== undefined) counterpartTx.note = payload.note;
             if (payload.comment !== undefined) counterpartTx.comment = payload.comment;
@@ -1388,6 +1926,13 @@ window.Store = {
         // generator state. A tx that was NOT part of a series keeps the armed
         // nextDate so newly-enabled recurrence still materializes.
         const existingRec = existingTx.recurrence || null;
+        // 1.0.2 (BUG-26): the schedule is the SERIES' (read before anything
+        // below mutates) — never the tapped member's own, possibly stale, copy.
+        const sched = existingRec && existingRec.seriesId ? this.getSeriesSchedule(existingRec.seriesId) : null;
+        const scoped = !!(payload.updateFuture || payload.updateAll);
+        if (sched && updatePayload.recurrence) {
+          updatePayload.recurrence = this._resolveSeriesRec(updatePayload.recurrence, sched, scoped);
+        }
         if (updatePayload.recurrence) {
           const merged = { ...(existingRec || {}), ...updatePayload.recurrence };
           if (existingRec) {
@@ -1404,11 +1949,10 @@ window.Store = {
         // Classify the change BEFORE mutating (drives the future/all scopes)
         const seriesId = (existingRec && existingRec.seriesId) || (payload.recurrence && payload.recurrence.seriesId);
         const dateChanged = payload.date !== undefined && payload.date !== existingTx.date;
-        const scheduleChanged = !!(payload.recurrence && existingRec && (
-          String(payload.recurrence.interval) !== String(existingRec.interval) ||
-          String(payload.recurrence.frequency) !== String(existingRec.frequency) ||
-          String(payload.recurrence.endDate) !== String(existingRec.endDate)
-        ));
+        // 1.0.2 (BUG-26): changed against the SERIES' schedule
+        const scheduleChanged = !!(updatePayload.recurrence && existingRec &&
+          ['endDate', 'interval', 'frequency'].some(k =>
+            String(updatePayload.recurrence[k]) !== String((sched || existingRec)[k])));
         const recurrenceRemoved = !!existingRec && payload.recurrence === null;
         const baseDate = existingTx.date; // original date: the past/future split point
 
@@ -1419,6 +1963,17 @@ window.Store = {
           tags: (updatePayload.tags !== undefined) ? updatePayload.tags : (existingTx.tags || []),
           updatedAt: new Date().toISOString()
         };
+
+        // 1.0.2 (BUG-74): an 'Only this' amount change on a loan's linked
+        // payment is a hand edit — the loan sync keeps it. A scoped amount
+        // change makes the amount the series' own again.
+        const amountMoved = absoluteAmount !== undefined &&
+          Math.round(Math.abs(absoluteAmount) * 100) !== Math.round(Math.abs(Number(existingTx.amount)) * 100);
+        if (amountMoved && seriesId) {
+          const edited = this.state.transactions[index];
+          if (scoped) delete edited.amountEdited;
+          else if ((this.state.loans || []).some(l => l.linkedSeriesId === seriesId)) edited.amountEdited = true;
+        }
 
         if (convertingFromTransfer) {
           // v0.69: drop the counterpart leg(s) and unlink the kept one(s).
@@ -1474,11 +2029,15 @@ window.Store = {
              // corruption when a transfer leg's type was converted with a
              // future/all scope)
              delete tUpdate.type;
+             // 1.0.2 (BUG-27): paid state is per occurrence — the edited
+             // payment still takes its flip, the others keep their own
+             delete tUpdate.isPaid;
              if (t.transferRef && t.type !== existingTx.type) {
                // Counterpart leg of a transfer pair: its account/category
                // belong to the OTHER side — only shared fields may propagate
                delete tUpdate.accountId;
                delete tUpdate.categoryId;
+               if (!this._sameCurrency(payload.accountId || existingTx.accountId, t.accountId)) delete tUpdate.amount; // 1.0.2 (BUG-35)
              }
              if (recurrenceRemoved) {
                tUpdate.recurrence = null;
@@ -1490,7 +2049,10 @@ window.Store = {
                else delete memberRec.nextDate;
                tUpdate.recurrence = memberRec;
              }
-             this.state.transactions[i] = { ...t, ...tUpdate, updatedAt: new Date().toISOString() };
+             const next = { ...t, ...tUpdate, updatedAt: new Date().toISOString() };
+             // 1.0.2 (BUG-74): a propagated amount is the series' own again
+             if (tUpdate.amount !== undefined) delete next.amountEdited;
+             this.state.transactions[i] = next;
            };
 
            this.state.transactions.forEach((t, i) => {
@@ -1523,6 +2085,10 @@ window.Store = {
               });
               const updatedTx = this.state.transactions.find(t => t.id === payload.id);
               if (updatedTx && updatedTx.recurrence && !recurrenceRemoved) {
+                 // 1.0.2 (BUG-26): the re-armed member never ends before its own date
+                 if (updatedTx.recurrence.endDate && updatedTx.recurrence.endDate < updatedTx.date) {
+                    updatedTx.recurrence.endDate = updatedTx.date;
+                 }
                  updatedTx.recurrence.nextDate = this._calculateNextRecurrenceDate(updatedTx.date, updatedTx.recurrence.interval, updatedTx.recurrence.frequency);
               }
               // v0.98: after a regeneration exactly ONE member may be armed —
@@ -1540,6 +2106,8 @@ window.Store = {
            }
         }
 
+        // 1.0.2 (BUG-26): every member carries the series' schedule
+        if (seriesId) this._syncSeriesSchedule(seriesId);
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
@@ -1597,11 +2165,18 @@ window.Store = {
           ...(payload.isPaid === false ? { isPaid: false } : {})
         });
 
+        // 1.0.2 (BUG-35): each leg in its OWN currency, never converted. Across
+        // currencies the income leg holds what arrived; within one currency the
+        // legs mirror (a stray receivedAmount is ignored). No receivedAmount
+        // from an old caller = the old 1:1 behaviour; the form requires it.
+        const received = this._sameCurrency(payload.expenseAccountId, payload.incomeAccountId)
+          ? undefined : this._receivedAmount(payload);
+
         // Income side (To)
         this.state.transactions.push({
           id: window.StackdDB.generateId(),
           type: 'income',
-          amount: Math.abs(payload.amount),
+          amount: received !== undefined ? received : Math.abs(payload.amount),
           accountId: payload.incomeAccountId,
           categoryId: '',
           date: payload.date,
@@ -1635,12 +2210,23 @@ window.Store = {
         const existingRecT = (items.find(t => t.recurrence && t.recurrence.seriesId) || {}).recurrence || null;
         const seriesId = (existingRecT && existingRecT.seriesId) || (payload.recurrence && payload.recurrence.seriesId) || null;
         const dateChanged = payload.date !== undefined && payload.date !== baseDate;
-        const scheduleChanged = !!(payload.recurrence && existingRecT && (
-          String(payload.recurrence.interval) !== String(existingRecT.interval) ||
-          String(payload.recurrence.frequency) !== String(existingRecT.frequency) ||
-          String(payload.recurrence.endDate) !== String(existingRecT.endDate)
-        ));
+        // 1.0.2 (BUG-26): resolve against the SERIES' schedule (read before
+        // anything mutates) and classify the change against it — same rule as
+        // UPDATE_TRANSACTION. legRecurrence and the propagated memberRec read rec.
+        const schedT = existingRecT && existingRecT.seriesId ? this.getSeriesSchedule(existingRecT.seriesId) : null;
+        const scopedT = !!(payload.updateFuture || payload.updateAll);
+        const rec = (schedT && payload.recurrence) ? this._resolveSeriesRec(payload.recurrence, schedT, scopedT) : payload.recurrence;
+        // compared merged and 60-month-clamped, exactly like UPDATE_TRANSACTION
+        // (an End Date past the cap that clamps back to the series end is no change)
+        const recCmp = (rec && existingRecT)
+          ? this._clampRecurrenceEndDate({ ...existingRecT, ...rec }, payload.date || baseDate) : null;
+        const scheduleChanged = !!(recCmp &&
+          ['endDate', 'interval', 'frequency'].some(k => String(recCmp[k]) !== String((schedT || existingRecT)[k])));
         const recurrenceRemoved = !!existingRecT && payload.recurrence === null;
+        // 1.0.2 (BUG-74): the expense leg's amount before the edit (the leg a
+        // loan reads), for the hand-edit mark below
+        const expLegBefore = items.find(t => t.type === 'expense') || items[0];
+        const oldAmountC = Math.round(Math.abs(Number(expLegBefore.amount)) * 100);
 
         // v0.67: build a PER-LEG recurrence. The old code assigned the same
         // payload.recurrence object (with a freshly armed nextDate) to both
@@ -1649,9 +2235,9 @@ window.Store = {
         // fields the form doesn't send, preserve the leg's own generator
         // state, and when recurrence is newly enabled arm ONLY the expense leg.
         const legRecurrence = (item) => {
-          if (payload.recurrence === undefined) return item.recurrence;
-          if (payload.recurrence === null) return null;
-          const merged = { ...(item.recurrence || {}), ...payload.recurrence };
+          if (rec === undefined) return item.recurrence;
+          if (rec === null) return null;
+          const merged = { ...(item.recurrence || {}), ...rec };
           if (item.recurrence) {
             if (item.recurrence.nextDate) merged.nextDate = item.recurrence.nextDate;
             else delete merged.nextDate;
@@ -1664,6 +2250,26 @@ window.Store = {
           return merged;
         };
 
+        // 1.0.2 (BUG-35): the income leg's amount, judged on the pair's
+        // accounts AFTER the edit; computed now because the loop below mutates
+        // the legs in place. undefined = leave every income leg's amount alone.
+        const expLeg = items.find(t => t.type === 'expense');
+        const incLeg = items.find(t => t.type === 'income');
+        const fromId = payload.expenseAccountId !== undefined ? payload.expenseAccountId : (expLeg && expLeg.accountId);
+        const toId = payload.incomeAccountId !== undefined ? payload.incomeAccountId : (incLeg && incLeg.accountId);
+        const sentAbs = payload.amount !== undefined ? Math.abs(payload.amount) : undefined;
+        let incomeAmount;
+        if (this._sameCurrency(fromId, toId)) {
+          // Mirror, as before — but a save that changes neither the sent amount
+          // nor an account keeps the pair's own received side (equal legs: the
+          // same number; legs that differ after a relabel: kept, D-U8-11).
+          const untouched = !!(expLeg && incLeg) && sentAbs === Math.abs(expLeg.amount) &&
+            fromId === expLeg.accountId && toId === incLeg.accountId;
+          incomeAmount = untouched ? Math.abs(incLeg.amount) : sentAbs;
+        } else {
+          incomeAmount = this._receivedAmount(payload); // the form requires it; else untouched
+        }
+
         items.forEach(item => {
            if (item.type === 'expense') {
               if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
@@ -1674,7 +2280,7 @@ window.Store = {
               if (tagsArray !== undefined) item.tags = tagsArray;
               item.updatedAt = new Date().toISOString();
            } else if (item.type === 'income') {
-              if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
+              if (incomeAmount !== undefined) item.amount = incomeAmount; // 1.0.2 (BUG-35)
               if (payload.incomeAccountId !== undefined) item.accountId = payload.incomeAccountId;
               if (payload.date !== undefined) item.date = payload.date;
               if (payload.note !== undefined) item.comment = payload.note;
@@ -1692,6 +2298,14 @@ window.Store = {
            this.state.transactions[idx] = { ...item };
         });
 
+        // 1.0.2 (BUG-74): same hand-edit mark as UPDATE_TRANSACTION, on the
+        // expense leg (the one getLoanFuturePayments reads)
+        if (seriesId && payload.amount !== undefined && Math.round(Math.abs(payload.amount) * 100) !== oldAmountC) {
+          const exp = this.state.transactions.find(t => t.transferRef === payload.transferRef && t.type === 'expense');
+          if (exp && scopedT) delete exp.amountEdited;
+          else if (exp && (this.state.loans || []).some(l => l.linkedSeriesId === seriesId)) exp.amountEdited = true;
+        }
+
         // Handle updateFuture or updateAll for Transfers (v0.67 semantics —
         // mirrors UPDATE_TRANSACTION: literal dates never propagate, date and
         // schedule changes regenerate the future, past pairs stay put)
@@ -1704,20 +2318,21 @@ window.Store = {
               const shouldPropagate = payload.updateAll ? (!isFuture || !regenerate) : (isFuture && !regenerate);
               if (!shouldPropagate) return;
 
-              if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
+              // 1.0.2 (BUG-35): each leg in its own currency (incomeAmount above)
+              if (t.type === 'income') { if (incomeAmount !== undefined) t.amount = incomeAmount; }
+              else if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
               if (payload.note !== undefined) t.comment = payload.note;
               if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
-              // v0.82: paid propagates with future/all like other non-date fields
-              if (payload.isPaid !== undefined) {
-                 if (payload.isPaid === false) t.isPaid = false;
-                 else delete t.isPaid;
-              }
+              // 1.0.2 (BUG-27): paid is per occurrence — only the tapped pair (above) changes
+              // 1.0.2 (BUG-74): a propagated amount is the series' own again
+              if (payload.amount !== undefined) delete t.amountEdited;
               if (t.type === 'expense' && payload.expenseAccountId !== undefined) t.accountId = payload.expenseAccountId;
               if (t.type === 'income' && payload.incomeAccountId !== undefined) t.accountId = payload.incomeAccountId;
               if (recurrenceRemoved) {
                  t.recurrence = null;
-              } else if (payload.recurrence) {
-                 const memberRec = { ...(t.recurrence || {}), ...payload.recurrence };
+              } else if (rec) {
+                 // the clamped end, like UPDATE_TRANSACTION's propagated recurrence
+                 const memberRec = { ...(t.recurrence || {}), ...rec, ...(recCmp && recCmp.endDate ? { endDate: recCmp.endDate } : {}) };
                  if (t.recurrence && t.recurrence.nextDate) memberRec.nextDate = t.recurrence.nextDate;
                  else delete memberRec.nextDate;
                  t.recurrence = memberRec;
@@ -1747,7 +2362,10 @@ window.Store = {
                  pair.forEach(t => {
                     if (!t.recurrence) return;
                     if (t.type === 'expense') {
-                       t.recurrence = { ...t.recurrence, nextDate: this._calculateNextRecurrenceDate(t.date, t.recurrence.interval, t.recurrence.frequency) };
+                       const r = { ...t.recurrence };
+                       if (r.endDate && r.endDate < t.date) r.endDate = t.date; // 1.0.2 (BUG-26) floor
+                       r.nextDate = this._calculateNextRecurrenceDate(t.date, r.interval, r.frequency);
+                       t.recurrence = r;
                     } else if (t.recurrence.nextDate) {
                        t.recurrence = { ...t.recurrence };
                        delete t.recurrence.nextDate;
@@ -1757,6 +2375,8 @@ window.Store = {
            }
         }
 
+        // 1.0.2 (BUG-26): every member (both legs) carries the series' schedule
+        if (seriesId) this._syncSeriesSchedule(seriesId);
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
@@ -1848,6 +2468,18 @@ window.Store = {
 
         this.state.transactions = this.state.transactions.filter(t => !idsToDelete.has(t.id));
 
+        // 1.0.2 (BUG-26): the survivors carry the series' real schedule. A
+        // 'This and future' cut removed the live tail, so an armed survivor
+        // is poison (it would regenerate the deleted payments); the stopped
+        // series then ends ON its last payment. Also covers DELETE_LOAN,
+        // SYNC 'finish', DELETE_RECURRING_FUTURE and the form's conversion,
+        // which all come through here.
+        const cutSid = txToDelete.recurrence && txToDelete.recurrence.seriesId;
+        if (cutSid) {
+          if (payload.deleteFuture) this._disarmSeries(cutSid);
+          this._syncSeriesSchedule(cutSid);
+        }
+
         window.StackdDB.save('transactions', this.state.transactions);
         changed = true;
         break;
@@ -1865,6 +2497,10 @@ window.Store = {
         const makeUnpaid = payload.isPaid !== undefined
           ? payload.isPaid === false
           : tx.isPaid !== false;
+        // 1.0.2 (live-U2-1): an opening balance is never unpaid (one swipe
+        // moved the balance by the whole opening amount, the BUG-25 class).
+        // Marking one paid still works: the way back for a row stored unpaid.
+        if (makeUnpaid && tx.type === 'opening_balance') break;
 
         const apply = (t) => {
           if (makeUnpaid) t.isPaid = false;
@@ -1952,7 +2588,24 @@ window.Store = {
           }
         });
 
+        // 1.0.2 (BUG-26): same series rule as DELETE_TRANSACTION — the series
+        // a 'This and future' target cuts are disarmed, and every series that
+        // lost a member re-stamps its schedule on the survivors.
+        const touchedSeries = new Set();
+        const cutSeries = new Set();
+        this.state.transactions.forEach(t => {
+          if (idsToDelete.has(t.id) && t.recurrence && t.recurrence.seriesId) touchedSeries.add(t.recurrence.seriesId);
+        });
+        if (deleteFuture) {
+          targetIds.forEach(id => {
+            const tx = this.state.transactions.find(t => t.id === id);
+            if (tx && tx.recurrence && tx.recurrence.seriesId) cutSeries.add(tx.recurrence.seriesId);
+          });
+        }
+
         this.state.transactions = this.state.transactions.filter(t => !idsToDelete.has(t.id));
+        cutSeries.forEach(sid => this._disarmSeries(sid));
+        touchedSeries.forEach(sid => this._syncSeriesSchedule(sid));
         this.state.selectedTransactionIds = [];
         this.state.isSelectionMode = false;
 
@@ -1967,15 +2620,30 @@ window.Store = {
       }
 
       case 'BATCH_IMPORT_TRANSACTIONS': {
+        // 1.0.2 (BUG-78): a restore keeps each row's id; one id is one
+        // transaction. A payload row whose id is already here is dropped (the
+        // last line of defence, as BATCH_IMPORT_BANK_TRANSACTIONS does for
+        // keys). 1.0.2 (BUG-24): the id is written AFTER the spread — an
+        // unsafe id (or an explicit `id: undefined`) gets a generated one — and
+        // the duplicate check runs on that id.
         const importTime = this._getSystemTimeString();
-        const newTxs = payload.transactions.map(t => ({
-          id: window.StackdDB.generateId(),
-          time: t.time || importTime,
-          ...t,
-          createdAt: t.createdAt || new Date().toISOString()
-        }));
+        const ids = new Set(this.state.transactions.map(t => t.id));
+        const newTxs = [];
+        payload.transactions.forEach(t => {
+          const id = this.safeId(t.id) || window.StackdDB.generateId();
+          if (ids.has(id)) return;
+          ids.add(id);
+          newTxs.push({
+            time: t.time || importTime,
+            ...t,
+            id: id,
+            createdAt: t.createdAt || new Date().toISOString()
+          });
+        });
+        if (!newTxs.length) break;
         this.state.transactions.push(...newTxs);
         this._sortTransactions();
+        this._healSeriesSchedules(); // 1.0.2 (BUG-26): a pre-1.0.2 backup carries stale series ends
         window.StackdDB.save('transactions', this.state.transactions);
         changed = true;
         break;
@@ -2099,12 +2767,16 @@ window.Store = {
         // Prepending + dedupe-by-match means re-teaching a merchant replaces
         // the old rule and wins immediately (first match wins in
         // matchImportRule), which stands in for a reorder UI.
-        const match = String(payload && payload.match || '').toLowerCase().trim().slice(0, 60);
+        // 1.0.2 (BUG-33): whitespace-collapsed, so a match taught from a legacy
+        // multi-line note is one line, and re-teaching replaces a stored
+        // 'supermercato\nrossi' instead of keeping it next to 'supermercato rossi'.
+        const norm = (m) => String(m || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60);
+        const match = norm(payload && payload.match);
         if (!match || !payload.categoryId) break;
         const rules = this.state.importRules || (this.state.importRules = []);
         this.state.importRules = [
           { id: window.StackdDB.generateId(), match: match, categoryId: payload.categoryId, createdAt: new Date().toISOString() }
-        ].concat(rules.filter(r => r.match !== match)).slice(0, 100); // cap bounds the per-row scan
+        ].concat(rules.filter(r => norm(r.match) !== match)).slice(0, 100); // cap bounds the per-row scan
         window.StackdDB.save('importRules', this.state.importRules);
         changed = true;
         break;
@@ -2122,9 +2794,9 @@ window.Store = {
 
       case 'ADD_CATEGORY': {
         const newCategory = {
-          id: payload.id || window.StackdDB.generateId(),
+          id: this.safeId(payload.id) || window.StackdDB.generateId(), // 1.0.2 (BUG-24)
           name: payload.name,
-          icon: payload.icon || 'pin',
+          icon: this.isSafeIcon(payload.icon) ? payload.icon : 'pin',
           isDefault: false,
           typeHint: payload.typeHint || 'both'
         };
@@ -2139,7 +2811,7 @@ window.Store = {
         const catIdx = this.state.categories.findIndex(c => c.id === payload.id);
         if (catIdx !== -1) {
           if (payload.name !== undefined) this.state.categories[catIdx].name = payload.name;
-          if (payload.icon !== undefined) this.state.categories[catIdx].icon = payload.icon;
+          if (payload.icon !== undefined && this.isSafeIcon(payload.icon)) this.state.categories[catIdx].icon = payload.icon; // 1.0.2 (BUG-24)
           // v1.19 (A-17): typeHint was accepted by ADD_CATEGORY but ignored
           // here, so the category editor's income/expense/both choice was
           // never saved on an EDIT (views.js sends it), and a restore could
@@ -2166,6 +2838,8 @@ window.Store = {
       }
 
       case 'SET_VIEW':
+        // 1.0.2 (BUG-69) a new local day rolls live periods; re-render only if the target view's own page moved
+        if (this._rollLivePeriods().includes(this._livePageOf(payload))) changed = true;
         if (this.state.activeView !== payload) {
           this.state.activeView = payload;
           // v0.72: widget edit mode is a dashboard-only affordance; leaving the
@@ -2173,6 +2847,15 @@ window.Store = {
           if (payload !== 'dashboard') this.state.widgetEditMode = false;
           changed = true;
         }
+        break;
+
+      case 'ROLL_PERIODS':
+        // 1.0.2 (BUG-69) main.js on resume, History's Today. Silent on other
+        // views: a half-filled form must never re-render under the user. On
+        // History/Analytics only that page's own roll re-renders (round-1
+        // review): History's Today scrolls synchronously when nothing it shows
+        // moved, and a re-render queued meanwhile would detach its target.
+        if (this._rollLivePeriods().includes(this._livePageOf(this.state.activeView))) changed = true;
         break;
 
       case 'SET_DEBT_SIM':
@@ -2297,11 +2980,15 @@ window.Store = {
       }
 
       case 'RESET_APP': {
-        window.StackdDB.save('accounts', []);
-        window.StackdDB.save('categories', [...DEFAULT_CATEGORIES]);
+        // 1.0.2 (BUG-34 hand-off from U7): shrinking writes first — the
+        // emptied transactions slice frees the most space — and the slices
+        // that can GROW (categories, the widget seed, the view/default
+        // resets) last, so at the storage quota a growing write never runs
+        // before the space it needs has been released.
         window.StackdDB.save('transactions', []);
-        window.StackdDB.save('budgets', []);
         window.StackdDB.save('loans', []);
+        window.StackdDB.save('accounts', []);
+        window.StackdDB.save('budgets', []);
         window.StackdDB.save('importPresets', []); // v0.99
         window.StackdDB.save('importRules', []); // v1.01
         // v1.05: connections are per-device state; B4 revokes them at the
@@ -2312,10 +2999,18 @@ window.Store = {
         window.StackdDB.save('bankConnections', []);
         // v1.13: state.pro is deliberately KEPT — it is a paid entitlement,
         // not user data, and the web build has no restore path.
+        window.StackdDB.save('categories', [...DEFAULT_CATEGORIES]);
         // v0.72 Phase 5: reset = fresh-install experience, so the seed widget
         // comes back (Recent Activities no longer exists outside the widgets).
         this.state.homeWidgets = this._defaultHomeWidgets();
         window.StackdDB.save('homeWidgets', this.state.homeWidgets);
+        // 1.0.2 (BUG-29): reset = fresh install. The saved Home view and the
+        // default wallet name accounts and categories the reset wipes (a
+        // restore from a pre-1.0.2 backup re-creates them under new ids).
+        this.state.expandedGraphFilters = { interval: 'monthly', accounts: [], categories: [] };
+        window.StackdDB.save('expandedGraphFilters', this.state.expandedGraphFilters);
+        this.state.defaultAccountId = '';
+        window.StackdDB.save('defaultAccountId', '');
         // Clear the first-launch flag so the region setup modal shows again
         // (v0.97: through StackdDB so the native file mirror deletes it too —
         // a raw removeItem would let the mirror resurrect it at next boot).
@@ -2439,15 +3134,22 @@ window.Store = {
           if (orphans.length) this._removeSeriesMembers(orphans);
           const now = new Date().toISOString();
           let repriced = false;
+          // 1.0.2 (BUG-74): payments the user changed by hand keep their
+          // amount — decided once, on the plan (computed above, before the
+          // end move), so the prompt and this loop name the same payments.
+          const keep = new Set(plan.customIds || []);
           this.getLoanFuturePayments(loan).forEach(m => {
+            if (keep.has(m.id)) return;
             const toC = this._loanMonthRegularC(loan.config, newSim, m.date);
             if (toC == null) return;
             const oldC = this._loanMonthRegularC(payload.prevConfig, oldSim, m.date);
             if (oldC === toC || Math.round(Math.abs(Number(m.amount)) * 100) === toC) return;
+            delete m.amountEdited; // back on the schedule
             this._setLoanMemberAmount(m, toC, now);
             repriced = true;
           });
           if (repriced) this._budgetSpendIdx = null;
+          this._syncSeriesSchedule(loan.linkedSeriesId); // 1.0.2 (BUG-26)
           window.StackdDB.save('transactions', this.state.transactions);
         }
         changed = true;
@@ -2552,9 +3254,13 @@ window.Store = {
       // ── Stack'd Pro (v1.13, docs/pro-unlock.md) ───────────────────────────
       // Shallow merge; Pro._activate is the only writer besides tests.
       case 'SET_PRO': {
-        const next = Object.assign({}, this.state.pro || this._proDefaults(), payload || {});
+        // 1.0.2 (BUG-34, D-U7-11): {sessionOnly} holds the unlock in memory
+        // when storage is full (Pro._activate) — the store re-signals
+        // ownership at every launch.
+        const { sessionOnly, ...fields } = payload || {};
+        const next = Object.assign({}, this.state.pro || this._proDefaults(), fields);
         this.state.pro = next;
-        window.StackdDB.save('pro', next);
+        if (!sessionOnly) window.StackdDB.save('pro', next);
         changed = true;
         break;
       }
@@ -2637,6 +3343,9 @@ window.Store = {
         const payloadObj = typeof payload === 'object' ? payload : { offset: payload, page: null };
         const offset = payloadObj.offset;
         const page = payloadObj.page;
+        // 1.0.2 (BUG-69) ‹ › step from the period ON SCREEN (this page is kept);
+        // the other page reconciles, and the result is judged against today.
+        this._rollLivePeriods(page);
         
         let periodRef = this.state.activePeriod;
         if (page === 'history') periodRef = this.state.historyFilters.period;
@@ -2674,6 +3383,10 @@ window.Store = {
       case 'UPDATE_FILTERS': {
         const { page, filters, replace } = payload;
         const key = page === 'history' ? 'historyFilters' : 'analyticsFilters';
+        // 1.0.2 (BUG-69) reconcile first. A period set here is the user's
+        // choice against today's calendar, so that page is kept; any other
+        // change (types, accounts, tags...) lands on the rolled period.
+        this._rollLivePeriods(replace || (filters && filters.period) ? page : undefined);
         // v0.94: replace=true rebuilds from pristine defaults (same shape
         // CLEAR_ALL_FILTERS produces) before applying the partial. The wallet
         // tile deep-link means "ONLY this account" — merging onto whatever
@@ -2691,6 +3404,15 @@ window.Store = {
           };
         }
         this.state[key] = { ...base, ...filters };
+        // 1.0.2 (BUG-29): never keep an account id that names no account. A
+        // stale #transactions?account=<deleted> entry (web Back/Forward,
+        // reload, bookmark; Router.handleRouteChange) or another tab's filter
+        // sheet re-applied it, and History showed a raw-id chip and no rows.
+        // An emptied list means unfiltered.
+        if (Array.isArray(this.state[key].accounts)) {
+          const known = new Set(this.state.accounts.map(a => a.id));
+          this.state[key].accounts = this.state[key].accounts.filter(id => known.has(id));
+        }
         // Persist history sort order preference
         if (page === 'history' && filters.sortOrder !== undefined) {
           window.StackdDB.save('historyFilterSortOrder', this.state.historyFilters.sortOrder);
@@ -2702,6 +3424,7 @@ window.Store = {
       case 'CLEAR_ALL_FILTERS': {
         const page = payload && payload.page ? payload.page : 'analytics';
         const key = page === 'history' ? 'historyFilters' : 'analyticsFilters';
+        this._rollLivePeriods(page); // 1.0.2 (BUG-69) this page resets to today; the other reconciles
         const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         // History defaults to Oldest First; analytics stays Newest First
         const defaultSort = page === 'history' ? 'asc' : 'desc';
@@ -2738,6 +3461,9 @@ window.Store = {
       }
 
       case 'SET_DEFAULT_ACCOUNT': {
+        // 1.0.2 (BUG-34): a default names a live account ('' clears) — never
+        // an id a rolled-back ADD_ACCOUNT left behind (account form read-back)
+        if (payload && !this.state.accounts.some(a => a.id === payload)) break;
         this.state.defaultAccountId = payload;
         window.StackdDB.save('defaultAccountId', this.state.defaultAccountId);
         this.emit();
@@ -2746,6 +3472,15 @@ window.Store = {
 
 
     }
+
+    // 1.0.2 (BUG-69, integrated review): ANY action taken on History/Analytics
+    // re-renders it (selection mode, balance mode, a paid toggle, a swipe
+    // delete...), so it reconciles first -- otherwise yesterday's period comes
+    // back after midnight labelled "October 2026". The actions above that
+    // reconcile themselves already stamped _liveDay, so this is a no-op for
+    // them (their keepPage semantics hold).
+    const livePage = this._livePageOf(this.state.activeView);
+    if (livePage && this._rollLivePeriods().includes(livePage)) changed = true;
 
     if (changed) this.emit();
   },
@@ -2791,6 +3526,85 @@ window.Store = {
         : new Intl.NumberFormat(this.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return `${isNeg ? '-' : ''}${symbol}${fmt.format(abs)}`;
+  },
+
+  // 1.0.2 (BUG-50): the one reader for a typed or pasted money amount. The
+  // transaction and budget fields are text inputs: a type=number input kept one
+  // separator of '1,234.56' and the form saved 1.23456. Returns a Number
+  // rounded to cents, null when empty, NaN when the text can't be read without
+  // guessing (both separators: the last one is decimal; a lone separator + 3
+  // digits is grouping only when it's the UI locale's grouping char; a space
+  // or apostrophe groups in threes and is never the decimal; >2 decimals ->
+  // NaN). A Number is rounded to cents as is. A leading '-' is kept, so
+  // callers can refuse it.
+  _amountSepCache: {},
+  _numberSeparators() {
+    const loc = this.getLocale();
+    let s = this._amountSepCache[loc];
+    if (!s) {
+      s = { group: ',', decimal: '.' };
+      try {
+        new Intl.NumberFormat(loc).formatToParts(12345.6).forEach(p => {
+          if (p.type === 'group') s.group = p.value;
+          if (p.type === 'decimal') s.decimal = p.value;
+        });
+      } catch (e) { /* very old WebView: en separators */ }
+      this._amountSepCache[loc] = s;
+    }
+    return s;
+  },
+  parseAmount(raw) {
+    // A Number is already a value: round it to cents. Through String() it would
+    // be re-read with the UI separators (it/es: 1.234 -> '1.234' -> 1234).
+    if (typeof raw === 'number') return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : NaN;
+    let s = String(raw == null ? '' : raw).trim();
+    if (!s) return null;
+    // Spaces next to a currency sign or the minus are free ('€ 12,50', '- 5').
+    s = s.replace(/^[€$£¥]\s*|\s*[€$£¥]$/g, '');
+    let neg = false;
+    const minus = /^[-−]\s*/.exec(s);
+    if (minus) { neg = true; s = s.slice(minus[0].length); }
+    if (!/^[0-9.,\s'’]*[0-9][0-9.,\s'’]*$/.test(s)) return NaN;
+    // A run of spaces (any flavour, incl. NBSP / U+202F) or apostrophes
+    // inside the number is ONE grouping mark, checked in threes
+    // like '.' and ',' — '1 234,56' and "1'234.50" read, '12 50' / "12'5" are
+    // NaN instead of a silent 1250 / 125. A space is never the decimal point.
+    s = s.replace(/[\s'’]+/g, ' ');
+    // '1,234,567' with sep ',' -> true; first group 1-3 digits, no leading 0
+    const grouped = (str, sep) => {
+      const g = str.split(sep);
+      return g.length > 1 && /^[1-9][0-9]{0,2}$/.test(g[0]) && g.slice(1).every(x => /^[0-9]{3}$/.test(x));
+    };
+    const seps = ['.', ',', ' '].filter(c => s.indexOf(c) !== -1);
+    let int = s, frac = '';
+    if (seps.length > 2) return NaN;
+    if (seps.length === 2) {
+      // the separator appearing LAST is the decimal; the other groups the integer part
+      const dec = s.lastIndexOf(seps[0]) > s.lastIndexOf(seps[1]) ? seps[0] : seps[1];
+      const grp = dec === seps[0] ? seps[1] : seps[0];
+      if (dec === ' ') return NaN;
+      const i = s.lastIndexOf(dec);
+      int = s.slice(0, i); frac = s.slice(i + 1);
+      if (!grouped(int, grp)) return NaN;
+      int = int.split(grp).join('');
+    } else if (seps.length === 1) {
+      const sep = seps[0];
+      const parts = s.split(sep);
+      if (sep === ' ' || parts.length > 2) { if (!grouped(s, sep)) return NaN; int = parts.join(''); }
+      else if (parts[1].length <= 2) { int = parts[0]; frac = parts[1]; }
+      else if (parts[1].length === 3 && sep === this._numberSeparators().group && grouped(s, sep)) int = parts.join('');
+      else return NaN;
+    }
+    if (frac.length > 2) return NaN;
+    const n = Number((int || '0') + (frac ? '.' + frac : ''));
+    if (!isFinite(n)) return NaN;
+    const r = Math.round(n * 100) / 100;
+    return neg ? -r : r;
+  },
+  // The locale's 2-decimal format of 1234.56, for the form.amountInvalid
+  // {example} text ('1,234.56' en, '1 234,56' fr, '1234,56' it/es/pt-PT).
+  amountExample() {
+    return new Intl.NumberFormat(this.getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(1234.56);
   },
 
   // 1.0.1 (BUG-09): locale-aware percentage — the single choke point for every
@@ -2871,6 +3685,51 @@ window.Store = {
     return this._ensureImportKeyIdx().has(key);
   },
 
+  // 1.0.2 (BUG-32): statement keys embed the account they were imported into
+  // ('ref:<accountId>|…' / 'fp:<accountId>|…', import.js _stampImportKey).
+  // Swap that segment; any other key is returned unchanged.
+  rebaseImportKey(key, accountId) {
+    const m = /^(ref|fp):[^|]*\|/.exec(String(key || ''));
+    return m ? m[1] + ':' + accountId + key.slice(m[0].length - 1) : key;
+  },
+
+  // 1.0.2 (BUG-32): a restore before 1.0.2 gave every account a new id but
+  // kept the old keys, so the same statement imported again matched nothing
+  // and was added twice. Only a key naming NO account of this install is
+  // re-pointed to its row's (live) account — a row the user moved keeps its
+  // key (D7). Idempotent; saves only when it changed something.
+  _healRestoredImportKeys() {
+    const live = new Set(this.state.accounts.map(a => a.id));
+    let healed = false;
+    this.state.transactions.forEach(t => {
+      if (!t.importKey || !live.has(t.accountId)) return;
+      const m = /^(?:ref|fp):([^|]*)\|/.exec(t.importKey);
+      if (!m || live.has(m[1])) return;
+      t.importKey = this.rebaseImportKey(t.importKey, t.accountId);
+      healed = true;
+    });
+    if (healed) {
+      this._importKeyIdx = null;
+      window.StackdDB.save('transactions', this.state.transactions);
+    }
+  },
+
+  // 1.0.2 (R1, BUG-33 follow-up): camt imports before 1.0.2 stored line
+  // breaks that the one-line note field drops on save (the words merged).
+  // Flatten them once — the same rule StackdImport._oneLine applies to every
+  // import since 1.0.2. Keys are unaffected (stored values; fp normDesc
+  // already collapses whitespace). Idempotent; saves only when it changed.
+  _healMultilineNotes() {
+    let healed = false;
+    this.state.transactions.forEach(t => {
+      if (typeof t.comment === 'string' && /[\r\n]/.test(t.comment)) {
+        t.comment = t.comment.replace(/[ \t]*[\r\n]+[ \t]*/g, ' ').trim();
+        healed = true;
+      }
+    });
+    if (healed) window.StackdDB.save('transactions', this.state.transactions);
+  },
+
   // ── v1.02 per-account currency (docs/bank-import-plan.md §6) ──────────────
   // Aggregates operate on PRIMARY-currency accounts only — exclude, never
   // convert. "Primary" = account.currency equals state.currency (a missing
@@ -2909,6 +3768,78 @@ window.Store = {
     return this._ensureForeignIdx().size;
   },
 
+  // 1.0.2 (BUG-35): each transfer leg is stored in its OWN currency and nothing
+  // is ever converted. Unknown ids count as base (same rule as _ensureForeignIdx).
+  _sameCurrency(a, b) {
+    return this.getAccountCurrency(a) === this.getAccountCurrency(b);
+  },
+
+  // 1.0.2 (BUG-35): the amount that arrived on a cross-currency transfer's
+  // income leg — a finite value above 0, else undefined (= not supplied).
+  _receivedAmount(payload) {
+    const r = Number(payload && payload.receivedAmount);
+    return Number.isFinite(r) && r > 0 ? r : undefined;
+  },
+
+  // 1.0.2 (BUG-36): exclude, never convert, for an EXPLICIT selection too. v1.02
+  // guarded only [], so Main (EUR) + US Checking (USD) summed € and $ 1:1.
+  //   []                   → [] (= every base-currency account, unchanged)
+  //   one currency         → as given (a single foreign account's own figures)
+  //   mixed, base included → the base-currency accounts
+  //   mixed, no base       → the largest same-currency group (tie: account order)
+  //                          [D-U8-6(a), with the BUG-63 rider formatting it in
+  //                          that currency]
+  // Unknown ids do not vote. excluded → common.otherCurrencyExcluded; currency →
+  // formatCurrency's 2nd arg. Filter with aggregatePredicate; never feed .ids
+  // back into an aggregate ([] there means every base account).
+  aggregateSelection(accountIds) {
+    const base = this.state.currency;
+    const ids = Array.isArray(accountIds) ? accountIds : [];
+    if (ids.length === 0) return { ids, currency: base, excluded: this.foreignAccountCount() };
+    const picked = new Set(ids);
+    const groups = new Map(); // currency → ids, in account order
+    let known = 0;
+    this.state.accounts.forEach(a => {
+      if (!picked.has(a.id)) return;
+      known++;
+      const c = a.currency || base;
+      if (!groups.has(c)) groups.set(c, []);
+      groups.get(c).push(a.id);
+    });
+    if (groups.size <= 1) {
+      return { ids, currency: groups.size ? [...groups.keys()][0] : base, excluded: 0 };
+    }
+    let currency = base;
+    if (!groups.has(base)) {
+      let best = 0;
+      groups.forEach((g, c) => { if (g.length > best) { best = g.length; currency = c; } });
+    }
+    const kept = groups.get(currency);
+    return { ids: kept, currency, excluded: known - kept.length };
+  },
+
+  // 1.0.2 (BUG-36): `accountId → bool` for an aggregate over `accountIds`.
+  // [] → the base-currency accounts; a single id → that id (the per-account fast
+  // path: tiles, forecast baselines, per-account chart lines); otherwise the
+  // ids aggregateSelection keeps.
+  aggregatePredicate(accountIds) {
+    const ids = Array.isArray(accountIds) ? accountIds : [];
+    if (ids.length === 0) return (id) => this._isPrimaryAccount(id);
+    if (ids.length === 1) { const only = ids[0]; return (id) => id === only; }
+    const keep = new Set(this.aggregateSelection(ids).ids);
+    return (id) => keep.has(id);
+  },
+
+  // 1.0.2 (BUG-36): true when `ids` is exactly the base-currency accounts — what
+  // Home and the expanded graph expand [] to — so it reads (and saves) as the
+  // default view.
+  isPrimarySelection(ids) {
+    const prim = this.primaryAccountIds();
+    if (!Array.isArray(ids) || !prim.length || ids.length !== prim.length) return false;
+    const picked = new Set(ids);
+    return prim.every(id => picked.has(id));
+  },
+
   // 1.0.1 (BUG-01): what switching the base currency to `code` would do —
   // read-only, drives Components.CurrencySwitchConfirm. A missing account
   // currency counts as the current base (same rule as _ensureForeignIdx).
@@ -2933,10 +3864,14 @@ window.Store = {
   // Unindexed on purpose: ≤100 rules × includes() is cheap even for a
   // 1000-row statement.
   matchImportRule(description) {
-    const desc = String(description || '').toLowerCase();
+    // 1.0.2 (BUG-33): both sides whitespace-collapsed, so a rule stored from a
+    // legacy multi-line note ('supermercato\nrossi') still matches the one-line
+    // notes every import writes now. No stored rule needs rewriting.
+    const desc = String(description || '').toLowerCase().replace(/\s+/g, ' ');
     if (!desc) return '';
     for (const r of (this.state.importRules || [])) {
-      if (r.match && desc.indexOf(r.match) !== -1 &&
+      const m = r.match ? String(r.match).replace(/\s+/g, ' ') : '';
+      if (m && desc.indexOf(m) !== -1 &&
           this.state.categories.some(c => c.id === r.categoryId)) {
         return r.categoryId;
       }
@@ -2957,14 +3892,17 @@ window.Store = {
   },
 
   getBalanceAtDate(date, accountIds = [], categoryIds = []) {
+    // 1.0.2 (BUG-36): an explicit list that mixes currencies keeps only the
+    // accounts aggregateSelection resolves (v1.02 guarded only []).
+    const inScope = this.aggregatePredicate(accountIds);
     // v0.93: cheap string/array checks first, memoized opening-date check last.
     return this.state.transactions
       .filter(t => t.date <= date &&
         t.isPaid !== false &&
         // v1.02: an empty list means "all PRIMARY-currency accounts" — foreign
-        // accounts never leak into aggregate balances (explicit ids untouched,
-        // so a foreign account's own balance still computes over its rows).
-        (accountIds.length === 0 ? this._isPrimaryAccount(t.accountId) : accountIds.includes(t.accountId)) &&
+        // accounts never leak into aggregate balances (a single foreign
+        // account's own balance still computes over its rows).
+        inScope(t.accountId) &&
         (categoryIds.length === 0 || !t.categoryId || categoryIds.includes(t.categoryId)) &&
         !this._isTxBeforeOpeningDate(t)
       )
@@ -2976,11 +3914,12 @@ window.Store = {
   computeUpcomingImpact(endDate, accountIds = []) {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const inScope = this.aggregatePredicate(accountIds); // 1.0.2 (BUG-36)
     const upcoming = this.state.transactions.filter(t =>
       t.date > todayStr && t.date <= endDate &&
       t.isPaid !== false &&
       // v1.02: empty list = all primary-currency accounts
-      (accountIds.length === 0 ? this._isPrimaryAccount(t.accountId) : accountIds.includes(t.accountId)) &&
+      inScope(t.accountId) &&
       !this._isTxBeforeOpeningDate(t)
     );
     return {
@@ -3077,9 +4016,9 @@ window.Store = {
     // As of EOM: last day of current month (includes actual + scheduled future recurring transactions already generated)
     const eom = fmt(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-    const targetAccounts = (accountIds && accountIds.length > 0)
-      ? this.state.accounts.filter(a => accountIds.includes(a.id))
-      : this.state.accounts.filter(a => this._isPrimaryAccount(a.id)); // v1.02
+    // v1.02 ([] = primary accounts); 1.0.2 (BUG-36): a mixed explicit list too
+    const inScope = this.aggregatePredicate(accountIds);
+    const targetAccounts = this.state.accounts.filter(a => inScope(a.id));
 
     // Calculate effective start-of-month baseline balance for a cutoff date (today or eom).
     // For accounts opened on or before startOfMonthBaseline: use historical balance at startOfMonthBaseline.
@@ -3179,13 +4118,18 @@ window.Store = {
   // (a two-year-old budget = 24 full scans, per budget row, per render).
   // Same lifecycle as _openingIdx: dropped on every dispatch/_sortData,
   // rebuilt lazily in one pass.
+  // 1.0.2 (BUG-55): same row rules as every other aggregate — unpaid rows,
+  // transfer legs and rows dated before their account opened are not spend
+  // (they inflated Goals, the Home budgets widget and every later rollover).
   _categoryMonthSpend(categoryId, yearMonth) {
     let idx = this._budgetSpendIdx;
     if (!idx) {
       idx = this._budgetSpendIdx = Object.create(null);
       for (const t of this.state.transactions) {
         if (t.type !== 'expense' || !t.categoryId) continue;
+        if (t.isPaid === false || t.transferRef) continue;  // 1.0.2 (BUG-55)
         if (!this._isPrimaryAccount(t.accountId)) continue; // v1.02: budgets are primary-currency
+        if (this._isTxBeforeOpeningDate(t)) continue;       // 1.0.2 (BUG-55), memoized
         const key = t.categoryId + '|' + t.date.slice(0, 7);
         idx[key] = (idx[key] || 0) + t.amount;
       }
@@ -3239,8 +4183,10 @@ window.Store = {
   // v0.95 (refactor-plan-2 P3.2): average monthly spend for one category over
   // the trailing `months` WHOLE calendar months (current month excluded — it
   // is partial and would drag the average down). Feeds the budget form's
-  // insight line. Unlike getBudgetForMonth's spent figure this applies the
-  // isPaid gate — "you spent" must not count scheduled/unpaid rows. Averages
+  // insight line. Same row rules as getBudgetForMonth's spent figure since
+  // 1.0.2 (BUG-55): no unpaid rows ("you spent" must not count scheduled
+  // bills), no transfer legs, nothing dated before the account opened, and
+  // no account in another currency (v1.02: exclude, never convert). Averages
   // over the months that actually had spend (matches the copy "on average you
   // spent X/month"); returns null when there is nothing meaningful to show.
   getCategoryMonthlyAverage(categoryId, months = 6) {
@@ -3260,6 +4206,7 @@ window.Store = {
       if (tx.isPaid === false) continue;             // lean flag: absent means paid
       const k = tx.date.slice(0, 7);
       if (!(k in totals)) continue;
+      if (!this._isPrimaryAccount(tx.accountId)) continue; // 1.0.2 (BUG-55): as _categoryMonthSpend
       if (this._isTxBeforeOpeningDate(tx)) continue; // memoized (v0.93), cheap
       totals[k] += tx.amount;
     }
@@ -3283,6 +4230,7 @@ window.Store = {
       if (tx.transferRef) continue;
       if (tx.isPaid === false) continue;
       if (tx.date.slice(0, 7) !== ym || tx.date > todayStr) continue;
+      if (!this._isPrimaryAccount(tx.accountId)) continue; // 1.0.2 (BUG-55): as _categoryMonthSpend
       if (this._isTxBeforeOpeningDate(tx)) continue;
       mtd += tx.amount;
     }
@@ -3415,7 +4363,7 @@ window.Store = {
       for (let i = 6; i >= 0; i--) {
         const d = new Date(anchorDt);
         d.setDate(anchorDt.getDate() - i);
-        const dStr = d.toISOString().split('T')[0];
+        const dStr = this._localYMD(d); // 1.0.2 (BUG-28) local day, not the UTC day
         buckets.push({
           label: d.toLocaleDateString(this.getLocale(), { weekday: 'short', day: 'numeric' }),
           start: dStr,
@@ -3435,7 +4383,7 @@ window.Store = {
         const end = new Date(endSunday);
         end.setDate(endSunday.getDate() - (i * 7));
         
-        const fmt = (dt) => dt.toISOString().split('T')[0];
+        const fmt = (dt) => this._localYMD(dt); // 1.0.2 (BUG-28) local day, not the UTC day
         buckets.push({
           label: start.toLocaleDateString(this.getLocale(), { month: 'short', day: 'numeric' }),
           start: fmt(start),
@@ -3447,7 +4395,7 @@ window.Store = {
       for (let i = 11; i >= 0; i--) {
         const d = new Date(anchorDt.getFullYear(), anchorDt.getMonth() - i, 1);
         const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const fmt = (dt) => dt.toISOString().split('T')[0];
+        const fmt = (dt) => this._localYMD(dt); // 1.0.2 (BUG-28) local day, not the UTC day
         buckets.push({
           label: d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' }),
           start: fmt(d),
@@ -3471,6 +4419,8 @@ window.Store = {
       });
     }
 
+    // v1.02 ([] = primary accounts); 1.0.2 (BUG-36): a mixed explicit list too
+    const inScope = this.aggregatePredicate(accounts);
     return buckets.map(b => {
       const bucketEnd = clampEnd && b.end > clampEnd ? clampEnd : b.end;
       const txs = this.state.transactions.filter(t => {
@@ -3481,7 +4431,7 @@ window.Store = {
         if (t.type !== 'expense' && t.type !== 'income') return false;
         if (t.transferRef) return false; // Exclude linked transfers
         if (t.categoryId === 'cat_balance') return false; // Exclude adjustments
-        if (accounts.length > 0 ? !accounts.includes(t.accountId) : !this._isPrimaryAccount(t.accountId)) return false; // v1.02
+        if (!inScope(t.accountId)) return false;
         if (categories.length > 0 && !categories.includes(t.categoryId)) return false;
         return !this._isTxBeforeOpeningDate(t);
       });
@@ -3846,6 +4796,10 @@ window.Store = {
    *     revertC: the old final payment going back to the regular amount by
    *     more than rounding; addFrom/addC: the first payment a longer end adds
    *     (after today only) and its amount.
+   *   - customIds/customCount/customDate/customC (1.0.2 BUG-74, only when
+   *     non-empty): future payments the user changed by hand in a month the
+   *     edit re-prices — kept by SYNC, left out of count/amountC/varies; the
+   *     first one's date and amount name them in the prompt.
    *   Re-pricing and end moves apply to monthly series only.
    */
   getLoanSeriesSyncPlan(loan, prevConfig, todayStr) {
@@ -3931,7 +4885,9 @@ window.Store = {
     // 1.0.1 (BUG-07 review 2): follow the schedule MONTH BY MONTH — a single
     // uniform amount cannot represent a schedule whose instalment changes
     // more than once.
-    const changes = this._loanSeriesAmountChanges(loan.config, prevConfig, newSim, oldSim, future);
+    // 1.0.2 (BUG-74): payments the user changed by hand (custom) are kept —
+    // out of the count, the amounts and the prompt; named in one note.
+    const { changes, custom } = this._loanSeriesAmountChanges(loan.config, prevConfig, newSim, oldSim, future);
     // What the prompt talks about. The NEW schedule's last row is the engine's
     // cent-adjusted final instalment, and when the end moves the OLD last
     // month just loses its old cent adjustment: SYNC re-prices both, but a
@@ -4077,6 +5033,14 @@ window.Store = {
     // not the loan's end). capped: the series stops before the loan does.
     plan.loanEnd = newEnd;
     if (endChanged && month(wantEnd) !== month(newEnd)) plan.capped = true;
+    // 1.0.2 (BUG-74): only when a hand-edited payment is kept (so plans
+    // without one keep their exact shape)
+    if (custom.length) {
+      plan.customIds = custom.map(c => c.id);
+      plan.customCount = custom.length;
+      plan.customDate = custom[0].date;
+      plan.customC = custom[0].fromC;
+    }
     return plan;
   },
 
@@ -4091,20 +5055,27 @@ window.Store = {
    * another month here (BUG-17 falls out of it). Members with no instalment
    * in their month (past the new end, before the new start) are not listed:
    * the end move and the start cleanup deal with them.
+   * 1.0.2 (BUG-74): a payment the user changed by hand ('Only this' amount
+   * edit → amountEdited) keeps its amount and goes into `custom`, unless it
+   * is back at its month's OLD instalment (typed back to the regular amount).
+   * Never inferred from amounts: clones, partly re-priced Italian schedules
+   * and declined syncs carry no mark.
    *
-   * @returns {Array<{id, date, fromC, toC}>} in member (date) order
+   * @returns {{changes: Array<{id, date, fromC, toC}>, custom: Array<{id, date, fromC, toC}>}}
+   *   both in member (date) order
    */
   _loanSeriesAmountChanges(config, prevConfig, newSim, oldSim, members) {
-    const out = [];
+    const changes = [];
+    const custom = [];
     members.forEach(m => {
       const toC = this._loanMonthRegularC(config, newSim, m.date);
       if (toC == null) return;
       const oldC = this._loanMonthRegularC(prevConfig, oldSim, m.date);
       const fromC = Math.round(Math.abs(Number(m.amount)) * 100);
       if (oldC === toC || fromC === toC) return;
-      out.push({ id: m.id, date: m.date, fromC, toC });
+      (m.amountEdited === true && fromC !== oldC ? custom : changes).push({ id: m.id, date: m.date, fromC, toC });
     });
-    return out;
+    return { changes, custom };
   },
 
   /**
@@ -4192,7 +5163,9 @@ window.Store = {
     member.updatedAt = now;
     if (member.transferRef) {
       this.state.transactions.forEach(t => {
-        if (t !== member && t.transferRef === member.transferRef) {
+        // 1.0.2 (BUG-35, D-U8-5): never copy the loan figure into a leg in
+        // another currency
+        if (t !== member && t.transferRef === member.transferRef && this._sameCurrency(t.accountId, member.accountId)) {
           t.amount = amountC / 100;
           t.updatedAt = now;
         }
@@ -4257,7 +5230,8 @@ window.Store = {
     tail.updatedAt = now;
     if (tail.transferRef) {
       this.state.transactions.forEach(t => {
-        if (t !== tail && t.transferRef === tail.transferRef) {
+        // 1.0.2 (BUG-35, D-U8-5): same-currency legs only
+        if (t !== tail && t.transferRef === tail.transferRef && this._sameCurrency(t.accountId, tail.accountId)) {
           t.amount = finalC / 100;
           t.updatedAt = now;
         }

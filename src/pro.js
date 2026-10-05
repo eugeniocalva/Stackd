@@ -61,12 +61,19 @@ window.Pro = {
   },
 
   _activate(info) {
-    window.Store.dispatch('SET_PRO', Object.assign({
+    const fields = Object.assign({
       active: true,
       productId: this.PRODUCT_ID,
       platform: window.BankConnect ? window.BankConnect.platform() : 'web',
       purchasedAt: new Date().toISOString()
-    }, info || {}));
+    }, info || {});
+    if (window.Store.dispatch('SET_PRO', fields) !== false) return;
+    // 1.0.2 (BUG-34, D-U7-11): storage is full. The app store re-signals
+    // ownership at every launch (_onProductUpdated), so hold the unlock for
+    // this session — and no storage sheet: the user paid, they did not make
+    // a change that failed.
+    window.Store.takeSaveFailure();
+    window.Store.dispatch('SET_PRO', Object.assign({ sessionOnly: true }, fields));
   },
 
   // Is this approved transaction ours (vs a Bank Connect plan)?

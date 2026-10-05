@@ -295,7 +295,9 @@ it. The rework is mostly presentational + form plumbing:
   the re-apply block (~:1338), initial defaults (~:1276), and all four dispatch
   payloads.
 - Store: ADD_TRANSACTION/UPDATE_TRANSACTION need zero changes (spread/merge carry
-  it; future/all propagation included). ADD_TRANSFER + UPDATE_TRANSFER build legs
+  it; future/all propagation included). **Reversed in 1.0.2 (BUG-27, D5):**
+  paid state is per occurrence and no longer propagates with future/all; rebuilt
+  payments start paid. ADD_TRANSFER + UPDATE_TRANSFER build legs
   field-by-field and would DROP it — stamp both legs + the propagation loop
   (store.js:1222-1251, 1303-1352). Keep the transfer-pair mirror invariant.
 - Recurring containment (critical): `_processRecurringTransactions` spreads the

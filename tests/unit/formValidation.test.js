@@ -411,3 +411,127 @@ describe('Uncategorized label (1.0.1 BUG-08)', () => {
     expect(find().name).toBe('Sans catégorie');
   });
 });
+
+// 1.0.2 (BUG-34): converting a saved expense to a transfer is a delete plus an
+// add. Each used to save on its own, so at the storage quota the delete landed
+// (it shrinks) and the transfer did not: the expense was gone for good. The
+// form now runs the conversion as ONE change.
+describe('Type conversion when storage is full (1.0.2, BUG-34)', () => {
+  let qls;
+
+  const makeQuotaStorage = () => {
+    const map = new Map();
+    const size = () => { let n = 0; map.forEach((v, k) => { n += k.length + v.length; }); return n; };
+    const s = {
+      quota: null,
+      get length() { return map.size; },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => {
+        const str = String(v);
+        const cur = map.has(k) ? k.length + map.get(k).length : 0;
+        if (s.quota != null && size() - cur + k.length + str.length > s.quota) {
+          const e = new Error('The quota has been exceeded.');
+          e.name = 'QuotaExceededError';
+          throw e;
+        }
+        map.set(k, str);
+      },
+      removeItem: (k) => { map.delete(k); },
+      size
+    };
+    return s;
+  };
+
+  const bootQuota = () => {
+    document.body.innerHTML = '<div id="router-view"></div><div id="modal-container"></div>';
+    container = $('router-view');
+    qls = makeQuotaStorage();
+    global.window = {
+      crypto: { randomUUID: () => 'uuid-' + Math.random().toString(36).slice(2) },
+      localStorage: qls,
+      requestAnimationFrame: (cb) => cb(),
+      StackdHydrateIcons: vi.fn(),
+      Components: {},
+      Views: {},
+      Router: { getParams: () => params, navigate: vi.fn() },
+      alert: vi.fn()
+    };
+    global.localStorage = qls;
+    global.requestAnimationFrame = (cb) => cb();
+    ['db.js', 'i18n.js', 'i18n/en.js', 'loan-engine.js', 'store.js', 'components.js', 'views.js'].forEach(executeFile);
+    S().init();
+    ['Main', 'Savings'].forEach(name => S().dispatch('ADD_ACCOUNT', { name, openingBalance: 100, openingDate: '2026-01-01' }));
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 1, 12, 0, 0));
+    params = {};
+    bootQuota();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('converting a saved expense to a transfer that does not fit keeps the expense, in memory and on disk', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 42, accountId: accId('Main'), categoryId: 'cat_groceries', date: TODAY, comment: 'keep me' });
+    const tx = S().getState().transactions.find(t => t.comment === 'keep me');
+    const before = qls.getItem('stackd_v1_transactions');
+    params = { id: tx.id };
+    renderView('AddTransactionView');
+    $('toggle-transfer').click();
+    $('tx-transfer-to').value = accId('Savings');
+    qls.quota = qls.size(); // no room: the delete fits, the two transfer legs do not
+
+    save();
+
+    expect(S().getState().transactions.some(t => t.id === tx.id)).toBe(true);
+    expect(S().getState().transactions.some(t => t.transferRef)).toBe(false);
+    expect(qls.getItem('stackd_v1_transactions')).toBe(before);
+  });
+});
+
+describe('Required date (1.0.2 BUG-38 rider)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 1, 12, 0, 0));
+    params = {};
+    boot();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a cleared date is refused inline', () => {
+    renderView('AddTransactionView');
+    setAmount('10');
+    $('tx-category').value = 'cat_groceries';
+    $('tx-date').value = '';
+    save();
+    expect(userTxCount()).toBe(0);
+    expect(global.window.Router.navigate).not.toHaveBeenCalled();
+    expect($('tx-date-error').textContent).toBe('Choose a date.');
+    expect(document.activeElement).toBe($('tx-date'));
+    expect(global.window.alert).not.toHaveBeenCalled();
+
+    // A recurring log with a cleared date is refused the same way (it used to
+    // throw RangeError on the end default and do nothing).
+    $('tx-is-recurrent').checked = true;
+    $('tx-is-recurrent').dispatchEvent(new Event('change'));
+    $('tx-recurrence-end-date').value = '';
+    save();
+    expect(userTxCount()).toBe(0);
+    expect($('tx-date-error').textContent).toBe('Choose a date.');
+
+    // Picking a date clears the message and the save goes through.
+    $('tx-date').value = '2026-10-01';
+    $('tx-date').dispatchEvent(new Event('change'));
+    expect($('tx-date-error')).toBeNull();
+    save();
+    expect(userTxCount()).toBeGreaterThan(0);
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#transactions');
+  });
+});

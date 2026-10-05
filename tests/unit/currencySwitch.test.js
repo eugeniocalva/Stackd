@@ -370,3 +370,95 @@ describe('Onboarding welcome sheet currency (1.0.1 BUG-01 / BUG-20)', () => {
     expect(acc('Checking').currency).toBe('USD');
   });
 });
+
+// 1.0.2 (BUG-40): the welcome sheet is mandatory — a tap outside or a swipe
+// used to close it unsaved (USD kept, setup_done never written). The language
+// row now goes through SET_LANGUAGE, and the sheet preselects the stored
+// language (relaunch before Get started, or after a factory reset).
+describe('Welcome sheet stays put (1.0.2 BUG-40)', () => {
+  let spy, show;
+  const boot = (getItem) => {
+    freshWindow(getItem);
+    executeFile('db.js');
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
+    executeFile('i18n/it.js');
+    executeFile('store.js');
+    executeFile('components.js');
+    executeFile('views.js');
+    window.Store.init();
+    spy = vi.spyOn(window.Store, 'dispatch');
+    show = loadRegionSetup();
+  };
+  const setupDone = () => window.localStorage.setItem.mock.calls.some(c => c[0] === 'stackd_v1_setup_done');
+  const touch = (el, type, y) => {
+    const ev = new Event(type, { bubbles: true });
+    Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : [{ clientY: y }] });
+    el.dispatchEvent(ev);
+  };
+  const open = () => {
+    show();
+    vi.advanceTimersByTime(60);
+    const sheet = document.getElementById('active-modal');
+    sheet.classList.add('open');
+    return sheet;
+  };
+
+  it('(a) a backdrop tap and a 250 px swipe leave it open and unsaved', () => {
+    boot();
+    const sheet = open();
+    sheet.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.advanceTimersByTime(400);
+    touch(sheet, 'touchstart', 100);
+    touch(sheet, 'touchmove', 350);
+    touch(sheet, 'touchend');
+    vi.advanceTimersByTime(600);
+
+    expect(document.getElementById('setup-row-currency')).not.toBeNull();
+    expect(sheet.classList.contains('open')).toBe(true);
+    expect(setupDone()).toBe(false);
+    expect(window.Store.getState().currency).toBe('USD'); // store default, nothing applied
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('(b) picking a language dispatches SET_LANGUAGE (state, I18n and storage switch together)', () => {
+    boot();
+    open();
+    document.getElementById('setup-row-language').click();
+    document.querySelector('#setup-picker-sheet .setup-picker-opt[data-code="it"]').click();
+
+    expect(spy).toHaveBeenCalledWith('SET_LANGUAGE', 'it');
+    expect(window.Store.getState().language).toBe('it');
+    expect(window.I18n.lang).toBe('it');
+    expect(window.localStorage.setItem).toHaveBeenCalledWith('stackd_v1_language', '"it"');
+    expect(setupDone()).toBe(false);
+
+    vi.advanceTimersByTime(400); // the sheet re-opens in Italian
+    expect(document.getElementById('setup-language-subtitle').textContent).toBe('Italiano');
+    expect(document.getElementById('modal-title').textContent).toBe(window.I18n.dicts.it['setup.welcome']);
+  });
+
+  it('(c) a stored language (relaunch before Get started / after a reset) is preselected and kept', () => {
+    boot((k) => (k === 'stackd_v1_language' ? '"it"' : null));
+    open();
+    expect(document.getElementById('setup-language-subtitle').textContent).toBe('Italiano');
+    expect(document.getElementById('modal-title').textContent).toBe(window.I18n.dicts.it['setup.welcome']);
+
+    document.getElementById('modal-save-btn').click(); // Inizia
+    expect(spy).toHaveBeenCalledWith('SET_LANGUAGE', 'it');
+    expect(window.Store.getState().language).toBe('it');
+    expect(window.I18n.lang).toBe('it');
+    expect(setupDone()).toBe(true);
+  });
+
+  it('(d) guard: Get started still applies EUR and English and saves setup_done', () => {
+    boot();
+    const sheet = open();
+    sheet.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document.getElementById('modal-save-btn').click();
+    expect(spy).toHaveBeenCalledWith('SET_LANGUAGE', 'en');
+    expect(spy).toHaveBeenCalledWith('SET_CURRENCY', 'EUR');
+    expect(window.Store.getState().currency).toBe('EUR');
+    expect(setupDone()).toBe(true);
+  });
+});

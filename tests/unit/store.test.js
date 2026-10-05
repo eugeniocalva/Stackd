@@ -85,7 +85,10 @@ describe('Store Logic', () => {
   });
   
   it('should save budget and compute spending', () => {
-    global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 1000 });
+    // 1.0.2 (BUG-55): budget spend skips rows dated before the account opened,
+    // so the account must open before its 2026-03-15 expense (no openingDate
+    // = the real today).
+    global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 1000, openingDate: '2026-01-01' });
     const account = global.window.Store.getState().accounts[0];
     const month = '2026-03';
 

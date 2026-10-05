@@ -102,7 +102,10 @@ describe('Per-account currency (v1.02, plan §6)', () => {
     expect(window.Store.getGlobalBalance()).toBe(100);            // EUR 50 excluded
     expect(window.Store.getBalanceAtDate('2026-12-31')).toBe(100);
     expect(window.Store.getAccountBalance(eurId)).toBe(50);       // explicit id: untouched
-    expect(window.Store.getBalanceAtDate('2026-12-31', [eurId, usdId])).toBe(150); // explicit list: user's call
+    // 1.0.2 (BUG-36): an explicit mixed list keeps only the base-currency
+    // accounts (was 150, "explicit list: user's call")
+    expect(window.Store.getBalanceAtDate('2026-12-31', [eurId, usdId])).toBe(100);
+    expect(window.Store.aggregateSelection([eurId, usdId]).excluded).toBe(1);
   });
 
   it('analytics aggregates exclude foreign accounts, history keeps them visible', () => {

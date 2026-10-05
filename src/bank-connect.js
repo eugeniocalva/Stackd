@@ -804,6 +804,7 @@ window.BankConnect = {
   // ── Fetch → normalize → the statement pipeline (v1.07 B3, UX plan §3.8) ──
 
   _isoDay(ms) {
+    // eslint-disable-next-line no-restricted-syntax -- deliberate UTC day: the bank fetch window is UTC
     return new Date(ms).toISOString().slice(0, 10);
   },
 

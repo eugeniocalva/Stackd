@@ -28,7 +28,9 @@ describe('Opening Balance Numeric Input & Decimal Shift', () => {
           defaultAccountId: ''
         }),
         getCurrencySymbol: () => '$',
-        _isPositiveTx: () => true
+        _isPositiveTx: () => true,
+        // 1.0.2 (BUG-25/BUG-38): EditAccountView's opening-balance date default
+        _todayYMD: () => '2026-07-01'
       },
       Router: {
         getParams: () => ({})

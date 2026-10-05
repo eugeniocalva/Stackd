@@ -127,4 +127,61 @@ test.describe('Recurring edit scope modal', () => {
     ]);
     expect(errors).toHaveLength(0);
   });
+
+  // 1.0.2 (BUG-26): a series shortened with "this and future" stays short —
+  // a later "this and future" amount edit from an EARLIER payment used to
+  // re-arm the series from that payment's stale end date (back to 61).
+  test('a shortened series stays short after a later "this and future" amount edit', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem('stackd_v1_setup_done', '1');
+    });
+    await page.reload();
+    await page.waitForSelector('#bottom-nav');
+    await page.waitForFunction(() => !!window.Store);
+    const seriesId = await page.evaluate(() => {
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 1000 });
+      const accountId = window.Store.getState().accounts.find(a => a.name === 'Main Bank').id;
+      window.Store.dispatch('ADD_TRANSACTION', {
+        type: 'expense', amount: 12.99, accountId, categoryId: 'cat_groceries', date: '2026-10-20',
+        comment: 'StreamFlix', recurrence: { interval: 1, frequency: 'months', endDate: '2031-10-20' }
+      });
+      return window.Store.getState().transactions.find(t => t.comment === 'StreamFlix').recurrence.seriesId;
+    });
+    const memberId = (date) => page.evaluate(([sid, d]) => window.Store.getState().transactions
+      .find(t => t.recurrence && t.recurrence.seriesId === sid && t.date === d).id, [seriesId, date]);
+    expect((await readSeries(page, seriesId)).dates).toHaveLength(61);
+
+    // shorten from January
+    await page.goto('#edit?id=' + await memberId('2027-01-20'));
+    await page.waitForSelector('#tx-recurrence-end-date');
+    await page.fill('#tx-recurrence-end-date', '2027-06-30');
+    await page.click('#btn-save-tx');
+    await expect(page.locator('#recurring-update-modal')).toBeVisible();
+    await page.click('#ru-this-future');
+    await page.waitForTimeout(300);
+    expect((await readSeries(page, seriesId)).dates).toHaveLength(9);
+
+    // December now shows the series end, and an amount edit keeps 9 payments
+    await page.goto('#edit?id=' + await memberId('2026-12-20'));
+    await page.waitForSelector('#tx-recurrence-end-date');
+    await expect(page.locator('#tx-recurrence-end-date')).toHaveValue('2027-06-30');
+    await page.fill('#tx-amount', '13.99');
+    await page.click('#btn-save-tx');
+    await expect(page.locator('#recurring-update-modal')).toBeVisible();
+    await page.click('#ru-this-future');
+    await page.waitForTimeout(300);
+
+    await page.reload();
+    await page.waitForFunction(() => !!window.Store);
+    const after = await readSeries(page, seriesId);
+    expect(after.dates).toHaveLength(9);
+    expect(after.dates[after.dates.length - 1]).toBe('2027-06-20');
+    expect(after.generators).toBe(1);
+    expect(errors).toHaveLength(0);
+  });
 });

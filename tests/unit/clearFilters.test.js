@@ -37,6 +37,8 @@ describe('CLEAR_ALL_FILTERS Action', () => {
   });
 
   it('resets analyticsFilters back to default state when CLEAR_ALL_FILTERS is dispatched', () => {
+    // 1.0.2 (BUG-29, D-U5-9): UPDATE_FILTERS keeps only ids that name an account.
+    global.window.Store.dispatch('ADD_ACCOUNT', { id: 'acc-1', name: 'Acc 1', openingBalance: 0 });
     // Set custom filters on analytics
     global.window.Store.dispatch('UPDATE_FILTERS', {
       page: 'analytics',

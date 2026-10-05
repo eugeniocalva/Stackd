@@ -131,6 +131,12 @@ module.exports = [
         varsIgnorePattern: '^_',
         caughtErrors: 'none',
       }],
+      // 1.0.2 (D-U4-7): a date-only toISOString() is the UTC day, a day off east
+      // of UTC around midnight (BUG-28/38/67). Use Store._localYMD / _todayYMD.
+      'no-restricted-syntax': ['error', {
+        selector: "CallExpression[callee.property.name=/^(split|slice|substring|substr)$/][callee.object.callee.property.name='toISOString']",
+        message: 'Date-only toISOString() is the UTC day. Use Store._localYMD(value) / Store._todayYMD(); shift with Store._calculateNextRecurrenceDate.',
+      }],
       'no-empty': ['warn', { allowEmptyCatch: true }],
       'no-useless-escape': 'warn',
       'no-prototype-builtins': 'off',

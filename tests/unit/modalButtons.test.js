@@ -158,3 +158,96 @@ describe('Delete sheets in views pass deleteText up front (BUG-20)', () => {
     expect(precedes(del, save)).toBe(true);
   });
 });
+
+// 1.0.2 (BUG-40): Modal.show({ dismissible: false }) is a mandatory sheet (the
+// first-run welcome): no backdrop-tap close, no swipe-down close, the drag
+// handle kept as an invisible spacer and [data-back-swallow] for Android Back.
+describe('Non-dismissible sheets (1.0.2 BUG-40)', () => {
+  let mem;
+  const touch = (el, type, y) => {
+    const ev = new Event(type, { bubbles: true });
+    Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : [{ clientY: y }] });
+    el.dispatchEvent(ev);
+  };
+  const swipe = (el, dy) => {
+    touch(el, 'touchstart', 100);
+    touch(el, 'touchmove', 100 + dy);
+    touch(el, 'touchend');
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 4, 12, 0, 0));
+    mem = {};
+    document.body.innerHTML = '<div id="modal-container"></div><div id="router-view"></div>';
+    global.window.localStorage = {
+      getItem: vi.fn((k) => (k in mem ? mem[k] : null)),
+      setItem: vi.fn((k, v) => { mem[k] = String(v); }),
+      removeItem: vi.fn((k) => { delete mem[k]; })
+    };
+    global.window.StackdHydrateIcons = vi.fn();
+    executeFile('i18n.js');
+    executeFile('i18n/en.js');
+    executeFile('components.js');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('(a) a backdrop tap does not close it', () => {
+    window.Components.Modal.show({ title: 'Welcome', content: '<p>x</p>', showCancel: false, dismissible: false });
+    const backdrop = document.getElementById('active-modal');
+    backdrop.classList.add('open');
+    backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(backdrop.classList.contains('open')).toBe(true);
+    vi.advanceTimersByTime(400);
+    expect(document.getElementById('active-modal')).toBe(backdrop);
+  });
+
+  it('(b) a swipe down longer than 150 px does not close it', () => {
+    window.Components.Modal.show({ title: 'Welcome', content: '<p>x</p>', showCancel: false, dismissible: false });
+    const backdrop = document.getElementById('active-modal');
+    backdrop.classList.add('open');
+    swipe(backdrop, 250);
+    vi.advanceTimersByTime(300);
+    expect(backdrop.classList.contains('open')).toBe(true);
+    expect(document.getElementById('modal-container').contains(backdrop)).toBe(true);
+    expect(backdrop.querySelector('.modal-content').style.transform).not.toContain('100%');
+  });
+
+  it('(c) keeps an invisible handle spacer and swallows Back; a default sheet does neither', () => {
+    window.Components.Modal.show({ title: 'Welcome', content: '<p>x</p>', showCancel: false, dismissible: false });
+    let backdrop = document.getElementById('active-modal');
+    let handle = backdrop.querySelector('.modal-handle');
+    expect(handle).not.toBeNull();
+    expect(handle.style.visibility).toBe('hidden');
+    expect(handle.getAttribute('aria-hidden')).toBe('true');
+    expect(backdrop.hasAttribute('data-back-swallow')).toBe(true);
+
+    window.Components.Modal.show({ title: 'T', content: '<p>x</p>' });
+    backdrop = document.getElementById('active-modal');
+    handle = backdrop.querySelector('.modal-handle');
+    expect(handle.style.visibility).toBe('');
+    expect(handle.hasAttribute('aria-hidden')).toBe(false);
+    expect(backdrop.hasAttribute('data-back-swallow')).toBe(false);
+  });
+
+  it('(d) guard: a default sheet still closes on a backdrop tap and on a long swipe', () => {
+    window.Components.Modal.show({ title: 'T', content: '<p>x</p>' });
+    let backdrop = document.getElementById('active-modal');
+    backdrop.classList.add('open');
+    backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(backdrop.classList.contains('open')).toBe(false);
+    vi.advanceTimersByTime(400);
+
+    window.Components.Modal.show({ title: 'T', content: '<p>x</p>' });
+    backdrop = document.getElementById('active-modal');
+    backdrop.classList.add('open');
+    swipe(backdrop, 250);
+    vi.advanceTimersByTime(250);
+    expect(backdrop.classList.contains('open')).toBe(false);
+    vi.advanceTimersByTime(400);
+    expect(document.getElementById('modal-container').innerHTML).toBe('');
+  });
+});

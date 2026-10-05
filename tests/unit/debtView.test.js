@@ -325,3 +325,117 @@ describe('Debt views (hub / simulator / results)', () => {
     });
   });
 });
+
+// 1.0.2 (BUG-34): promoting a simulation is ONE change. When ADD_LOAN does not
+// fit there is no read-back of a loan that was never stored: nothing is
+// opened and nothing is offered for tracking.
+describe('Promote when storage is full (1.0.2, BUG-34)', () => {
+  let ls;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    document.body.innerHTML = '<div id="modal-container"></div>';
+    const map = new Map();
+    const size = () => { let n = 0; map.forEach((v, k) => { n += k.length + v.length; }); return n; };
+    ls = {
+      quota: null,
+      get length() { return map.size; },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => {
+        const s = String(v);
+        const cur = map.has(k) ? k.length + map.get(k).length : 0;
+        if (ls.quota != null && size() - cur + k.length + s.length > ls.quota) {
+          const e = new Error('The quota has been exceeded.');
+          e.name = 'QuotaExceededError';
+          throw e;
+        }
+        map.set(k, s);
+      },
+      removeItem: (k) => { map.delete(k); },
+      size
+    };
+    global.window = {
+      crypto: { randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9) },
+      localStorage: ls,
+      StackdHydrateIcons: vi.fn(),
+      location: { hash: '#debt-results' }
+    };
+    global.localStorage = ls;
+    ['db.js', 'i18n.js', 'i18n/en.js', 'loan-engine.js', 'store.js', 'components.js', 'views.js', 'router.js'].forEach(executeFile);
+    global.window.Store.init();
+    global.window.Views._DebtShared.draft = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('a fresh simulation whose ADD_LOAN does not fit is neither kept nor offered for tracking', () => {
+    const Store = global.window.Store;
+    Store.dispatch('SET_DEBT_SIM', { config: CAL_CONFIG, fromForm: true, editingLoanId: null });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const state = Store.getState();
+    container.innerHTML = global.window.Views.DebtResultsView.render(state);
+    global.window.Views.DebtResultsView.attachEvents(container, state);
+    const offer = vi.spyOn(global.window.Views.DebtResultsView, '_offerAfterPromote').mockImplementation(() => {});
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const loansBefore = ls.getItem('stackd_v1_loans');
+    ls.quota = ls.size(); // no room left
+
+    container.querySelector('#btn-dres-promote').click();
+    document.getElementById('loan-name-input').value = 'Casa';
+    document.getElementById('modal-save-btn').click();
+
+    expect(errors.mock.calls.some(c => /TypeError/.test(c.map(String).join(' ')))).toBe(false);
+    expect(Store.getState().loans).toHaveLength(0);
+    expect(ls.getItem('stackd_v1_loans')).toBe(loansBefore);
+    expect(offer).not.toHaveBeenCalled();
+    expect(global.window.location.hash).toBe('#debt-results'); // nothing to open
+  });
+
+  // 1.0.2 review (round 1): the name prompt's Modal.hide() clears all of
+  // #modal-container 300 ms later — the storage sheet must outlive it.
+  it('the "Storage is full" sheet survives the closing name prompt\'s teardown', async () => {
+    const Store = global.window.Store;
+    Store.dispatch('SET_DEBT_SIM', { config: CAL_CONFIG, fromForm: true, editingLoanId: null });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const state = Store.getState();
+    container.innerHTML = global.window.Views.DebtResultsView.render(state);
+    global.window.Views.DebtResultsView.attachEvents(container, state);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    ls.quota = ls.size();
+
+    container.querySelector('#btn-dres-promote').click();
+    document.getElementById('loan-name-input').value = 'Casa';
+    document.getElementById('modal-save-btn').click();
+    await new Promise((r) => setTimeout(r, 800));
+
+    const sheet = document.getElementById('storage-full-modal');
+    expect(sheet).not.toBeNull();
+    expect(sheet.textContent).toContain('Storage is full');
+    expect(document.getElementById('active-modal')).toBeNull(); // the prompt itself is gone
+  });
+
+  it('a factory-reset style Modal (dispatch, then closeModal) keeps the sheet up', async () => {
+    const Store = global.window.Store;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    global.window.Components.Modal.show({
+      title: 'Reset', content: '<p>x</p>', showDelete: true,
+      onSave: (close) => close(),
+      onDelete: (close) => {
+        ls.quota = ls.size();
+        expect(Store.dispatch('ADD_LOAN', { name: 'X', kind: 'sim', config: CAL_CONFIG })).toBe(false);
+        close();
+      }
+    });
+    document.getElementById('modal-delete-btn').click();
+    await new Promise((r) => setTimeout(r, 800));
+
+    expect(document.getElementById('storage-full-modal')).not.toBeNull();
+  });
+});

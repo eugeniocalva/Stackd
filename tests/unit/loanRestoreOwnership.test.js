@@ -126,15 +126,29 @@ describe('1.0.1 (BUG-02) a re-imported loan never shares its series', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('a loans file imported twice → only one loan holds the series; deleting the duplicate keeps the original\'s payments', () => {
+  // 1.0.2 (BUG-78): the same loans file imported twice no longer adds the
+  // loan twice (same kind + name + terms). A copy whose terms CHANGED is a
+  // different loan and still comes in — the 1.0.1 ownership rule is what
+  // keeps it off the original's series.
+  const withRate = (loansCsv, rate) => {
+    const out = loansCsv.replace('""annualRate"":3,', `""annualRate"":${rate},`);
+    expect(out).not.toBe(loansCsv);
+    return out;
+  };
+
+  it('a loans file imported twice → one loan; a changed copy never takes the original\'s series', () => {
     const { sid, members } = buildLedger();
     const out = exportAll();
 
     boot(); // new phone: a normal restore…
     for (const k of EXPORT_ORDER) importFile(out[k]);
     expect(loan('Home Mortgage').linkedSeriesId).toBe(sid);
-    importFile(out.loans); // …then the loans file again by mistake
+    // …then the loans file again by mistake: it is already here.
+    expect(importFile(out.loans)).toMatchObject({ kind: 'loans', importedCount: 0, duplicateCount: 1 });
+    expect(loansNamed('Home Mortgage')).toHaveLength(1);
+    expect(loan('Home Mortgage').linkedSeriesId).toBe(sid);
 
+    expect(importFile(withRate(out.loans, 3.5))).toMatchObject({ importedCount: 1, duplicateCount: 0 });
     const both = loansNamed('Home Mortgage');
     expect(both).toHaveLength(2);
     expect(both.filter(l => l.linkedSeriesId === sid)).toHaveLength(1);
@@ -152,11 +166,17 @@ describe('1.0.1 (BUG-02) a re-imported loan never shares its series', () => {
   it('a loans file imported twice in the install it came from (no reset)', () => {
     const { sid, members } = buildLedger();
     const out = exportAll();
-    importFile(out.loans);
-    importFile(out.loans);
+    expect(importFile(out.loans)).toMatchObject({ importedCount: 0, duplicateCount: 1 });
+    expect(importFile(out.loans)).toMatchObject({ importedCount: 0, duplicateCount: 1 });
+    expect(loansNamed('Home Mortgage')).toHaveLength(1);
+    expect(loan('Home Mortgage').linkedSeriesId).toBe(sid);
 
+    // A changed copy, twice: the first comes in, the second is that copy again.
+    const changed = withRate(out.loans, 3.5);
+    expect(importFile(changed)).toMatchObject({ importedCount: 1, duplicateCount: 0 });
+    expect(importFile(changed)).toMatchObject({ importedCount: 0, duplicateCount: 1 });
     const all = loansNamed('Home Mortgage');
-    expect(all).toHaveLength(3);
+    expect(all).toHaveLength(2);
     expect(all.filter(l => l.linkedSeriesId === sid)).toHaveLength(1);
     expectNoSharedSeries();
     all.filter(l => l.linkedSeriesId !== sid)
@@ -165,28 +185,26 @@ describe('1.0.1 (BUG-02) a re-imported loan never shares its series', () => {
   });
 
   for (const [label, order] of [['in export order', EXPORT_ORDER], ['loans before transactions', LOANS_FIRST]]) {
-    it(`a full backup re-imported into the same install (${label}) → the duplicate tracks the re-keyed copy, not the original`, () => {
+    it(`a full backup re-imported into the same install (${label}) → nothing is added twice`, () => {
       const { sid, members } = buildLedger();
       const original = loan('Home Mortgage');
+      const txBefore = S().getState().transactions.length;
+      const nonOpening = S().getState().transactions.filter(t => t.type !== 'opening_balance').length;
       const out = exportAll();
-      for (const k of order) importFile(out[k]);
+      const results = {};
+      for (const k of order) results[k] = importFile(out[k]);
 
-      const both = loansNamed('Home Mortgage');
-      expect(both).toHaveLength(2);
-      expectNoSharedSeries();
-      const dup = both.find(l => l.id !== original.id);
-      expect(dup.linkedSeriesId).not.toBe(sid);
-      // The re-imported transactions came back under a fresh series id; the
-      // duplicate loan is linked to that copy by its payment note.
-      expect(dup.linkedSeriesId).toBeTruthy();
-      expect(membersOf(dup.linkedSeriesId)).toHaveLength(members);
-      expect(dup.needsNoteRelink).toBeUndefined();
-
-      S().dispatch('DELETE_LOAN', { id: dup.id, deleteFuturePayments: true });
+      expect(loansNamed('Home Mortgage')).toHaveLength(1);
       expect(loan('Home Mortgage').id).toBe(original.id);
+      expect(loan('Home Mortgage').linkedSeriesId).toBe(sid);
+      expect(results.loans).toMatchObject({ importedCount: 0, duplicateCount: 1 });
+      expect(results.transactions.importedCount).toBe(0);
+      expect(results.transactions.duplicateCount).toBe(nonOpening);
+      expect(S().getState().transactions).toHaveLength(txBefore);
       expect(membersOf(sid)).toHaveLength(members);
       expect(S().getLoanLinkedTransactions(loan('Home Mortgage'))).toHaveLength(members);
-      // Exactly one armed generator per remaining series.
+      expectNoSharedSeries();
+      // Exactly one armed generator.
       expect(membersOf(sid).filter(t => t.recurrence.nextDate)).toHaveLength(1);
     });
   }

@@ -215,6 +215,17 @@ describe('Android Back (BUG-03)', () => {
       expect(window.BankConnect.revoke).not.toHaveBeenCalled();
       expect(window.Store.dispatch).not.toHaveBeenCalled();
     });
+
+    // 1.0.2 (BUG-40): D4h made generic — any Modal.show({ dismissible: false })
+    // carries [data-back-swallow], setup rows or not.
+    it('a dismissible:false sheet with no setup rows and no Cancel swallows Back and stays open', () => {
+      const onSave = vi.fn();
+      C().Modal.show({ title: 'Mandatory', content: '<p>x</p>', showCancel: false, dismissible: false, onSave });
+      openAll();
+      expect(C().dismissTopSheet()).toBe(true);
+      expect(document.getElementById('active-modal').classList.contains('open')).toBe(true);
+      expect(onSave).not.toHaveBeenCalled();
+    });
   });
 
   describe('menu and transient modes', () => {

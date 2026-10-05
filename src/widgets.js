@@ -10,12 +10,7 @@ window.Widgets = {
 
   // ── helpers ─────────────────────────────────────────────────────────────
   _esc(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    return window.I18n.esc(value); // 1.0.2 (BUG-24): one implementation
   },
 
   // Local-time YYYY-MM-DD. Deliberately not toISOString(): that shifts a day
@@ -187,6 +182,10 @@ window.Widgets = {
   // store's filters use, so an empty selection never means "show nothing".
   _multiChips(key, items, selectedIds) {
     const all = !selectedIds || selectedIds.length === 0;
+    // 1.0.2 (BUG-36, D-U8-8): an explicit account selection that mixes
+    // currencies sums only part of it — say so where it is chosen (the cards
+    // keep their fixed heights).
+    const excluded = (key === 'accountIds' && !all) ? window.Store.aggregateSelection(selectedIds).excluded : 0;
     return `<div class="multi-select-row">
       <button type="button" class="multi-select-chip ${all ? 'active' : ''}"
               data-config-multi="${this._esc(key)}" data-config-value="__all__"
@@ -197,7 +196,10 @@ window.Widgets = {
                 data-config-multi="${this._esc(key)}" data-config-value="${this._esc(it.id)}"
                 aria-pressed="${on}">${this._esc(it.name)}</button>`;
       }).join('')}
-    </div>`;
+    </div>${excluded > 0
+      // 1.0.2 (live-U8-N1): a sentence, not the uppercase section-label style
+      ? `<p class="widget-currency-note" style="margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.4;">${this._esc(window.I18n.t('common.otherCurrencyExcluded', { count: excluded }))}</p>`
+      : ''}`;
   },
 
   // Wires every shared control above. Registry entries call this from
@@ -325,6 +327,7 @@ window.Widgets = {
         const W = window.Widgets;
         const buckets = this._buckets(instance);
         if (buckets.length === 0) return W._emptyState(window.I18n.t('widget.empty.notEnough'));
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         if (instance.size !== 'large') {
           const cur = buckets[buckets.length - 1];
@@ -334,13 +337,13 @@ window.Widgets = {
             <div class="widget-minibar">
               <div class="widget-minibar-head">
                 <span class="widget-minibar-label">${W._esc(label)}</span>
-                <span class="widget-minibar-value ${cls}">${W._esc(window.Store.formatCurrency(value))}</span>
+                <span class="widget-minibar-value ${cls}">${W._esc(window.Store.formatCurrency(value, ccy))}</span>
               </div>
               <div class="widget-minibar-track"><div class="widget-minibar-fill ${cls}" style="width: ${(value / peak) * 100}%;"></div></div>
             </div>`;
           return `
             <div class="widget-stat">
-              <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net))}</span>
+              <span class="widget-stat-value ${cur.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(cur.net, ccy))}</span>
               <span class="widget-stat-label">${W._esc(window.I18n.t('widget.netflow.net'))} · ${W._esc(cur.label)} · ${W._esc(window.I18n.t('widget.eomShort'))}</span>
             </div>
             <div class="widget-minibars">
@@ -369,6 +372,8 @@ window.Widgets = {
 
         const recent = this._buckets(instance).slice(-6);
         const theme = window.Components.NetFlowChart._themeColors();
+        // 1.0.2 (BUG-63): the selection's currency, captured for this mount
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency;
         // Axis rounding shared with the Analytics net-flow chart.
         const yScale = window.Components.NetFlowChart._computeYScale(
           recent.flatMap(b => [b.income, b.expense])
@@ -417,7 +422,7 @@ window.Widgets = {
                 padding: 10,
                 bodyFont: { family: 'Manrope', size: 12, weight: '700' },
                 callbacks: {
-                  label: (ctx) => `${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y)}`
+                  label: (ctx) => `${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y, ccy)}`
                 }
               }
             },
@@ -434,7 +439,7 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
+                  callback: (val) => `${window.Store.getCurrencySymbol(ccy)}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
                 }
               }
             }
@@ -485,11 +490,12 @@ window.Widgets = {
         }
 
         const total = data.reduce((sum, d) => sum + d.amount, 0);
+        const ccy = window.Store.aggregateSelection(cfg.accountIds || []).currency; // 1.0.2 (BUG-63)
         const donutHtml = `
           <div class="widget-donut">
             <canvas id="${W._canvasId(instance)}"></canvas>
             <div class="widget-donut-center">
-              <span class="widget-donut-total">${W._esc(window.Store.formatCurrency(total))}</span>
+              <span class="widget-donut-total">${W._esc(window.Store.formatCurrency(total, ccy))}</span>
             </div>
           </div>`;
 
@@ -521,6 +527,7 @@ window.Widgets = {
         const data = this._data(instance);
         if (data.length === 0) return;
         const theme = window.Components.NetFlowChart._themeColors();
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         W._mountChart(instance.id, canvas, {
           type: 'doughnut',
@@ -555,7 +562,7 @@ window.Widgets = {
                   label: (ctx) => {
                     const totalVal = ctx.dataset.data.reduce((a, b) => a + b, 0);
                     const pct = window.Store.formatPercent(totalVal > 0 ? (ctx.parsed / totalVal) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
-                    return `  ${window.Store.formatCurrency(ctx.parsed)} (${pct})`;
+                    return `  ${window.Store.formatCurrency(ctx.parsed, ccy)} (${pct})`;
                   }
                 }
               }
@@ -625,10 +632,11 @@ window.Widgets = {
 
         const latest = points[points.length - 1].balance;
         const forecast = window.Store.computeBalanceForecast(W._cfg(instance).accountIds || []);
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         return `
           <div class="widget-stat">
-            <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(latest))}</span>
+            <span class="widget-stat-value">${W._esc(window.Store.formatCurrency(latest, ccy))}</span>
             <span class="widget-stat-label">${window.I18n.t('dash.vsStartOfMonth', { pct: W._deltaBadge(forecast.todayVariation) })}</span>
           </div>
           <div class="widget-chart-wrap ${instance.size === 'large' ? '' : 'widget-chart-wrap--spark'}">
@@ -651,6 +659,7 @@ window.Widgets = {
         const isLarge = instance.size === 'large';
         const theme = window.Components.NetFlowChart._themeColors();
         const line = theme.isDark ? '#38bdf8' : '#0284c7';
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         W._mountChart(instance.id, canvas, {
           type: 'line',
@@ -684,7 +693,7 @@ window.Widgets = {
                 padding: 10,
                 displayColors: false,
                 bodyFont: { family: 'Manrope', size: 12, weight: '700' },
-                callbacks: { label: (ctx) => window.Store.formatCurrency(ctx.parsed.y) }
+                callbacks: { label: (ctx) => window.Store.formatCurrency(ctx.parsed.y, ccy) }
               } : { enabled: false }
             },
             scales: {
@@ -749,9 +758,10 @@ window.Widgets = {
           ? ((current.net - previous.net) / Math.abs(previous.net)) * 100
           : null;
 
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
         const head = `
           <div class="widget-stat">
-            <span class="widget-stat-value ${current.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(current.net))}</span>
+            <span class="widget-stat-value ${current.net >= 0 ? 'text-income' : 'text-expense'}">${W._esc(window.Store.formatCurrency(current.net, ccy))}</span>
             <span class="widget-stat-label">${previous
               ? window.I18n.t('widget.savings.vsMonth', { pct: W._deltaBadge(pct), month: W._esc(previous.label) })
               : window.I18n.t('widget.savings.vsPrev', { pct: W._deltaBadge(pct) })}</span>
@@ -779,6 +789,7 @@ window.Widgets = {
         const isLarge = instance.size === 'large';
         const theme = window.Components.NetFlowChart._themeColors();
         const yScale = window.Components.NetFlowChart._computeYScale(buckets.map(b => b.net));
+        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         W._mountChart(instance.id, canvas, {
           type: 'bar',
@@ -807,7 +818,7 @@ window.Widgets = {
                 padding: 10,
                 displayColors: false,
                 bodyFont: { family: 'Manrope', size: 12, weight: '700' },
-                callbacks: { label: (ctx) => window.I18n.t('widget.savedLabel', { amount: window.Store.formatCurrency(ctx.parsed.y) }) }
+                callbacks: { label: (ctx) => window.I18n.t('widget.savedLabel', { amount: window.Store.formatCurrency(ctx.parsed.y, ccy) }) }
               } : { enabled: false }
             },
             scales: {
@@ -825,7 +836,7 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol()}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
+                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol(ccy)}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
                 }
               }
             }
@@ -952,7 +963,8 @@ window.Widgets = {
             const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
             icon = row.transferRef ? 'arrow-up-down' : (cat ? cat.icon : 'receipt');
             title = cat ? cat.name : window.I18n.t(row.transferRef ? 'common.transfer' : 'common.uncategorized'); // 1.0.1 (BUG-08) label
-            amountHtml = `<span class="widget-row-value ${cls}">${isExpense ? '-' : '+'}${W._esc(window.Store.formatCurrency(Math.abs(row.amount)))}</span>`;
+            // 1.0.2 (BUG-36, D-U8-13): each row in its own account's currency (as Latest)
+            amountHtml = `<span class="widget-row-value ${cls}">${isExpense ? '-' : '+'}${W._esc(window.Store.formatCurrency(Math.abs(row.amount), acc && acc.currency))}</span>`;
             sub = isLarge ? `${acc ? acc.name : window.I18n.t('common.account')} · ${dateLabel}` : dateLabel;
           }
 
@@ -972,14 +984,19 @@ window.Widgets = {
         // computeUpcomingImpact uses. Loans are always outflows.
         let footer = '';
         if (isLarge) {
-          const net = txs.reduce((sum, t) =>
+          // 1.0.2 (BUG-36, D-U8-13): the list keeps every selected account's
+          // rows; only the SUM leaves out the accounts a mixed selection
+          // excludes, and it reads in the selection's currency.
+          const accountIds = W._cfg(instance).accountIds || [];
+          const inScope = window.Store.aggregatePredicate(accountIds);
+          const net = txs.filter(t => inScope(t.accountId)).reduce((sum, t) =>
             window.Store._isPositiveTx(t) ? sum + t.amount : sum - t.amount, 0)
             - loanRows.reduce((sum, l) => sum + l.amount, 0);
           const cls = net > 0 ? 'text-income' : (net < 0 ? 'text-expense' : '');
           footer = `
             <div class="widget-upcoming-footer">
               <span class="widget-stat-label">${W._esc(window.I18n.t('widget.upcoming.netImpact', { count: days }))}</span>
-              <span class="widget-row-value ${cls}">${net > 0 ? '+' : ''}${W._esc(window.Store.formatCurrency(net))}</span>
+              <span class="widget-row-value ${cls}">${net > 0 ? '+' : ''}${W._esc(window.Store.formatCurrency(net, window.Store.aggregateSelection(accountIds).currency))}</span>
             </div>`;
         }
 

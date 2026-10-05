@@ -243,10 +243,13 @@ describe('1.0.1 (BUG-02) a tracked loan survives a full restore', () => {
 
     boot();
     // The new phone already holds a same-note series (e.g. typed by hand).
+    // 1.0.2: typed at another time of day — under the fake clock the backup's
+    // rows carry 12:00:00 too, and an exact replay of a row (same day, time,
+    // amount and note) is recognised as the same payment (BUG-78 fingerprint).
     S().dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 5000, openingDate: '2026-01-01' });
     S().dispatch('ADD_TRANSACTION', {
       type: 'expense', amount: 969.36, accountId: S().getState().accounts[0].id, categoryId: 'cat_debt',
-      date: '2026-12-01', comment: 'Home Mortgage — loan payment',
+      date: '2026-12-01', time: '08:30:00', comment: 'Home Mortgage — loan payment',
       recurrence: { interval: 1, frequency: 'months', endDate: '2027-05-01' }
     });
     const localSid = seriesIds()[0];
@@ -295,14 +298,23 @@ describe('1.0.1 (BUG-02) series ids on import', () => {
     expect(seriesIds()).toEqual([sid]);
   });
 
-  it('re-keys the series on a collision (re-import into the same install)', () => {
+  // 1.0.2 (BUG-78, D11): the collision case. A file series this install
+  // already holds is owned here: none of its rows is re-added (before 1.0.2
+  // they came back re-keyed as a second, detached copy of the series).
+  it('a file series this install already holds is owned here: no row of it is re-added', () => {
     const { sid, members } = buildLedger();
-    const tx = exportAll().transactions;
-    importFile(tx);
-    const ids = seriesIds();
-    expect(ids).toHaveLength(2);
-    expect(ids).toContain(sid);
-    // The loan keeps its own series; the re-imported copy is a separate one.
+    // Hand-made and id-less; its rows match no store row (other amount, day).
+    const csv = [
+      'Date,Type,Amount,Account,Category,Note,SeriesId,Interval,Frequency,StartDate,EndDate,NextDate',
+      `2026-11-15,expense,500,Main Bank,Debt,Other,${sid},1,months,2026-11-15,2027-01-15,`,
+      `2026-12-15,expense,500,Main Bank,Debt,Other,${sid},1,months,2026-11-15,2027-01-15,`,
+      `2027-01-15,expense,500,Main Bank,Debt,Other,${sid},1,months,2026-11-15,2027-01-15,2027-02-15`
+    ].join('\n');
+    const res = importFile(csv);
+    expect(res.kind).toBe('transactions');
+    expect(res.importedCount).toBe(0);
+    expect(res.duplicateCount).toBe(3);
+    expect(seriesIds()).toEqual([sid]);
     expect(S().getLoanLinkedTransactions(loan('Home Mortgage'))).toHaveLength(members);
   });
 
