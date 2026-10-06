@@ -81,6 +81,22 @@ describe('1.0.3 (BUG-147) a quote inside an unquoted field', () => {
     expect(I().analyzeBankCSV(r.csvText).rowsRaw).toHaveLength(2);
   });
 
+  it('a stray opening quote above an inch-mark row does not merge the two rows', () => {
+    const csv = [
+      'Date,Description,Amount',
+      '2026-09-01,"ACME 5,-10.00',
+      '2026-09-02,TV 55" SAMSUNG,-499.00',
+      '2026-09-03,Lidl,-20.00'
+    ].join('\n');
+    const rows = I().parseCSV(csv);
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toEqual({ date: '2026-09-02', description: 'TV 55" SAMSUNG', amount: '-499.00' });
+    expect(rows[2].description).toBe('Lidl');
+    expect(I()._quoteClosesMidField('a,"b\nc 5" x,d', ',')).toBe(true);
+    expect(I()._quoteClosesMidField('a,"b\nc" ,d', ',')).toBe(false);
+    expect(I()._quoteClosesMidField('a,"two\nlines",-1.00', ',')).toBe(false);
+  });
+
   it('_detectDelimiter is not fooled by an inch mark in the header', () => {
     expect(I()._detectDelimiter('Date;TV 55" model, size;Amount')).toBe(';');
     expect(I()._detectDelimiter('Date,Screen 27";Size,Amount')).toBe(',');

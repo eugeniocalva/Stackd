@@ -4742,6 +4742,21 @@ Object.assign(window.Views, {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     },
 
+    // 1.0.3 (BUG-145): money fields are text inputs read by Store.parseAmount,
+    // so a prefill is the plain cents-rounded figure ('12345.6'), never a
+    // locale format the reader could take for grouping.
+    _moneyDraft(x) {
+      return String(Math.round(x * 100) / 100);
+    },
+
+    // 1.0.3 (BUG-145, BUG-71): a rate is a plain percent with a decimal comma
+    // or point and an optional %; no grouping, no sign. Anything else, blank
+    // included, is NaN, so the engine reports E_RATE instead of a 0% loan.
+    parseRate(raw) {
+      const s = String(raw == null ? '' : raw).trim().replace(/\s*%$/, '');
+      return /^\d+([.,]\d+)?$/.test(s) ? Number(s.replace(',', '.')) : NaN;
+    },
+
     newDraft(type, loan) {
       if (loan && loan.config) {
         const c = loan.config;
@@ -4749,8 +4764,8 @@ Object.assign(window.Views, {
           key: 'id:' + loan.id,
           editingLoanId: loan.id,
           type: this.TYPES[c.type] ? c.type : 'personal',
-          principal: c.principal != null ? String(c.principal) : '',
-          downPayment: c.downPayment ? String(c.downPayment) : '',
+          principal: c.principal != null ? this._moneyDraft(c.principal) : '', // 1.0.3 (BUG-145)
+          downPayment: c.downPayment ? this._moneyDraft(c.downPayment) : '',
           duration: c.duration != null ? String(c.duration) : '',
           durationUnit: c.durationUnit || 'years',
           annualRate: c.annualRate != null ? String(c.annualRate) : '',
@@ -4887,15 +4902,21 @@ Object.assign(window.Views, {
       });
     },
 
+    // 1.0.3 (BUG-145, BUG-71): amounts through Store.parseAmount (Italian
+    // '250.000' is 250000, not 250). Blank money is 0 (the engine's "greater
+    // than zero"); an unreadable amount stays NaN and engineError explains the
+    // format. A decimal duration and a blank rate reach the engine as typed,
+    // so E_DURATION / E_RATE fire instead of a truncated or 0% loan.
     buildConfig(d) {
-      const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+      const money = (v) => { const n = window.Store.parseAmount(v); return n === null ? 0 : n; };
+      const dur = String(d.duration == null ? '' : d.duration).trim();
       return {
         type: d.type,
-        principal: num(d.principal),
-        downPayment: d.type === 'mortgage' ? num(d.downPayment) : 0,
-        duration: parseInt(d.duration, 10) || 0,
+        principal: money(d.principal),
+        downPayment: d.type === 'mortgage' ? money(d.downPayment) : 0,
+        duration: dur === '' ? 0 : Number(dur),
         durationUnit: d.durationUnit,
-        annualRate: num(d.annualRate),
+        annualRate: this.parseRate(d.annualRate),
         firstPaymentDate: d.firstPaymentDate,
         amortization: d.amortization,
         firstInstallmentInterestOnly: d.firstInstallmentInterestOnly,
@@ -5036,6 +5057,10 @@ Object.assign(window.Views, {
         ? window.I18n.t(editingLoan && editingLoan.kind === 'active' ? 'debt.editLoan' : 'debt.editSimulation')
         : window.I18n.t(S.TYPES[d.type].label);
 
+      // 1.0.3 (BUG-145): amounts and the rate are decimal TEXT inputs (never
+      // type="number" for money: it rejects '250.000' / '3,2' per WebView
+      // locale and hands back ''). The draft holds what was typed, so every
+      // value is escaped back into its attribute.
       return `
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
@@ -5046,19 +5071,19 @@ Object.assign(window.Views, {
           <div class="amount-input-group">
             <span style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
             <label for="dsim-principal" class="visually-hidden">${window.I18n.t('debt.loanAmount')}</label>
-            <input type="number" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.principal}" style="width: auto; max-width: 220px;">
+            <input type="text" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.principal)}" style="width: auto; max-width: 220px;">
           </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
             ${d.type === 'mortgage' ? `
               <div class="form-group">
                 <label class="form-label" for="dsim-down">${window.I18n.t('debt.downPayment')} <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
-                <input type="number" id="dsim-down" class="form-control" placeholder="0.00" min="0" step="0.01" inputmode="decimal" value="${d.downPayment}">
+                <input type="text" id="dsim-down" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.downPayment)}">
               </div>` : ''}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group">
                 <label class="form-label" for="dsim-duration">${window.I18n.t('debt.durationLabel')}</label>
-                <input type="number" id="dsim-duration" class="form-control" placeholder="${window.I18n.t('debt.durationPlaceholder')}" step="1" inputmode="numeric" value="${d.duration}">
+                <input type="number" id="dsim-duration" class="form-control" placeholder="${window.I18n.t('debt.durationPlaceholder')}" step="1" inputmode="numeric" value="${escapeAttr(d.duration)}">
               </div>
               <div class="form-group">
                 <label class="form-label" for="dsim-duration-unit">${window.I18n.t('debt.unit')}</label>
@@ -5071,11 +5096,11 @@ Object.assign(window.Views, {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="dsim-rate">${window.I18n.t('debt.annualRate')}</label>
-                <input type="number" id="dsim-rate" class="form-control" placeholder="${window.I18n.t('debt.ratePlaceholder')}" step="0.01" inputmode="decimal" value="${d.annualRate}">
+                <input type="text" id="dsim-rate" class="form-control" placeholder="${window.I18n.t('debt.ratePlaceholder')}" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.annualRate)}">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="dsim-first-date">${window.I18n.t('debt.firstPayment')}</label>
-                <input type="date" id="dsim-first-date" class="form-control" value="${d.firstPaymentDate}">
+                <input type="date" id="dsim-first-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}">
               </div>
             </div>
           </div>
@@ -5134,6 +5159,17 @@ Object.assign(window.Views, {
     // E_CONFIG / E_AMORTIZATION / E_INTERNAL and non-engine errors fall back to
     // the generic 'debt.checkInputs' — the raw message is never shown.
     engineError(e, config) {
+      // 1.0.3 (BUG-145): an amount Store.parseAmount could not read is NaN in
+      // the config. Say how to write one, on its own field — before the
+      // E_DOWNPAYMENT remap below, which would blame the amount for a NaN
+      // (falsy) down payment.
+      if (config) {
+        for (const [k, f] of [['principal', 'dsim-principal'], ['downPayment', 'dsim-down']]) {
+          if (Number.isNaN(config[k])) {
+            return { message: window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }), field: f, details: false };
+          }
+        }
+      }
       let code = e && e.name === 'LoanEngineError' ? e.code : null;
       // loan-engine.js reuses E_DOWNPAYMENT for "financed principal < 0.01";
       // with no down payment entered it is the AMOUNT that is wrong (and a
@@ -5160,8 +5196,9 @@ Object.assign(window.Views, {
       const updateDownPct = () => {
         const pctEl = $('dsim-down-pct');
         if (!pctEl) return;
-        const p = parseFloat(d.principal), dp = parseFloat(d.downPayment);
-        pctEl.textContent = p > 0 && dp > 0 ? `(${window.Store.formatPercent(dp / p * 100, { digits: 1 })})` : ''; // 1.0.1 (BUG-09)
+        // 1.0.3 (BUG-145): read like the simulation will (null/NaN → no hint)
+        const p = window.Store.parseAmount(d.principal), dp = window.Store.parseAmount(d.downPayment);
+        pctEl.textContent = Number.isFinite(p) && Number.isFinite(dp) && p > 0 && dp > 0 ?`(${window.Store.formatPercent(dp / p * 100, { digits: 1 })})` : ''; // 1.0.1 (BUG-09)
       };
       const bind = (id, prop, evt = 'input') => {
         const el = $(id);
@@ -5248,18 +5285,31 @@ Object.assign(window.Views, {
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
       };
 
+      // 1.0.3 (BUG-118): a sheet that rejects its input says why, under the
+      // first faulty field, instead of silently staying open. Each save starts
+      // from a clean sheet. Amounts are text read by Store.parseAmount and the
+      // rate by parseRate, like the main form (BUG-145).
+      const sheetEl = (id) => document.getElementById(id);
+      const sheetReject = (id, key, params) => {
+        showFieldError(sheetEl(id), window.I18n.t(key, params), { focus: true });
+      };
+      const sheetStart = () => clearFieldErrors(sheetEl('active-modal'));
+      const amountInvalid = () => ({ example: window.Store.amountExample() });
+
       const openAddModal = (kind) => {
         if (kind === 'rate') {
           window.Components.Modal.show({
             title: window.I18n.t('debt.addRateChangeTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-rc-rate">${window.I18n.t('debt.newRate')}</label><input type="number" id="dsim-rc-rate" class="form-control" step="0.01" inputmode="decimal" placeholder="${window.I18n.t('debt.newRatePlaceholder')}"></div>
-              <div class="form-group"><label class="form-label" for="dsim-rc-date">${window.I18n.t('debt.effectiveFrom')}</label><input type="date" id="dsim-rc-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+              <div class="form-group"><label class="form-label" for="dsim-rc-rate">${window.I18n.t('debt.newRate')}</label><input type="text" id="dsim-rc-rate" class="form-control" inputmode="decimal" autocomplete="off" placeholder="${window.I18n.t('debt.newRatePlaceholder')}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-rc-date">${window.I18n.t('debt.effectiveFrom')}</label><input type="date" id="dsim-rc-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const rate = parseFloat(document.getElementById('dsim-rc-rate').value);
-              const date = document.getElementById('dsim-rc-date').value;
-              if (isNaN(rate) || rate < 0 || rate >= 100 || !date) return;
+              sheetStart();
+              const rate = S.parseRate(sheetEl('dsim-rc-rate').value);
+              const date = sheetEl('dsim-rc-date').value;
+              if (Number.isNaN(rate) || rate >= 100) return sheetReject('dsim-rc-rate', 'debt.err.rate');
+              if (!date) return sheetReject('dsim-rc-date', 'form.dateRequired');
               d.rateChanges.push({ annualRate: rate, effectiveFrom: date });
               close();
               renderLists();
@@ -5269,13 +5319,13 @@ Object.assign(window.Views, {
           window.Components.Modal.show({
             title: window.I18n.t('debt.addEarlyRepaymentTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-er-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-er-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-amount">${window.I18n.t('form.amount')}</label><input type="text" id="dsim-er-amount" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
               <div class="form-group"><label class="form-label" for="dsim-er-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-er-freq" class="form-control" style="appearance: none;">
                   <option value="once">${window.I18n.t('debt.freqOnce')}</option>
                   <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group"><label class="form-label" for="dsim-er-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-er-date" class="form-control" value="${d.firstPaymentDate}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-er-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>
               <div class="form-group" id="dsim-er-end-group" style="display: none;"><label class="form-label" for="dsim-er-end">${window.I18n.t('debt.untilOptional')}</label><input type="date" id="dsim-er-end" class="form-control"></div>
               <div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-er-mode">${window.I18n.t('debt.repaymentType')}</label>
                 <select id="dsim-er-mode" class="form-control" style="appearance: none;">
@@ -5284,12 +5334,15 @@ Object.assign(window.Views, {
                 </select></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const amount = parseFloat(document.getElementById('dsim-er-amount').value);
-              const frequency = document.getElementById('dsim-er-freq').value;
-              const date = document.getElementById('dsim-er-date').value;
-              const endDate = document.getElementById('dsim-er-end').value || null;
-              const mode = document.getElementById('dsim-er-mode').value;
-              if (isNaN(amount) || amount <= 0 || !date) return;
+              sheetStart();
+              const amount = window.Store.parseAmount(sheetEl('dsim-er-amount').value);
+              const frequency = sheetEl('dsim-er-freq').value;
+              const date = sheetEl('dsim-er-date').value;
+              const endDate = sheetEl('dsim-er-end').value || null;
+              const mode = sheetEl('dsim-er-mode').value;
+              if (Number.isNaN(amount)) return sheetReject('dsim-er-amount', 'form.amountInvalid', amountInvalid());
+              if (amount === null || amount <= 0) return sheetReject('dsim-er-amount', 'form.amountRequired');
+              if (!date) return sheetReject('dsim-er-date', 'form.dateRequired');
               const er = { amount, frequency, date, mode };
               if (frequency === 'monthly' && endDate) er.endDate = endDate;
               d.earlyRepayments.push(er);
@@ -5308,20 +5361,23 @@ Object.assign(window.Views, {
             title: window.I18n.t('debt.addExtraCostTitle'),
             content: `
               <div class="form-group"><label class="form-label" for="dsim-ex-name">${window.I18n.t('common.name')}</label><input type="text" id="dsim-ex-name" class="form-control" placeholder="${window.I18n.t('debt.insurancePlaceholder')}"></div>
-              <div class="form-group"><label class="form-label" for="dsim-ex-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-ex-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-amount">${window.I18n.t('form.amount')}</label><input type="text" id="dsim-ex-amount" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
               <div class="form-group"><label class="form-label" for="dsim-ex-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-ex-freq" class="form-control" style="appearance: none;">
                   <option value="once">${window.I18n.t('debt.freqOnce')}</option>
                   <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-ex-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-ex-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const name = document.getElementById('dsim-ex-name').value.trim();
-              const amount = parseFloat(document.getElementById('dsim-ex-amount').value);
-              const frequency = document.getElementById('dsim-ex-freq').value;
-              const date = document.getElementById('dsim-ex-date').value;
-              if (!name || isNaN(amount) || amount < 0) return;
+              sheetStart();
+              const name = sheetEl('dsim-ex-name').value.trim();
+              const amount = window.Store.parseAmount(sheetEl('dsim-ex-amount').value);
+              const frequency = sheetEl('dsim-ex-freq').value;
+              const date = sheetEl('dsim-ex-date').value;
+              if (!name) return sheetReject('dsim-ex-name', 'debt.err.costName');
+              if (Number.isNaN(amount)) return sheetReject('dsim-ex-amount', 'form.amountInvalid', amountInvalid());
+              if (amount === null || amount < 0) return sheetReject('dsim-ex-amount', 'debt.err.costAmount');
               const ex = { name, amount, frequency };
               if (frequency === 'once' && date) ex.date = date;
               d.additionalExpenses.push(ex);
@@ -5743,8 +5799,10 @@ Object.assign(window.Views, {
           content: `<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="loan-name-input">${window.I18n.t('common.name')}</label><input type="text" id="loan-name-input" class="form-control" placeholder="${window.I18n.t('debt.namePlaceholder')}" value="${S.esc(defaultName || '')}"></div>`,
           saveText: window.I18n.t('common.save'),
           onSave: (close) => {
-            const v = document.getElementById('loan-name-input').value.trim();
-            if (!v) return;
+            const input = document.getElementById('loan-name-input');
+            const v = input.value.trim();
+            // 1.0.3 (BUG-118): say why the sheet stays open
+            if (!v) { showFieldError(input, window.I18n.t('debt.err.loanName')); return; }
             close();
             cb(v);
           }

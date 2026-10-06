@@ -207,6 +207,7 @@ describe('Loan simulator input (1.0.3 BUG-145 / BUG-71 / BUG-118)', () => {
     let host;
     const open = (kind) => {
       global.window.location.hash = '#debt-sim?type=personal';
+      if (host) host.remove();
       host = document.createElement('div');
       document.body.appendChild(host);
       host.innerHTML = Sim().render(global.window.Store.getState());
