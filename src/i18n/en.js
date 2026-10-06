@@ -1390,4 +1390,15 @@ window.I18n.dicts.en = {
   'budget.removeConfirm.body': 'Its limit, months and Cumulative Rollover setting will be cleared.',
   // 1.0.3 U1
   'recUpdate.gapNote': 'Payments you deleted from this series come back with the new schedule.',
+  // 1.0.3 U2
+  'openingDate.txTitle': "Before the opening balance",
+  'openingDate.txBody': "{account} opens on {date}. Earlier entries are kept but don't count in balances, budgets or charts.",
+  'openingDate.move': "Move opening date to {date}",
+  'openingDate.saveAnyway': "Save anyway",
+  'openingDate.accountTitle': "Entries before this date",
+  'openingDate.accountBody.one': "{count} entry ({amount}) is dated before {date}. It will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.accountBody.other': "{count} entries ({amount}) are dated before {date}. They will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.useEarliest': "Open on {date} instead",
+  'openingDate.changeAnyway': "Change anyway",
+  'history.beforeOpening': "Before opening balance · not counted",
 };

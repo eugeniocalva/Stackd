@@ -1369,4 +1369,15 @@ window.I18n.dicts.fr = {
   'budget.removeConfirm.body': 'Sa limite, ses mois et le report cumulatif seront effacés.',
   // 1.0.3 U1
   'recUpdate.gapNote': 'Les opérations que vous avez supprimées de cette série reviennent avec le nouveau calendrier.',
+  // 1.0.3 U2
+  'openingDate.txTitle': "Avant le solde initial",
+  'openingDate.txBody': "{account} est ouvert le {date}. Les opérations antérieures sont conservées mais ne comptent pas dans les soldes, budgets ou graphiques.",
+  'openingDate.move': "Déplacer la date d'ouverture au {date}",
+  'openingDate.saveAnyway': "Enregistrer quand même",
+  'openingDate.accountTitle': "Opérations avant cette date",
+  'openingDate.accountBody.one': "{count} opération ({amount}) est datée d'avant le {date}. Elle restera dans l'historique mais ne comptera plus dans les soldes, budgets ou graphiques.",
+  'openingDate.accountBody.other': "{count} opérations ({amount}) sont datées d'avant le {date}. Elles resteront dans l'historique mais ne compteront plus dans les soldes, budgets ou graphiques.",
+  'openingDate.useEarliest': "Ouvrir le {date} à la place",
+  'openingDate.changeAnyway': "Modifier quand même",
+  'history.beforeOpening': "Avant le solde initial · non compté",
 };

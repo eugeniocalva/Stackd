@@ -912,13 +912,23 @@ window.Components = {
       // amount out of the row. Inline: stylesheets carry no ?v= cache-busting.
       const ELLIPSIS = 'min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
 
+      // 1.0.3 (BUG-41, D2): a row dated before its account's opening date is
+      // listed dimmed with a "not counted" line (it is in no balance or sum).
+      // The icon and text fade, not the row: a translucent swipe row would
+      // show its action buttons through. Inline: no stylesheet cache-busting.
+      const beforeOpening = !!(options && options.beforeOpening);
+      const dimStyle = beforeOpening ? ' opacity: 0.55;' : '';
+      const beforeOpeningHtml = beforeOpening
+        ? `<div class="list-item-subtitle tx-before-opening" style="margin-top: 2px; font-size: 0.72rem; ${ELLIPSIS}">${window.I18n.t('history.beforeOpening')}</div>`
+        : '';
+
       const innerContent = `
         ${unpaidBarHtml}
         ${checkboxHtml}
-        <div class="list-item-icon">
+        <div class="list-item-icon"${beforeOpening ? ` style="${dimStyle.trim()}"` : ''}>
           <i data-lucide="${category ? category.icon : 'receipt'}"></i>
         </div>
-        <div class="list-item-content" style="min-width: 0;">
+        <div class="list-item-content" style="min-width: 0;${dimStyle}">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
               <span class="tx-item-title-text" style="${ELLIPSIS}">${category ? esc(category.name) : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
@@ -938,6 +948,7 @@ window.Components = {
             </div>
             <div class="list-item-subtitle" style="flex-shrink: 0;">${dateStr}</div>
           </div>
+          ${beforeOpeningHtml}
         </div>`;
 
       // v0.62: Complete branch isolation
@@ -4830,6 +4841,77 @@ Object.assign(window.Components, {
       document.addEventListener('keydown', onKey);
       // alert() used to take focus; keep keyboard / screen-reader users on it.
       setTimeout(() => { if (!closed && okBtn.isConnected) { try { okBtn.focus({ preventScroll: true }); } catch (e) { okBtn.focus(); } } }, 50);
+      return backdrop;
+    }
+  },
+
+  // 1.0.3 (BUG-137/BUG-41): the warning before a save that would leave rows
+  // dated before an account's opening date (out of every balance, budget and
+  // chart). Shared by Edit Account and the transaction form. Buttons, top to
+  // bottom: primary (fix the dates), "anyway" (save as is), Cancel. Cancel,
+  // a backdrop tap, Escape and Android Back ([data-back-dismiss]) save
+  // nothing and leave the form open as typed. NoticeSheet family (_bankSheet).
+  // title / bodyHtml (array of lines) / primaryHtml / anywayHtml are MARKUP:
+  // the caller escapes its t() params (account names), never t() output.
+  //   show({ title, bodyHtml, primaryHtml, onPrimary, anywayHtml, onAnyway, onCancel })
+  OpeningDateSheet: {
+    // 'YYYY-MM-DD' → the UI locale's medium date ("Sep 1, 2026"), noon-anchored
+    // so it never drifts a day. A non-date is returned as is.
+    fmtDate(ymd) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+      if (!m) return String(ymd || '');
+      try {
+        return new Intl.DateTimeFormat(window.Store.getLocale(), { dateStyle: 'medium' })
+          .format(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
+      } catch (e) { return String(ymd); }
+    },
+    show(options) {
+      const o = options || {};
+      const id = 'opening-date-sheet';
+      const lines = Array.isArray(o.bodyHtml) ? o.bodyHtml : [o.bodyHtml || ''];
+      const backdrop = window.Components._bankSheet(id, `
+        <h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-3); font-size: 1.1rem;">${o.title || ''}</h2>
+        <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-5);">
+          <i data-lucide="alert-triangle" aria-hidden="true" style="width: 20px; height: 20px; color: var(--color-expense); flex-shrink: 0; margin-top: 2px;"></i>
+          <div id="${id}-body">
+            ${lines.map(l => `<p style="margin: 0 0 var(--space-2); overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);">${l}</p>`).join('')}
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="opening-date-primary">${o.primaryHtml || ''}</button>
+          <button type="button" class="btn btn-secondary" id="opening-date-anyway">${o.anywayHtml || ''}</button>
+          <button type="button" class="btn btn-secondary" id="opening-date-cancel" data-back-dismiss>${window.I18n.t('common.cancel')}</button>
+        </div>`);
+      if (!backdrop) return null;
+      backdrop.setAttribute('aria-describedby', `${id}-body`);
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      };
+      const finish = () => {
+        if (closed) return false;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        return true;
+      };
+      const cancel = () => {
+        if (!finish()) return;
+        backdrop._close();
+        if (typeof o.onCancel === 'function') o.onCancel();
+      };
+      // A choice saves and leaves the form: drop the sheet at once (no fade
+      // over the landing screen), then act.
+      const choose = (fn) => () => {
+        if (!finish()) return;
+        backdrop.remove();
+        if (typeof fn === 'function') fn();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) cancel(); });
+      backdrop.querySelector('#opening-date-cancel').addEventListener('click', cancel);
+      backdrop.querySelector('#opening-date-primary').addEventListener('click', choose(o.onPrimary));
+      backdrop.querySelector('#opening-date-anyway').addEventListener('click', choose(o.onAnyway));
+      document.addEventListener('keydown', onKey);
       return backdrop;
     }
   },

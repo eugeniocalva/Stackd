@@ -131,7 +131,7 @@ test.describe('Loan simulator E2E flow', () => {
 
     // An account is required before a payment can be logged
     await page.evaluate(() => {
-      window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 20000 });
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 20000, openingDate: '2026-01-01' });
     });
 
     await goToHub(page);
