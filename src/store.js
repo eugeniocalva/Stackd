@@ -567,7 +567,9 @@ window.Store = {
     // 1.0.2 (BUG-26): every member carries its series' real schedule
     if (this._healSeriesSchedules()) window.StackdDB.save('transactions', this.state.transactions);
     // 1.0.3 (BUG-51, D4): month-end / 29 Feb chains 1.0.2 let drift, future payments only
-    if (this._healSeriesAnchors()) window.StackdDB.save('transactions', this.state.transactions);
+    const anchorsHealed = this._healSeriesAnchors();
+    // 1.0.3 (BUG-51, review): then stamp the anchor every other chain shows
+    if (this._healInferSeriesAnchors() || anchorsHealed) window.StackdDB.save('transactions', this.state.transactions);
     this._healRestoredImportKeys(); // 1.0.2 (BUG-32)
     this._healMultilineNotes(); // 1.0.2 (R1)
     this._processRecurringTransactions();
@@ -938,12 +940,26 @@ window.Store = {
       if (d && gaps.includes(k)) want.add(d);
     }
     const inSeries = (t) => t.recurrence && t.recurrence.seriesId === seriesId;
-    const armedRefs = new Set(this.state.transactions
-      .filter(t => inSeries(t) && t.recurrence.nextDate && t.transferRef).map(t => t.transferRef));
     const doomed = this.state.transactions.filter(t => inSeries(t) && want.has(t.date) && t.id !== edited.id &&
-      !(edited.transferRef && t.transferRef === edited.transferRef) &&
-      !t.recurrence.nextDate && !(t.transferRef && armedRefs.has(t.transferRef)));
+      !(edited.transferRef && t.transferRef === edited.transferRef));
     if (!doomed.length) return false;
+    // 1.0.3 (BUG-139, review): a gap on the LAST slot holds the armed tail.
+    // Hand its nextDate to the latest surviving member (the expense leg of a
+    // pair) so the series keeps exactly one generator, then drop it too.
+    const armedGone = doomed.find(t => t.recurrence.nextDate);
+    if (armedGone) {
+      const gone = new Set(doomed.map(t => t.id));
+      let heirIdx = -1;
+      this.state.transactions.forEach((t, i) => {
+        if (!inSeries(t) || gone.has(t.id) || t.date >= armedGone.date) return;
+        if (t.transferRef && t.type !== 'expense') return;
+        const h = heirIdx >= 0 ? this.state.transactions[heirIdx] : null;
+        if (!h || t.date > h.date) heirIdx = i;
+      });
+      if (heirIdx < 0) return false; // nothing to carry the generator: keep the 1.0.2 rebuild
+      const heir = this.state.transactions[heirIdx];
+      this.state.transactions[heirIdx] = { ...heir, recurrence: { ...heir.recurrence, nextDate: armedGone.recurrence.nextDate } };
+    }
     this._removeSeriesMembers(doomed);
     return true;
   },
@@ -1280,6 +1296,53 @@ window.Store = {
       this._budgetSpendIdx = null;
     }
     return healed;
+  },
+
+  // 1.0.3 (BUG-51, review): anchorDay is not in the CSV backup, and a 1.0.2
+  // chain _healSeriesAnchors cannot prove (moved by hand to the 30th, drifted
+  // and then edited) has none. The startDate fallback of _anchorDayOf then
+  // guesses wrong (a chain re-anchored to the 31st decays to the 28th again
+  // after a restore; a 30th chain hops to the 31st). Runs right AFTER
+  // _healSeriesAnchors and stamps every monthly/yearly member that has no
+  // anchorDay with the day its own chain shows. A payment before its month's
+  // last day IS its anchor; one ON the last day only says "this day or
+  // later", so a run of consecutive month-end payments takes the largest day
+  // in the run (31 Dec, 31 Jan, 28 Feb, 31 Mar → 31; 30 Nov alone → 30).
+  // Dates never move. Idempotent. Returns true when it stamped something
+  // (the caller saves).
+  _healInferSeriesAnchors() {
+    const by = {};
+    this.state.transactions.forEach(t => {
+      const r = t.recurrence;
+      if (r && r.seriesId && (r.frequency === 'months' || r.frequency === 'years')) (by[r.seriesId] = by[r.seriesId] || []).push(t);
+    });
+    let stamped = false;
+    Object.keys(by).forEach(sid => {
+      const ms = by[sid];
+      if (ms.every(t => Number(t.recurrence.anchorDay) > 0)) return;
+      const sorted = ms.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const dayOf = (t) => Number(String(t.date || '').slice(8, 10)) || 0;
+      const monthEnd = (t) => {
+        if (Number(t.recurrence.anchorDay) > 0) return false; // carries its own
+        const [y, m, d] = String(t.date || '').split('-').map(Number);
+        return !!(y && m && d && d === new Date(y, m, 0).getDate());
+      };
+      for (let i = 0; i < sorted.length;) {
+        let j = i;
+        if (monthEnd(sorted[i])) {
+          while (j + 1 < sorted.length && monthEnd(sorted[j + 1])) j++;
+        }
+        const run = sorted.slice(i, j + 1);
+        const anchor = run.reduce((a, t) => Math.max(a, dayOf(t)), 0);
+        run.forEach(t => {
+          if (Number(t.recurrence.anchorDay) > 0 || !anchor) return;
+          t.recurrence = { ...t.recurrence, anchorDay: anchor };
+          stamped = true;
+        });
+        i = j + 1;
+      }
+    });
+    return stamped;
   },
 
   _processRecurringTransactions() {
@@ -2188,9 +2251,14 @@ window.Store = {
         const seriesId = (existingRec && existingRec.seriesId) || (payload.recurrence && payload.recurrence.seriesId);
         const dateChanged = payload.date !== undefined && payload.date !== existingTx.date;
         // 1.0.2 (BUG-26): changed against the SERIES' schedule
-        const scheduleChanged = !!(updatePayload.recurrence && existingRec &&
+        // 1.0.3 (BUG-159, review): the series' own end goes through the same
+        // clamp, so a 1.0.2 end stored past the cap (29 Feb start → 1 Mar) that
+        // now clamps to 28 Feb is no change for an untouched End Date
+        const schedCmp = (updatePayload.recurrence && existingRec)
+          ? this._clampRecurrenceEndDate({ ...existingRec, ...(sched || {}) }, existingTx.date) : null;
+        const scheduleChanged = !!(schedCmp &&
           ['endDate', 'interval', 'frequency'].some(k =>
-            String(updatePayload.recurrence[k]) !== String((sched || existingRec)[k])));
+            String(updatePayload.recurrence[k]) !== String(schedCmp[k])));
         const recurrenceRemoved = !!existingRec && payload.recurrence === null;
         const baseDate = existingTx.date; // original date: the past/future split point
         // 1.0.3 (BUG-136): a payment dated today or earlier has happened —
@@ -2510,8 +2578,10 @@ window.Store = {
         // (an End Date past the cap that clamps back to the series end is no change)
         const recCmp = (rec && existingRecT)
           ? this._clampRecurrenceEndDate({ ...existingRecT, ...rec }, payload.date || baseDate) : null;
+        const schedCmpT = recCmp // 1.0.3 (BUG-159, review): see UPDATE_TRANSACTION
+          ? this._clampRecurrenceEndDate({ ...existingRecT, ...(schedT || {}) }, baseDate) : null;
         const scheduleChanged = !!(recCmp &&
-          ['endDate', 'interval', 'frequency'].some(k => String(recCmp[k]) !== String((schedT || existingRecT)[k])));
+          ['endDate', 'interval', 'frequency'].some(k => String(recCmp[k]) !== String(schedCmpT[k])));
         const recurrenceRemoved = !!existingRecT && payload.recurrence === null;
         const today = this._todayYMD(); // 1.0.3 (BUG-136): see UPDATE_TRANSACTION
         // 1.0.3 (BUG-139, D1): the gaps, read before anything moves (the
@@ -2963,6 +3033,7 @@ window.Store = {
         this._sortTransactions();
         this._healSeriesSchedules(); // 1.0.2 (BUG-26): a pre-1.0.2 backup carries stale series ends
         this._healSeriesAnchors(); // 1.0.3 (BUG-51, D4): and chains drifted to the 28th
+        this._healInferSeriesAnchors(); // 1.0.3 (BUG-51, review): anchorDay is not in the CSV
         window.StackdDB.save('transactions', this.state.transactions);
         changed = true;
         break;

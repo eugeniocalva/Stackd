@@ -272,24 +272,26 @@ describe('Month-end and leap-day series (1.0.3 BUG-51 / BUG-159)', () => {
       expect(dates('ins')).toEqual(['2028-02-29', '2029-03-01', '2030-02-28', '2031-02-28', '2032-02-29', '2033-02-28']);
     });
 
-    it('skips a series it cannot prove (a payment moved by hand) and stamps nothing', () => {
+    it('skips a series it cannot prove (a payment moved by hand): no date moves', () => {
       pin(2027, 1, 15);
       legacySeries({ sid: 'sal', comment: 'Salary', start: '2026-10-31', endDate: '2027-06-30' });
       Store.state.transactions.find(t => t.id === 'sal-6').date = '2027-03-25';
-      const snap = snapshot();
-      const setItem = rebootOn(snap);
-      expect(savedTx(setItem)).toBe(false);
+      const before = dates('sal');
+      rebootOn(snapshot());
+      expect(dates('sal')).toEqual(before);
       expect(dates('sal')).toContain('2027-02-28');
       expect(dates('sal')).toContain('2027-04-28');
-      members('sal').forEach(t => expect(t.recurrence.anchorDay).toBeUndefined());
+      // review: _healInferSeriesAnchors stamps the day the chain shows (the
+      // 28th it drifted to), so it keeps generating there
+      expect(at('sal', '2027-04-28').recurrence.anchorDay).toBe(28);
     });
 
     it('leaves series that start before the 29th alone', () => {
       const sid = addSeries({ comment: 'Rent', date: '2026-10-15', endDate: '2027-03-15', type: 'expense' });
       members(sid).forEach(t => { delete t.recurrence.anchorDay; });
-      const setItem = rebootOn(snapshot());
-      expect(savedTx(setItem)).toBe(false);
+      rebootOn(snapshot());
       expect(dates(sid).every(d => d.endsWith('-15'))).toBe(true);
+      members(sid).forEach(t => expect(t.recurrence.anchorDay).toBe(15)); // review: inferred, dates untouched
     });
 
     it('runs inside a restore (BATCH_IMPORT_TRANSACTIONS)', () => {

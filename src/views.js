@@ -2706,6 +2706,13 @@ window.Views = {
                     transferRecurrence = recurrenceData;
                   } else if (scope !== 'only') {
                     transferRecurrence = { ...seriesRec(scope), seriesId: window.StackdDB.generateId() };
+                    // 1.0.3 (BUG-51, review): on its own day the transfer chain
+                    // keeps the old chain's anchor (a 31st series converted at
+                    // its 30 Nov payment stays on the 31st)
+                    if (editTx && date === editTx.date && editTx.recurrence) {
+                      const anchor = window.Store._anchorDayOf(editTx.recurrence, editTx.date);
+                      if (anchor) transferRecurrence.anchorDay = anchor;
+                    }
                   }
                 }
                 window.Store.dispatch('ADD_TRANSFER', {
