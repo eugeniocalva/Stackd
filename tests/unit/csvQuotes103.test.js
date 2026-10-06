@@ -78,7 +78,9 @@ describe('1.0.3 (BUG-147) a quote inside an unquoted field', () => {
     const csv = 'Data;Descrizione;Importo\n03/01/2026;TV 55" SAMSUNG;-499,00\n04/01/2026;MONITOR 27" LG;-229,90';
     const r = importFile(csv);
     expect(r.kind).toBe('bank');
-    expect(I().analyzeBankCSV(r.csvText).rowsRaw).toHaveLength(2);
+    const rowsRaw = I().analyzeBankCSV(r.csvText).rowsRaw;
+    expect(rowsRaw).toHaveLength(2);
+    expect(rowsRaw.map(x => x[2])).toEqual(['-499,00', '-229,90']);
   });
 
   it('a stray opening quote above an inch-mark row does not merge the two rows', () => {
