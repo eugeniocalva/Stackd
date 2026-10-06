@@ -149,6 +149,21 @@ describe('Transfer → Income / Expense in the edit form (1.0.3 BUG-138)', () =>
     expect(bal('Main')).toBe(2000);
   });
 
+  it('across currencies: a figure received in $ is never carried to a £ To account (review finding)', () => {
+    S().dispatch('ADD_ACCOUNT', { name: 'UK', openingBalance: 500, openingDate: '2026-09-01', currency: 'GBP' });
+    const pair = seedPair('US Checking', 100, 117);
+    open(pair.inc);
+    $('tx-transfer-to').value = accId('UK');
+    $('tx-transfer-to').dispatchEvent(new Event('change'));
+    $('toggle-income').click();
+    expect($('tx-account').value).toBe(accId('UK'));
+    expect($('tx-amount').value).toBe('');
+    expect($('currency-symbol').textContent).toBe('£');
+    $('tx-category').value = 'cat_salary';
+    $('btn-save-tx').click();
+    expect(bal('UK')).toBe(500); // refused until the user types the £ amount
+  });
+
   it('across currencies: Expense = From with the sent amount, in €', () => {
     const pair = seedPair('US Checking', 100, 117);
     open(pair.exp);

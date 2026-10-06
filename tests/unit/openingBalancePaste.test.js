@@ -208,6 +208,26 @@ describe('Opening Balance field (1.0.3 BUG-42 / BUG-46)', () => {
     expect(ob.value).toBe('1500.00');
   });
 
+  it('review: a rename never rounds a stored JPY balance with decimals, and a currency flip keeps the cents', () => {
+    S().dispatch('ADD_ACCOUNT', { name: 'Yen', currency: 'JPY', openingBalance: 123.45, openingDate: '2026-09-01' });
+    const yen = accId('Yen');
+    params = { id: yen };
+    renderView('EditAccountView');
+    expect($('edit-acc-balance').value).toBe('123');
+    $('edit-acc-name').value = 'Yen wallet';
+    $('btn-edit-acc-save').click();
+    expect(obRow(yen).amount).toBe(123.45);
+
+    S().dispatch('ADD_ACCOUNT', { name: 'Euro', openingBalance: 12.5, openingDate: '2026-09-01' });
+    params = { id: accId('Euro') };
+    renderView('EditAccountView');
+    const ccy = $('edit-acc-currency');
+    ccy.value = 'JPY'; ccy.dispatchEvent(new Event('change'));
+    expect($('edit-acc-balance').value).toBe('13');
+    ccy.value = 'EUR'; ccy.dispatchEvent(new Event('change'));
+    expect($('edit-acc-balance').value).toBe('12.50');
+  });
+
   it('Store.currencyDigits: Intl minor units, capped at 2, 2 for an unknown code', () => {
     boot();
     expect(S().currencyDigits('JPY')).toBe(0);

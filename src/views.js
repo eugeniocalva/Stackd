@@ -2110,6 +2110,7 @@ window.Views = {
             from: sent.accountId,
             to: got.accountId,
             amount: moneyStr(sent.amount),
+            gotAccountId: got.accountId,                             // the stored income leg's account
             received: moneyStr(got.amount),                          // the stored income leg
             receivedField: receivedInput ? receivedInput.value : '', // what the field showed
             receivedCcy: (receivedInput && receivedInput.dataset.ccy) || window.Store.getAccountCurrency(got.accountId)
@@ -2154,7 +2155,16 @@ window.Views = {
             const same = window.Store._sameCurrency(snap.from, snap.to);
             accountSelect.value = toIncome ? snap.to : snap.from;
             if (syncTo) syncTo(false);
-            amountInput.value = toIncome && !same ? (snap.receivedField || snap.received) : snap.amount;
+            if (toIncome && !same) {
+              // BUG-35 rule: never carry a figure into another currency. The
+              // received field counts only in To's currency, and the stored
+              // income leg only while To is still the account it was booked on.
+              const toCcy = window.Store.getAccountCurrency(snap.to);
+              const field = snap.receivedField && snap.receivedCcy === toCcy ? snap.receivedField : '';
+              amountInput.value = field || (snap.to === snap.gotAccountId ? snap.received : '');
+            } else {
+              amountInput.value = snap.amount;
+            }
             pairTouched = false;
           }
           clearFieldError(amountInput);
@@ -4671,6 +4681,14 @@ Object.assign(window.Views, {
       const ccySelect = document.getElementById('edit-acc-currency');
       // 1.0.3 (BUG-46): the Opening Balance field's decimals (JPY 0, EUR 2)
       let obDp = window.Store.currencyDigits(ccySelect ? ccySelect.value : ((account && account.currency) || window.Store.getState().currency));
+      // 1.0.3 (BUG-46, review): the field shows the figure ROUNDED to the
+      // currency's decimals. obBase keeps the unrounded figure and obAutoText
+      // the text generated from it: while the field still shows that text, a
+      // save sends obBase (a rename never rewrites ¥123.45 as ¥123) and a
+      // currency flip re-formats from obBase (EUR 12.50 → JPY → EUR keeps .50).
+      const obFieldInit = document.getElementById('edit-acc-balance');
+      let obBase = Math.abs(currentObAmt);
+      let obAutoText = obFieldInit ? obFieldInit.value : '';
       if (ccySelect) {
         ccySelect.addEventListener('change', () => {
           currSym = window.Store.getCurrencySymbol(ccySelect.value);
@@ -4679,8 +4697,10 @@ Object.assign(window.Views, {
           const shown = field ? parseFloat(field.value) : NaN;
           obDp = window.Store.currencyDigits(ccySelect.value);
           if (field) {
+            if (field.value !== obAutoText) obBase = Number.isFinite(shown) ? shown : 0;
             field.placeholder = (0).toFixed(obDp);
-            field.value = (Number.isFinite(shown) ? shown : 0).toFixed(obDp);
+            field.value = obBase.toFixed(obDp);
+            obAutoText = field.value;
           }
           updateObSignUI();
         });
@@ -4829,7 +4849,8 @@ Object.assign(window.Views, {
         const saveAccount = (opts = {}) => {
           const nameInput = document.getElementById('edit-acc-name');
           const name = window.Store._collapseName(nameInput.value); // 1.0.3 (BUG-153): whitespace runs collapsed
-          const absOb = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
+          const obText = document.getElementById('edit-acc-balance').value;
+          const absOb = obText === obAutoText ? obBase : (parseFloat(obText) || 0); // 1.0.3 (BUG-46, review): unrounded while untouched
           const ob = isNegativeOb ? -absOb : absOb;
           const dDate = document.getElementById('edit-acc-date').value;
           const type = document.getElementById('edit-acc-type').value;
