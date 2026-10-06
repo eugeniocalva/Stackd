@@ -1362,4 +1362,8 @@ window.I18n.dicts.it = {
   'others.importCreatedAccounts.other': "Creati automaticamente {count} conti mancanti.",
   'others.importCreatedCategories.one': "Creata automaticamente {count} categoria mancante.",
   'others.importCreatedCategories.other': "Create automaticamente {count} categorie mancanti.",
+  // 1.0.3 U4
+  'debt.err.costName': "Inserisci un nome per questo costo.",
+  'debt.err.costAmount': "Inserisci un importo pari o superiore a 0.",
+  'debt.err.loanName': "Inserisci un nome per questo prestito.",
 };

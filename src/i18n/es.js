@@ -1362,4 +1362,8 @@ window.I18n.dicts.es = {
   'others.importCreatedAccounts.other': "Se crearon automáticamente {count} cuentas que faltaban.",
   'others.importCreatedCategories.one': "Se creó automáticamente {count} categoría que faltaba.",
   'others.importCreatedCategories.other': "Se crearon automáticamente {count} categorías que faltaban.",
+  // 1.0.3 U4
+  'debt.err.costName': "Introduce un nombre para este coste.",
+  'debt.err.costAmount': "Introduce un importe de 0 o más.",
+  'debt.err.loanName': "Introduce un nombre para este préstamo.",
 };
