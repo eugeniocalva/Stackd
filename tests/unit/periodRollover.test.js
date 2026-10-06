@@ -358,7 +358,9 @@ describe('Sheets and buttons that must not undo a roll (1.0.2 BUG-69)', () => {
 
   it("History's Today on a range that does not roll, while only Analytics rolls, scrolls at once with no re-render after it (round-1 review)", async () => {
     const S = window.Store;
-    S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type: 'custom', start: '2026-10-25', end: '2026-10-31', value: '' } } });
+    // 1.0.3 (BUG-115): a range WITHOUT today now moves to this month, so the
+    // range here holds today (1 Nov) to keep testing the no-re-render path.
+    S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type: 'custom', start: '2026-10-25', end: '2026-11-05', value: '' } } });
     const container = document.getElementById('router-view');
     container.innerHTML = window.Components.AdvancedFilterBar.render('history', S.state.historyFilters);
     window.Components.AdvancedFilterBar.attachEvents(container, 'history');
@@ -374,7 +376,7 @@ describe('Sheets and buttons that must not undo a roll (1.0.2 BUG-69)', () => {
     container.querySelector('#btn-today-history').click();
     await new Promise((r) => queueMicrotask(r)); // a queued emit would flush here
     expect(S.state.analyticsFilters.period.value).toBe('2026-11-01'); // Analytics still rolled
-    expect(S.state.historyFilters.period).toMatchObject({ type: 'custom', start: '2026-10-25', end: '2026-10-31' });
+    expect(S.state.historyFilters.period).toMatchObject({ type: 'custom', start: '2026-10-25', end: '2026-11-05' });
     expect(order).toEqual(['scrollToToday']);
     vi.advanceTimersByTime(150);
     expect(spy.mock.calls.some((c) => c[0] && c[0].type === 'scroll-history-to-today')).toBe(false);
