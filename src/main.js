@@ -633,6 +633,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
     window.Capacitor.Plugins.App.addListener('resume', rollPeriodsOnResume);
   }
+  // 1.0.3 (BUG-142, D6): an app left OPEN across midnight gets no resume
+  // event. A timer at the next local midnight (+5 s; built from date parts,
+  // so a 23- or 25-hour DST day is right) runs the same path while the app is
+  // visible, then re-arms. A hidden app catches up on its resume instead.
+  const armMidnightRoll = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    setTimeout(() => {
+      if (document.visibilityState === 'visible') rollPeriodsOnResume();
+      armMidnightRoll();
+    }, Math.max(1000, next - now));
+  };
+  armMidnightRoll();
 
   // v1.08 B4 (bank-connect-ux-plan §3.10): background refresh of linked
   // banks — after boot, off the critical path, and whenever the app returns

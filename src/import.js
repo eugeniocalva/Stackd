@@ -1791,12 +1791,32 @@ window.StackdImport = {
       }
       if (!category) { skip('missing category'); return; }
 
+      const isCumulative = /^(true|1|yes|y)$/i.test(String(row['cumulative'] || '').trim());
+      // 1.0.3 (BUG-140) the Limits column (JSON). An empty, missing or
+      // unreadable cell restores the budget flat at Amount; SAVE_BUDGET
+      // normalizes a list (and keeps Amount when nothing in it is usable).
+      let limits = null;
+      const rawLimits = String(row['limits'] || '').trim();
+      if (rawLimits) {
+        try {
+          const parsed = JSON.parse(rawLimits);
+          if (Array.isArray(parsed) && parsed.length) limits = parsed;
+        } catch (e) { /* unreadable: flat */ }
+      }
+      // 1.0.3 (BUG-58) a cumulative rollover runs from its start month: none
+      // = the current month (an End Month already past = that month)
+      let startDate = start;
+      if (!startDate && isCumulative) {
+        const thisMonth = window.Store._todayYMD().slice(0, 7);
+        startDate = end && end < thisMonth ? end : thisMonth;
+      }
       window.Store.dispatch('SAVE_BUDGET', {
         categoryId: category.id,
         amount: amount,
-        startDate: start,
+        startDate,
         endDate: end || null,
-        isCumulative: /^(true|1|yes|y)$/i.test(String(row['cumulative'] || '').trim())
+        isCumulative,
+        ...(limits ? { limits } : {})
       });
       stats.importedCount++;
     });

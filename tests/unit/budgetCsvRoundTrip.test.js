@@ -45,21 +45,21 @@ describe('Budgets in the CSV backup (v1.19)', () => {
       S().dispatch('SAVE_BUDGET', { categoryId: 'cat_groceries', amount: 300, startDate: '2026-01', endDate: '2026-12', isCumulative: true });
       const groceries = S().getState().categories.find(c => c.id === 'cat_groceries').name;
       const lines = exportBudgetsCsv().split('\n');
-      expect(lines[0]).toBe('Category,Amount,StartMonth,EndMonth,Cumulative');
-      expect(lines[1]).toBe(`${groceries},300,2026-01,2026-12,true`);
+      expect(lines[0]).toBe('Category,Amount,StartMonth,EndMonth,Cumulative,Limits'); // 1.0.3 (BUG-140)
+      expect(lines[1]).toBe(`${groceries},300,2026-01,2026-12,true,`);
     });
 
     it('quotes a category name that contains the delimiter', () => {
       S().dispatch('ADD_CATEGORY', { name: 'Food, drinks', icon: 'utensils', typeHint: 'expense' });
       S().dispatch('SAVE_BUDGET', { categoryId: catByName('Food, drinks').id, amount: 80, startDate: '2026-02', endDate: null, isCumulative: false });
-      expect(exportBudgetsCsv().split('\n')[1]).toBe('"Food, drinks",80,2026-02,,false');
+      expect(exportBudgetsCsv().split('\n')[1]).toBe('"Food, drinks",80,2026-02,,false,');
     });
 
     it('skips a deleted budget (the amount-0 tombstone) and a budget whose category is gone', () => {
       S().dispatch('SAVE_BUDGET', { categoryId: 'cat_groceries', amount: 300, startDate: '2026-01', endDate: null, isCumulative: false });
       S().dispatch('SAVE_BUDGET', { categoryId: 'cat_groceries', amount: 0, startDate: '', endDate: null, isCumulative: false }); // the UI's delete
       S().state.budgets.push({ id: 'orphan', categoryId: 'cat_does_not_exist', amount: 50, startDate: '2026-01', endDate: null, isCumulative: false });
-      expect(exportBudgetsCsv().split('\n')).toEqual(['Category,Amount,StartMonth,EndMonth,Cumulative']);
+      expect(exportBudgetsCsv().split('\n')).toEqual(['Category,Amount,StartMonth,EndMonth,Cumulative,Limits']);
     });
   });
 

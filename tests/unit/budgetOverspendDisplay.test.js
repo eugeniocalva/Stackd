@@ -151,6 +151,19 @@ describe('BudgetView overspend & rollover display (1.0.1 BUG-13)', () => {
     expect(row).not.toContain('>0%</div>');
     expect(row).toContain('Over by €15.00');
     expect(row).toContain('-€20.00 rollover');
+    // 1.0.3 (BUG-164): over a non-positive limit the bar is full (it was empty)
+    expect(row).toContain('width: 100%');
+    expect(row).not.toContain('width: 0%');
+  });
+
+  it('(e2) a non-positive limit with nothing spent over it keeps an empty bar (1.0.3 BUG-164)', () => {
+    // €10/month from August, €20 spent in August → September limit 10-10 = 0,
+    // nothing spent in September.
+    budget('cat_entertainment', 10, { isCumulative: true, startDate: '2026-08' });
+    spend('cat_entertainment', 20, '2026-08-10');
+    const row = rowFor(render('2026-09'), 'cat_entertainment');
+    expect(row).toContain('>—</div>');
+    expect(row).not.toContain('Over by');
     expect(row).toContain('width: 0%');
   });
 

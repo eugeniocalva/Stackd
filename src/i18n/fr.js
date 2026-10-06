@@ -1366,4 +1366,9 @@ window.I18n.dicts.fr = {
   'debt.err.costName': "Saisissez un nom pour ce coût.",
   'debt.err.costAmount': "Saisissez un montant de 0 ou plus.",
   'debt.err.loanName': "Saisissez un nom pour ce prêt.",
+  // 1.0.3 U3
+  'budget.appliesFrom': "La nouvelle limite s'applique à partir de {month}. Les mois précédents gardent la leur.",
+  'budget.endBeforeStart': 'Le mois de fin ne peut pas précéder le mois de début.',
+  'budget.removeConfirm.title': 'Supprimer le budget {name} ?',
+  'budget.removeConfirm.body': 'Sa limite, ses mois et le report cumulatif seront effacés.',
 };

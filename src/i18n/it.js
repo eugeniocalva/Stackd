@@ -1366,4 +1366,9 @@ window.I18n.dicts.it = {
   'debt.err.costName': "Inserisci un nome per questo costo.",
   'debt.err.costAmount': "Inserisci un importo pari o superiore a 0.",
   'debt.err.loanName': "Inserisci un nome per questo prestito.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'Il nuovo limite vale da {month} in poi. I mesi precedenti mantengono il loro.',
+  'budget.endBeforeStart': 'Il mese di fine non può precedere il mese di inizio.',
+  'budget.removeConfirm.title': 'Rimuovere il budget {name}?',
+  'budget.removeConfirm.body': 'Limite, mesi e riporto cumulativo verranno cancellati.',
 };

@@ -1387,4 +1387,9 @@ window.I18n.dicts.en = {
   'debt.err.costName': "Enter a name for this cost.",
   'debt.err.costAmount': "Enter an amount of 0 or more.",
   'debt.err.loanName': "Enter a name for this loan.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'The new limit applies from {month} on. Earlier months keep theirs.',
+  'budget.endBeforeStart': "End month can't be before the start month.",
+  'budget.removeConfirm.title': 'Remove the {name} budget?',
+  'budget.removeConfirm.body': 'Its limit, months and Cumulative Rollover setting will be cleared.',
 };
