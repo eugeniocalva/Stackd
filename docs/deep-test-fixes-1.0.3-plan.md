@@ -1,6 +1,6 @@
 # Deep Testing Report fixes — Plan (1.0.2 → 1.0.3)
 
-**Status: APPROVED 2026-10-06 — the owner chose every recommended default (D1–D8). Building on the local branch `fixes-1.0.3`.**
+**Status: BUILT 2026-10-06 on the local branch `fixes-1.0.3` (owner chose every recommended default, D1–D8), verified on web and the Android emulator; see "As built" at the end. iOS device check pending.**
 
 **Source:** *Stack'd 1.0.2 Testing Report* (2026-10-06; private artifact
 claude.ai/artifact/WRZYLxyUubW61oCDPB3Q9z, Markdown copy on the owner's Desktop). It covers 52 criteria
@@ -159,3 +159,87 @@ Every new test must fail on `865da04`.
   (no Share App, no ASO change yet).
 - Paste the §1b listing copy in all five languages in Play Console; keep the Play name "Stack'd Finance".
 - iOS TestFlight check of the share-sheet export and file-mirror commit (still pending from 1.0.2).
+
+---
+
+## As built (2026-10-06)
+
+Built on the local branch `fixes-1.0.3`: four parallel worktree units (U1–U4, merged without a conflict),
+then two adversarial review passes whose findings were all fixed. Version 1.0.3 (10003); every script
+in `index.html` is at `?v=75` (the five dictionaries too; `i18n.js`, `loan-engine.js` and `utils/*`
+unchanged).
+
+**Verification**
+- Unit: 1,775 tests in 151 files, all green (1,584 at 1.0.2). Every unit's new tests were run against
+  `865da04` first: 41/51 (U1), 36/54 (U2), 38 (U3) and 31/39 (U4) fail there. The rest are guards of
+  behaviour that must not change.
+- E2E: 96/96 (89 at 1.0.2; new `opening_date_conflicts.spec.js`, a BUG-138 case in
+  `cross_currency_transfer.spec.js`, two `debt_simulator.spec.js` cases). Lint clean; `npm run build` OK.
+- Live (preview, today 2026-10-06), the report's repro for each store-level gate bug:
+  - **BUG-135:** the salary series flips to income on every payment; 31 Mar 2027 reads €13,300.00.
+  - **BUG-136:** stopping the weekly Gym series from 10 Aug keeps the 10 past payments (unlinked); September keeps its 4.
+  - **BUG-139:** the deleted January Rent stays deleted after the 1 → 2 Nov move; April 2 is kept.
+  - **BUG-51 / BUG-159:** a 31 Oct salary falls on 30 Nov, 31 Dec, 31 Jan, 28 Feb, 31 Mar, and on 29 Feb 2028. A 29 Feb insurance falls on 28 Feb and on 29 Feb in leap years.
+  - **BUG-140:** raising Groceries to €400 or lowering it to €200 from October keeps October's rollover at +€4.65; July stays at €300.
+  - **BUG-145:** Italian "250.000 / 50.000 / 3,2" builds 250,000 / 50,000 / 3.2 %.
+  - **BUG-152:** Windows-1252 bytes decode to "Caffè €".
+- Android emulator (API 36.1, debug build of this bundle):
+  - **BUG-152:** the WebView decodes windows-1252, `fatal` UTF-8 throws, and `_readFileText` on a Blob gives "CAFFÈ CITTÀ".
+  - **BUG-142:** a real background and relaunch (Home key, launcher) with the store's day moved forward re-renders Home, and `_renderedDay` advances. The device clock could not be moved (no root), so the figure change itself rests on the unit tests.
+  - **BUG-42:** a native long-press → Paste of "1.234,56" over the selected 3000.00 gives 1234.56 (one `paste` event).
+  - **Not exercised:** the Gboard clipboard-chip path (`beforeinput insertFromPaste`), covered by a unit test only.
+
+**Departures from the designs (all kept)**
+- **U1:**
+  - `anchorDay` is set on the rebuilt member inside the rebuild block (not via the payload), and is also reset on an interval/frequency change.
+  - The anchor heal never moves a payment to today or earlier, nor past its series end.
+  - The suspected income-leg bug was real (converting the received leg of a recurring transfer to Income with "This and future" dropped the generator). It is fixed: the dropped leg's `nextDate` moves to the kept leg.
+- **U2:**
+  - `OpeningDateSheet` takes pre-escaped markup (`bodyHtml`, `primaryHtml`, `anywayHtml`).
+  - Dimmed rows dim the icon and text, not the whole swipe row.
+  - `currencyDigits` is capped at 2 (amounts are stored in cents).
+  - E2E seeds that relied on a same-day opening date now pin `openingDate`.
+- **U3:**
+  - An unchanged amount keeps both `limits` and `amount`.
+  - A total limit ≤ €0 with spending over it reads "Overspent" (same rule as a row).
+  - The Goals ring now uses the summary's totals.
+  - The `appliesFrom` caption hides at or before the start month.
+  - A History BUG-69 test now uses a range that holds today, because BUG-115 moves ranges that don't.
+- **U4:**
+  - An extra stray-quote guard, `_quoteClosesMidField`, keeps 1.0.2's broken-file fallback working with literal mid-field quotes.
+  - `TextDecoder` is added to the ESLint browser globals.
+  - An XML file that declares UTF-8 but isn't falls back to Windows-1252.
+
+**Review findings fixed after integration** (each has a test that fails without the fix):
+1. **BUG-138:** after changing To to an account in a third currency, Income carried the received $117 as £117. Now a received figure counts only in To's own currency, and the stored income leg only while To is still its account; otherwise the amount is empty and the form asks.
+2. **BUG-46:** a rename re-saved a stored ¥123.45 as ¥123, and a EUR→JPY→EUR flip lost the cents. The field now keeps the unrounded figure while untouched.
+3. **BUG-51:** `anchorDay` is not in the CSV, and the `startDate` fallback guessed wrong after a restore (a re-anchored chain decayed to the 28th; a 30th chain hopped to the 31st). The new boot/restore heal `_healInferSeriesAnchors` stamps the day each chain shows. A payment before its month's last day is exact; a run of month-end payments takes its largest day. It runs right after `_healSeriesAnchors`, never moves a date, and is idempotent.
+4. **BUG-139:** a gap on the last slot held the armed tail, so the deleted payment came back. The tail's `nextDate` now moves to the latest surviving member before it is dropped.
+5. **BUG-159:** a 1.0.2 end stored past the cap for a 29 Feb start (1 Mar) now clamps to 28 Feb, which made an untouched End Date a "schedule change" (full rebuild; per-payment paid state lost). The series' own end now goes through the same clamp before the comparison.
+6. **BUG-51:** converting a series member to a transfer on its own day keeps the old chain's anchor.
+
+## Accepted limits
+
+- BUG-136 cannot bring back payments 1.0.0–1.0.2 already deleted.
+- A series with mixed types (BUG-135) is not repaired automatically: re-save it with "All".
+- BUG-139 keeps gaps across date and end moves only. An interval or frequency change refills them, and the scope sheet says so (`recUpdate.gapNote`).
+- Imports, bank fetches and recurring generation can still create rows before an opening date without a warning. History now shows them dimmed.
+- Budgets restored from a pre-1.0.3 CSV are flat (one limit for every month), as before.
+- The month picker's "Selected:" label is still English (pre-existing; for 1.0.4).
+
+## Release notes (draft for the owner)
+
+**Store "What's new"** (under Play's 500 characters):
+
+- **en:** Fixes for recurring payments: changing a series to income now changes every payment in scope, stopping a series keeps payments that already happened, deleted payments stay deleted, and month-end dates (31st, 29 Feb) stay put. Entries dated before an account's opening date are flagged instead of vanishing. Budget limits apply from the month you change them. Loan amounts accept 250.000 and 1,234.56. Bank files with accented letters import correctly. Home updates after midnight.
+- **fr :** Corrections des paiements récurrents : passer une série en revenu modifie chaque paiement concerné, arrêter une série garde les paiements passés, les paiements supprimés le restent et les fins de mois (31, 29 février) sont respectées. Les écritures antérieures à l'ouverture d'un compte sont signalées. Une nouvelle limite de budget s'applique dès le mois choisi. Les prêts acceptent 250.000. Les fichiers bancaires accentués s'importent bien. L'accueil se met à jour après minuit.
+- **it:** Correzioni ai pagamenti ricorrenti: trasformare una serie in entrata cambia ogni pagamento interessato, interrompere una serie mantiene i pagamenti già avvenuti, i pagamenti eliminati restano eliminati e le date di fine mese (31, 29 febbraio) sono rispettate. Le voci precedenti all'apertura di un conto vengono segnalate. Un nuovo limite di budget vale dal mese in cui lo cambi. I prestiti accettano 250.000. I file bancari accentati si importano bene. La Home si aggiorna dopo mezzanotte.
+- **es:** Correcciones en pagos recurrentes: cambiar una serie a ingreso cambia cada pago afectado, detener una serie conserva los pagos ya realizados, los pagos eliminados siguen eliminados y las fechas de fin de mes (31, 29 de febrero) se mantienen. Las entradas anteriores a la apertura de una cuenta se señalan. Un nuevo límite de presupuesto se aplica desde el mes en que lo cambias. Los préstamos aceptan 250.000. Los archivos bancarios con tildes se importan bien. Inicio se actualiza a medianoche.
+- **pt:** Correções nos pagamentos recorrentes: mudar uma série para receita altera cada pagamento abrangido, parar uma série mantém os pagamentos já feitos, os pagamentos eliminados continuam eliminados e as datas de fim de mês (31, 29 de fevereiro) mantêm-se. Registos anteriores à abertura de uma conta são assinalados. Um novo limite de orçamento vale a partir do mês em que o altera. Os empréstimos aceitam 250.000. Os ficheiros bancários com acentos importam-se bem. O Início atualiza-se à meia-noite.
+
+**Longer notes (site / support, English master).** 1.0.3 repairs month-end recurring dates on its first
+launch (future payments only). Two things it cannot repair:
+- Payments that an earlier version deleted when you turned Recurrent off on an older payment ("This and
+  future" or "All"). Re-enter them from your bank statement.
+- A recurring series where only the first payment changed to Income (or to Expense): open any payment of
+  it, set the type again and choose "All transactions in the series".
