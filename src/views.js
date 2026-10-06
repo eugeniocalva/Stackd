@@ -1286,31 +1286,13 @@ window.Views = {
           if (!txToDelete) return;
 
           if (txToDelete.recurrence && txToDelete.recurrence.seriesId) {
-            window.Components.Modal.show({
-              title: window.I18n.t('history.recurringDelete.title'),
-              content: `<p style="color: var(--text-secondary); margin-bottom: 12px;">${window.I18n.t('history.recurringDelete.body')}</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 ${window.I18n.t('history.recurringDelete.onlyThis')}</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 ${window.I18n.t('history.recurringDelete.withFuture')}</button></div>`,
-              saveText: window.I18n.t('common.cancel'),
-              showDelete: false,
-              showCancel: false, // 1.0.1 (BUG-20): saveText is the Cancel
-              saveClass: 'btn-secondary',
-              onSave: (closeModal) => closeModal()
+            // 1.0.3 (BUG-103): the same three-scope sheet as the edit screen
+            // (was an inline two-option sheet with no 'All')
+            window.Components.RecurringDeleteModal.show({
+              onlyThis: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId }),
+              thisAndFuture: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteFuture: true }),
+              allTransactions: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteAll: true })
             });
-            setTimeout(() => {
-              const btnSingle = document.getElementById('btn-delete-single');
-              const btnFutureSeries = document.getElementById('btn-delete-future-series');
-              if (btnSingle) {
-                btnSingle.onclick = () => {
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteAll: false });
-                  if (window.Components.Modal.hide) window.Components.Modal.hide();
-                };
-              }
-              if (btnFutureSeries) {
-                btnFutureSeries.onclick = () => {
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteFuture: true });
-                  if (window.Components.Modal.hide) window.Components.Modal.hide();
-                };
-              }
-            }, 10);
           } else {
             window.Components.Modal.show({
               title: window.I18n.t('history.deleteOne.title'),
@@ -2540,12 +2522,16 @@ window.Views = {
           // from the series END, not the latest member: a payment 'Only this'
           // moved past the end is inert and must not stretch the shift
           const limit = sched.endDate || sched.lastDate || editTx.date;
-          const step = (d) => window.Store._calculateNextRecurrenceDate(d, Number(sched.interval), sched.frequency);
+          // 1.0.3 (BUG-51): the old chain steps on its anchor day, the shifted
+          // one on the new date's day (the store re-anchors a scoped date move)
+          const oldAnchor = typeof window.Store._anchorDayOf === 'function' ? window.Store._anchorDayOf(editRec, editTx.date) : undefined;
+          const newAnchor = Number(String(date).slice(8, 10)) || undefined;
+          const step = (d, anchor) => window.Store._calculateNextRecurrenceDate(d, Number(sched.interval), sched.frequency, anchor);
           let n = 0;
-          for (let d = editTx.date; d && d <= limit && n < 1000; d = step(d)) n++;
+          for (let d = editTx.date; d && d <= limit && n < 1000; d = step(d, oldAnchor)) n++;
           if (n < 1) return recurrenceData;
           let shifted = date;
-          for (let i = 1; i < n && shifted; i++) shifted = step(shifted);
+          for (let i = 1; i < n && shifted; i++) shifted = step(shifted, newAnchor);
           return shifted && shifted > recurrenceData.endDate ? { ...recurrenceData, endDate: shifted } : recurrenceData;
         };
 
@@ -2702,12 +2688,20 @@ window.Views = {
             t.recurrence && t.recurrence.seriesId === seriesId && t.id !== targetId &&
             t.type === txToEditCurrent.type && t.date >= from &&
             Math.abs(Math.abs(Number(t.amount)) - newAbs) > 0.0001);
+          // 1.0.3 (BUG-139, D1): a rebuild keeps the payments deleted with
+          // 'Only this' gone — except when the interval/frequency changes,
+          // which cannot map them: then say they come back.
+          const stepChanged = !!(sched && recurrenceData &&
+            (String(recurrenceData.interval) !== String(sched.interval) || String(recurrenceData.frequency) !== String(sched.frequency)));
+          const gapNote = rebuilds && stepChanged && typeof window.Store.seriesGapCount === 'function' &&
+            window.Store.seriesGapCount(seriesId, targetId) > 0;
           window.Components.RecurringUpdateModal.show({
             dateChanged,
             recurrenceRemoved,
             scheduleChanged, // 1.0.2 (BUG-26, D-U3-2a)
             paidNote,
             amountNote: amountAhead,
+            gapNote,
             onSelection: (chosen) => doDispatch(chosen === 'single' ? 'only' : chosen)
           });
         } else {

@@ -83,10 +83,6 @@ window.I18n.dicts.it = {
   'history.bulkRecurring.body': 'Alcuni movimenti selezionati appartengono a una serie ricorrente. Come vuoi procedere?',
   'history.bulkRecurring.onlySelected': 'Elimina SOLO i selezionati ({count} elementi)',
   'history.bulkRecurring.withFuture': 'Elimina i selezionati E tutti i movimenti futuri collegati',
-  'history.recurringDelete.title': 'Elimina movimento ricorrente',
-  'history.recurringDelete.body': 'Questo elemento fa parte di una serie ricorrente. Come vuoi procedere?',
-  'history.recurringDelete.onlyThis': 'Elimina SOLO questo elemento',
-  'history.recurringDelete.withFuture': 'Elimina questo e tutti gli elementi FUTURI',
   'history.deleteOne.title': 'Elimina movimento',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.it = {
   'recUpdate.allSeries': 'Tutti i movimenti della serie',
   'recUpdate.futureSub': 'Applica la modifica da qui in avanti',
   'recUpdate.allSub': 'Aggiorna anche i movimenti passati (le loro date non cambiano mai)',
-  'recUpdate.futureSubStop': 'Interrompi la serie: i movimenti programmati futuri vengono rimossi',
+  'recUpdate.futureSubStop': 'Interrompi la serie: i movimenti successivi a oggi vengono rimossi, quelli precedenti restano',
   'recUpdate.allSubStop': 'Scollega anche i movimenti passati (restano nella cronologia)',
   'recUpdate.futureSubDate': 'I movimenti futuri si spostano al nuovo giorno',
   'recUpdate.allSubDate': 'Le date passate non cambiano mai; i futuri si spostano al nuovo giorno',
@@ -1371,4 +1367,6 @@ window.I18n.dicts.it = {
   'budget.endBeforeStart': 'Il mese di fine non può precedere il mese di inizio.',
   'budget.removeConfirm.title': 'Rimuovere il budget {name}?',
   'budget.removeConfirm.body': 'Limite, mesi e riporto cumulativo verranno cancellati.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'I movimenti che hai eliminato da questa serie tornano con la nuova pianificazione.',
 };

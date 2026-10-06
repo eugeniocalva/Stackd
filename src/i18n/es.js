@@ -83,10 +83,6 @@ window.I18n.dicts.es = {
   'history.bulkRecurring.body': 'Algunos movimientos seleccionados pertenecen a una serie recurrente. ¿Cómo quieres continuar?',
   'history.bulkRecurring.onlySelected': 'Eliminar SOLO los seleccionados ({count} elementos)',
   'history.bulkRecurring.withFuture': 'Eliminar los seleccionados Y todos los movimientos futuros vinculados',
-  'history.recurringDelete.title': 'Eliminar movimiento recurrente',
-  'history.recurringDelete.body': 'Este elemento forma parte de una serie recurrente. ¿Cómo quieres continuar?',
-  'history.recurringDelete.onlyThis': 'Eliminar SOLO este elemento',
-  'history.recurringDelete.withFuture': 'Eliminar este y todos los elementos FUTUROS',
   'history.deleteOne.title': 'Eliminar movimiento',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.es = {
   'recUpdate.allSeries': 'Todos los movimientos de la serie',
   'recUpdate.futureSub': 'Aplicar el cambio a partir de aquí',
   'recUpdate.allSub': 'Actualizar también los movimientos pasados (sus fechas nunca cambian)',
-  'recUpdate.futureSubStop': 'Detener la serie: los movimientos programados futuros se eliminan',
+  'recUpdate.futureSubStop': 'Detener la serie: se eliminan los movimientos posteriores a hoy; los anteriores se mantienen',
   'recUpdate.allSubStop': 'Desvincular también los movimientos pasados (permanecen en tu historial)',
   'recUpdate.futureSubDate': 'Los movimientos futuros se desplazan al nuevo día',
   'recUpdate.allSubDate': 'Las fechas pasadas nunca cambian; las futuras se desplazan al nuevo día',
@@ -1371,4 +1367,6 @@ window.I18n.dicts.es = {
   'budget.endBeforeStart': 'El mes final no puede ser anterior al mes de inicio.',
   'budget.removeConfirm.title': '¿Quitar el presupuesto de {name}?',
   'budget.removeConfirm.body': 'Se borrarán su límite, sus meses y el arrastre acumulado.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Los movimientos que eliminaste de esta serie vuelven con la nueva programación.',
 };

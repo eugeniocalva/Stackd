@@ -83,10 +83,6 @@ window.I18n.dicts.fr = {
   'history.bulkRecurring.body': 'Certaines opérations sélectionnées appartiennent à une série récurrente. Comment voulez-vous procéder ?',
   'history.bulkRecurring.onlySelected': 'Supprimer UNIQUEMENT la sélection ({count} éléments)',
   'history.bulkRecurring.withFuture': 'Supprimer la sélection ET toutes les opérations futures liées',
-  'history.recurringDelete.title': 'Supprimer une opération récurrente',
-  'history.recurringDelete.body': 'Cet élément fait partie d’une série récurrente. Comment voulez-vous procéder ?',
-  'history.recurringDelete.onlyThis': 'Supprimer UNIQUEMENT cet élément',
-  'history.recurringDelete.withFuture': 'Supprimer celui-ci et tous les éléments FUTURS',
   'history.deleteOne.title': "Supprimer l'opération",
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.fr = {
   'recUpdate.allSeries': 'Toutes les opérations de la série',
   'recUpdate.futureSub': 'Appliquer le changement à partir d’ici',
   'recUpdate.allSub': 'Mettre aussi à jour les opérations passées (leurs dates ne bougent jamais)',
-  'recUpdate.futureSubStop': 'Arrêter la série : les opérations planifiées à venir sont supprimées',
+  'recUpdate.futureSubStop': 'Arrêter la série : les opérations après aujourd’hui sont supprimées, les précédentes restent',
   'recUpdate.allSubStop': 'Détacher aussi les opérations passées (elles restent dans votre historique)',
   'recUpdate.futureSubDate': 'Les opérations à venir passent au nouveau jour',
   'recUpdate.allSubDate': 'Les dates passées ne bougent jamais ; les suivantes passent au nouveau jour',
@@ -1371,4 +1367,6 @@ window.I18n.dicts.fr = {
   'budget.endBeforeStart': 'Le mois de fin ne peut pas précéder le mois de début.',
   'budget.removeConfirm.title': 'Supprimer le budget {name} ?',
   'budget.removeConfirm.body': 'Sa limite, ses mois et le report cumulatif seront effacés.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Les opérations que vous avez supprimées de cette série reviennent avec le nouveau calendrier.',
 };
