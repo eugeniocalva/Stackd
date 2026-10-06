@@ -1383,4 +1383,15 @@ window.I18n.dicts.en = {
   'others.importCreatedAccounts.other': "Created {count} missing accounts automatically.",
   'others.importCreatedCategories.one': "Created {count} missing category automatically.",
   'others.importCreatedCategories.other': "Created {count} missing categories automatically.",
+  // 1.0.3 U2
+  'openingDate.txTitle': "Before the opening balance",
+  'openingDate.txBody': "{account} opens on {date}. Earlier entries are kept but don't count in balances, budgets or charts.",
+  'openingDate.move': "Move opening date to {date}",
+  'openingDate.saveAnyway': "Save anyway",
+  'openingDate.accountTitle': "Entries before this date",
+  'openingDate.accountBody.one': "{count} entry ({amount}) is dated before {date}. It will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.accountBody.other': "{count} entries ({amount}) are dated before {date}. They will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.useEarliest': "Open on {date} instead",
+  'openingDate.changeAnyway': "Change anyway",
+  'history.beforeOpening': "Before opening balance · not counted",
 };

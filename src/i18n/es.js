@@ -1362,4 +1362,15 @@ window.I18n.dicts.es = {
   'others.importCreatedAccounts.other': "Se crearon automáticamente {count} cuentas que faltaban.",
   'others.importCreatedCategories.one': "Se creó automáticamente {count} categoría que faltaba.",
   'others.importCreatedCategories.other': "Se crearon automáticamente {count} categorías que faltaban.",
+  // 1.0.3 U2
+  'openingDate.txTitle': "Antes del saldo inicial",
+  'openingDate.txBody': "{account} se abre el {date}. Los movimientos anteriores se conservan, pero no cuentan en los saldos, presupuestos ni gráficos.",
+  'openingDate.move': "Mover la fecha de apertura al {date}",
+  'openingDate.saveAnyway': "Guardar igualmente",
+  'openingDate.accountTitle': "Movimientos antes de esta fecha",
+  'openingDate.accountBody.one': "{count} movimiento ({amount}) tiene fecha anterior al {date}. Seguirá en el historial, pero dejará de contar en los saldos, presupuestos y gráficos.",
+  'openingDate.accountBody.other': "{count} movimientos ({amount}) tienen fecha anterior al {date}. Seguirán en el historial, pero dejarán de contar en los saldos, presupuestos y gráficos.",
+  'openingDate.useEarliest': "Abrir el {date}",
+  'openingDate.changeAnyway': "Cambiar igualmente",
+  'history.beforeOpening': "Antes del saldo inicial · no se cuenta",
 };

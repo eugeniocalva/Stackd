@@ -714,11 +714,24 @@ window.Store = {
   // Trimmed + case-insensitive, across ALL types — every by-name path (CSV
   // transactions/budgets/rules, import lookups) ignores typeHint. UI-only, like
   // the Pro gates: ADD_CATEGORY/UPDATE_CATEGORY stay ungated for imports/tests.
+  // 1.0.3 (BUG-153): the one comparison key for account and category names —
+  // NFKC (a no-break space reads as a space), every whitespace run is one
+  // space, trimmed, lower-case. "Visa  Card" / "Visa<NBSP>Card" = "visa card".
+  _nameKey(s) {
+    let str = String(s == null ? '' : s);
+    try { str = str.normalize('NFKC'); } catch (e) { /* very old WebView */ }
+    return str.replace(/\s+/g, ' ').trim().toLowerCase();
+  },
+  // The name a form saves: whitespace runs collapsed and trimmed, case kept.
+  _collapseName(s) {
+    return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  },
+
   findCategoryByName(name, exceptId) {
-    const key = String(name == null ? '' : name).trim().toLowerCase();
+    const key = this._nameKey(name); // 1.0.3 (BUG-153)
     if (!key) return null;
     return (this.state.categories || []).find(c =>
-      c.id !== exceptId && String(c.name == null ? '' : c.name).trim().toLowerCase() === key
+      c.id !== exceptId && this._nameKey(c.name) === key
     ) || null;
   },
 
@@ -727,10 +740,10 @@ window.Store = {
   // name. UI-only like findCategoryByName: ADD_ACCOUNT/UPDATE_ACCOUNT stay
   // ungated (imports, tests, Bank Connect).
   findAccountByName(name, exceptId) {
-    const key = String(name == null ? '' : name).trim().toLowerCase();
+    const key = this._nameKey(name); // 1.0.3 (BUG-153)
     if (!key) return null;
     return (this.state.accounts || []).find(a =>
-      a.id !== exceptId && String(a.name == null ? '' : a.name).trim().toLowerCase() === key
+      a.id !== exceptId && this._nameKey(a.name) === key
     ) || null;
   },
 
@@ -1356,7 +1369,11 @@ window.Store = {
 
   // v0.64 - overrideFilters lets callers evaluate a different period (e.g. clamped-to-today
   // or previous-period comparisons) without touching the persisted page filters.
-  getFilteredTransactions(pageKey, overrideFilters = null) {
+  // 1.0.3 (BUG-41, D2): opts.keepBeforeOpening keeps rows dated before their
+  // account's opening date (History lists them dimmed, out of every sum).
+  // Default unchanged: every aggregate caller still drops them.
+  getFilteredTransactions(pageKey, overrideFilters = null, opts = null) {
+    const keepBeforeOpening = !!(opts && opts.keepBeforeOpening);
     const filters = overrideFilters || (pageKey === 'history' ? this.state.historyFilters : this.state.analyticsFilters);
     const { period, types, accounts, categories, sortOrder } = filters;
     // v0.85: additive and guarded — older/persisted filter objects predate the
@@ -1400,7 +1417,7 @@ window.Store = {
                        (tagFilter.includes('__untagged__') && txTags.length === 0);
       if (!matchTag) return false;
       // v0.93: memoized opening-date check runs last — cheap rejections first.
-      return !this._isTxBeforeOpeningDate(tx);
+      return keepBeforeOpening || !this._isTxBeforeOpeningDate(tx);
     }).sort((a, b) => {
       const dir = sortOrder === 'asc' ? 1 : -1;
       const tsA = this._getTransactionTimestamp(a);
@@ -3601,6 +3618,23 @@ window.Store = {
     const r = Math.round(n * 100) / 100;
     return neg ? -r : r;
   },
+  // 1.0.3 (BUG-46, Opening Balance field): a currency's minor-unit digits
+  // (JPY 0, EUR 2), from Intl, capped at 2 because every amount is kept in
+  // cents. Unknown code / old WebView → 2. Cached per code.
+  _currencyDigitsCache: {},
+  currencyDigits(code) {
+    const c = String(code || this.state.currency || '');
+    const hit = this._currencyDigitsCache[c];
+    if (hit !== undefined) return hit;
+    let d = 2;
+    try {
+      d = new Intl.NumberFormat('en', { style: 'currency', currency: c }).resolvedOptions().maximumFractionDigits;
+    } catch (e) { d = 2; }
+    if (!Number.isInteger(d) || d < 0) d = 2;
+    d = Math.min(d, 2);
+    this._currencyDigitsCache[c] = d;
+    return d;
+  },
   // The locale's 2-decimal format of 1234.56, for the form.amountInvalid
   // {example} text ('1,234.56' en, '1 234,56' fr, '1234,56' it/es/pt-PT).
   amountExample() {
@@ -3665,6 +3699,42 @@ window.Store = {
     const obDate = this.getAccountOpeningDate(tx.accountId);
     if (!obDate) return false;
     return tx.date < obDate;
+  },
+
+  // 1.0.3 (BUG-137/BUG-41): the rows an opening date of `newDate` would
+  // NEWLY leave out of every aggregate (balances, budgets, charts). Rows the
+  // current opening date already leaves out do not count again, so a save
+  // that keeps the date (a rename) finds nothing. No opening row = no lower
+  // bound. Unpaid rows are counted but are not in `net` (they never counted).
+  // `net` is the balance effect lost, signed like getBalanceAtDate.
+  openingDateImpact(accountId, newDate) {
+    const from = this.getAccountOpeningDate(accountId) || '';
+    let count = 0;
+    let net = 0;
+    let earliest = null;
+    if (!accountId || !newDate) return { count, net, earliest };
+    for (const t of this.state.transactions) {
+      if (t.accountId !== accountId || t.type === 'opening_balance' || !t.date) continue;
+      if (t.date >= newDate || (from && t.date < from)) continue;
+      count++;
+      if (!earliest || t.date < earliest) earliest = t.date;
+      if (t.isPaid !== false) net += this._isPositiveTx(t) ? (Number(t.amount) || 0) : -(Number(t.amount) || 0);
+    }
+    return { count, net: Math.round(net * 100) / 100, earliest };
+  },
+
+  // 1.0.3 (BUG-41): legs [{accountId, date}] of a row about to be saved →
+  // the accounts it would sit before the opening date of, one entry per
+  // account: [{accountId, openingDate}].
+  openingDateConflicts(legs) {
+    const out = [];
+    (legs || []).forEach(l => {
+      if (!l || !l.accountId || !l.date || out.some(c => c.accountId === l.accountId)) return;
+      if (this._isTxBeforeOpeningDate({ accountId: l.accountId, date: l.date, type: 'leg' })) {
+        out.push({ accountId: l.accountId, openingDate: this.getAccountOpeningDate(l.accountId) });
+      }
+    });
+    return out;
   },
 
   // v0.99: bank-import dedup index — every non-empty importKey in one Set.

@@ -322,7 +322,7 @@ describe('Opening balances are owned by their account (1.0.2 BUG-25)', () => {
 
       // Step 1 of the release-note fix: Edit Account, opening amount, sign,
       // and the ORIGINAL opening date (the form prefills another date).
-      const restoreOpeningInEditAccount = (accountId, prefilled) => {
+      const restoreOpeningInEditAccount = (accountId, prefilled, expectSheet = false) => {
         params = { id: accountId };
         renderView('EditAccountView');
         expect($('edit-acc-date').value).toBe(prefilled);
@@ -333,6 +333,10 @@ describe('Opening balances are owned by their account (1.0.2 BUG-25)', () => {
         $('btn-ob-neg').click();
         $('edit-acc-date').value = '2026-09-01';
         $('btn-edit-acc-save').click();
+        // 1.0.3 (BUG-137): a date that leaves earlier rows out asks first
+        // (2026-08-20 → 09-01 in the second case); the fix is "Change anyway".
+        expect(!!$('opening-date-anyway')).toBe(expectSheet);
+        if (expectSheet) $('opening-date-anyway').click();
         const rows = obRows(accountId);
         expect(rows).toHaveLength(1);
         expect(rows[0].amount).toBe(-450);
@@ -400,7 +404,7 @@ describe('Opening balances are owned by their account (1.0.2 BUG-25)', () => {
 
         // Part C prefills the earliest row (2026-08-20), not the original
         // 2026-09-01: the note must tell the user to enter the original date.
-        restoreOpeningInEditAccount('a_visa', '2026-08-20');
+        restoreOpeningInEditAccount('a_visa', '2026-08-20', true);
         const newOb = obRows('a_visa')[0].id;
         // the converted row is still visible (same day); the 2026-08-20 row is
         // hidden again, as it was before the bug

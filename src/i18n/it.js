@@ -1362,4 +1362,15 @@ window.I18n.dicts.it = {
   'others.importCreatedAccounts.other': "Creati automaticamente {count} conti mancanti.",
   'others.importCreatedCategories.one': "Creata automaticamente {count} categoria mancante.",
   'others.importCreatedCategories.other': "Create automaticamente {count} categorie mancanti.",
+  // 1.0.3 U2
+  'openingDate.txTitle': "Prima del saldo iniziale",
+  'openingDate.txBody': "{account} si apre il {date}. I movimenti precedenti restano, ma non contano nei saldi, nei budget o nei grafici.",
+  'openingDate.move': "Sposta la data di apertura al {date}",
+  'openingDate.saveAnyway': "Salva comunque",
+  'openingDate.accountTitle': "Movimenti prima di questa data",
+  'openingDate.accountBody.one': "{count} movimento ({amount}) ha una data precedente al {date}. Resterà nella cronologia ma non conterà più nei saldi, nei budget o nei grafici.",
+  'openingDate.accountBody.other': "{count} movimenti ({amount}) hanno una data precedente al {date}. Resteranno nella cronologia ma non conteranno più nei saldi, nei budget o nei grafici.",
+  'openingDate.useEarliest': "Apri il {date}",
+  'openingDate.changeAnyway': "Modifica comunque",
+  'history.beforeOpening': "Prima del saldo iniziale · non conteggiato",
 };

@@ -1362,4 +1362,15 @@ window.I18n.dicts.fr = {
   'others.importCreatedAccounts.other': "{count} comptes manquants créés automatiquement.",
   'others.importCreatedCategories.one': "{count} catégorie manquante créée automatiquement.",
   'others.importCreatedCategories.other': "{count} catégories manquantes créées automatiquement.",
+  // 1.0.3 U2
+  'openingDate.txTitle': "Avant le solde initial",
+  'openingDate.txBody': "{account} est ouvert le {date}. Les opérations antérieures sont conservées mais ne comptent pas dans les soldes, budgets ou graphiques.",
+  'openingDate.move': "Déplacer la date d'ouverture au {date}",
+  'openingDate.saveAnyway': "Enregistrer quand même",
+  'openingDate.accountTitle': "Opérations avant cette date",
+  'openingDate.accountBody.one': "{count} opération ({amount}) est datée d'avant le {date}. Elle restera dans l'historique mais ne comptera plus dans les soldes, budgets ou graphiques.",
+  'openingDate.accountBody.other': "{count} opérations ({amount}) sont datées d'avant le {date}. Elles resteront dans l'historique mais ne compteront plus dans les soldes, budgets ou graphiques.",
+  'openingDate.useEarliest': "Ouvrir le {date} à la place",
+  'openingDate.changeAnyway': "Modifier quand même",
+  'history.beforeOpening': "Avant le solde initial · non compté",
 };
