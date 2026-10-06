@@ -180,7 +180,11 @@ window.StackdExport = {
   // A deleted budget is a tombstone (SAVE_BUDGET with amount 0), and a budget
   // whose category is gone has nothing to restore onto — both are skipped.
   // Months stay 'YYYY-MM', the format the store and the month picker use.
-  BUDGET_HEADERS: ['Category', 'Amount', 'StartMonth', 'EndMonth', 'Cumulative'],
+  // 1.0.3 (BUG-140): `Limits` = the limit history as JSON
+  // ([{"from":"","amount":300},{"from":"2026-10","amount":400}]), empty for a
+  // flat budget; `Amount` stays the newest limit, so an older reader restores
+  // the budget flat.
+  BUDGET_HEADERS: ['Category', 'Amount', 'StartMonth', 'EndMonth', 'Cumulative', 'Limits'],
 
   exportBudgets(state, options = {}) {
     const delimiter = options.delimiter || ',';
@@ -194,7 +198,8 @@ window.StackdExport = {
           b.amount,
           b.startDate || '',
           b.endDate || '',
-          b.isCumulative ? 'true' : 'false'
+          b.isCumulative ? 'true' : 'false',
+          Array.isArray(b.limits) && b.limits.length >= 2 ? JSON.stringify(b.limits) : ''
         ], delimiter) : null;
       })
       .filter(Boolean);

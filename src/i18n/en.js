@@ -1383,4 +1383,9 @@ window.I18n.dicts.en = {
   'others.importCreatedAccounts.other': "Created {count} missing accounts automatically.",
   'others.importCreatedCategories.one': "Created {count} missing category automatically.",
   'others.importCreatedCategories.other': "Created {count} missing categories automatically.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'The new limit applies from {month} on. Earlier months keep theirs.',
+  'budget.endBeforeStart': "End month can't be before the start month.",
+  'budget.removeConfirm.title': 'Remove the {name} budget?',
+  'budget.removeConfirm.body': 'Its limit, months and Cumulative Rollover setting will be cleared.',
 };

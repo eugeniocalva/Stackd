@@ -1362,4 +1362,9 @@ window.I18n.dicts.fr = {
   'others.importCreatedAccounts.other': "{count} comptes manquants créés automatiquement.",
   'others.importCreatedCategories.one': "{count} catégorie manquante créée automatiquement.",
   'others.importCreatedCategories.other': "{count} catégories manquantes créées automatiquement.",
+  // 1.0.3 U3
+  'budget.appliesFrom': "La nouvelle limite s'applique à partir de {month}. Les mois précédents gardent la leur.",
+  'budget.endBeforeStart': 'Le mois de fin ne peut pas précéder le mois de début.',
+  'budget.removeConfirm.title': 'Supprimer le budget {name} ?',
+  'budget.removeConfirm.body': 'Sa limite, ses mois et le report cumulatif seront effacés.',
 };

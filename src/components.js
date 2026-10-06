@@ -1128,6 +1128,17 @@ window.Components = {
           // test: a queued re-render would detach the synchronous target.
           const before = window.Store.state.historyFilters;
           window.Store.dispatch('ROLL_PERIODS');
+          // 1.0.3 (BUG-115) a period without today (‹ to a past month, a
+          // custom range) moves to today's period of the same type — a custom
+          // range to this month — anchored like _rollLivePeriods.
+          const today = window.Store._todayYMD();
+          const p = window.Store.state.historyFilters.period;
+          if (p && !window.Store.isDateInPeriod(today, p)) {
+            const type = p.type === 'custom' ? 'month' : p.type;
+            const value = type === 'month' ? today.slice(0, 7) + '-01'
+              : (type === 'year' ? today.slice(0, 4) + '-01-01' : today);
+            window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type, value, start: '', end: '' } } });
+          }
           if (window.Store.state.historyFilters !== before) {
             setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-history-to-today')), 100);
           } else {
@@ -3191,7 +3202,10 @@ window.Components = {
     get MONTHS_FULL() { return window.I18n.monthNames('long'); },
 
     show(options = {}) {
-      const { initialValue, onSelect } = options;
+      // 1.0.3 (BUG-104) `clearText` + `onClear`: an extra button that empties
+      // an optional field (the budget End Month) and closes the picker.
+      // `clearText` is t() output: markup-safe, never escaped again.
+      const { initialValue, onSelect, clearText, onClear } = options;
 
       // Parse the initialValue (expected format: "YYYY-MM") or default to today
       const now = new Date();
@@ -3272,6 +3286,7 @@ window.Components = {
               <div style="text-align: center; margin-top: 20px; color: var(--text-secondary); font-size: 0.85rem;">
                 Selected: <strong id="mp-selected-label" style="color: var(--text-primary);">${this.MONTHS_FULL[selectedMonth]} ${selectedYear}</strong>
               </div>
+              ${clearText && onClear ? `<button type="button" class="btn btn-secondary" id="mp-clear" style="width: 100%; margin-top: 16px;">${clearText}</button>` : ''}
             </div>
           </div>
         `;
@@ -3295,6 +3310,8 @@ window.Components = {
         const cancelBtn = wrapper.querySelector('#mp-cancel');
         const doneBtn = wrapper.querySelector('#mp-done');
         if (cancelBtn) cancelBtn.addEventListener('click', close);
+        const clearBtn = wrapper.querySelector('#mp-clear'); // 1.0.3 (BUG-104)
+        if (clearBtn) clearBtn.addEventListener('click', () => { onClear(); close(); });
         if (doneBtn) {
           doneBtn.addEventListener('click', () => {
             const val = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;

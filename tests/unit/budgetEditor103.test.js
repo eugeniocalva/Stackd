@@ -118,15 +118,30 @@ describe('Limit editor and the viewed month (1.0.3 BUG-140)', () => {
     expect(rec().limits).toEqual([{ from: '', amount: 300 }, { from: '2026-10', amount: 400 }]);
   });
 
+  const captionShown = () => !!$('bdg-applies-from') && !$('bdg-applies-from').hidden;
+
   it('no caption for a new budget or when the viewed month is the start month', () => {
     viewMonth('2026-09');
     openEditor('cat_transport');
-    expect($('bdg-applies-from')).toBeNull();
+    expect(captionShown()).toBe(false);
     BV().closeEditor();
     setup();
     viewMonth('2026-07');
     openEditor('cat_groceries');
-    expect($('bdg-applies-from')).toBeNull();
+    expect(captionShown()).toBe(false);
+  });
+
+  it('the caption follows the Start Month picked in the editor', () => {
+    setup();
+    viewMonth('2026-09');
+    openEditor('cat_groceries');
+    expect(captionShown()).toBe(true);
+    $('bdg-start').click();
+    $('mp-next-year').click(); // 2027
+    document.querySelector('.mp-month-btn[data-month="0"]').click();
+    $('mp-done').click();
+    expect($('bdg-start').value).toBe('2027-01');
+    expect(captionShown()).toBe(false); // a change now rewrites every month
   });
 
   it('the opened editor is not dirty (the BUG-86 baseline is the prefilled month)', () => {

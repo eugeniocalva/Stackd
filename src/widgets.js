@@ -1087,7 +1087,10 @@ window.Widgets = {
         const { limit, spent } = this._totals(rows);
 
         if (instance.size !== 'large') {
-          const pctLabel = limit > 0 ? window.Store.formatPercent((spent / limit) * 100) : '—'; // 1.0.1 (BUG-09)
+          // 1.0.3 (BUG-164) over a non-positive total limit: how much over, not '—'
+          const totalOverC = Math.round((spent - limit) * 100);
+          const pctLabel = limit > 0 ? window.Store.formatPercent((spent / limit) * 100) // 1.0.1 (BUG-09)
+            : (totalOverC > 0 ? window.I18n.t('budget.overBy', { amount: window.Store.formatCurrency(totalOverC / 100) }) : '—');
           return `
             <div class="widget-donut">
               <canvas id="${W._canvasId(instance)}"></canvas>
@@ -1107,8 +1110,14 @@ window.Widgets = {
           // real usage ('250%'), '—' when the effective limit is not positive.
           // isOver compares in cents so float drift never flips the colour.
           const usedPct = r.bdg.finalLimit > 0 ? (r.bdg.spent / r.bdg.finalLimit) * 100 : null;
-          const pct = usedPct === null ? 0 : Math.min(usedPct, 100);
-          const isOver = Math.round((r.bdg.spent - r.bdg.finalLimit) * 100) > 0;
+          const overC = Math.round((r.bdg.spent - r.bdg.finalLimit) * 100);
+          const isOver = overC > 0;
+          // 1.0.3 (BUG-164) over a non-positive limit the bar is full, and the
+          // label says how much over (it was an empty bar and '—')
+          const pct = usedPct === null ? (isOver ? 100 : 0) : Math.min(usedPct, 100);
+          const valueLabel = usedPct === null && isOver
+            ? window.I18n.t('budget.overBy', { amount: window.Store.formatCurrency(overC / 100) })
+            : window.Store.formatPercent(usedPct);
           // v0.83: bar fills keep the vivid --color-expense (graphics, not
           // text); the pct TEXT uses the AA-contrast pair — the raw red fails
           // 4.5:1 on light cards and the amber literal failed both themes.
@@ -1118,7 +1127,7 @@ window.Widgets = {
             <div class="widget-minibar">
               <div class="widget-minibar-head">
                 <span class="widget-minibar-label">${W._esc(r.cat.name)}</span>
-                <span class="widget-minibar-value" style="color: ${pctColor};">${W._esc(window.Store.formatPercent(usedPct))}</span>
+                <span class="widget-minibar-value" style="color: ${pctColor};">${W._esc(valueLabel)}</span>
               </div>
               <div class="widget-minibar-track">
                 <div class="widget-minibar-fill" style="width: ${pct}%; color: ${barColor};"></div>
@@ -1156,11 +1165,14 @@ window.Widgets = {
         const theme = window.Components.NetFlowChart._themeColors();
         // BudgetView's donut palette: remainder floored at 0 so an overspent
         // ring reads full; red pair when over budget.
-        const overspent = spent > limit && limit > 0;
+        // 1.0.3 (BUG-160/164) over is decided in cents (float dust at exactly
+        // the limit is not over) and includes a non-positive limit; an over
+        // ring is drawn full.
+        const overspent = Math.round((spent - limit) * 100) > 0;
         const colors = overspent
           ? (theme.isDark ? ['#f87171', '#1f293d'] : ['#ef4444', '#f1f5f9'])
           : (theme.isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']);
-        const data = (limit === 0 && spent === 0) ? [1, 0] : [spent, Math.max(limit - spent, 0)];
+        const data = overspent || (limit === 0 && spent === 0) ? [1, 0] : [spent, Math.max(limit - spent, 0)];
 
         W._mountChart(instance.id, canvas, {
           type: 'doughnut',

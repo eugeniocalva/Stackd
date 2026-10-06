@@ -3114,9 +3114,11 @@ Object.assign(window.Views, {
         // Over/rollover are decided in cents: spent and carryover are float
         // sums, and dust must never read 'Over by €0.00' or '-€0.00 rollover'.
         const usedPct = hasBudget && bdg.finalLimit > 0 ? (bdg.spent / bdg.finalLimit) * 100 : null;
-        const pct = usedPct === null ? 0 : Math.min(usedPct, 100); // bar width + colour thresholds
         const overC = hasBudget ? Math.round((bdg.spent - bdg.finalLimit) * 100) : 0;
         const isOver = overC > 0;
+        // bar width + colour thresholds. 1.0.3 (BUG-164): over a non-positive
+        // limit the bar is full (it was empty while the row said "Over by").
+        const pct = usedPct === null ? (isOver ? 100 : 0) : Math.min(usedPct, 100);
         const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
         // Text colours use the AA-contrast pairs (as the Home budgets widget
         // since v0.83) now that the label can carry an overspend figure.
@@ -3178,7 +3180,14 @@ Object.assign(window.Views, {
         }
       }).join('');
 
-      const overspent = totalSpent > totalAllocated && totalAllocated > 0;
+      // 1.0.3 (BUG-160) decided in cents: spending exactly the limit (float
+      // dust) is neither "Overspent €0.00" nor "-€0.00" remaining. The ring
+      // (attachEvents) reuses these totals: it used to sum every category,
+      // the other tab and removed budgets' spend included.
+      const overC = Math.round((totalSpent - totalAllocated) * 100);
+      const overspent = overC > 0;
+      const remC = -overC;
+      this._passTotals = { totalAllocated, totalSpent, overspent };
 
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -3211,7 +3220,7 @@ Object.assign(window.Views, {
               <canvas id="budgetChart"></canvas>
               <div class="donut-chart-center">
                 <div class="donut-total-label">${overspent ? window.I18n.t('budget.overspent') : window.I18n.t('budget.allocated')}</div>
-                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? Math.round((totalSpent - totalAllocated) * 100) / 100 : totalAllocated)}</div>
+                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? overC / 100 : totalAllocated)}</div>
               </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
@@ -3221,7 +3230,7 @@ Object.assign(window.Views, {
               </div>
               <div style="text-align: right;">
                 <span style="color: var(--text-secondary);">${window.I18n.t('budget.remaining')}</span><br>
-                <strong style="color: ${totalAllocated - totalSpent >= 0 ? 'var(--color-income-val)' : 'var(--color-expense-val)'};">${window.Store.formatCurrency(totalAllocated - totalSpent)}</strong>
+                <strong style="color: ${remC >= 0 ? 'var(--color-income-val)' : 'var(--color-expense-val)'};">${window.Store.formatCurrency(remC / 100 || 0)}</strong>
               </div>
             </div>
           </div>
@@ -3245,6 +3254,11 @@ Object.assign(window.Views, {
       if (!cat) { this.editCategoryId = null; return this.renderList(state); }
       const budget = state.budgets.find(b => b.categoryId === cat.id) || {};
       const currSym = window.Store.getCurrencySymbol();
+      // 1.0.3 (BUG-140, D3) the editor shows, and a changed limit applies
+      // from, the month viewed in Goals; earlier months keep their limit.
+      const viewed = this._viewedMonth(state);
+      const shownLimit = window.Store._budgetAmountFor(budget, viewed);
+      const hasLimit = parseFloat(budget.amount) > 0;
 
       // v0.95 (refactor-plan-2 P3.2): average-spend insight between the limit
       // field and the month selectors. Expense context only — suggesting a
@@ -3286,8 +3300,9 @@ Object.assign(window.Views, {
               <label class="form-label" for="bdg-amount">${window.I18n.t('budget.monthlyLimit')}</label>
               <div style="position: relative;">
                 <span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1.5rem; pointer-events: none;" aria-hidden="true">${currSym}</span>
-                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${Number(budget.amount) ? Math.round(Number(budget.amount) * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
+                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${shownLimit ? Math.round(shownLimit * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
               </div>
+              ${hasLimit ? `<div id="bdg-applies-from" style="font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-2);"${this._appliesFromShown(budget.startDate, viewed) ? '' : ' hidden'}>${window.I18n.t('budget.appliesFrom', { month: esc(this._monthLabel(viewed)) })}</div>` : ''}
             </div>
             ${insightHtml}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
@@ -3346,23 +3361,42 @@ Object.assign(window.Views, {
           if (amtInput) amtInput.focus();
         }, 100);
 
+        const viewed = this._viewedMonth(state);
         const startInput = container.querySelector('#bdg-start');
+        const endInput = container.querySelector('#bdg-end');
+        const cumInput = container.querySelector('#bdg-cumulative');
+        // 1.0.3 (BUG-140) the "applies from" caption follows the Start Month
+        const caption = container.querySelector('#bdg-applies-from');
+        const syncCaption = () => {
+          if (caption) caption.hidden = !this._appliesFromShown(startInput ? startInput.value : '', viewed);
+        };
         if (startInput) {
           startInput.addEventListener('click', () => {
             window.Components.MonthPicker.show({
-              initialValue: startInput.value || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-              onSelect: (val) => { startInput.value = val; }
+              initialValue: startInput.value || viewed,
+              onSelect: (val) => { startInput.value = val; clearFieldError(endInput); syncCaption(); }
             });
           });
         }
 
-        const endInput = container.querySelector('#bdg-end');
         if (endInput) {
           endInput.addEventListener('click', () => {
             window.Components.MonthPicker.show({
-                initialValue: endInput.value || (startInput ? startInput.value : '') || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-                onSelect: (val) => { endInput.value = val; }
+              initialValue: endInput.value || (startInput ? startInput.value : '') || viewed,
+              onSelect: (val) => { endInput.value = val; clearFieldError(endInput); },
+              // 1.0.3 (BUG-104) the optional End Month can be emptied again
+              clearText: window.I18n.t('budget.noEndDate'),
+              onClear: () => { endInput.value = ''; clearFieldError(endInput); }
             });
+          });
+        }
+
+        // 1.0.3 (BUG-58) a cumulative rollover needs a start month (the carry
+        // loop runs from it): switching it on with none starts on the viewed
+        // month, and the save applies the same default.
+        if (cumInput && startInput) {
+          cumInput.addEventListener('change', () => {
+            if (cumInput.checked && !startInput.value) { startInput.value = viewed; syncCaption(); }
           });
         }
 
@@ -3378,12 +3412,18 @@ Object.assign(window.Views, {
               showFieldError(amtElem, window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }));
               return;
             }
-            const startElem = container.querySelector('#bdg-start');
-            const start = startElem ? startElem.value : '';
-            const endElem = container.querySelector('#bdg-end');
-            const end = endElem ? endElem.value : '';
-            const cumElem = container.querySelector('#bdg-cumulative');
-            const isCum = cumElem ? cumElem.checked : false;
+            const isCum = cumInput ? cumInput.checked : false;
+            let start = startInput ? startInput.value : '';
+            if (isCum && !start) { // 1.0.3 (BUG-58), shown in case the end check below refuses
+              start = viewed;
+              if (startInput) { startInput.value = viewed; syncCaption(); }
+            }
+            const end = endInput ? endInput.value : '';
+            // 1.0.3 (BUG-104) an End Month before the Start Month is refused
+            if (start && end && end < start) {
+              showFieldError(endInput, window.I18n.t('budget.endBeforeStart'));
+              return;
+            }
 
             // CRITICAL: Reset BEFORE dispatch so the store emit re-renders the list, not the edit pane
             this.editCategoryId = null;
@@ -3392,21 +3432,40 @@ Object.assign(window.Views, {
               amount: amt === null ? 0 : amt,
               startDate: start,
               endDate: end || null,
-              isCumulative: isCum
+              isCumulative: isCum,
+              effectiveFrom: viewed // 1.0.3 (BUG-140, D3)
             });
           });
         }
 
+        // 1.0.3 (BUG-105) Remove asks first. A delete-style sheet: Cancel is
+        // the safe button, a backdrop tap or Back closes it, and the editor
+        // stays open until Remove is confirmed.
         const bdgDeleteBtn = container.querySelector('#btn-bdg-delete');
         if (bdgDeleteBtn) {
           bdgDeleteBtn.addEventListener('click', () => {
-            this.editCategoryId = null;
-            window.Store.dispatch('SAVE_BUDGET', {
-              categoryId: savedCategoryId,
-              amount: 0,
-              startDate: '',
-              endDate: null,
-              isCumulative: false
+            const cat = (window.Store.getState().categories || []).find(c => c.id === savedCategoryId);
+            window.Components.Modal.show({
+              title: window.I18n.t('budget.removeConfirm.title', { name: esc(cat ? cat.name : '') }),
+              content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">${window.I18n.t('budget.removeConfirm.body')}</p>`,
+              saveText: window.I18n.t('common.cancel'),
+              showDelete: true,
+              deleteText: window.I18n.t('budget.removeLimit'),
+              onSave: (closeModal) => closeModal(),
+              onDelete: (closeModal) => {
+                closeModal();
+                if (this.editCategoryId === savedCategoryId) { // before the emit: the list renders
+                  this.editCategoryId = null;
+                  this._editBaseline = null;
+                }
+                window.Store.dispatch('SAVE_BUDGET', {
+                  categoryId: savedCategoryId,
+                  amount: 0,
+                  startDate: '',
+                  endDate: null,
+                  isCumulative: false
+                });
+              }
             });
           });
         }
@@ -3465,21 +3524,15 @@ Object.assign(window.Views, {
         // Chart Render
         const ctx = document.getElementById('budgetChart');
         if (ctx) {
-          let totalAllocated = 0;
-          let totalSpent = 0;
-          
-          state.categories.forEach(cat => {
-            const bdg = window.Store.getBudgetForMonth(cat.id, selectedMonth);
-            totalAllocated += bdg.finalLimit;
-            totalSpent += bdg.spent;
-          });
+          // 1.0.3 (BUG-160) the summary's own totals (renderList, same pass):
+          // the budgeted rows of this tab only, over decided in cents.
+          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false };
+          const { totalAllocated, totalSpent, overspent } = totals;
 
-          // Prevent 0/0 empty chart 
-          const chartData = (totalAllocated === 0 && totalSpent === 0) 
-            ? [1, 0] // dummy background slice 
+          // Prevent 0/0 empty chart; an over ring is drawn full
+          const chartData = (overspent || (totalAllocated === 0 && totalSpent === 0))
+            ? [1, 0] // dummy background slice
             : [totalSpent, Math.max(totalAllocated - totalSpent, 0)];
-            
-          const overspent = totalSpent > totalAllocated && totalAllocated > 0;
 
           // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
           const GAP = 3;
@@ -3548,6 +3601,23 @@ Object.assign(window.Views, {
       this.editCategoryId = null;
       this._editBaseline = null;
       window.Store.emit();
+    },
+
+    // 1.0.3 (BUG-140/58) the month viewed in Goals ('YYYY-MM')
+    _viewedMonth(state) {
+      return (state && state.activeMonthFilter) || window.Store._todayYMD().slice(0, 7);
+    },
+
+    _monthLabel(ym) {
+      const [y, m] = ym.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString(window.Store.getLocale(), { month: 'long', year: 'numeric' });
+    },
+
+    // 1.0.3 (BUG-140) a change made while viewing `viewed` applies from that
+    // month on only when it is after the start month (SAVE_BUDGET's rule);
+    // at or before it, the change rewrites every month and needs no caption.
+    _appliesFromShown(start, viewed) {
+      return !start || viewed > start;
     },
 
     isEditorDirty(root) {

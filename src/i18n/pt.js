@@ -1362,4 +1362,9 @@ window.I18n.dicts.pt = {
   'others.importCreatedAccounts.other': "Criadas automaticamente {count} contas em falta.",
   'others.importCreatedCategories.one': "Criada automaticamente {count} categoria em falta.",
   'others.importCreatedCategories.other': "Criadas automaticamente {count} categorias em falta.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'O novo limite aplica-se a partir de {month}. Os meses anteriores mantêm o seu.',
+  'budget.endBeforeStart': 'O mês final não pode ser anterior ao mês inicial.',
+  'budget.removeConfirm.title': 'Remover o orçamento de {name}?',
+  'budget.removeConfirm.body': 'O limite, os meses e a transição cumulativa serão apagados.',
 };

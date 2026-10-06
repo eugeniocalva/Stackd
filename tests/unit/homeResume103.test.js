@@ -122,7 +122,7 @@ describe('Home re-renders after a resume on a new day (1.0.3 BUG-142)', () => {
 
 describe('main.js midnight timer (1.0.3 BUG-142, D6)', () => {
   const main = readFileSync(resolve(__dirname, '../../src/main.js'), 'utf8');
-  const block = (main.match(/const armMidnightRoll = \(\) => \{[\s\S]*?\n  \};\n  armMidnightRoll\(\);/) || [])[0];
+  const block = (main.match(/const armMidnightRoll = \(\) => \{[\s\S]*?\r?\n  \};\r?\n  armMidnightRoll\(\);/) || [])[0];
 
   afterEach(() => { vi.useRealTimers(); });
 

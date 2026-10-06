@@ -1481,9 +1481,12 @@ window.Store = {
   // re-render the heavy outgoing view once per dispatch. Boot passes
   // { sync: true } because the splash-dismissal sequence in main.js relies on
   // the first render having happened when emit() returns.
+  // 1.0.3 (BUG-142) `_renderedDay` = the local day of the last render pass
+  // (transient), so ROLL_PERIODS can tell a Home drawn yesterday.
   emit(opts) {
     if (opts && opts.sync) {
       this._emitQueued = false;
+      this._renderedDay = this._todayYMD();
       this.listeners.forEach(cb => cb(this.state));
       return;
     }
@@ -1492,6 +1495,7 @@ window.Store = {
     const flush = () => {
       if (!this._emitQueued) return; // a sync flush already ran this tick
       this._emitQueued = false;
+      this._renderedDay = this._todayYMD();
       this.listeners.forEach(cb => cb(this.state));
     };
     if (typeof queueMicrotask === 'function') queueMicrotask(flush);
@@ -2856,6 +2860,11 @@ window.Store = {
         // review): History's Today scrolls synchronously when nothing it shows
         // moved, and a re-render queued meanwhile would detach its target.
         if (this._rollLivePeriods().includes(this._livePageOf(this.state.activeView))) changed = true;
+        // 1.0.3 (BUG-142) Home shows as-of-today figures and holds no form
+        // state: re-render it when it was last drawn on an earlier day (a
+        // WebView kept overnight, the midnight timer). Forms and Goals stay.
+        else if (this.state.activeView === 'dashboard' && this._renderedDay &&
+                 this._renderedDay !== this._todayYMD()) changed = true;
         break;
 
       case 'SET_DEBT_SIM':
@@ -2903,12 +2912,43 @@ window.Store = {
       }
 
       case 'SAVE_BUDGET': {
+        // 1.0.3 (BUG-140, D3) optional `effectiveFrom` ('YYYY-MM', the month
+        // viewed in Goals) and `limits` (a CSV restore) keep a limit history:
+        // a changed limit applies from `effectiveFrom` on and replaces any
+        // later one; earlier months keep theirs. Neither = a flat limit (old
+        // callers). Neither key is stored as given.
+        const { effectiveFrom, limits, ...fields } = payload;
         const existingIdx = this.state.budgets.findIndex(b => b.categoryId === payload.categoryId);
-        if (existingIdx !== -1) {
-          this.state.budgets[existingIdx] = { ...this.state.budgets[existingIdx], ...payload };
-        } else {
-          this.state.budgets.push({ id: window.StackdDB.generateId(), ...payload });
+        const prev = existingIdx !== -1 ? this.state.budgets[existingIdx] : null;
+        const next = prev ? { ...prev, ...fields } : { id: window.StackdDB.generateId(), ...fields };
+        const newAmount = parseFloat(next.amount) || 0;
+        let history = null; // null = flat
+        if (!(newAmount > 0)) {
+          // Remove: the deleted-budget marker carries no history
+        } else if (Array.isArray(limits)) {
+          const clean = this._normalizeBudgetLimits(limits);
+          if (clean.length) next.amount = clean[clean.length - 1].amount;
+          history = clean;
+        } else if (typeof effectiveFrom === 'string' && /^\d{4}-\d{2}$/.test(effectiveFrom) &&
+                   prev && parseFloat(prev.amount) > 0) {
+          if (newAmount === this._budgetAmountFor(prev, effectiveFrom)) {
+            // only the months or the rollover switch changed: keep the history
+            // and the newest limit (the editor showed the viewed month's)
+            next.amount = prev.amount;
+            history = Array.isArray(prev.limits) ? prev.limits : null;
+          } else {
+            const start = next.startDate || '';
+            const from = (!start || effectiveFrom > start) ? effectiveFrom : ''; // at/before the start: rewrite all
+            const base = Array.isArray(prev.limits) && prev.limits.length
+              ? prev.limits : [{ from: '', amount: parseFloat(prev.amount) }];
+            history = this._normalizeBudgetLimits([...base.filter(e => e.from < from), { from, amount: newAmount }]);
+            next.amount = history[history.length - 1].amount;
+          }
         }
+        if (history && history.length >= 2) next.limits = history;
+        else delete next.limits;
+        if (prev) this.state.budgets[existingIdx] = next;
+        else this.state.budgets.push(next);
         window.StackdDB.save('budgets', this.state.budgets);
         changed = true;
         break;
@@ -4137,6 +4177,44 @@ window.Store = {
     return idx[categoryId + '|' + yearMonth] || 0;
   },
 
+  // 1.0.3 (BUG-140, D3) a budget's limit HISTORY. `amount` stays the newest
+  // limit (0 = the deleted-budget marker, the export filter, Remove); the
+  // optional `limits` [{from: '', amount}, {from: 'YYYY-MM', amount}, ...] is
+  // sorted, starts with from '' and is stored only with two or more entries.
+  // The limit in force for `ym` is the last entry whose `from` <= ym.
+  _budgetAmountFor(b, ym) {
+    if (!b || !(parseFloat(b.amount) > 0)) return 0; // deleted-budget marker
+    const l = b.limits;
+    if (!Array.isArray(l) || !l.length) return parseFloat(b.amount) || 0;
+    let a = l[0].amount;
+    for (let i = 1; i < l.length && l[i].from <= ym; i++) a = l[i].amount;
+    return parseFloat(a) || 0;
+  },
+
+  // 1.0.3 (BUG-140) a clean limits list: entries with a bad `from` (not '' or
+  // 'YYYY-MM') or a non-positive / non-finite amount are dropped, the same
+  // `from` keeps the last one, the list is sorted, neighbours with equal
+  // amounts merge and the first entry always starts at ''.
+  _normalizeBudgetLimits(list) {
+    const byFrom = new Map();
+    (Array.isArray(list) ? list : []).forEach(e => {
+      if (!e || typeof e !== 'object') return;
+      const from = typeof e.from === 'string' ? e.from : '';
+      if (from !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(from)) return;
+      const amount = typeof e.amount === 'number' ? e.amount : parseFloat(e.amount);
+      if (!Number.isFinite(amount) || !(amount > 0)) return;
+      byFrom.set(from, amount);
+    });
+    const sorted = [...byFrom.keys()].sort().map(from => ({ from, amount: byFrom.get(from) }));
+    const out = [];
+    sorted.forEach(e => {
+      if (out.length && out[out.length - 1].amount === e.amount) return;
+      out.push(e);
+    });
+    if (out.length) out[0].from = '';
+    return out;
+  },
+
   getBudgetForMonth(categoryId, yearMonth) {
     // yearMonth is format "YYYY-MM"
     const budget = this.state.budgets.find(b => b.categoryId === categoryId);
@@ -4146,7 +4224,8 @@ window.Store = {
     if (budget.startDate && yearMonth < budget.startDate) return { allocated: 0, spent: 0, carryover: 0, finalLimit: 0 };
     if (budget.endDate && yearMonth > budget.endDate) return { allocated: 0, spent: 0, carryover: 0, finalLimit: 0 };
 
-    const baseAmount = parseFloat(budget.amount) || 0;
+    // 1.0.3 (BUG-140) the limit in force THIS month (was the one newest amount)
+    const baseAmount = this._budgetAmountFor(budget, yearMonth);
 
     // Calculate spent in this current yearMonth
     const spentThisMonth = this._categoryMonthSpend(categoryId, yearMonth);
@@ -4162,7 +4241,8 @@ window.Store = {
         const lookupMonth = `${iterDate.getFullYear()}-${String(iterDate.getMonth() + 1).padStart(2, '0')}`;
         const spentPast = this._categoryMonthSpend(categoryId, lookupMonth);
 
-        const remainder = baseAmount - spentPast;
+        // 1.0.3 (BUG-140) each past month carries against ITS OWN limit
+        const remainder = this._budgetAmountFor(budget, lookupMonth) - spentPast;
         // cumulative logic normally adds up left-over, but can go negative if overspent
         carryOver += remainder;
 
