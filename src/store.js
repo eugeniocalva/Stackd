@@ -566,6 +566,8 @@ window.Store = {
     this._healConvertedOpeningBalances(); // 1.0.2 (BUG-25)
     // 1.0.2 (BUG-26): every member carries its series' real schedule
     if (this._healSeriesSchedules()) window.StackdDB.save('transactions', this.state.transactions);
+    // 1.0.3 (BUG-51, D4): month-end / 29 Feb chains 1.0.2 let drift, future payments only
+    if (this._healSeriesAnchors()) window.StackdDB.save('transactions', this.state.transactions);
     this._healRestoredImportKeys(); // 1.0.2 (BUG-32)
     this._healMultilineNotes(); // 1.0.2 (R1)
     this._processRecurringTransactions();
@@ -782,34 +784,155 @@ window.Store = {
     const capMonths = (capEnd.getFullYear() - capStart.getFullYear()) * 12
                     + (capEnd.getMonth()   - capStart.getMonth());
     if (capMonths > 60) {
-      const clampedEnd = new Date(capStart);
-      clampedEnd.setMonth(clampedEnd.getMonth() + 60);
-      rec.endDate = `${clampedEnd.getFullYear()}-${String(clampedEnd.getMonth() + 1).padStart(2, '0')}-${String(clampedEnd.getDate()).padStart(2, '0')}`;
+      // 1.0.3 (BUG-159): month arithmetic, clamped — setMonth(+60) on 29 Feb
+      // overflowed to 1 Mar
+      rec.endDate = this._calculateNextRecurrenceDate(startRef, 60, 'months');
     }
     return rec;
   },
 
-  _calculateNextRecurrenceDate(baseDateStr, interval, freq) {
+  // 1.0.3 (BUG-51 / BUG-159): optional anchorDay — months and years land on
+  // min(anchorDay, days in the target month), so a series started on the
+  // 31st comes back to the 31st after a short month instead of keeping the
+  // clamped day for good. Without an anchor the base date's own day is the
+  // anchor (the 1.0.2 behaviour for months; years now clamp 29 Feb → 28 Feb
+  // instead of overflowing to 1 Mar). Integer month arithmetic that mirrors
+  // LoanEngine.addMonthsClamped (inline: the store loads without
+  // loan-engine.js); negative steps are fine.
+  _calculateNextRecurrenceDate(baseDateStr, interval, freq, anchorDay) {
     // v0.67: parse and format in LOCAL time anchored at noon. The old
     // UTC-parse + toISOString round-trip slipped one day backwards every
     // time a DST boundary was crossed, so monthly series drifted (15th ->
     // 14th -> 13th ...) one day per year.
     const [by, bm, bd] = String(baseDateStr).split('-').map(Number);
     if (!by || !bm || !bd) return undefined;
+    if (freq === 'months' || freq === 'years') {
+      const n = Number(interval) * (freq === 'years' ? 12 : 1);
+      if (!Number.isFinite(n)) return undefined;
+      const m0 = (bm - 1) + n;
+      const y = by + Math.floor(m0 / 12);
+      const m = ((m0 % 12) + 12) % 12 + 1;
+      const dim = new Date(y, m, 0).getDate();
+      const day = Math.min(Number(anchorDay) || bd, dim);
+      return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
     const d = new Date(by, bm - 1, bd, 12, 0, 0);
     if (freq === 'days') d.setDate(d.getDate() + interval);
     else if (freq === 'weeks') d.setDate(d.getDate() + (interval * 7));
-    else if (freq === 'months') {
-      const originalDay = d.getDate();
-      d.setMonth(d.getMonth() + interval);
-      // Handle end of month issues (e.g. going from Jan 31 + 1 month -> March 3 if Feb has 28 days)
-      if (d.getDate() !== originalDay) {
-         d.setDate(0); // Sets to last day of the previous calculated month
-      }
-    }
-    else if (freq === 'years') d.setFullYear(d.getFullYear() + interval);
 
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  // 1.0.3 (BUG-51): the day a chain steps from. recurrence.anchorDay when the
+  // chain carries one; a 1.0.2 chain (no anchorDay) reads its startDate's day
+  // when `date` is a month-end shorter than it (31 Oct → 30 Nov → 31 Dec),
+  // else the date's own day (a chain that already drifted to the 28th stays
+  // there until _healSeriesAnchors proves it).
+  _anchorDayOf(rec, date) {
+    if (rec && Number(rec.anchorDay) > 0) return Number(rec.anchorDay);
+    const [y, m, d] = String(date || '').split('-').map(Number);
+    if (!y || !m || !d) return undefined;
+    const sd = rec && rec.startDate ? Number(String(rec.startDate).slice(8, 10)) : 0;
+    if (sd > d && d === new Date(y, m, 0).getDate()) return sd;
+    return d;
+  },
+
+  // 1.0.3 (BUG-51): the occurrence after `date` in a chain with recurrence `rec`
+  // — the one stepper every chain walker uses (generation, regeneration,
+  // _moveSeriesEnd, the loan sync plan, the gap mapping).
+  _nextSeriesDate(date, rec) {
+    if (!rec) return undefined;
+    return this._calculateNextRecurrenceDate(date, Number(rec.interval), rec.frequency, this._anchorDayOf(rec, date));
+  },
+
+  // 1.0.3 (BUG-139, D1): a chain's slots from `from` up to `limit` (both
+  // included), stepped with a FIXED anchor day.
+  _seriesSlots(from, rec, anchorDay, limit) {
+    const out = [from];
+    let d = from;
+    while (out.length < 1000) {
+      d = this._calculateNextRecurrenceDate(d, Number(rec.interval), rec.frequency, anchorDay);
+      if (!d || d > limit) break;
+      out.push(d);
+    }
+    return out;
+  },
+
+  // 1.0.3 (BUG-139, D1): the empty slots of a series after `editedTx` — the
+  // payments deleted (or unlinked) with 'Only this' — as slot indices
+  // (slot 0 = the edited payment), read from the chain itself, so nothing is
+  // stored and a CSV round trip keeps them. The old chain's slots are stepped
+  // with its anchor up to the series end; every later payment (one per
+  // transfer pair) takes its NEAREST slot, so a payment moved with 'Only
+  // this' or a 1.0.2 chain drifted to the 28th still matches. Any doubt — a
+  // slot holding two payments, a payment nearest to the edited one — gives
+  // [] (the 1.0.2 behaviour: a full rebuild).
+  _seriesGaps(seriesId, editedTx, sched) {
+    if (!seriesId || !editedTx || !editedTx.date || !sched) return [];
+    if (sched.frequency !== 'days' && sched.frequency !== 'weeks' && sched.frequency !== 'months' && sched.frequency !== 'years') return [];
+    const limit = sched.endDate || sched.lastDate;
+    if (!limit || limit <= editedTx.date) return [];
+    const rec = { ...(editedTx.recurrence || {}), interval: sched.interval, frequency: sched.frequency };
+    const slots = this._seriesSlots(editedTx.date, rec, this._anchorDayOf(editedTx.recurrence, editedTx.date), limit);
+    if (slots.length < 2) return [];
+    const dayNo = (s) => {
+      const [y, m, d] = s.split('-').map(Number);
+      return Date.UTC(y, m - 1, d) / 86400000; // a day count, never formatted
+    };
+    const slotNos = slots.map(dayNo);
+    const fill = slots.map((s, k) => (k === 0 ? 1 : 0));
+    const seen = new Set();
+    for (const t of this.state.transactions) {
+      if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.id === editedTx.id) continue;
+      if (editedTx.transferRef && t.transferRef === editedTx.transferRef) continue;
+      if (!(t.date > editedTx.date)) continue;
+      if (t.transferRef) {
+        if (seen.has(t.transferRef)) continue;
+        seen.add(t.transferRef);
+      }
+      const n = dayNo(t.date);
+      let best = 0;
+      slotNos.forEach((s, k) => { if (Math.abs(n - s) < Math.abs(n - slotNos[best])) best = k; });
+      if (++fill[best] > 1) return [];
+    }
+    const gaps = [];
+    fill.forEach((f, k) => { if (!f) gaps.push(k); });
+    return gaps;
+  },
+
+  // 1.0.3 (BUG-139, D1): how many payments of this series a rebuild from
+  // `txId` would bring back — the scope sheet's gapNote, shown when an
+  // interval/frequency change cannot keep the gaps.
+  seriesGapCount(seriesId, txId) {
+    const tx = this.state.transactions.find(t => t.id === txId);
+    return tx ? this._seriesGaps(seriesId, tx, this.getSeriesSchedule(seriesId)).length : 0;
+  },
+
+  // 1.0.3 (BUG-139, D1): after a rebuild from `editedId`, remove the members
+  // sitting on the gap slots (slot k of the new chain = slot k of the old
+  // one), stepped exactly as the processing pass generated them. Never the
+  // armed member (nor its pair). Returns true when something was removed;
+  // the caller syncs the schedule and saves.
+  _dropSeriesGaps(seriesId, editedId, gaps) {
+    if (!gaps || !gaps.length) return false;
+    const edited = this.state.transactions.find(t => t.id === editedId);
+    if (!edited || !edited.recurrence || edited.recurrence.seriesId !== seriesId) return false;
+    const want = new Set();
+    let d = edited.date;
+    const last = Math.max(...gaps);
+    for (let k = 1; k <= last && d; k++) {
+      d = this._nextSeriesDate(d, edited.recurrence);
+      if (d && gaps.includes(k)) want.add(d);
+    }
+    const inSeries = (t) => t.recurrence && t.recurrence.seriesId === seriesId;
+    const armedRefs = new Set(this.state.transactions
+      .filter(t => inSeries(t) && t.recurrence.nextDate && t.transferRef).map(t => t.transferRef));
+    const doomed = this.state.transactions.filter(t => inSeries(t) && want.has(t.date) && t.id !== edited.id &&
+      !(edited.transferRef && t.transferRef === edited.transferRef) &&
+      !t.recurrence.nextDate && !(t.transferRef && armedRefs.has(t.transferRef)));
+    if (!doomed.length) return false;
+    this._removeSeriesMembers(doomed);
+    return true;
   },
 
   // 1.0.2 (BUG-25): before 1.0.2, an untouched save of an opening balance from
@@ -1060,6 +1183,92 @@ window.Store = {
     return healed;
   },
 
+  // 1.0.3 (BUG-51): the 1.0.2 stepper, kept ONLY to prove that a stored chain
+  // is exactly what it generated (_healSeriesAnchors). Each date was stepped
+  // from the previous one and a clamped day was kept for good; years did not
+  // clamp (29 Feb + 1y → 1 Mar).
+  _legacyNextRecurrenceDate(baseDateStr, interval, freq) {
+    const [by, bm, bd] = String(baseDateStr).split('-').map(Number);
+    if (!by || !bm || !bd) return undefined;
+    const d = new Date(by, bm - 1, bd, 12, 0, 0);
+    if (freq === 'months') {
+      d.setMonth(d.getMonth() + interval);
+      if (d.getDate() !== bd) d.setDate(0);
+    } else if (freq === 'years') d.setFullYear(d.getFullYear() + interval);
+    else return undefined;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  // 1.0.3 (BUG-51, D4): boot + restore repair of chains 1.0.2 let drift — a
+  // monthly series started on the 29th–31st sits on the 28th for good, a
+  // yearly one from 29 Feb on 1 Mar. Only series with no anchorDay whose
+  // start is a 29th–31st (monthly) or 29 Feb (yearly), and only when EVERY
+  // member (both legs) is a date of the 1.0.2 sequence replayed from the
+  // series start (gaps allowed): anything else (a payment moved by hand, a
+  // 'This and future' re-date, another interval) is left as it is. Members
+  // dated after today move to the anchored slot of the same index (never
+  // past the series end, never to today or earlier); past dates never move.
+  // The armed tail's nextDate follows its slot, and every member is stamped
+  // with anchorDay, which makes the heal idempotent. Returns true when it
+  // changed something (the caller saves).
+  _healSeriesAnchors() {
+    const by = {};
+    this.state.transactions.forEach(t => {
+      const sid = t.recurrence && t.recurrence.seriesId;
+      if (sid) (by[sid] = by[sid] || []).push(t);
+    });
+    const today = this._todayYMD();
+    let healed = false;
+    let moved = false;
+    Object.keys(by).forEach(sid => {
+      const ms = by[sid];
+      if (ms.some(t => t.recurrence.anchorDay)) return;
+      const s = this._scheduleOf(ms);
+      const interval = s ? Number(s.interval) : NaN;
+      if (!s || !Number.isInteger(interval) || interval < 1) return;
+      const armed = ms.find(t => t.recurrence.nextDate);
+      const first = ms.reduce((a, t) => (!a || t.date < a.date ? t : a), null);
+      const start = (armed && armed.recurrence.startDate) || first.recurrence.startDate || first.date;
+      const day = Number(String(start).slice(8, 10));
+      if (s.frequency === 'months') { if (!(day >= 29)) return; }
+      else if (s.frequency !== 'years' || String(start).slice(5) !== '02-29') return;
+      // the proof: the 1.0.2 sequence from the start holds every member
+      const last = ms.reduce((a, t) => (t.date > a ? t.date : a), '');
+      const index = new Map();
+      for (let d = start, k = 0; d && d <= last && k < 1000; d = this._legacyNextRecurrenceDate(d, interval, s.frequency), k++) {
+        index.set(d, k);
+      }
+      if (ms.some(t => !index.has(t.date))) return;
+      const slot = (k) => this._calculateNextRecurrenceDate(start, k * interval, s.frequency, day);
+      const refDates = new Map();
+      ms.forEach(t => {
+        const k = index.get(t.date);
+        const target = slot(k);
+        const end = t.recurrence.endDate;
+        if (t.date > today && target && target !== t.date && target > today && (!end || target <= end)) {
+          t.date = target;
+          if (t.transferRef) refDates.set(t.transferRef, target);
+          moved = true;
+        }
+        const rec = { ...t.recurrence, anchorDay: day };
+        if (rec.nextDate) rec.nextDate = slot(k + 1);
+        t.recurrence = rec;
+      });
+      // a pair's leg outside the series (no recurrence) follows its partner
+      if (refDates.size) {
+        this.state.transactions.forEach(t => {
+          if (t.transferRef && refDates.has(t.transferRef) && !(t.recurrence && t.recurrence.seriesId === sid)) t.date = refDates.get(t.transferRef);
+        });
+      }
+      healed = true;
+    });
+    if (moved) {
+      this._sortTransactions();
+      this._budgetSpendIdx = null;
+    }
+    return healed;
+  },
+
   _processRecurringTransactions() {
     let changed = false;
     
@@ -1087,7 +1296,7 @@ window.Store = {
           if (!gen.recurrence || !gen.recurrence.nextDate) return;
 
           const nextD = gen.recurrence.nextDate;
-          const nextNextD = this._calculateNextRecurrenceDate(nextD, gen.recurrence.interval, gen.recurrence.frequency);
+          const nextNextD = this._nextSeriesDate(nextD, gen.recurrence); // 1.0.3 (BUG-51): the chain's anchor day (clones copy it)
           if (!nextNextD) { delete gen.recurrence.nextDate; return; }
 
           // v0.67: collision guard — if this series already has a transaction on
@@ -1810,8 +2019,10 @@ window.Store = {
           if (!payload.recurrence.seriesId) {
             payload.recurrence.seriesId = window.StackdDB.generateId();
           }
+          // 1.0.3 (BUG-51): the chain's day — a series on the 31st keeps it
+          if (!payload.recurrence.anchorDay) payload.recurrence.anchorDay = Number(String(payload.date).slice(8, 10)) || undefined;
           if (!payload.recurrence.nextDate) {
-            payload.recurrence.nextDate = this._calculateNextRecurrenceDate(payload.date, payload.recurrence.interval, payload.recurrence.frequency);
+            payload.recurrence.nextDate = this._nextSeriesDate(payload.date, payload.recurrence);
           }
         }
 
@@ -1898,6 +2109,7 @@ window.Store = {
               (absoluteAmount !== Math.abs(existingTx.amount) || legAccountId !== existingTx.accountId);
             if (amountTouched && this._sameCurrency(legAccountId, counterpartTx.accountId)) counterpartTx.amount = absoluteAmount;
             if (payload.date !== undefined) counterpartTx.date = payload.date;
+            if (payload.time !== undefined) counterpartTx.time = payload.time; // 1.0.3 (BUG-99)
             if (payload.note !== undefined) counterpartTx.note = payload.note;
             if (payload.comment !== undefined) counterpartTx.comment = payload.comment;
           }
@@ -1938,8 +2150,13 @@ window.Store = {
           if (existingRec) {
             if (existingRec.nextDate) merged.nextDate = existingRec.nextDate;
             else delete merged.nextDate;
+            // 1.0.3 (BUG-51): the member's own anchor (a rebuild sets a new one below)
+            if (existingRec.anchorDay) merged.anchorDay = existingRec.anchorDay;
+            else delete merged.anchorDay;
           } else {
             if (!merged.startDate) merged.startDate = payload.date || existingTx.date;
+            // 1.0.3 (BUG-51): a new chain steps from its own day
+            if (!merged.anchorDay) merged.anchorDay = Number(String(payload.date || existingTx.date).slice(8, 10)) || undefined;
           }
           // v0.67: the edit path honors the same 60-month window as creation
           this._clampRecurrenceEndDate(merged, payload.date || existingTx.date);
@@ -1955,6 +2172,20 @@ window.Store = {
             String(updatePayload.recurrence[k]) !== String((sched || existingRec)[k])));
         const recurrenceRemoved = !!existingRec && payload.recurrence === null;
         const baseDate = existingTx.date; // original date: the past/future split point
+        // 1.0.3 (BUG-136): a payment dated today or earlier has happened —
+        // Recurrent off with a scope unlinks it instead of deleting it
+        const today = this._todayYMD();
+        // 1.0.3 (BUG-51): a 'This and future' / 'All' date move (or a new
+        // interval/frequency) rebuilds the chain on its new day (below)
+        const stepChanged = !!(updatePayload.recurrence && sched &&
+          (String(updatePayload.recurrence.interval) !== String(sched.interval) ||
+            String(updatePayload.recurrence.frequency) !== String(sched.frequency)));
+        // 1.0.3 (BUG-139, D1): the payments deleted with 'Only this', read from
+        // the chain BEFORE anything below moves or drops a member. A new
+        // interval/frequency cannot map them (the scope sheet warns instead).
+        const seriesGaps = (scoped && seriesId && sched && !recurrenceRemoved && !stepChanged &&
+          (payload.regenerateSeries || dateChanged || scheduleChanged))
+          ? this._seriesGaps(seriesId, existingTx, sched) : [];
 
         // Update the target transaction
         this.state.transactions[index] = {
@@ -1995,9 +2226,20 @@ window.Store = {
             });
           }
           const idsToDrop = new Set();
+          // 1.0.3: a dropped leg's generator state moves to the leg kept from
+          // the same pair (same date) — converting the INCOME legs kept them
+          // and dropped the armed expense tail, so the series lost its
+          // generator and its end collapsed onto the last payment.
+          const armedNext = new Map();
+          this.state.transactions.forEach(t => {
+            if (t.transferRef && refsToConvert.has(t.transferRef) && t.type !== keptType &&
+              t.recurrence && t.recurrence.nextDate) armedNext.set(t.transferRef, t.recurrence.nextDate);
+          });
           this.state.transactions.forEach(t => {
             if (!t.transferRef || !refsToConvert.has(t.transferRef)) return;
             if (t.type === keptType) {
+              const next = armedNext.get(t.transferRef);
+              if (next && t.recurrence && t.recurrence.seriesId) t.recurrence = { ...t.recurrence, nextDate: next };
               t.transferRef = null;
               t.type = newType;
               t.updatedAt = new Date().toISOString();
@@ -2028,7 +2270,10 @@ window.Store = {
              // legs of future transfer pairs into expenses (double-expense
              // corruption when a transfer leg's type was converted with a
              // future/all scope)
-             delete tUpdate.type;
+             // 1.0.3 (BUG-135): ...on transfer legs only. A plain member takes
+             // an expense/income switch with the category it goes with (the
+             // legs a conversion keeps are plain by now, already retyped).
+             if (t.transferRef || !['income', 'expense'].includes(tUpdate.type)) delete tUpdate.type;
              // 1.0.2 (BUG-27): paid state is per occurrence — the edited
              // payment still takes its flip, the others keep their own
              delete tUpdate.isPaid;
@@ -2047,6 +2292,9 @@ window.Store = {
                const memberRec = { ...(t.recurrence || {}), ...tUpdate.recurrence };
                if (t.recurrence && t.recurrence.nextDate) memberRec.nextDate = t.recurrence.nextDate;
                else delete memberRec.nextDate;
+               // 1.0.3 (BUG-51): anchorDay is the member's own chain's, never propagated
+               if (t.recurrence && t.recurrence.anchorDay) memberRec.anchorDay = t.recurrence.anchorDay;
+               else delete memberRec.anchorDay;
                tUpdate.recurrence = memberRec;
              }
              const next = { ...t, ...tUpdate, updatedAt: new Date().toISOString() };
@@ -2058,12 +2306,16 @@ window.Store = {
            this.state.transactions.forEach((t, i) => {
              if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.id === existingTx.id) return;
              const isFuture = t.date >= baseDate;
+             // 1.0.3 (BUG-136, D5): Recurrent off keeps what already happened —
+             // the payments up to today take the edit (recurrence: null), so
+             // they stay in History unlinked; only the later ones are dropped.
+             const kept = recurrenceRemoved && t.date <= today;
              // v0.69: a conversion's 'all' scope stops at the present — past
              // occurrences stay untouched transfer pairs, so their legs must
              // not inherit the converted account/category either.
              if (payload.updateAll && !convertingFromTransfer) {
-               if (!isFuture || !regenerate) propagate(t, i);
-             } else if (isFuture && !regenerate) {
+               if (!isFuture || !regenerate || kept) propagate(t, i);
+             } else if (isFuture && (!regenerate || kept)) {
                propagate(t, i);
              }
            });
@@ -2080,16 +2332,22 @@ window.Store = {
               this.state.transactions = this.state.transactions.filter(t => {
                  const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
                    t.id !== existingTx.id && t.date >= dropFrom &&
-                   !(existingTx.transferRef && t.transferRef === existingTx.transferRef);
+                   !(existingTx.transferRef && t.transferRef === existingTx.transferRef) &&
+                   (!recurrenceRemoved || t.date > today); // 1.0.3 (BUG-136): never a payment that happened
                  return !isFutureInSeries;
               });
               const updatedTx = this.state.transactions.find(t => t.id === payload.id);
               if (updatedTx && updatedTx.recurrence && !recurrenceRemoved) {
+                 // 1.0.3 (BUG-51): a fresh object (it may still be existingTx's)
+                 updatedTx.recurrence = { ...updatedTx.recurrence };
                  // 1.0.2 (BUG-26): the re-armed member never ends before its own date
                  if (updatedTx.recurrence.endDate && updatedTx.recurrence.endDate < updatedTx.date) {
                     updatedTx.recurrence.endDate = updatedTx.date;
                  }
-                 updatedTx.recurrence.nextDate = this._calculateNextRecurrenceDate(updatedTx.date, updatedTx.recurrence.interval, updatedTx.recurrence.frequency);
+                 // 1.0.3 (BUG-51): a scoped date move (or a new interval /
+                 // frequency) starts the rebuilt chain on the new day
+                 if (dateChanged || stepChanged) updatedTx.recurrence.anchorDay = Number(String(updatedTx.date).slice(8, 10)) || undefined;
+                 updatedTx.recurrence.nextDate = this._nextSeriesDate(updatedTx.date, updatedTx.recurrence);
               }
               // v0.98: after a regeneration exactly ONE member may be armed —
               // the edited one. A stray armed PAST member (old duplicate-chain
@@ -2111,6 +2369,11 @@ window.Store = {
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
+        // 1.0.3 (BUG-139, D1): the rebuilt chain keeps the old one's gaps
+        if (seriesGaps.length && this._dropSeriesGaps(seriesId, payload.id, seriesGaps)) {
+          this._syncSeriesSchedule(seriesId);
+          window.StackdDB.save('transactions', this.state.transactions);
+        }
         changed = true;
         break;
       }
@@ -2129,8 +2392,10 @@ window.Store = {
           if (!payload.recurrence.seriesId) {
             payload.recurrence.seriesId = window.StackdDB.generateId();
           }
+          // 1.0.3 (BUG-51): the chain's day, on both legs (copied below)
+          if (!payload.recurrence.anchorDay) payload.recurrence.anchorDay = Number(String(payload.date).slice(8, 10)) || undefined;
           if (!payload.recurrence.nextDate) {
-            payload.recurrence.nextDate = this._calculateNextRecurrenceDate(payload.date, payload.recurrence.interval, payload.recurrence.frequency);
+            payload.recurrence.nextDate = this._nextSeriesDate(payload.date, payload.recurrence);
           }
         }
 
@@ -2216,6 +2481,10 @@ window.Store = {
         const schedT = existingRecT && existingRecT.seriesId ? this.getSeriesSchedule(existingRecT.seriesId) : null;
         const scopedT = !!(payload.updateFuture || payload.updateAll);
         const rec = (schedT && payload.recurrence) ? this._resolveSeriesRec(payload.recurrence, schedT, scopedT) : payload.recurrence;
+        // 1.0.3 (BUG-51): same re-anchor rule as UPDATE_TRANSACTION — a scoped
+        // date move (or a new interval/frequency) rebuilds on the new day
+        const stepChangedT = !!(rec && schedT &&
+          (String(rec.interval) !== String(schedT.interval) || String(rec.frequency) !== String(schedT.frequency)));
         // compared merged and 60-month-clamped, exactly like UPDATE_TRANSACTION
         // (an End Date past the cap that clamps back to the series end is no change)
         const recCmp = (rec && existingRecT)
@@ -2223,6 +2492,13 @@ window.Store = {
         const scheduleChanged = !!(recCmp &&
           ['endDate', 'interval', 'frequency'].some(k => String(recCmp[k]) !== String((schedT || existingRecT)[k])));
         const recurrenceRemoved = !!existingRecT && payload.recurrence === null;
+        const today = this._todayYMD(); // 1.0.3 (BUG-136): see UPDATE_TRANSACTION
+        // 1.0.3 (BUG-139, D1): the gaps, read before anything moves (the
+        // expense leg stands for the edited pair)
+        const editedLegT = items.find(t => t.type === 'expense' && t.recurrence) || items.find(t => t.recurrence);
+        const seriesGapsT = (scopedT && seriesId && schedT && editedLegT && !recurrenceRemoved && !stepChangedT &&
+          (payload.regenerateSeries || dateChanged || scheduleChanged))
+          ? this._seriesGaps(seriesId, editedLegT, schedT) : [];
         // 1.0.2 (BUG-74): the expense leg's amount before the edit (the leg a
         // loan reads), for the hand-edit mark below
         const expLegBefore = items.find(t => t.type === 'expense') || items[0];
@@ -2241,8 +2517,13 @@ window.Store = {
           if (item.recurrence) {
             if (item.recurrence.nextDate) merged.nextDate = item.recurrence.nextDate;
             else delete merged.nextDate;
+            // 1.0.3 (BUG-51): the leg's own anchor (set below on a rebuild)
+            if (item.recurrence.anchorDay) merged.anchorDay = item.recurrence.anchorDay;
+            else delete merged.anchorDay;
           } else {
             if (!merged.startDate) merged.startDate = payload.date || item.date;
+            // 1.0.3 (BUG-51): a new chain steps from its own day
+            if (!merged.anchorDay) merged.anchorDay = Number(String(payload.date || item.date).slice(8, 10)) || undefined;
             if (item.type !== 'expense') delete merged.nextDate;
           }
           // v0.67: the edit path honors the same 60-month window as creation
@@ -2275,6 +2556,7 @@ window.Store = {
               if (payload.amount !== undefined) item.amount = Math.abs(payload.amount);
               if (payload.expenseAccountId !== undefined) item.accountId = payload.expenseAccountId;
               if (payload.date !== undefined) item.date = payload.date;
+              if (payload.time !== undefined) item.time = payload.time; // 1.0.3 (BUG-99)
               if (payload.note !== undefined) item.comment = payload.note;
               if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
@@ -2283,6 +2565,7 @@ window.Store = {
               if (incomeAmount !== undefined) item.amount = incomeAmount; // 1.0.2 (BUG-35)
               if (payload.incomeAccountId !== undefined) item.accountId = payload.incomeAccountId;
               if (payload.date !== undefined) item.date = payload.date;
+              if (payload.time !== undefined) item.time = payload.time; // 1.0.3 (BUG-99)
               if (payload.note !== undefined) item.comment = payload.note;
               if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
@@ -2315,12 +2598,14 @@ window.Store = {
            this.state.transactions.forEach((t, i) => {
               if (!t.recurrence || t.recurrence.seriesId !== seriesId || t.transferRef === payload.transferRef) return;
               const isFuture = t.date >= baseDate;
-              const shouldPropagate = payload.updateAll ? (!isFuture || !regenerate) : (isFuture && !regenerate);
+              const kept = recurrenceRemoved && t.date <= today; // 1.0.3 (BUG-136, D5)
+              const shouldPropagate = payload.updateAll ? (!isFuture || !regenerate || kept) : (isFuture && (!regenerate || kept));
               if (!shouldPropagate) return;
 
               // 1.0.2 (BUG-35): each leg in its own currency (incomeAmount above)
               if (t.type === 'income') { if (incomeAmount !== undefined) t.amount = incomeAmount; }
               else if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
+              if (payload.time !== undefined) t.time = payload.time; // 1.0.3 (BUG-99)
               if (payload.note !== undefined) t.comment = payload.note;
               if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
               // 1.0.2 (BUG-27): paid is per occurrence — only the tapped pair (above) changes
@@ -2335,6 +2620,9 @@ window.Store = {
                  const memberRec = { ...(t.recurrence || {}), ...rec, ...(recCmp && recCmp.endDate ? { endDate: recCmp.endDate } : {}) };
                  if (t.recurrence && t.recurrence.nextDate) memberRec.nextDate = t.recurrence.nextDate;
                  else delete memberRec.nextDate;
+                 // 1.0.3 (BUG-51): anchorDay is the member's own chain's, never propagated
+                 if (t.recurrence && t.recurrence.anchorDay) memberRec.anchorDay = t.recurrence.anchorDay;
+                 else delete memberRec.anchorDay;
                  t.recurrence = memberRec;
               }
               t.updatedAt = new Date().toISOString();
@@ -2347,7 +2635,8 @@ window.Store = {
               const dropFrom = (payload.date !== undefined && payload.date < baseDate) ? payload.date : baseDate;
               this.state.transactions = this.state.transactions.filter(t => {
                  const isFutureInSeries = t.recurrence && t.recurrence.seriesId === seriesId &&
-                   t.transferRef !== payload.transferRef && t.date >= dropFrom;
+                   t.transferRef !== payload.transferRef && t.date >= dropFrom &&
+                   (!recurrenceRemoved || t.date > today); // 1.0.3 (BUG-136): never a payment that happened
                  return !isFutureInSeries;
               });
               this.state.transactions.forEach((t, i) => {
@@ -2361,10 +2650,13 @@ window.Store = {
                  const pair = this.state.transactions.filter(t => t.transferRef === payload.transferRef);
                  pair.forEach(t => {
                     if (!t.recurrence) return;
+                    // 1.0.3 (BUG-51): a scoped date move (or a new interval /
+                    // frequency) starts the rebuilt chain on the new day, both legs
+                    if (dateChanged || stepChangedT) t.recurrence = { ...t.recurrence, anchorDay: Number(String(t.date).slice(8, 10)) || undefined };
                     if (t.type === 'expense') {
                        const r = { ...t.recurrence };
                        if (r.endDate && r.endDate < t.date) r.endDate = t.date; // 1.0.2 (BUG-26) floor
-                       r.nextDate = this._calculateNextRecurrenceDate(t.date, r.interval, r.frequency);
+                       r.nextDate = this._nextSeriesDate(t.date, r); // 1.0.3 (BUG-51)
                        t.recurrence = r;
                     } else if (t.recurrence.nextDate) {
                        t.recurrence = { ...t.recurrence };
@@ -2380,6 +2672,11 @@ window.Store = {
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
+        // 1.0.3 (BUG-139, D1): the rebuilt chain keeps the old one's gaps
+        if (seriesGapsT.length && this._dropSeriesGaps(seriesId, editedLegT.id, seriesGapsT)) {
+          this._syncSeriesSchedule(seriesId);
+          window.StackdDB.save('transactions', this.state.transactions);
+        }
         changed = true;
         break;
       }
@@ -2644,6 +2941,7 @@ window.Store = {
         this.state.transactions.push(...newTxs);
         this._sortTransactions();
         this._healSeriesSchedules(); // 1.0.2 (BUG-26): a pre-1.0.2 backup carries stale series ends
+        this._healSeriesAnchors(); // 1.0.3 (BUG-51, D4): and chains drifted to the 28th
         window.StackdDB.save('transactions', this.state.transactions);
         changed = true;
         break;
@@ -4964,7 +5262,7 @@ window.Store = {
     let lastAdded = null;
     let firstAdded = null;
     if (endChanged && month(wantEnd) > month(curEnd)) {
-      const step = (d) => this._calculateNextRecurrenceDate(d, rec.interval, rec.frequency);
+      const step = (d) => this._nextSeriesDate(d, rec); // 1.0.3 (BUG-51): the chain's anchor day
       const floor = curEnd < wantEnd ? curEnd : wantEnd;
       let next = step(tail.date);
       let guard = 0;
@@ -5129,15 +5427,15 @@ window.Store = {
       this._budgetSpendIdx = null;
       return;
     }
-    const { interval, frequency } = tail.recurrence;
     let floor = prevEnd && prevEnd < endDate ? prevEnd : endDate;
     // review 7: never generate a back-dated payment (a series extended after
     // its last payment was due starts at the next occurrence after today)
     if (floor < today) floor = today;
-    let next = this._calculateNextRecurrenceDate(tail.date, interval, frequency);
+    // 1.0.3 (BUG-51): stepped on the chain's anchor day
+    let next = this._nextSeriesDate(tail.date, tail.recurrence);
     let guard = 0;
     while (next && next <= floor && guard++ < 1000) {
-      next = this._calculateNextRecurrenceDate(next, interval, frequency);
+      next = this._nextSeriesDate(next, tail.recurrence);
     }
     if (next) tail.recurrence = { ...tail.recurrence, nextDate: next };
     this._processRecurringTransactions();

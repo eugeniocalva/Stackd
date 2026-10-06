@@ -83,10 +83,6 @@ window.I18n.dicts.pt = {
   'history.bulkRecurring.body': 'Alguns movimentos selecionados pertencem a uma série recorrente. Como quer continuar?',
   'history.bulkRecurring.onlySelected': 'Eliminar APENAS os selecionados ({count} itens)',
   'history.bulkRecurring.withFuture': 'Eliminar os selecionados E todos os movimentos futuros associados',
-  'history.recurringDelete.title': 'Eliminar movimento recorrente',
-  'history.recurringDelete.body': 'Este item faz parte de uma série recorrente. Como quer continuar?',
-  'history.recurringDelete.onlyThis': 'Eliminar APENAS este item',
-  'history.recurringDelete.withFuture': 'Eliminar este e todos os itens FUTUROS',
   'history.deleteOne.title': 'Eliminar movimento',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.pt = {
   'recUpdate.allSeries': 'Todos os movimentos da série',
   'recUpdate.futureSub': 'Aplicar a alteração a partir daqui',
   'recUpdate.allSub': 'Atualizar também os movimentos passados (as suas datas nunca mudam)',
-  'recUpdate.futureSubStop': 'Parar a série: os movimentos agendados futuros são removidos',
+  'recUpdate.futureSubStop': 'Parar a série: os movimentos depois de hoje são removidos; os anteriores ficam',
   'recUpdate.allSubStop': 'Desassociar também os movimentos passados (permanecem no histórico)',
   'recUpdate.futureSubDate': 'Os movimentos futuros passam para o novo dia',
   'recUpdate.allSubDate': 'As datas passadas nunca mudam; as futuras passam para o novo dia',
@@ -1362,4 +1358,6 @@ window.I18n.dicts.pt = {
   'others.importCreatedAccounts.other': "Criadas automaticamente {count} contas em falta.",
   'others.importCreatedCategories.one': "Criada automaticamente {count} categoria em falta.",
   'others.importCreatedCategories.other': "Criadas automaticamente {count} categorias em falta.",
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Os movimentos que eliminou desta série voltam com o novo calendário.',
 };

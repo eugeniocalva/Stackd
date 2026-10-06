@@ -87,10 +87,6 @@ window.I18n.dicts.en = {
   'history.bulkRecurring.body': 'Some of the selected transactions belong to a recurring series. How would you like to proceed?',
   'history.bulkRecurring.onlySelected': 'Delete ONLY selected ({count} items)',
   'history.bulkRecurring.withFuture': 'Delete selected AND all linked future transactions',
-  'history.recurringDelete.title': 'Delete Recurring Item',
-  'history.recurringDelete.body': 'This item is part of a recurring series. How would you like to proceed?',
-  'history.recurringDelete.onlyThis': 'Delete ONLY this item',
-  'history.recurringDelete.withFuture': 'Delete this and all FUTURE items',
   'history.deleteOne.title': 'Delete Transaction',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -630,7 +626,7 @@ window.I18n.dicts.en = {
   'recUpdate.allSeries': 'All transactions in the series',
   'recUpdate.futureSub': 'Apply the change from this point on',
   'recUpdate.allSub': 'Also update past transactions (their dates never move)',
-  'recUpdate.futureSubStop': 'Stop the series: upcoming scheduled transactions are removed',
+  'recUpdate.futureSubStop': 'Stop the series: payments after today are removed; earlier ones stay',
   'recUpdate.allSubStop': 'Also unlink past transactions (they stay in your history)',
   'recUpdate.futureSubDate': 'Upcoming transactions shift to the new day',
   'recUpdate.allSubDate': 'Past dates never move; upcoming shift to the new day',
@@ -1383,4 +1379,6 @@ window.I18n.dicts.en = {
   'others.importCreatedAccounts.other': "Created {count} missing accounts automatically.",
   'others.importCreatedCategories.one': "Created {count} missing category automatically.",
   'others.importCreatedCategories.other': "Created {count} missing categories automatically.",
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Payments you deleted from this series come back with the new schedule.',
 };

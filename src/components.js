@@ -3059,7 +3059,7 @@ window.Components = {
   // -----------------------------------------------------------------------
   RecurringUpdateModal: {
     show(options) {
-      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false } = options;
+      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false, gapNote = false } = options;
       const onSelection = options.onSelection || ((scope) => {
         if (scope === 'single' && options.onlyThis) options.onlyThis();
         else if (scope === 'future' && options.thisAndFuture) options.thisAndFuture();
@@ -3103,6 +3103,7 @@ window.Components = {
               <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${description}</p>
               ${amountNote ? `<p id="ru-amount-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.rebuildAmountNote')}</p>` : ''}
               ${paidNote ? `<p id="ru-paid-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t(paidNote === 'rebuild' ? 'recUpdate.rebuildPaidNote' : 'recUpdate.paidNote')}</p>` : ''}
+              ${gapNote ? `<p id="ru-gap-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.gapNote')}</p>` : ''}
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
