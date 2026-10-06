@@ -75,4 +75,44 @@ test.describe('Cross-currency transfer', () => {
     await expect(page.locator('#group-received')).toBeVisible();
     await expect(page.locator('#tx-received-amount')).toHaveValue('117');
   });
+
+  // 1.0.3 (BUG-138): switching an existing transfer to Income puts the income
+  // on the account the money ARRIVED in, with the amount received. Written
+  // blind in the U2 worktree; run at integration.
+  test('a transfer switched to Income lands on the To account with the amount received', async ({ page }) => {
+    await bootstrap(page);
+    const main = await accId(page, 'Main');
+    const us = await accId(page, 'US Checking');
+    await page.evaluate(({ main, us }) => window.Store.dispatch('ADD_TRANSFER', {
+      amount: 100, receivedAmount: 117, expenseAccountId: main, incomeAccountId: us,
+      date: '2026-10-02', note: 'FX', tags: []
+    }), { main, us });
+    const incomeId = await page.evaluate(() => window.Store.getState().transactions.find(t => t.transferRef && t.type === 'income').id);
+
+    await page.evaluate((id) => window.Router.navigate(`#edit?id=${id}`), incomeId);
+    await page.waitForSelector('#tx-amount');
+    await page.locator('#toggle-income').click();
+    await expect(page.locator('#tx-account')).toHaveValue(us);
+    await expect(page.locator('#tx-amount')).toHaveValue('117');
+    await expect(page.locator('#currency-symbol')).toHaveText('$');
+
+    // Back to Transfer: the pair as it was
+    await page.locator('#toggle-transfer').click();
+    await expect(page.locator('#tx-account')).toHaveValue(main);
+    await expect(page.locator('#tx-transfer-to')).toHaveValue(us);
+    await expect(page.locator('#tx-amount')).toHaveValue('100');
+    await expect(page.locator('#tx-received-amount')).toHaveValue('117');
+
+    await page.locator('#toggle-income').click();
+    await page.locator('#tx-category').selectOption('cat_salary');
+    await page.locator('#btn-save-tx').click();
+    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
+
+    const rows = await page.evaluate(() => window.Store.getState().transactions
+      .filter(t => t.comment === 'FX').map(t => ({ type: t.type, accountId: t.accountId, amount: t.amount, ref: t.transferRef || null })));
+    expect(rows).toEqual([{ type: 'income', accountId: us, amount: 117, ref: null }]);
+    await page.evaluate(() => window.Router.navigate('#dashboard'));
+    await expect(page.locator(`.wallet-card[data-id="${us}"] .wallet-card-balance`)).toHaveText('$1,117.00');
+    await expect(page.locator(`.wallet-card[data-id="${main}"] .wallet-card-balance`)).toHaveText('€2,000.00');
+  });
 });

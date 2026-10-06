@@ -265,6 +265,7 @@ describe('Account form: unlisted currency and names (1.0.3 BUG-154 / BUG-153)', 
     });
     params = { id: 'a_x' };
     renderView('EditAccountView');
+    expect($('edit-acc-currency').value).toBe('X"<b>');
     expect($('edit-acc-currency').querySelector('b')).toBeNull();
   });
 
