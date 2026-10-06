@@ -1362,4 +1362,8 @@ window.I18n.dicts.fr = {
   'others.importCreatedAccounts.other': "{count} comptes manquants créés automatiquement.",
   'others.importCreatedCategories.one': "{count} catégorie manquante créée automatiquement.",
   'others.importCreatedCategories.other': "{count} catégories manquantes créées automatiquement.",
+  // 1.0.3 U4
+  'debt.err.costName': "Saisissez un nom pour ce coût.",
+  'debt.err.costAmount': "Saisissez un montant de 0 ou plus.",
+  'debt.err.loanName': "Saisissez un nom pour ce prêt.",
 };

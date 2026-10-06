@@ -1383,4 +1383,8 @@ window.I18n.dicts.en = {
   'others.importCreatedAccounts.other': "Created {count} missing accounts automatically.",
   'others.importCreatedCategories.one': "Created {count} missing category automatically.",
   'others.importCreatedCategories.other': "Created {count} missing categories automatically.",
+  // 1.0.3 U4
+  'debt.err.costName': "Enter a name for this cost.",
+  'debt.err.costAmount': "Enter an amount of 0 or more.",
+  'debt.err.loanName': "Enter a name for this loan.",
 };

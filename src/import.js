@@ -15,24 +15,33 @@ window.StackdImport = {
   },
 
   // Simple CSV parser for quoted fields
+  // 1.0.3 (BUG-147): a quote opens a quoted field only at the start of a
+  // field (nothing but blanks before it), the rule _splitRecords follows. A
+  // quote anywhere else is literal: 'TV 55" SAMSUNG;-499,00' used to open
+  // quote mode at the inch mark and swallow the delimiter and the amount.
+  // Inside a quoted field '""' is one quote and a lone '"' closes it.
   _parseRow(rowStr, delimiter) {
     const result = [];
     let inQuotes = false;
+    let atStart = true;
     let currCol = '';
     for (let i = 0; i < rowStr.length; i++) {
       const char = rowStr[i];
-      if (char === '"') {
-        if (inQuotes && rowStr[i + 1] === '"') {
-          currCol += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === delimiter && !inQuotes) {
+      if (inQuotes) {
+        if (char === '"') {
+          if (rowStr[i + 1] === '"') { currCol += '"'; i++; }
+          else inQuotes = false;
+        } else currCol += char;
+      } else if (char === '"' && atStart) {
+        inQuotes = true;
+        atStart = false;
+      } else if (char === delimiter) {
         result.push(currCol.trim());
         currCol = '';
+        atStart = true;
       } else {
         currCol += char;
+        if (char !== ' ' && char !== '\t') atStart = false;
       }
     }
     result.push(currCol.trim());
@@ -95,13 +104,93 @@ window.StackdImport = {
     const records = [];
     recs.forEach(r => {
       const parts = r.split('\n');
+      // 1.0.3 (BUG-147): with mid-field quotes now literal, 'Shop "X" Milano'
+      // closing the stray quote above can parse to the header's width, so a
+      // quoted field closed mid-field (not RFC 4180: a note never does that)
+      // counts as a mismatch too.
       const stray = width > 1 && parts.length > 1 && (
         (parts.length > 2 && parts.slice(1, -1).some(l => this._parseRow(l, delimiter).length >= width)) ||
-        (this._parseRow(r, delimiter).length !== width && parts.some(l => this._parseRow(l, delimiter).length === width)));
+        ((this._parseRow(r, delimiter).length !== width || this._quoteClosesMidField(r, delimiter)) &&
+          parts.some(l => this._parseRow(l, delimiter).length === width)));
       if (stray) parts.forEach(l => { if (l.trim() !== '') records.push(l); });
       else records.push(r);
     });
     return { delimiter, records };
+  },
+
+  // 1.0.3 (BUG-147): true when a quoted field of `rec` closes and something
+  // other than blanks follows before the next delimiter ('"ACME …Shop "X').
+  _quoteClosesMidField(rec, delimiter) {
+    let inQ = false;
+    let atStart = true;
+    let closed = false;
+    for (let i = 0; i < rec.length; i++) {
+      const ch = rec[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (rec[i + 1] === '"') i++;
+          else { inQ = false; closed = true; }
+        }
+      } else if (ch === delimiter || ch === '\n') { atStart = true; closed = false; }
+      else if (ch === '"' && atStart) { inQ = true; atStart = false; }
+      else if (ch !== ' ' && ch !== '\t' && ch !== '\r') {
+        if (closed) return true;
+        atStart = false;
+      }
+    }
+    return false;
+  },
+
+  // 1.0.3 (BUG-152, D7): files are read as bytes and decoded here. A file
+  // that is not UTF-8 (an "ANSI" CSV saved by Excel on Windows, a Latin-1
+  // MT940) used to be read as UTF-8, so every accented letter became U+FFFD:
+  // a restore created a second "Caff� & Bar" category and garbled notes.
+  // Order: a UTF-16 BOM; strict UTF-8 (a UTF-8 BOM is dropped); otherwise the
+  // encoding an XML file declares, else Windows-1252 — silently (D7). A file
+  // claiming UTF-8 that is not falls through to Windows-1252 as well.
+  _decodeBytes(buf) {
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    if (u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder('utf-16le').decode(u8.subarray(2));
+    if (u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder('utf-16be').decode(u8.subarray(2));
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(u8);
+    } catch (e) {
+      return new TextDecoder(this._xmlDeclaredEncoding(u8) || 'windows-1252').decode(u8);
+    }
+  },
+
+  // The encoding named by an `<?xml ... encoding="..."?>` prolog, as a label
+  // TextDecoder knows; null when absent, unknown, or UTF-8 (already refused).
+  _xmlDeclaredEncoding(u8) {
+    const head = new TextDecoder('windows-1252').decode(u8.subarray(0, 200));
+    const m = /^\s*<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i.exec(head);
+    if (!m) return null;
+    let enc = null;
+    try { enc = new TextDecoder(m[1]).encoding; } catch (e) { return null; }
+    return /^utf-/.test(enc) ? null : enc;
+  },
+
+  // Reads `file` and hands its text to onText, or an Error to onError — each
+  // at most once, and a throw inside onText is the caller's (never reported
+  // here as a read failure). Falls back to readAsText (UTF-8) where
+  // readAsArrayBuffer or TextDecoder are missing (very old WebViews, and the
+  // unit tests' text-only FileReader mocks).
+  _readFileText(file, onText, onError) {
+    const reader = new FileReader();
+    const bytes = typeof reader.readAsArrayBuffer === 'function' && typeof TextDecoder === 'function';
+    reader.onload = (e) => {
+      let text;
+      try {
+        text = bytes ? this._decodeBytes(e.target.result) : e.target.result;
+      } catch (err) {
+        if (onError) onError(err);
+        return;
+      }
+      onText(text);
+    };
+    reader.onerror = () => { if (onError) onError(new Error('Failed to read file')); };
+    if (bytes) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   },
 
   // 1.0.2 (BUG-33, D12): the note field is a one-line input, so every import
@@ -1969,10 +2058,10 @@ window.StackdImport = {
   },
 
   importLoans(file, state, onComplete, onError) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    // 1.0.3 (BUG-152): decoded by _readFileText like importCSV
+    this._readFileText(file, (text) => {
       try {
-        const rows = this.parseCSV(e.target.result);
+        const rows = this.parseCSV(text);
         const { loans, stats } = this.buildLoans(rows);
         this._releaseOwnedLoanLinks(loans); // 1.0.1 (BUG-02)
         loans.forEach(loan => window.Store.dispatch('ADD_LOAN', loan));
@@ -1980,16 +2069,14 @@ window.StackdImport = {
       } catch (err) {
         if (onError) onError(err);
       }
-    };
-    reader.onerror = () => { if (onError) onError(new Error('Failed to read file')); };
-    reader.readAsText(file);
+    }, onError);
   },
 
   importTransactions(file, state, onComplete, onError) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    // 1.0.3 (BUG-152): decoded by _readFileText like importCSV
+    this._readFileText(file, (text) => {
       try {
-        const rows = this.parseCSV(e.target.result);
+        const rows = this.parseCSV(text);
         const { transactions, stats } = this.buildTransactions(rows);
 
         if (transactions.length > 0) {
@@ -2000,9 +2087,7 @@ window.StackdImport = {
       } catch (err) {
         if (onError) onError(err);
       }
-    };
-    reader.onerror = () => { if (onError) onError(new Error("Failed to read file")); };
-    reader.readAsText(file);
+    }, onError);
   },
 
   // v0.71: one entry point for the single "Import CSV" button — reads the file
@@ -2021,10 +2106,8 @@ window.StackdImport = {
     let outcome = null;
     onComplete = (result) => { outcome = { result }; };
     onError = (error) => { outcome = { error }; };
-    const reader = new FileReader();
-    const route = (e) => {
+    const route = (csvText) => {
       try {
-        const csvText = e.target.result;
         // v1.00: structured statements (camt.053/052 XML, MT940) are sniffed
         // by CONTENT before any CSV parsing — banks hand out .txt/.sta/.xml
         // interchangeably, so the extension proves nothing.
@@ -2109,12 +2192,15 @@ window.StackdImport = {
         if (onError) onError(err);
       }
     };
-    reader.onload = (e) => {
+    // 1.0.3 (BUG-152): the file is decoded by _readFileText (bytes → UTF-8,
+    // else Windows-1252); a decode failure reaches `fail` once, from there,
+    // and never runs the batch below.
+    this._readFileText(file, (csvText) => {
       let landed = false;
       let thrown = null;
       try {
         landed = window.Store.batch(() => {
-          route(e);
+          route(csvText);
           if (outcome && outcome.error) throw outcome.error; // roll back whatever the route wrote
         });
       } catch (error) {
@@ -2130,8 +2216,6 @@ window.StackdImport = {
       }
       const f = window.Store.takeSaveFailure(); // this flow reports it itself
       if (fail) fail(thrown || new Error(window.I18n.t(f && f.quota ? 'others.importStorageFull' : 'storage.failedBody')));
-    };
-    reader.onerror = () => { if (fail) fail(new Error("Failed to read file")); };
-    reader.readAsText(file);
+    }, fail);
   }
 };

@@ -276,4 +276,60 @@ test.describe('Loan simulator E2E flow', () => {
 
     expect(errors).toEqual([]);
   });
+
+  // 1.0.3 (BUG-145): money fields are text inputs read with the UI
+  // separators — Italian '250.000' is two hundred fifty thousand, not 250.
+  test('reads Italian grouped amounts and a decimal-comma rate', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+    await page.evaluate(() => window.Store.dispatch('SET_LANGUAGE', 'it'));
+    await goToHub(page);
+    await page.click('.debt-type-tile[data-type="mortgage"]');
+    await page.waitForSelector('#debt-sim-form');
+    await expect(page.locator('#dsim-principal')).toHaveAttribute('type', 'text');
+    await page.fill('#dsim-principal', '250.000');
+    await page.fill('#dsim-down', '50.000');
+    await expect(page.locator('#dsim-down-pct')).toContainText('20');
+    await page.fill('#dsim-duration', '25');
+    await page.fill('#dsim-rate', '3,2');
+    await page.fill('#dsim-first-date', '2026-10-01');
+    await page.click('#btn-dsim-calculate');
+    await page.waitForSelector('#debt-results-view');
+    const config = await page.evaluate(() => window.Store.getState().debtSim.config);
+    expect(config.principal).toBe(250000);
+    expect(config.downPayment).toBe(50000);
+    expect(config.annualRate).toBe(3.2);
+
+    expect(errors).toEqual([]);
+  });
+
+  // 1.0.3 (BUG-118): the rate-change sheet says why it stays open.
+  test('the rate-change sheet explains a rate out of range', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+    await goToHub(page);
+    await page.click('.debt-type-tile[data-type="personal"]');
+    await page.waitForSelector('#debt-sim-form');
+    await page.click('#dsim-details-toggle');
+    await page.click('.dsim-add[data-add="rate"]');
+    await page.waitForSelector('#dsim-rc-rate');
+    await page.fill('#dsim-rc-rate', '150');
+    await page.click('#modal-save-btn');
+    await expect(page.locator('#dsim-rc-rate')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#dsim-rc-rate-error')).toHaveText('The annual rate must be at least 0% and below 100%.');
+    await expect(page.locator('#active-modal')).toHaveCount(1);
+
+    // typing clears the message; a decimal comma is accepted
+    await page.fill('#dsim-rc-rate', '3,5');
+    await expect(page.locator('#dsim-rc-rate-error')).toHaveCount(0);
+    await page.click('#modal-save-btn');
+    await expectModalClosed(page);
+    await expect(page.locator('#dsim-lists')).toContainText('3.5%');
+
+    expect(errors).toEqual([]);
+  });
 });
