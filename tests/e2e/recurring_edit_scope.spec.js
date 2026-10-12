@@ -18,7 +18,7 @@ test.describe('Recurring edit scope modal', () => {
     await page.waitForFunction(() => !!window.Store);
 
     return await page.evaluate(() => {
-      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 1000 });
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 1000, openingDate: '2026-01-01' });
       const accountId = window.Store.getState().accounts.find(a => a.name === 'Main Bank').id;
       window.Store.dispatch('ADD_TRANSACTION', {
         type: 'expense',
@@ -144,7 +144,7 @@ test.describe('Recurring edit scope modal', () => {
     await page.waitForSelector('#bottom-nav');
     await page.waitForFunction(() => !!window.Store);
     const seriesId = await page.evaluate(() => {
-      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 1000 });
+      window.Store.dispatch('ADD_ACCOUNT', { name: 'Main Bank', openingBalance: 1000, openingDate: '2026-01-01' });
       const accountId = window.Store.getState().accounts.find(a => a.name === 'Main Bank').id;
       window.Store.dispatch('ADD_TRANSACTION', {
         type: 'expense', amount: 12.99, accountId, categoryId: 'cat_groceries', date: '2026-10-20',

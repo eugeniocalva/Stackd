@@ -54,6 +54,7 @@ const browserGlobals = {
   Blob: 'readonly',
   File: 'readonly',
   FileReader: 'readonly',
+  TextDecoder: 'readonly', // 1.0.3 (BUG-152): import.js _decodeBytes
   FormData: 'readonly',
   URL: 'readonly',
   URLSearchParams: 'readonly',

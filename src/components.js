@@ -912,13 +912,23 @@ window.Components = {
       // amount out of the row. Inline: stylesheets carry no ?v= cache-busting.
       const ELLIPSIS = 'min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
 
+      // 1.0.3 (BUG-41, D2): a row dated before its account's opening date is
+      // listed dimmed with a "not counted" line (it is in no balance or sum).
+      // The icon and text fade, not the row: a translucent swipe row would
+      // show its action buttons through. Inline: no stylesheet cache-busting.
+      const beforeOpening = !!(options && options.beforeOpening);
+      const dimStyle = beforeOpening ? ' opacity: 0.55;' : '';
+      const beforeOpeningHtml = beforeOpening
+        ? `<div class="list-item-subtitle tx-before-opening" style="margin-top: 2px; font-size: 0.72rem; ${ELLIPSIS}">${window.I18n.t('history.beforeOpening')}</div>`
+        : '';
+
       const innerContent = `
         ${unpaidBarHtml}
         ${checkboxHtml}
-        <div class="list-item-icon">
+        <div class="list-item-icon"${beforeOpening ? ` style="${dimStyle.trim()}"` : ''}>
           <i data-lucide="${category ? category.icon : 'receipt'}"></i>
         </div>
-        <div class="list-item-content" style="min-width: 0;">
+        <div class="list-item-content" style="min-width: 0;${dimStyle}">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
               <span class="tx-item-title-text" style="${ELLIPSIS}">${category ? esc(category.name) : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
@@ -938,6 +948,7 @@ window.Components = {
             </div>
             <div class="list-item-subtitle" style="flex-shrink: 0;">${dateStr}</div>
           </div>
+          ${beforeOpeningHtml}
         </div>`;
 
       // v0.62: Complete branch isolation
@@ -1128,6 +1139,17 @@ window.Components = {
           // test: a queued re-render would detach the synchronous target.
           const before = window.Store.state.historyFilters;
           window.Store.dispatch('ROLL_PERIODS');
+          // 1.0.3 (BUG-115) a period without today (‹ to a past month, a
+          // custom range) moves to today's period of the same type — a custom
+          // range to this month — anchored like _rollLivePeriods.
+          const today = window.Store._todayYMD();
+          const p = window.Store.state.historyFilters.period;
+          if (p && !window.Store.isDateInPeriod(today, p)) {
+            const type = p.type === 'custom' ? 'month' : p.type;
+            const value = type === 'month' ? today.slice(0, 7) + '-01'
+              : (type === 'year' ? today.slice(0, 4) + '-01-01' : today);
+            window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type, value, start: '', end: '' } } });
+          }
           if (window.Store.state.historyFilters !== before) {
             setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-history-to-today')), 100);
           } else {
@@ -3059,7 +3081,7 @@ window.Components = {
   // -----------------------------------------------------------------------
   RecurringUpdateModal: {
     show(options) {
-      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false } = options;
+      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false, gapNote = false } = options;
       const onSelection = options.onSelection || ((scope) => {
         if (scope === 'single' && options.onlyThis) options.onlyThis();
         else if (scope === 'future' && options.thisAndFuture) options.thisAndFuture();
@@ -3103,6 +3125,7 @@ window.Components = {
               <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0;">${description}</p>
               ${amountNote ? `<p id="ru-amount-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.rebuildAmountNote')}</p>` : ''}
               ${paidNote ? `<p id="ru-paid-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t(paidNote === 'rebuild' ? 'recUpdate.rebuildPaidNote' : 'recUpdate.paidNote')}</p>` : ''}
+              ${gapNote ? `<p id="ru-gap-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.gapNote')}</p>` : ''}
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
@@ -3191,7 +3214,10 @@ window.Components = {
     get MONTHS_FULL() { return window.I18n.monthNames('long'); },
 
     show(options = {}) {
-      const { initialValue, onSelect } = options;
+      // 1.0.3 (BUG-104) `clearText` + `onClear`: an extra button that empties
+      // an optional field (the budget End Month) and closes the picker.
+      // `clearText` is t() output: markup-safe, never escaped again.
+      const { initialValue, onSelect, clearText, onClear } = options;
 
       // Parse the initialValue (expected format: "YYYY-MM") or default to today
       const now = new Date();
@@ -3272,6 +3298,7 @@ window.Components = {
               <div style="text-align: center; margin-top: 20px; color: var(--text-secondary); font-size: 0.85rem;">
                 Selected: <strong id="mp-selected-label" style="color: var(--text-primary);">${this.MONTHS_FULL[selectedMonth]} ${selectedYear}</strong>
               </div>
+              ${clearText && onClear ? `<button type="button" class="btn btn-secondary" id="mp-clear" style="width: 100%; margin-top: 16px;">${clearText}</button>` : ''}
             </div>
           </div>
         `;
@@ -3295,6 +3322,8 @@ window.Components = {
         const cancelBtn = wrapper.querySelector('#mp-cancel');
         const doneBtn = wrapper.querySelector('#mp-done');
         if (cancelBtn) cancelBtn.addEventListener('click', close);
+        const clearBtn = wrapper.querySelector('#mp-clear'); // 1.0.3 (BUG-104)
+        if (clearBtn) clearBtn.addEventListener('click', () => { onClear(); close(); });
         if (doneBtn) {
           doneBtn.addEventListener('click', () => {
             const val = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
@@ -4812,6 +4841,77 @@ Object.assign(window.Components, {
       document.addEventListener('keydown', onKey);
       // alert() used to take focus; keep keyboard / screen-reader users on it.
       setTimeout(() => { if (!closed && okBtn.isConnected) { try { okBtn.focus({ preventScroll: true }); } catch (e) { okBtn.focus(); } } }, 50);
+      return backdrop;
+    }
+  },
+
+  // 1.0.3 (BUG-137/BUG-41): the warning before a save that would leave rows
+  // dated before an account's opening date (out of every balance, budget and
+  // chart). Shared by Edit Account and the transaction form. Buttons, top to
+  // bottom: primary (fix the dates), "anyway" (save as is), Cancel. Cancel,
+  // a backdrop tap, Escape and Android Back ([data-back-dismiss]) save
+  // nothing and leave the form open as typed. NoticeSheet family (_bankSheet).
+  // title / bodyHtml (array of lines) / primaryHtml / anywayHtml are MARKUP:
+  // the caller escapes its t() params (account names), never t() output.
+  //   show({ title, bodyHtml, primaryHtml, onPrimary, anywayHtml, onAnyway, onCancel })
+  OpeningDateSheet: {
+    // 'YYYY-MM-DD' → the UI locale's medium date ("Sep 1, 2026"), noon-anchored
+    // so it never drifts a day. A non-date is returned as is.
+    fmtDate(ymd) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+      if (!m) return String(ymd || '');
+      try {
+        return new Intl.DateTimeFormat(window.Store.getLocale(), { dateStyle: 'medium' })
+          .format(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
+      } catch (e) { return String(ymd); }
+    },
+    show(options) {
+      const o = options || {};
+      const id = 'opening-date-sheet';
+      const lines = Array.isArray(o.bodyHtml) ? o.bodyHtml : [o.bodyHtml || ''];
+      const backdrop = window.Components._bankSheet(id, `
+        <h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-3); font-size: 1.1rem;">${o.title || ''}</h2>
+        <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-5);">
+          <i data-lucide="alert-triangle" aria-hidden="true" style="width: 20px; height: 20px; color: var(--color-expense); flex-shrink: 0; margin-top: 2px;"></i>
+          <div id="${id}-body">
+            ${lines.map(l => `<p style="margin: 0 0 var(--space-2); overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);">${l}</p>`).join('')}
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-primary" id="opening-date-primary">${o.primaryHtml || ''}</button>
+          <button type="button" class="btn btn-secondary" id="opening-date-anyway">${o.anywayHtml || ''}</button>
+          <button type="button" class="btn btn-secondary" id="opening-date-cancel" data-back-dismiss>${window.I18n.t('common.cancel')}</button>
+        </div>`);
+      if (!backdrop) return null;
+      backdrop.setAttribute('aria-describedby', `${id}-body`);
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      };
+      const finish = () => {
+        if (closed) return false;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        return true;
+      };
+      const cancel = () => {
+        if (!finish()) return;
+        backdrop._close();
+        if (typeof o.onCancel === 'function') o.onCancel();
+      };
+      // A choice saves and leaves the form: drop the sheet at once (no fade
+      // over the landing screen), then act.
+      const choose = (fn) => () => {
+        if (!finish()) return;
+        backdrop.remove();
+        if (typeof fn === 'function') fn();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) cancel(); });
+      backdrop.querySelector('#opening-date-cancel').addEventListener('click', cancel);
+      backdrop.querySelector('#opening-date-primary').addEventListener('click', choose(o.onPrimary));
+      backdrop.querySelector('#opening-date-anyway').addEventListener('click', choose(o.onAnyway));
+      document.addEventListener('keydown', onKey);
       return backdrop;
     }
   },

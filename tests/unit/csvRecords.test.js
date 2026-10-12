@@ -213,7 +213,8 @@ describe('1.0.2 (BUG-33) RFC 4180 records', () => {
       ].join('\n');
       const rows = I().parseCSV(csv);
       expect(rows).toEqual(oldRows(csv));
-      expect(rows.map(r => r.description)).toContain('Shop X Milano'); // read as 1.0.1 did
+      // read line by line as 1.0.1 did; 1.0.3 (BUG-147): a mid-field quote is literal
+      expect(rows.map(r => r.description)).toContain('Shop "X" Milano');
       // a real two-line note still reads as one record
       const note = 'Date,Description,Amount\n2026-09-01,"two\nlines",-1.00\n2026-09-02,Lidl,-2.00';
       expect(I().parseCSV(note).map(r => r.description)).toEqual(['two\nlines', 'Lidl']);

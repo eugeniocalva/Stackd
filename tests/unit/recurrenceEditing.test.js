@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -358,6 +358,16 @@ describe('Recurring transaction editing (v0.67)', () => {
   });
 
   describe('turning recurrence off', () => {
+    // 1.0.3 (BUG-136): a stop keeps the payments dated up to today, so these
+    // cases pin the clock (the series starts 15 Aug, tapped 15 Sep)
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 6, 12, 0, 0));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('scope only-this detaches one member and leaves the series intact', () => {
       const sid = createMonthlySeries();
       const sept = seriesMembers(sid).find(t => t.date === '2026-09-15');
@@ -380,6 +390,9 @@ describe('Recurring transaction editing (v0.67)', () => {
       expect(members.map(t => t.date)).toEqual(['2026-08-15']);
       const edited = Store.getState().transactions.find(t => t.id === sept.id);
       expect(edited.recurrence).toBeNull();
+      // 1.0.3 (BUG-136): only the payments after today (6 Oct) are removed
+      const rows = Store.getState().transactions.filter(t => t.comment === 'Life insurance').map(t => t.date).sort();
+      expect(rows).toEqual(['2026-08-15', '2026-09-15']);
     });
 
     it('scope all also unlinks past members without deleting them', () => {

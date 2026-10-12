@@ -840,7 +840,9 @@ window.Views = {
     render(state) {
       const filters = state.historyFilters;
       const periodLabel = window.Store._getPeriodLabel(filters.period);
-      const visibleTx = window.Store.getFilteredTransactions('history');
+      // 1.0.3 (BUG-41, D2): rows dated before their account's opening date are
+      // listed (dimmed, "not counted"), never summed — see signedRowAmount.
+      const visibleTx = window.Store.getFilteredTransactions('history', null, { keepBeforeOpening: true });
 
       const isSelectionMode = state.isSelectionMode === true;
       const selectedIds = Array.isArray(state.selectedTransactionIds) ? state.selectedTransactionIds : [];
@@ -865,6 +867,7 @@ window.Views = {
       // opening_balance rows are signed by their amount.
       const signedRowAmount = (tx) => {
         if (tx.isPaid === false) return 0;
+        if (window.Store._isTxBeforeOpeningDate(tx)) return 0; // 1.0.3 (BUG-41, D2): listed, not counted
         // v1.02 / 1.0.2 (BUG-36): rows the sums leave out (foreign-currency
         // accounts) stay VISIBLE in the list but out of the sums.
         if (!inSums(tx.accountId)) return 0;
@@ -1025,7 +1028,8 @@ window.Views = {
                   return window.Components.TransactionItem.render(tx, category, account, {
                     isSelectionMode,
                     isSelected,
-                    allowSwipeReveal: true
+                    allowSwipeReveal: true,
+                    beforeOpening: window.Store._isTxBeforeOpeningDate(tx) // 1.0.3 (BUG-41, D2)
                   });
                 }).join('')}
               </div>
@@ -1170,7 +1174,7 @@ window.Views = {
           e.preventDefault();
           e.stopPropagation();
           const currentStoreState = window.Store.getState();
-          const visibleTx = window.Store.getFilteredTransactions('history');
+          const visibleTx = window.Store.getFilteredTransactions('history', null, { keepBeforeOpening: true }); // 1.0.3 (BUG-41): = the list
           const visibleTxIds = visibleTx.map(t => t.id);
           const selectedIds = currentStoreState.selectedTransactionIds || [];
           const allSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
@@ -1286,31 +1290,13 @@ window.Views = {
           if (!txToDelete) return;
 
           if (txToDelete.recurrence && txToDelete.recurrence.seriesId) {
-            window.Components.Modal.show({
-              title: window.I18n.t('history.recurringDelete.title'),
-              content: `<p style="color: var(--text-secondary); margin-bottom: 12px;">${window.I18n.t('history.recurringDelete.body')}</p><div style="display: flex; flex-direction: column; gap: 10px;"><button id="btn-delete-single" class="btn btn-secondary" style="width: 100%; text-align: left;">📌 ${window.I18n.t('history.recurringDelete.onlyThis')}</button><button id="btn-delete-future-series" class="btn" style="width: 100%; text-align: left; color: var(--color-expense); background: var(--color-expense-bg); border: 1px solid var(--color-expense);">🔄 ${window.I18n.t('history.recurringDelete.withFuture')}</button></div>`,
-              saveText: window.I18n.t('common.cancel'),
-              showDelete: false,
-              showCancel: false, // 1.0.1 (BUG-20): saveText is the Cancel
-              saveClass: 'btn-secondary',
-              onSave: (closeModal) => closeModal()
+            // 1.0.3 (BUG-103): the same three-scope sheet as the edit screen
+            // (was an inline two-option sheet with no 'All')
+            window.Components.RecurringDeleteModal.show({
+              onlyThis: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId }),
+              thisAndFuture: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteFuture: true }),
+              allTransactions: () => window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteAll: true })
             });
-            setTimeout(() => {
-              const btnSingle = document.getElementById('btn-delete-single');
-              const btnFutureSeries = document.getElementById('btn-delete-future-series');
-              if (btnSingle) {
-                btnSingle.onclick = () => {
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteAll: false });
-                  if (window.Components.Modal.hide) window.Components.Modal.hide();
-                };
-              }
-              if (btnFutureSeries) {
-                btnFutureSeries.onclick = () => {
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: txId, deleteFuture: true });
-                  if (window.Components.Modal.hide) window.Components.Modal.hide();
-                };
-              }
-            }, 10);
           } else {
             window.Components.Modal.show({
               title: window.I18n.t('history.deleteOne.title'),
@@ -1992,6 +1978,7 @@ window.Views = {
       // Render HTML is untouched, so the initial `selected` markup stays.
       const accountSelect = document.getElementById('tx-account');
       const transferToSelect = document.getElementById('tx-transfer-to');
+      let syncTo = null; // 1.0.3 (BUG-138): syncTransferTo, for the type toggles below
       if (accountSelect && transferToSelect) {
         let lastFrom = accountSelect.value;
         const syncTransferTo = (isInitial) => {
@@ -2012,6 +1999,7 @@ window.Views = {
           if (keep && others.some(a => a.id === keep)) transferToSelect.value = keep;
           lastFrom = from;
         };
+        syncTo = syncTransferTo;
         syncTransferTo(true);
         syncReceived(); // 1.0.2 (BUG-35): after BUG-21's initial To fix-up
         accountSelect.addEventListener('change', () => {
@@ -2101,10 +2089,96 @@ window.Views = {
         updateRecurrentText();
       }
 
+      // 1.0.3 (BUG-138): editing an existing transfer, the type toggles move
+      // the form between the pair's two sides. Income is the money that
+      // ARRIVED (To account; same currency: the transfer amount, across
+      // currencies: Amount received, or the stored income leg when that field
+      // is empty — the D-U8-4 1:1 legacy pair); Expense is what LEFT (From and
+      // the sent amount); Transfer restores the pair as it was last shown.
+      // The snapshot is seeded from the stored pair (so an add-category draft
+      // round trip still knows it) and refreshed from the form each time the
+      // user leaves Transfer. Values are set directly — no synthetic 'change'
+      // (it would run BUG-21's From/To swap). New logs: toggles only restyle.
+      const moneyStr = (v) => { const n = Math.abs(Number(v)); return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : ''; };
+      let pairSnap = null;
+      if (editedTx && editedTx.transferRef) {
+        const mate = (state.transactions || []).find(t => t.transferRef === editedTx.transferRef && t.id !== editedTx.id);
+        if (mate) {
+          const sent = editedTx.type === 'expense' ? editedTx : mate;
+          const got = editedTx.type === 'expense' ? mate : editedTx;
+          pairSnap = {
+            from: sent.accountId,
+            to: got.accountId,
+            amount: moneyStr(sent.amount),
+            gotAccountId: got.accountId,                             // the stored income leg's account
+            received: moneyStr(got.amount),                          // the stored income leg
+            receivedField: receivedInput ? receivedInput.value : '', // what the field showed
+            receivedCcy: (receivedInput && receivedInput.dataset.ccy) || window.Store.getAccountCurrency(got.accountId)
+          };
+        }
+      }
+      // income <-> expense re-maps only while the user has not changed the
+      // account or amount since the last toggle (set by THEIR events only).
+      let pairTouched = false;
+      if (pairSnap) {
+        if (accountSelect) accountSelect.addEventListener('change', () => { pairTouched = true; });
+        amountInput.addEventListener('input', () => { pairTouched = true; });
+      }
+      const setType = (next) => {
+        const prev = typeInput.value;
+        if (pairSnap && accountSelect && transferToSelect && prev !== next) {
+          const snap = pairSnap;
+          if (prev === 'transfer') {
+            snap.from = accountSelect.value || snap.from;
+            snap.to = transferToSelect.value || snap.to;
+            snap.amount = amountInput.value;
+            if (receivedInput) {
+              snap.receivedField = receivedInput.value;
+              snap.receivedCcy = receivedInput.dataset.ccy || snap.receivedCcy;
+            }
+            pairTouched = false;
+          }
+          if (next === 'transfer') {
+            // all BEFORE updateUIVisibility, so syncReceived neither parks
+            // nor clears the received figure
+            accountSelect.value = snap.from;
+            if (syncTo) syncTo(false);
+            transferToSelect.value = snap.to;
+            amountInput.value = snap.amount;
+            if (receivedInput) {
+              receivedInput.value = snap.receivedField || '';
+              receivedInput.dataset.ccy = snap.receivedCcy || window.Store.getAccountCurrency(snap.to);
+            }
+            pairTouched = false;
+          } else if (prev === 'transfer' || !pairTouched) {
+            const toIncome = next === 'income';
+            const same = window.Store._sameCurrency(snap.from, snap.to);
+            accountSelect.value = toIncome ? snap.to : snap.from;
+            if (syncTo) syncTo(false);
+            if (toIncome && !same) {
+              // BUG-35 rule: never carry a figure into another currency. The
+              // received field counts only in To's currency, and the stored
+              // income leg only while To is still the account it was booked on.
+              const toCcy = window.Store.getAccountCurrency(snap.to);
+              const field = snap.receivedField && snap.receivedCcy === toCcy ? snap.receivedField : '';
+              amountInput.value = field || (snap.to === snap.gotAccountId ? snap.received : '');
+            } else {
+              amountInput.value = snap.amount;
+            }
+            pairTouched = false;
+          }
+          clearFieldError(amountInput);
+          const sym = document.getElementById('currency-symbol');
+          if (sym) sym.textContent = window.Store.getCurrencySymbol(window.Store.getAccountCurrency(accountSelect.value));
+        }
+        typeInput.value = next;
+        updateUIVisibility();
+      };
+
       // Type Toggle handlers
-      btnExpense.addEventListener('click', () => { typeInput.value = 'expense'; updateUIVisibility(); });
-      btnIncome.addEventListener('click', () => { typeInput.value = 'income'; updateUIVisibility(); });
-      btnTransfer.addEventListener('click', () => { typeInput.value = 'transfer'; updateUIVisibility(); });
+      btnExpense.addEventListener('click', () => setType('expense'));
+      btnIncome.addEventListener('click', () => setType('income'));
+      btnTransfer.addEventListener('click', () => setType('transfer'));
       
 
       // Category Creation Modal logic (reusable)
@@ -2136,7 +2210,7 @@ window.Views = {
           saveText: window.I18n.t('form.createCategory'),
           onSave: (closeModal) => {
             const nameInput = document.getElementById('new-cat-name');
-            const name = nameInput.value.trim();
+            const name = window.Store._collapseName(nameInput.value); // 1.0.3 (BUG-153)
             // 1.0.1 (BUG-18): an empty name used to be ignored silently (the
             // sheet just stayed open). 1.0.1 (BUG-11): names are unique across
             // every type, trimmed and case-insensitive — a duplicate broke the
@@ -2382,7 +2456,9 @@ window.Views = {
       });
 
       // Save Transaction
-      btnSave.addEventListener('click', () => {
+      // 1.0.3 (BUG-41): a named handler, so the opening-date sheet can re-run
+      // the save with the user's choice (opts.openingChoice: 'move' | 'anyway').
+      const onSave = (opts = {}) => {
         // Auto-add any pending tag text before saving
         if (tagsInput && tagsInput.value.trim()) {
            addTag(tagsInput.value);
@@ -2500,6 +2576,38 @@ window.Views = {
           return;
         }
 
+        // 1.0.3 (BUG-41): a row dated before an account's opening date counts
+        // in no balance, budget or chart. Say so BEFORE the scope sheet and let
+        // the user move the opening date to this day (same Store.batch as the
+        // save, see doDispatch) or save anyway; Cancel keeps the form as typed.
+        // An edit that keeps the date and every leg's account never asks.
+        const openingLegs = type === 'transfer'
+          ? [{ accountId, date }, { accountId: toAccountId, date }]
+          : [{ accountId, date }];
+        let openingUnchanged = false;
+        if (editTx) {
+          const mateTx = editTx.transferRef
+            ? window.Store.getState().transactions.find(t => t.transferRef === editTx.transferRef && t.id !== editTx.id)
+            : null;
+          const before = [editTx.accountId].concat(mateTx ? [mateTx.accountId] : []).sort().join('|');
+          const after = openingLegs.map(l => l.accountId).sort().join('|');
+          openingUnchanged = date === editTx.date && before === after;
+        }
+        const openingConflicts = openingUnchanged ? [] : window.Store.openingDateConflicts(openingLegs);
+        if (!opts.openingChoice && openingConflicts.length) {
+          const ODS = window.Components.OpeningDateSheet;
+          const accName = (id) => { const a = window.Store.getState().accounts.find(x => x.id === id); return a ? a.name : ''; };
+          ODS.show({
+            title: window.I18n.t('openingDate.txTitle'),
+            bodyHtml: openingConflicts.map(c => window.I18n.t('openingDate.txBody', { account: esc(accName(c.accountId)), date: esc(ODS.fmtDate(c.openingDate)) })),
+            primaryHtml: window.I18n.t('openingDate.move', { date: esc(ODS.fmtDate(date)) }),
+            onPrimary: () => onSave({ openingChoice: 'move' }),
+            anywayHtml: window.I18n.t('openingDate.saveAnyway'),
+            onAnyway: () => onSave({ openingChoice: 'anyway' })
+          });
+          return;
+        }
+
         // --- v0.67: Recurring Edit Scope Gate (supersedes the v0.32 tag-only gate) ---
         // ANY save on a transaction that belongs to a recurrent series asks how
         // far the change should apply, mirroring the delete flow. Previously
@@ -2540,17 +2648,21 @@ window.Views = {
           // from the series END, not the latest member: a payment 'Only this'
           // moved past the end is inert and must not stretch the shift
           const limit = sched.endDate || sched.lastDate || editTx.date;
-          const step = (d) => window.Store._calculateNextRecurrenceDate(d, Number(sched.interval), sched.frequency);
+          // 1.0.3 (BUG-51): the old chain steps on its anchor day, the shifted
+          // one on the new date's day (the store re-anchors a scoped date move)
+          const oldAnchor = typeof window.Store._anchorDayOf === 'function' ? window.Store._anchorDayOf(editRec, editTx.date) : undefined;
+          const newAnchor = Number(String(date).slice(8, 10)) || undefined;
+          const step = (d, anchor) => window.Store._calculateNextRecurrenceDate(d, Number(sched.interval), sched.frequency, anchor);
           let n = 0;
-          for (let d = editTx.date; d && d <= limit && n < 1000; d = step(d)) n++;
+          for (let d = editTx.date; d && d <= limit && n < 1000; d = step(d, oldAnchor)) n++;
           if (n < 1) return recurrenceData;
           let shifted = date;
-          for (let i = 1; i < n && shifted; i++) shifted = step(shifted);
+          for (let i = 1; i < n && shifted; i++) shifted = step(shifted, newAnchor);
           return shifted && shifted > recurrenceData.endDate ? { ...recurrenceData, endDate: shifted } : recurrenceData;
         };
 
         // Build the actual dispatch logic as a callable function
-        const doDispatch = (scope) => window.Store.batch(() => applyChange(scope)); // 1.0.2 (BUG-34): a type conversion lands whole or not at all
+        const doDispatch = (scope) => window.Store.batch(() => { if (opts.openingChoice === 'move') openingConflicts.forEach(c => window.Store.dispatch('UPDATE_ACCOUNT', { id: c.accountId, openingDate: date })); applyChange(scope); }); // 1.0.2 (BUG-34): a type conversion lands whole or not at all; 1.0.3 (BUG-41): with the opening-date move
         const applyChange = (scope) => {
           // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
@@ -2594,6 +2706,13 @@ window.Views = {
                     transferRecurrence = recurrenceData;
                   } else if (scope !== 'only') {
                     transferRecurrence = { ...seriesRec(scope), seriesId: window.StackdDB.generateId() };
+                    // 1.0.3 (BUG-51, review): on its own day the transfer chain
+                    // keeps the old chain's anchor (a 31st series converted at
+                    // its 30 Nov payment stays on the 31st)
+                    if (editTx && date === editTx.date && editTx.recurrence) {
+                      const anchor = window.Store._anchorDayOf(editTx.recurrence, editTx.date);
+                      if (anchor) transferRecurrence.anchorDay = anchor;
+                    }
                   }
                 }
                 window.Store.dispatch('ADD_TRANSFER', {
@@ -2702,19 +2821,28 @@ window.Views = {
             t.recurrence && t.recurrence.seriesId === seriesId && t.id !== targetId &&
             t.type === txToEditCurrent.type && t.date >= from &&
             Math.abs(Math.abs(Number(t.amount)) - newAbs) > 0.0001);
+          // 1.0.3 (BUG-139, D1): a rebuild keeps the payments deleted with
+          // 'Only this' gone — except when the interval/frequency changes,
+          // which cannot map them: then say they come back.
+          const stepChanged = !!(sched && recurrenceData &&
+            (String(recurrenceData.interval) !== String(sched.interval) || String(recurrenceData.frequency) !== String(sched.frequency)));
+          const gapNote = rebuilds && stepChanged && typeof window.Store.seriesGapCount === 'function' &&
+            window.Store.seriesGapCount(seriesId, targetId) > 0;
           window.Components.RecurringUpdateModal.show({
             dateChanged,
             recurrenceRemoved,
             scheduleChanged, // 1.0.2 (BUG-26, D-U3-2a)
             paidNote,
             amountNote: amountAhead,
+            gapNote,
             onSelection: (chosen) => doDispatch(chosen === 'single' ? 'only' : chosen)
           });
         } else {
           // Not part of a series — dispatch immediately
           doDispatch('only');
         }
-      });
+      };
+      btnSave.addEventListener('click', () => onSave());
 
 
       if (btnDelete) {
@@ -3011,7 +3139,7 @@ Object.assign(window.Views, {
       if (saveCatBtn) {
         saveCatBtn.addEventListener('click', () => {
           const nameInput = document.getElementById('edit-cat-name');
-          const name = nameInput.value.trim();
+          const name = window.Store._collapseName(nameInput.value); // 1.0.3 (BUG-153): whitespace runs collapsed
           // 1.0.1 (BUG-18): inline message + focus instead of a 1 s flash.
           if (!name) {
             showFieldError(nameInput, window.I18n.t('cat.nameRequired'));
@@ -3020,7 +3148,7 @@ Object.assign(window.Views, {
           // 1.0.1 (BUG-11): unique names across all types (trimmed, case-
           // insensitive). Checked only when the name actually changes, so a
           // pre-existing duplicate can still save an icon/type edit.
-          const nameChanged = !cat || name.toLowerCase() !== String(cat.name == null ? '' : cat.name).trim().toLowerCase();
+          const nameChanged = !cat || window.Store._nameKey(name) !== window.Store._nameKey(cat.name); // 1.0.3 (BUG-153)
           const clash = nameChanged ? window.Store.findCategoryByName(name, catId) : null;
           if (clash) {
             showFieldError(nameInput, window.I18n.t('cat.duplicateName', { name: clash.name }));
@@ -3114,9 +3242,11 @@ Object.assign(window.Views, {
         // Over/rollover are decided in cents: spent and carryover are float
         // sums, and dust must never read 'Over by €0.00' or '-€0.00 rollover'.
         const usedPct = hasBudget && bdg.finalLimit > 0 ? (bdg.spent / bdg.finalLimit) * 100 : null;
-        const pct = usedPct === null ? 0 : Math.min(usedPct, 100); // bar width + colour thresholds
         const overC = hasBudget ? Math.round((bdg.spent - bdg.finalLimit) * 100) : 0;
         const isOver = overC > 0;
+        // bar width + colour thresholds. 1.0.3 (BUG-164): over a non-positive
+        // limit the bar is full (it was empty while the row said "Over by").
+        const pct = usedPct === null ? (isOver ? 100 : 0) : Math.min(usedPct, 100);
         const barColor = isOver ? 'var(--color-expense)' : 'var(--color-primary)';
         // Text colours use the AA-contrast pairs (as the Home budgets widget
         // since v0.83) now that the label can carry an overspend figure.
@@ -3178,7 +3308,14 @@ Object.assign(window.Views, {
         }
       }).join('');
 
-      const overspent = totalSpent > totalAllocated && totalAllocated > 0;
+      // 1.0.3 (BUG-160) decided in cents: spending exactly the limit (float
+      // dust) is neither "Overspent €0.00" nor "-€0.00" remaining. The ring
+      // (attachEvents) reuses these totals: it used to sum every category,
+      // the other tab and removed budgets' spend included.
+      const overC = Math.round((totalSpent - totalAllocated) * 100);
+      const overspent = overC > 0;
+      const remC = -overC;
+      this._passTotals = { totalAllocated, totalSpent, overspent };
 
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -3211,7 +3348,7 @@ Object.assign(window.Views, {
               <canvas id="budgetChart"></canvas>
               <div class="donut-chart-center">
                 <div class="donut-total-label">${overspent ? window.I18n.t('budget.overspent') : window.I18n.t('budget.allocated')}</div>
-                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? Math.round((totalSpent - totalAllocated) * 100) / 100 : totalAllocated)}</div>
+                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? overC / 100 : totalAllocated)}</div>
               </div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
@@ -3221,7 +3358,7 @@ Object.assign(window.Views, {
               </div>
               <div style="text-align: right;">
                 <span style="color: var(--text-secondary);">${window.I18n.t('budget.remaining')}</span><br>
-                <strong style="color: ${totalAllocated - totalSpent >= 0 ? 'var(--color-income-val)' : 'var(--color-expense-val)'};">${window.Store.formatCurrency(totalAllocated - totalSpent)}</strong>
+                <strong style="color: ${remC >= 0 ? 'var(--color-income-val)' : 'var(--color-expense-val)'};">${window.Store.formatCurrency(remC / 100 || 0)}</strong>
               </div>
             </div>
           </div>
@@ -3245,6 +3382,11 @@ Object.assign(window.Views, {
       if (!cat) { this.editCategoryId = null; return this.renderList(state); }
       const budget = state.budgets.find(b => b.categoryId === cat.id) || {};
       const currSym = window.Store.getCurrencySymbol();
+      // 1.0.3 (BUG-140, D3) the editor shows, and a changed limit applies
+      // from, the month viewed in Goals; earlier months keep their limit.
+      const viewed = this._viewedMonth(state);
+      const shownLimit = window.Store._budgetAmountFor(budget, viewed);
+      const hasLimit = parseFloat(budget.amount) > 0;
 
       // v0.95 (refactor-plan-2 P3.2): average-spend insight between the limit
       // field and the month selectors. Expense context only — suggesting a
@@ -3286,8 +3428,9 @@ Object.assign(window.Views, {
               <label class="form-label" for="bdg-amount">${window.I18n.t('budget.monthlyLimit')}</label>
               <div style="position: relative;">
                 <span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1.5rem; pointer-events: none;" aria-hidden="true">${currSym}</span>
-                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${Number(budget.amount) ? Math.round(Number(budget.amount) * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
+                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${shownLimit ? Math.round(shownLimit * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
               </div>
+              ${hasLimit ? `<div id="bdg-applies-from" style="font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-2);"${this._appliesFromShown(budget.startDate, viewed) ? '' : ' hidden'}>${window.I18n.t('budget.appliesFrom', { month: esc(this._monthLabel(viewed)) })}</div>` : ''}
             </div>
             ${insightHtml}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
@@ -3346,23 +3489,42 @@ Object.assign(window.Views, {
           if (amtInput) amtInput.focus();
         }, 100);
 
+        const viewed = this._viewedMonth(state);
         const startInput = container.querySelector('#bdg-start');
+        const endInput = container.querySelector('#bdg-end');
+        const cumInput = container.querySelector('#bdg-cumulative');
+        // 1.0.3 (BUG-140) the "applies from" caption follows the Start Month
+        const caption = container.querySelector('#bdg-applies-from');
+        const syncCaption = () => {
+          if (caption) caption.hidden = !this._appliesFromShown(startInput ? startInput.value : '', viewed);
+        };
         if (startInput) {
           startInput.addEventListener('click', () => {
             window.Components.MonthPicker.show({
-              initialValue: startInput.value || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-              onSelect: (val) => { startInput.value = val; }
+              initialValue: startInput.value || viewed,
+              onSelect: (val) => { startInput.value = val; clearFieldError(endInput); syncCaption(); }
             });
           });
         }
 
-        const endInput = container.querySelector('#bdg-end');
         if (endInput) {
           endInput.addEventListener('click', () => {
             window.Components.MonthPicker.show({
-                initialValue: endInput.value || (startInput ? startInput.value : '') || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })(),
-                onSelect: (val) => { endInput.value = val; }
+              initialValue: endInput.value || (startInput ? startInput.value : '') || viewed,
+              onSelect: (val) => { endInput.value = val; clearFieldError(endInput); },
+              // 1.0.3 (BUG-104) the optional End Month can be emptied again
+              clearText: window.I18n.t('budget.noEndDate'),
+              onClear: () => { endInput.value = ''; clearFieldError(endInput); }
             });
+          });
+        }
+
+        // 1.0.3 (BUG-58) a cumulative rollover needs a start month (the carry
+        // loop runs from it): switching it on with none starts on the viewed
+        // month, and the save applies the same default.
+        if (cumInput && startInput) {
+          cumInput.addEventListener('change', () => {
+            if (cumInput.checked && !startInput.value) { startInput.value = viewed; syncCaption(); }
           });
         }
 
@@ -3378,12 +3540,18 @@ Object.assign(window.Views, {
               showFieldError(amtElem, window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }));
               return;
             }
-            const startElem = container.querySelector('#bdg-start');
-            const start = startElem ? startElem.value : '';
-            const endElem = container.querySelector('#bdg-end');
-            const end = endElem ? endElem.value : '';
-            const cumElem = container.querySelector('#bdg-cumulative');
-            const isCum = cumElem ? cumElem.checked : false;
+            const isCum = cumInput ? cumInput.checked : false;
+            let start = startInput ? startInput.value : '';
+            if (isCum && !start) { // 1.0.3 (BUG-58), shown in case the end check below refuses
+              start = viewed;
+              if (startInput) { startInput.value = viewed; syncCaption(); }
+            }
+            const end = endInput ? endInput.value : '';
+            // 1.0.3 (BUG-104) an End Month before the Start Month is refused
+            if (start && end && end < start) {
+              showFieldError(endInput, window.I18n.t('budget.endBeforeStart'));
+              return;
+            }
 
             // CRITICAL: Reset BEFORE dispatch so the store emit re-renders the list, not the edit pane
             this.editCategoryId = null;
@@ -3392,21 +3560,40 @@ Object.assign(window.Views, {
               amount: amt === null ? 0 : amt,
               startDate: start,
               endDate: end || null,
-              isCumulative: isCum
+              isCumulative: isCum,
+              effectiveFrom: viewed // 1.0.3 (BUG-140, D3)
             });
           });
         }
 
+        // 1.0.3 (BUG-105) Remove asks first. A delete-style sheet: Cancel is
+        // the safe button, a backdrop tap or Back closes it, and the editor
+        // stays open until Remove is confirmed.
         const bdgDeleteBtn = container.querySelector('#btn-bdg-delete');
         if (bdgDeleteBtn) {
           bdgDeleteBtn.addEventListener('click', () => {
-            this.editCategoryId = null;
-            window.Store.dispatch('SAVE_BUDGET', {
-              categoryId: savedCategoryId,
-              amount: 0,
-              startDate: '',
-              endDate: null,
-              isCumulative: false
+            const cat = (window.Store.getState().categories || []).find(c => c.id === savedCategoryId);
+            window.Components.Modal.show({
+              title: window.I18n.t('budget.removeConfirm.title', { name: esc(cat ? cat.name : '') }),
+              content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">${window.I18n.t('budget.removeConfirm.body')}</p>`,
+              saveText: window.I18n.t('common.cancel'),
+              showDelete: true,
+              deleteText: window.I18n.t('budget.removeLimit'),
+              onSave: (closeModal) => closeModal(),
+              onDelete: (closeModal) => {
+                closeModal();
+                if (this.editCategoryId === savedCategoryId) { // before the emit: the list renders
+                  this.editCategoryId = null;
+                  this._editBaseline = null;
+                }
+                window.Store.dispatch('SAVE_BUDGET', {
+                  categoryId: savedCategoryId,
+                  amount: 0,
+                  startDate: '',
+                  endDate: null,
+                  isCumulative: false
+                });
+              }
             });
           });
         }
@@ -3465,21 +3652,15 @@ Object.assign(window.Views, {
         // Chart Render
         const ctx = document.getElementById('budgetChart');
         if (ctx) {
-          let totalAllocated = 0;
-          let totalSpent = 0;
-          
-          state.categories.forEach(cat => {
-            const bdg = window.Store.getBudgetForMonth(cat.id, selectedMonth);
-            totalAllocated += bdg.finalLimit;
-            totalSpent += bdg.spent;
-          });
+          // 1.0.3 (BUG-160) the summary's own totals (renderList, same pass):
+          // the budgeted rows of this tab only, over decided in cents.
+          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false };
+          const { totalAllocated, totalSpent, overspent } = totals;
 
-          // Prevent 0/0 empty chart 
-          const chartData = (totalAllocated === 0 && totalSpent === 0) 
-            ? [1, 0] // dummy background slice 
+          // Prevent 0/0 empty chart; an over ring is drawn full
+          const chartData = (overspent || (totalAllocated === 0 && totalSpent === 0))
+            ? [1, 0] // dummy background slice
             : [totalSpent, Math.max(totalAllocated - totalSpent, 0)];
-            
-          const overspent = totalSpent > totalAllocated && totalAllocated > 0;
 
           // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
           const GAP = 3;
@@ -3548,6 +3729,23 @@ Object.assign(window.Views, {
       this.editCategoryId = null;
       this._editBaseline = null;
       window.Store.emit();
+    },
+
+    // 1.0.3 (BUG-140/58) the month viewed in Goals ('YYYY-MM')
+    _viewedMonth(state) {
+      return (state && state.activeMonthFilter) || window.Store._todayYMD().slice(0, 7);
+    },
+
+    _monthLabel(ym) {
+      const [y, m] = ym.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString(window.Store.getLocale(), { month: 'long', year: 'numeric' });
+    },
+
+    // 1.0.3 (BUG-140) a change made while viewing `viewed` applies from that
+    // month on only when it is after the start month (SAVE_BUDGET's rule);
+    // at or before it, the change rewrites every month and needs no caption.
+    _appliesFromShown(start, viewed) {
+      return !start || viewed > start;
     },
 
     isEditorDirty(root) {
@@ -4317,6 +4515,16 @@ Object.assign(window.Views, {
       // currency; new accounts default to the primary one.
       const currencyValue = (account && account.currency) || state.currency;
       const currSym = window.Store.getCurrencySymbol(currencyValue);
+      // 1.0.3 (BUG-46, Opening Balance only): the field's decimals follow the
+      // currency (¥150,000 has none).
+      const obDp = window.Store.currencyDigits(currencyValue);
+      const obZero = (0).toFixed(obDp);
+      // 1.0.3 (BUG-154): an account in a currency the picker does not list
+      // (CSV / Bank Connect) keeps it — shown as its code, selected.
+      const listedCcys = ['USD', 'EUR', 'JPY', 'GBP', 'CNY'];
+      const unlistedCcyOption = currencyValue && !listedCcys.includes(currencyValue)
+        ? `<option value="${escapeAttr(currencyValue)}" selected>${esc(currencyValue)}</option>`
+        : '';
       const txCount = account ? state.transactions.filter(t => t.accountId === account.id).length : 0;
 
       const title = isEdit ? window.I18n.t('account.editTitle') : window.I18n.t('account.newTitle');
@@ -4358,7 +4566,7 @@ Object.assign(window.Views, {
             <div class="form-group" style="margin-bottom: var(--space-5);">
               <label class="form-label" for="edit-acc-currency">${window.I18n.t('account.currency')}</label>
               <select id="edit-acc-currency" class="form-control">
-                ${['USD', 'EUR', 'JPY', 'GBP', 'CNY'].map(c => `<option value="${c}" ${currencyValue === c ? 'selected' : ''}>${window.I18n.t('currency.' + c)}</option>`).join('')}
+                ${unlistedCcyOption}${listedCcys.map(c => `<option value="${c}" ${currencyValue === c ? 'selected' : ''}>${window.I18n.t('currency.' + c)}</option>`).join('')}
               </select>
               <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.currencyHint')}</p>
             </div>
@@ -4385,7 +4593,7 @@ Object.assign(window.Views, {
               </div>
               <div style="position: relative;">
                 <span id="ob-sign-symbol" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: ${isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)'}; font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${isNegativeOb ? '-' : ''}${currSym}</span>
-                <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(2)}" placeholder="0.00" inputmode="numeric" style="padding-left: ${isNegativeOb ? '38px' : '30px'}; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
+                <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(obDp)}" placeholder="${obZero}" inputmode="numeric" style="padding-left: ${isNegativeOb ? '38px' : '30px'}; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
               </div>
               <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.negativeHint')}</p>
             </div>
@@ -4478,9 +4686,29 @@ Object.assign(window.Views, {
 
       // v1.02: the opening-balance prefix live-follows the currency choice
       const ccySelect = document.getElementById('edit-acc-currency');
+      // 1.0.3 (BUG-46): the Opening Balance field's decimals (JPY 0, EUR 2)
+      let obDp = window.Store.currencyDigits(ccySelect ? ccySelect.value : ((account && account.currency) || window.Store.getState().currency));
+      // 1.0.3 (BUG-46, review): the field shows the figure ROUNDED to the
+      // currency's decimals. obBase keeps the unrounded figure and obAutoText
+      // the text generated from it: while the field still shows that text, a
+      // save sends obBase (a rename never rewrites ¥123.45 as ¥123) and a
+      // currency flip re-formats from obBase (EUR 12.50 → JPY → EUR keeps .50).
+      const obFieldInit = document.getElementById('edit-acc-balance');
+      let obBase = Math.abs(currentObAmt);
+      let obAutoText = obFieldInit ? obFieldInit.value : '';
       if (ccySelect) {
         ccySelect.addEventListener('change', () => {
           currSym = window.Store.getCurrencySymbol(ccySelect.value);
+          // 1.0.3 (BUG-46): the same figure, in the new currency's decimals
+          const field = document.getElementById('edit-acc-balance');
+          const shown = field ? parseFloat(field.value) : NaN;
+          obDp = window.Store.currencyDigits(ccySelect.value);
+          if (field) {
+            if (field.value !== obAutoText) obBase = Number.isFinite(shown) ? shown : 0;
+            field.placeholder = (0).toFixed(obDp);
+            field.value = obBase.toFixed(obDp);
+            obAutoText = field.value;
+          }
           updateObSignUI();
         });
       }
@@ -4544,12 +4772,13 @@ Object.assign(window.Views, {
 
       // Scenario A: Opening Balance edited → strict numeric input (0-9 only), right-to-left decimal shift
       if (obInput) {
+        // 1.0.3 (BUG-46): minor units of the account's currency (10^obDp)
         const processDecimalShift = () => {
           const rawDigits = obInput.value.replace(/\D/g, '').slice(0, 12);
-          const cents = parseInt(rawDigits || '0', 10);
-          const formatted = (cents / 100).toFixed(2);
-          obInput.value = formatted;
-          return isNegativeOb ? -(cents / 100) : (cents / 100);
+          const minor = parseInt(rawDigits || '0', 10);
+          const value = minor / Math.pow(10, obDp);
+          obInput.value = value.toFixed(obDp);
+          return isNegativeOb ? -value : value;
         };
 
         // Strict numeric input: allow navigation/control keys, block non-digits (0-9 only)
@@ -4579,25 +4808,56 @@ Object.assign(window.Views, {
           processDecimalShift();
         });
 
-        // Sanitize pasted content
+        // 1.0.3 (BUG-42): a paste is selection-aware. Over the whole field
+        // (all selected, or the field still reads zero) the text is an AMOUNT,
+        // read by Store.parseAmount ('1.234,56' → 1234.56, '1500' → 1500.00,
+        // '99.9' → 99.90; a minus sets Negative, a positive never clears it).
+        // Into part of the field, its digits replace the selection and the
+        // usual decimal shift runs. It used to append every pasted digit.
+        const onObPaste = (text) => {
+          const v = obInput.value;
+          const s = typeof obInput.selectionStart === 'number' ? obInput.selectionStart : v.length;
+          const en = typeof obInput.selectionEnd === 'number' ? obInput.selectionEnd : v.length;
+          const whole = (s === 0 && en === v.length) || !/[1-9]/.test(v);
+          if (whole) {
+            const n = window.Store.parseAmount(text);
+            if (n === null) return;
+            if (Number.isNaN(n) || Math.abs(n) >= 1e10) {
+              showFieldError(obInput, window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }));
+              return;
+            }
+            if (n < 0) { isNegativeOb = true; updateObSignUI(); }
+            clearFieldError(obInput);
+            obInput.value = Math.abs(n).toFixed(obDp);
+            return;
+          }
+          obInput.value = v.slice(0, s) + String(text || '').replace(/\D/g, '') + v.slice(en);
+          processDecimalShift();
+        };
         obInput.addEventListener('paste', (e) => {
           e.preventDefault();
-          const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-          const pastedDigits = pastedText.replace(/\D/g, '');
-          const currentDigits = obInput.value.replace(/\D/g, '');
-          const combinedDigits = (currentDigits + pastedDigits).slice(0, 12);
-          const cents = parseInt(combinedDigits || '0', 10);
-          const formatted = (cents / 100).toFixed(2);
-          obInput.value = formatted;
+          const cd = e.clipboardData || window.clipboardData;
+          onObPaste(cd ? cd.getData('text') : '');
+        });
+        // Gboard's clipboard chip inserts without a 'paste' event.
+        obInput.addEventListener('beforeinput', (e) => {
+          if (e.inputType !== 'insertFromPaste') return;
+          const text = e.data != null ? e.data : (e.dataTransfer ? e.dataTransfer.getData('text') : null);
+          if (text == null) return; // nothing readable: the input listener's shift handles it
+          e.preventDefault();
+          onObPaste(text);
         });
       }
 
       const btnSave = document.getElementById('btn-edit-acc-save');
       if (btnSave) {
-        btnSave.addEventListener('click', () => {
+        // 1.0.3 (BUG-137): a named save, so the opening-date sheet can re-run
+        // it (opts.skipOpening) after the user's choice.
+        const saveAccount = (opts = {}) => {
           const nameInput = document.getElementById('edit-acc-name');
-          const name = nameInput.value.trim();
-          const absOb = parseFloat(document.getElementById('edit-acc-balance').value) || 0;
+          const name = window.Store._collapseName(nameInput.value); // 1.0.3 (BUG-153): whitespace runs collapsed
+          const obText = document.getElementById('edit-acc-balance').value;
+          const absOb = obText === obAutoText ? obBase : (parseFloat(obText) || 0); // 1.0.3 (BUG-46, review): unrounded while untouched
           const ob = isNegativeOb ? -absOb : absOb;
           const dDate = document.getElementById('edit-acc-date').value;
           const type = document.getElementById('edit-acc-type').value;
@@ -4614,7 +4874,7 @@ Object.assign(window.Views, {
           // merged two "Visa" accounts into one. Checked only when the name
           // changes, so an existing duplicate can still save other edits.
           // showFieldError writes textContent: the name is NOT escaped here.
-          const nameChanged = !account || name.toLowerCase() !== String(account.name == null ? '' : account.name).trim().toLowerCase();
+          const nameChanged = !account || window.Store._nameKey(name) !== window.Store._nameKey(account.name); // 1.0.3 (BUG-153)
           const clash = nameChanged ? window.Store.findAccountByName(name, account ? account.id : undefined) : null;
           if (clash) {
             showFieldError(nameInput, window.I18n.t('account.duplicateName', { name: clash.name }));
@@ -4628,14 +4888,35 @@ Object.assign(window.Views, {
             const dateEl = document.getElementById('edit-acc-date');
             const obDate = dDate || dateEl.defaultValue;
             const obTouched = !!currentOb || absOb !== 0 || obDate !== dateEl.defaultValue;
-            window.Store.dispatch('UPDATE_ACCOUNT', { 
-              id: account.id, 
-              name, 
+            // 1.0.3 (BUG-137): a later opening date silently dropped every
+            // earlier row from balances, budgets and charts (and History).
+            // Only rows NEWLY left out count, so a rename never asks.
+            if (obTouched && !opts.skipOpening) {
+              const imp = window.Store.openingDateImpact(account.id, obDate);
+              if (imp.count > 0) {
+                const ODS = window.Components.OpeningDateSheet;
+                const amount = (imp.net > 0 ? '+' : '') + window.Store.formatCurrency(imp.net, account.currency);
+                ODS.show({
+                  title: window.I18n.t('openingDate.accountTitle'),
+                  bodyHtml: [window.I18n.t('openingDate.accountBody', { count: imp.count, amount: esc(amount), date: esc(ODS.fmtDate(obDate)) })],
+                  primaryHtml: window.I18n.t('openingDate.useEarliest', { date: esc(ODS.fmtDate(imp.earliest)) }),
+                  onPrimary: () => { dateEl.value = imp.earliest; saveAccount({ skipOpening: true }); },
+                  anywayHtml: window.I18n.t('openingDate.changeAnyway'),
+                  onAnyway: () => saveAccount({ skipOpening: true })
+                });
+                return;
+              }
+            }
+            const ccyValue = document.getElementById('edit-acc-currency').value;
+            window.Store.dispatch('UPDATE_ACCOUNT', {
+              id: account.id,
+              name,
               ...(obTouched ? { openingBalance: ob, openingDate: obDate } : {}),
               icon: selectedIcon,
               color: selectedColor,
               type: type,
-              currency: document.getElementById('edit-acc-currency').value // v1.02
+              // v1.02; 1.0.3 (BUG-154): sent only when it changed
+              ...(ccyValue !== account.currency ? { currency: ccyValue } : {})
             });
             if (makeDefault) {
               window.Store.dispatch('SET_DEFAULT_ACCOUNT', account.id);
@@ -4664,7 +4945,8 @@ Object.assign(window.Views, {
             }
           }
           leaveTo('#dashboard'); // 1.0.2 (BUG-87): Back never reopens the account form
-        });
+        };
+        btnSave.addEventListener('click', () => saveAccount());
       }
 
       const btnDelete = document.getElementById('btn-edit-acc-delete');
@@ -4742,6 +5024,21 @@ Object.assign(window.Views, {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     },
 
+    // 1.0.3 (BUG-145): money fields are text inputs read by Store.parseAmount,
+    // so a prefill is the plain cents-rounded figure ('12345.6'), never a
+    // locale format the reader could take for grouping.
+    _moneyDraft(x) {
+      return String(Math.round(x * 100) / 100);
+    },
+
+    // 1.0.3 (BUG-145, BUG-71): a rate is a plain percent with a decimal comma
+    // or point and an optional %; no grouping, no sign. Anything else, blank
+    // included, is NaN, so the engine reports E_RATE instead of a 0% loan.
+    parseRate(raw) {
+      const s = String(raw == null ? '' : raw).trim().replace(/\s*%$/, '');
+      return /^\d+([.,]\d+)?$/.test(s) ? Number(s.replace(',', '.')) : NaN;
+    },
+
     newDraft(type, loan) {
       if (loan && loan.config) {
         const c = loan.config;
@@ -4749,8 +5046,8 @@ Object.assign(window.Views, {
           key: 'id:' + loan.id,
           editingLoanId: loan.id,
           type: this.TYPES[c.type] ? c.type : 'personal',
-          principal: c.principal != null ? String(c.principal) : '',
-          downPayment: c.downPayment ? String(c.downPayment) : '',
+          principal: c.principal != null ? this._moneyDraft(c.principal) : '', // 1.0.3 (BUG-145)
+          downPayment: c.downPayment ? this._moneyDraft(c.downPayment) : '',
           duration: c.duration != null ? String(c.duration) : '',
           durationUnit: c.durationUnit || 'years',
           annualRate: c.annualRate != null ? String(c.annualRate) : '',
@@ -4887,15 +5184,21 @@ Object.assign(window.Views, {
       });
     },
 
+    // 1.0.3 (BUG-145, BUG-71): amounts through Store.parseAmount (Italian
+    // '250.000' is 250000, not 250). Blank money is 0 (the engine's "greater
+    // than zero"); an unreadable amount stays NaN and engineError explains the
+    // format. A decimal duration and a blank rate reach the engine as typed,
+    // so E_DURATION / E_RATE fire instead of a truncated or 0% loan.
     buildConfig(d) {
-      const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+      const money = (v) => { const n = window.Store.parseAmount(v); return n === null ? 0 : n; };
+      const dur = String(d.duration == null ? '' : d.duration).trim();
       return {
         type: d.type,
-        principal: num(d.principal),
-        downPayment: d.type === 'mortgage' ? num(d.downPayment) : 0,
-        duration: parseInt(d.duration, 10) || 0,
+        principal: money(d.principal),
+        downPayment: d.type === 'mortgage' ? money(d.downPayment) : 0,
+        duration: dur === '' ? 0 : Number(dur),
         durationUnit: d.durationUnit,
-        annualRate: num(d.annualRate),
+        annualRate: this.parseRate(d.annualRate),
         firstPaymentDate: d.firstPaymentDate,
         amortization: d.amortization,
         firstInstallmentInterestOnly: d.firstInstallmentInterestOnly,
@@ -5036,6 +5339,10 @@ Object.assign(window.Views, {
         ? window.I18n.t(editingLoan && editingLoan.kind === 'active' ? 'debt.editLoan' : 'debt.editSimulation')
         : window.I18n.t(S.TYPES[d.type].label);
 
+      // 1.0.3 (BUG-145): amounts and the rate are decimal TEXT inputs (never
+      // type="number" for money: it rejects '250.000' / '3,2' per WebView
+      // locale and hands back ''). The draft holds what was typed, so every
+      // value is escaped back into its attribute.
       return `
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
@@ -5046,19 +5353,19 @@ Object.assign(window.Views, {
           <div class="amount-input-group">
             <span style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol()}</span>
             <label for="dsim-principal" class="visually-hidden">${window.I18n.t('debt.loanAmount')}</label>
-            <input type="number" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" step="0.01" inputmode="decimal" value="${d.principal}" style="width: auto; max-width: 220px;">
+            <input type="text" id="dsim-principal" class="amount-input text-expense" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.principal)}" style="width: auto; max-width: 220px;">
           </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
             ${d.type === 'mortgage' ? `
               <div class="form-group">
                 <label class="form-label" for="dsim-down">${window.I18n.t('debt.downPayment')} <span id="dsim-down-pct" style="color: var(--text-tertiary); font-weight: 500;"></span></label>
-                <input type="number" id="dsim-down" class="form-control" placeholder="0.00" min="0" step="0.01" inputmode="decimal" value="${d.downPayment}">
+                <input type="text" id="dsim-down" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.downPayment)}">
               </div>` : ''}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group">
                 <label class="form-label" for="dsim-duration">${window.I18n.t('debt.durationLabel')}</label>
-                <input type="number" id="dsim-duration" class="form-control" placeholder="${window.I18n.t('debt.durationPlaceholder')}" step="1" inputmode="numeric" value="${d.duration}">
+                <input type="number" id="dsim-duration" class="form-control" placeholder="${window.I18n.t('debt.durationPlaceholder')}" step="1" inputmode="numeric" value="${escapeAttr(d.duration)}">
               </div>
               <div class="form-group">
                 <label class="form-label" for="dsim-duration-unit">${window.I18n.t('debt.unit')}</label>
@@ -5071,11 +5378,11 @@ Object.assign(window.Views, {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="dsim-rate">${window.I18n.t('debt.annualRate')}</label>
-                <input type="number" id="dsim-rate" class="form-control" placeholder="${window.I18n.t('debt.ratePlaceholder')}" step="0.01" inputmode="decimal" value="${d.annualRate}">
+                <input type="text" id="dsim-rate" class="form-control" placeholder="${window.I18n.t('debt.ratePlaceholder')}" inputmode="decimal" autocomplete="off" value="${escapeAttr(d.annualRate)}">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="dsim-first-date">${window.I18n.t('debt.firstPayment')}</label>
-                <input type="date" id="dsim-first-date" class="form-control" value="${d.firstPaymentDate}">
+                <input type="date" id="dsim-first-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}">
               </div>
             </div>
           </div>
@@ -5134,6 +5441,17 @@ Object.assign(window.Views, {
     // E_CONFIG / E_AMORTIZATION / E_INTERNAL and non-engine errors fall back to
     // the generic 'debt.checkInputs' — the raw message is never shown.
     engineError(e, config) {
+      // 1.0.3 (BUG-145): an amount Store.parseAmount could not read is NaN in
+      // the config. Say how to write one, on its own field — before the
+      // E_DOWNPAYMENT remap below, which would blame the amount for a NaN
+      // (falsy) down payment.
+      if (config) {
+        for (const [k, f] of [['principal', 'dsim-principal'], ['downPayment', 'dsim-down']]) {
+          if (Number.isNaN(config[k])) {
+            return { message: window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }), field: f, details: false };
+          }
+        }
+      }
       let code = e && e.name === 'LoanEngineError' ? e.code : null;
       // loan-engine.js reuses E_DOWNPAYMENT for "financed principal < 0.01";
       // with no down payment entered it is the AMOUNT that is wrong (and a
@@ -5160,8 +5478,9 @@ Object.assign(window.Views, {
       const updateDownPct = () => {
         const pctEl = $('dsim-down-pct');
         if (!pctEl) return;
-        const p = parseFloat(d.principal), dp = parseFloat(d.downPayment);
-        pctEl.textContent = p > 0 && dp > 0 ? `(${window.Store.formatPercent(dp / p * 100, { digits: 1 })})` : ''; // 1.0.1 (BUG-09)
+        // 1.0.3 (BUG-145): read like the simulation will (null/NaN → no hint)
+        const p = window.Store.parseAmount(d.principal), dp = window.Store.parseAmount(d.downPayment);
+        pctEl.textContent = Number.isFinite(p) && Number.isFinite(dp) && p > 0 && dp > 0 ?`(${window.Store.formatPercent(dp / p * 100, { digits: 1 })})` : ''; // 1.0.1 (BUG-09)
       };
       const bind = (id, prop, evt = 'input') => {
         const el = $(id);
@@ -5248,18 +5567,31 @@ Object.assign(window.Views, {
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
       };
 
+      // 1.0.3 (BUG-118): a sheet that rejects its input says why, under the
+      // first faulty field, instead of silently staying open. Each save starts
+      // from a clean sheet. Amounts are text read by Store.parseAmount and the
+      // rate by parseRate, like the main form (BUG-145).
+      const sheetEl = (id) => document.getElementById(id);
+      const sheetReject = (id, key, params) => {
+        showFieldError(sheetEl(id), window.I18n.t(key, params), { focus: true });
+      };
+      const sheetStart = () => clearFieldErrors(sheetEl('active-modal'));
+      const amountInvalid = () => ({ example: window.Store.amountExample() });
+
       const openAddModal = (kind) => {
         if (kind === 'rate') {
           window.Components.Modal.show({
             title: window.I18n.t('debt.addRateChangeTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-rc-rate">${window.I18n.t('debt.newRate')}</label><input type="number" id="dsim-rc-rate" class="form-control" step="0.01" inputmode="decimal" placeholder="${window.I18n.t('debt.newRatePlaceholder')}"></div>
-              <div class="form-group"><label class="form-label" for="dsim-rc-date">${window.I18n.t('debt.effectiveFrom')}</label><input type="date" id="dsim-rc-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+              <div class="form-group"><label class="form-label" for="dsim-rc-rate">${window.I18n.t('debt.newRate')}</label><input type="text" id="dsim-rc-rate" class="form-control" inputmode="decimal" autocomplete="off" placeholder="${window.I18n.t('debt.newRatePlaceholder')}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-rc-date">${window.I18n.t('debt.effectiveFrom')}</label><input type="date" id="dsim-rc-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const rate = parseFloat(document.getElementById('dsim-rc-rate').value);
-              const date = document.getElementById('dsim-rc-date').value;
-              if (isNaN(rate) || rate < 0 || rate >= 100 || !date) return;
+              sheetStart();
+              const rate = S.parseRate(sheetEl('dsim-rc-rate').value);
+              const date = sheetEl('dsim-rc-date').value;
+              if (Number.isNaN(rate) || rate >= 100) return sheetReject('dsim-rc-rate', 'debt.err.rate');
+              if (!date) return sheetReject('dsim-rc-date', 'form.dateRequired');
               d.rateChanges.push({ annualRate: rate, effectiveFrom: date });
               close();
               renderLists();
@@ -5269,13 +5601,13 @@ Object.assign(window.Views, {
           window.Components.Modal.show({
             title: window.I18n.t('debt.addEarlyRepaymentTitle'),
             content: `
-              <div class="form-group"><label class="form-label" for="dsim-er-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-er-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-amount">${window.I18n.t('form.amount')}</label><input type="text" id="dsim-er-amount" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
               <div class="form-group"><label class="form-label" for="dsim-er-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-er-freq" class="form-control" style="appearance: none;">
                   <option value="once">${window.I18n.t('debt.freqOnce')}</option>
                   <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group"><label class="form-label" for="dsim-er-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-er-date" class="form-control" value="${d.firstPaymentDate}"></div>
+              <div class="form-group"><label class="form-label" for="dsim-er-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-er-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>
               <div class="form-group" id="dsim-er-end-group" style="display: none;"><label class="form-label" for="dsim-er-end">${window.I18n.t('debt.untilOptional')}</label><input type="date" id="dsim-er-end" class="form-control"></div>
               <div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-er-mode">${window.I18n.t('debt.repaymentType')}</label>
                 <select id="dsim-er-mode" class="form-control" style="appearance: none;">
@@ -5284,12 +5616,15 @@ Object.assign(window.Views, {
                 </select></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const amount = parseFloat(document.getElementById('dsim-er-amount').value);
-              const frequency = document.getElementById('dsim-er-freq').value;
-              const date = document.getElementById('dsim-er-date').value;
-              const endDate = document.getElementById('dsim-er-end').value || null;
-              const mode = document.getElementById('dsim-er-mode').value;
-              if (isNaN(amount) || amount <= 0 || !date) return;
+              sheetStart();
+              const amount = window.Store.parseAmount(sheetEl('dsim-er-amount').value);
+              const frequency = sheetEl('dsim-er-freq').value;
+              const date = sheetEl('dsim-er-date').value;
+              const endDate = sheetEl('dsim-er-end').value || null;
+              const mode = sheetEl('dsim-er-mode').value;
+              if (Number.isNaN(amount)) return sheetReject('dsim-er-amount', 'form.amountInvalid', amountInvalid());
+              if (amount === null || amount <= 0) return sheetReject('dsim-er-amount', 'form.amountRequired');
+              if (!date) return sheetReject('dsim-er-date', 'form.dateRequired');
               const er = { amount, frequency, date, mode };
               if (frequency === 'monthly' && endDate) er.endDate = endDate;
               d.earlyRepayments.push(er);
@@ -5308,20 +5643,23 @@ Object.assign(window.Views, {
             title: window.I18n.t('debt.addExtraCostTitle'),
             content: `
               <div class="form-group"><label class="form-label" for="dsim-ex-name">${window.I18n.t('common.name')}</label><input type="text" id="dsim-ex-name" class="form-control" placeholder="${window.I18n.t('debt.insurancePlaceholder')}"></div>
-              <div class="form-group"><label class="form-label" for="dsim-ex-amount">${window.I18n.t('form.amount')}</label><input type="number" id="dsim-ex-amount" class="form-control" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label" for="dsim-ex-amount">${window.I18n.t('form.amount')}</label><input type="text" id="dsim-ex-amount" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
               <div class="form-group"><label class="form-label" for="dsim-ex-freq">${window.I18n.t('debt.frequency')}</label>
                 <select id="dsim-ex-freq" class="form-control" style="appearance: none;">
                   <option value="once">${window.I18n.t('debt.freqOnce')}</option>
                   <option value="monthly">${window.I18n.t('debt.freqMonthly')}</option>
                 </select></div>
-              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-ex-date" class="form-control" value="${d.firstPaymentDate}"></div>`,
+              <div class="form-group" id="dsim-ex-date-group" style="margin-bottom: 0;"><label class="form-label" for="dsim-ex-date">${window.I18n.t('debt.paymentDate')}</label><input type="date" id="dsim-ex-date" class="form-control" value="${escapeAttr(d.firstPaymentDate)}"></div>`,
             saveText: window.I18n.t('common.add'),
             onSave: (close) => {
-              const name = document.getElementById('dsim-ex-name').value.trim();
-              const amount = parseFloat(document.getElementById('dsim-ex-amount').value);
-              const frequency = document.getElementById('dsim-ex-freq').value;
-              const date = document.getElementById('dsim-ex-date').value;
-              if (!name || isNaN(amount) || amount < 0) return;
+              sheetStart();
+              const name = sheetEl('dsim-ex-name').value.trim();
+              const amount = window.Store.parseAmount(sheetEl('dsim-ex-amount').value);
+              const frequency = sheetEl('dsim-ex-freq').value;
+              const date = sheetEl('dsim-ex-date').value;
+              if (!name) return sheetReject('dsim-ex-name', 'debt.err.costName');
+              if (Number.isNaN(amount)) return sheetReject('dsim-ex-amount', 'form.amountInvalid', amountInvalid());
+              if (amount === null || amount < 0) return sheetReject('dsim-ex-amount', 'debt.err.costAmount');
               const ex = { name, amount, frequency };
               if (frequency === 'once' && date) ex.date = date;
               d.additionalExpenses.push(ex);
@@ -5743,8 +6081,10 @@ Object.assign(window.Views, {
           content: `<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="loan-name-input">${window.I18n.t('common.name')}</label><input type="text" id="loan-name-input" class="form-control" placeholder="${window.I18n.t('debt.namePlaceholder')}" value="${S.esc(defaultName || '')}"></div>`,
           saveText: window.I18n.t('common.save'),
           onSave: (close) => {
-            const v = document.getElementById('loan-name-input').value.trim();
-            if (!v) return;
+            const input = document.getElementById('loan-name-input');
+            const v = input.value.trim();
+            // 1.0.3 (BUG-118): say why the sheet stays open
+            if (!v) { showFieldError(input, window.I18n.t('debt.err.loanName')); return; }
             close();
             cb(v);
           }

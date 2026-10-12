@@ -205,7 +205,8 @@ describe('LoanEngine error mapping (1.0.1 BUG-10)', () => {
     it('a negative mortgage down payment marks #dsim-down, not the valid Loan Amount', () => {
       const host = mount('#debt-sim?type=mortgage');
       const down = q(host, 'dsim-down');
-      expect(down.getAttribute('min')).toBe('0');
+      // 1.0.3 (BUG-145): a decimal text input (no min); the engine owns the check
+      expect(down.getAttribute('type')).toBe('text');
       const S = global.window.Views._DebtShared;
       S.draft.principal = '200000';
       S.draft.downPayment = '-5000';
@@ -237,6 +238,7 @@ describe('LoanEngine error mapping (1.0.1 BUG-10)', () => {
       const S = global.window.Views._DebtShared;
       S.draft.principal = '1000';
       S.draft.duration = '2';
+      S.draft.annualRate = '5'; // 1.0.3 (BUG-71): a blank rate is E_RATE now
       S.draft.additionalExpenses.push({ name: 'Fee', amount: -5, frequency: 'once' });
       const body = q(host, 'dsim-details-body');
       expect(body.style.display).toBe('none');

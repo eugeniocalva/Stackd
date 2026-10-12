@@ -83,10 +83,6 @@ window.I18n.dicts.fr = {
   'history.bulkRecurring.body': 'Certaines opérations sélectionnées appartiennent à une série récurrente. Comment voulez-vous procéder ?',
   'history.bulkRecurring.onlySelected': 'Supprimer UNIQUEMENT la sélection ({count} éléments)',
   'history.bulkRecurring.withFuture': 'Supprimer la sélection ET toutes les opérations futures liées',
-  'history.recurringDelete.title': 'Supprimer une opération récurrente',
-  'history.recurringDelete.body': 'Cet élément fait partie d’une série récurrente. Comment voulez-vous procéder ?',
-  'history.recurringDelete.onlyThis': 'Supprimer UNIQUEMENT cet élément',
-  'history.recurringDelete.withFuture': 'Supprimer celui-ci et tous les éléments FUTURS',
   'history.deleteOne.title': "Supprimer l'opération",
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.fr = {
   'recUpdate.allSeries': 'Toutes les opérations de la série',
   'recUpdate.futureSub': 'Appliquer le changement à partir d’ici',
   'recUpdate.allSub': 'Mettre aussi à jour les opérations passées (leurs dates ne bougent jamais)',
-  'recUpdate.futureSubStop': 'Arrêter la série : les opérations planifiées à venir sont supprimées',
+  'recUpdate.futureSubStop': 'Arrêter la série : les opérations après aujourd’hui sont supprimées, les précédentes restent',
   'recUpdate.allSubStop': 'Détacher aussi les opérations passées (elles restent dans votre historique)',
   'recUpdate.futureSubDate': 'Les opérations à venir passent au nouveau jour',
   'recUpdate.allSubDate': 'Les dates passées ne bougent jamais ; les suivantes passent au nouveau jour',
@@ -1362,4 +1358,26 @@ window.I18n.dicts.fr = {
   'others.importCreatedAccounts.other': "{count} comptes manquants créés automatiquement.",
   'others.importCreatedCategories.one': "{count} catégorie manquante créée automatiquement.",
   'others.importCreatedCategories.other': "{count} catégories manquantes créées automatiquement.",
+  // 1.0.3 U4
+  'debt.err.costName': "Saisissez un nom pour ce coût.",
+  'debt.err.costAmount': "Saisissez un montant de 0 ou plus.",
+  'debt.err.loanName': "Saisissez un nom pour ce prêt.",
+  // 1.0.3 U3
+  'budget.appliesFrom': "La nouvelle limite s'applique à partir de {month}. Les mois précédents gardent la leur.",
+  'budget.endBeforeStart': 'Le mois de fin ne peut pas précéder le mois de début.',
+  'budget.removeConfirm.title': 'Supprimer le budget {name} ?',
+  'budget.removeConfirm.body': 'Sa limite, ses mois et le report cumulatif seront effacés.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Les opérations que vous avez supprimées de cette série reviennent avec le nouveau calendrier.',
+  // 1.0.3 U2
+  'openingDate.txTitle': "Avant le solde initial",
+  'openingDate.txBody': "{account} est ouvert le {date}. Les opérations antérieures sont conservées mais ne comptent pas dans les soldes, budgets ou graphiques.",
+  'openingDate.move': "Déplacer la date d'ouverture au {date}",
+  'openingDate.saveAnyway': "Enregistrer quand même",
+  'openingDate.accountTitle': "Opérations avant cette date",
+  'openingDate.accountBody.one': "{count} opération ({amount}) est datée d'avant le {date}. Elle restera dans l'historique mais ne comptera plus dans les soldes, budgets ou graphiques.",
+  'openingDate.accountBody.other': "{count} opérations ({amount}) sont datées d'avant le {date}. Elles resteront dans l'historique mais ne compteront plus dans les soldes, budgets ou graphiques.",
+  'openingDate.useEarliest': "Ouvrir le {date} à la place",
+  'openingDate.changeAnyway': "Modifier quand même",
+  'history.beforeOpening': "Avant le solde initial · non compté",
 };

@@ -375,7 +375,7 @@ describe('budgets widget', () => {
     expect(html).not.toContain('>100%</span>');
   });
 
-  it('shows a live cumulative budget deep in the red as a 0%-wide red bar, not dropped', () => {
+  it('shows a live cumulative budget deep in the red as a full red bar, not dropped', () => {
     // startDate 2 months back, 100/month, 500 overspend in month one:
     // carryover = (100-500) + (100-0) = -300, finalLimit = -200.
     budget('cat_groceries', 100, { isCumulative: true, startDate: monthDay(2, 1).slice(0, 7) });
@@ -383,11 +383,49 @@ describe('budgets widget', () => {
     spend('cat_groceries', 10, monthDay(0, 5));
     const { html } = renderOne('budgets', 'large', {});
     expect(html).toContain('Groceries');           // allocated>0 keeps it listed
-    expect(html).toContain('width: 0%');           // finalLimit<=0 forces 0 width
-    expect(html).toContain('color: var(--color-expense)'); // but red — over budget
-    // 1.0.1 (BUG-13): no meaningful percentage of a non-positive limit.
-    expect(html).toContain('>—</span>');
+    // 1.0.3 (BUG-164): over a non-positive limit the bar is full, not empty
+    expect(html).toContain('width: 100%');
+    expect(html).not.toContain('width: 0%');
+    expect(html).toContain('color: var(--color-expense)'); // red — over budget
+    // 1.0.1 (BUG-13): no meaningful percentage of a non-positive limit;
+    // 1.0.3 (BUG-164): the label says how much over instead of '—'.
+    expect(html).toContain('>Over by $210.00</span>');
+    expect(html).not.toContain('>—</span>');
     expect(html).not.toContain('>0%</span>');
+  });
+
+  it('the small card over a non-positive total limit says how much over (1.0.3 BUG-164)', () => {
+    budget('cat_groceries', 100, { isCumulative: true, startDate: monthDay(2, 1).slice(0, 7) });
+    spend('cat_groceries', 500, monthDay(2, 10));
+    spend('cat_groceries', 10, monthDay(0, 5));
+    const { instance, html } = renderOne('budgets', 'small', {});
+    expect(html).toContain('Over by $210.00');
+    expect(html).not.toContain('>—<');
+    const canvas = { id: `widget-canvas-${instance.id}` };
+    const card = { addEventListener: () => {}, querySelector: () => canvas };
+    W().registry.budgets.attach(instance, card, Store().getState());
+    const ds = global.window.Chart._created[0].config.data.datasets[0];
+    expect(ds.backgroundColor[0]).toBe('#ef4444'); // red ring
+  });
+
+  it('spending exactly the limit (float dust) is not over (1.0.3 BUG-160)', () => {
+    budget('cat_groceries', 0.3);
+    spend('cat_groceries', 0.1, monthDay(0, 5));
+    spend('cat_groceries', 0.2, monthDay(0, 6)); // 0.1 + 0.2 = 0.30000000000000004
+    const { instance } = renderOne('budgets', 'small', {});
+    const canvas = { id: `widget-canvas-${instance.id}` };
+    const card = { addEventListener: () => {}, querySelector: () => canvas };
+    W().registry.budgets.attach(instance, card, Store().getState());
+    const ds = global.window.Chart._created[0].config.data.datasets[0];
+    expect(ds.backgroundColor[0]).not.toBe('#ef4444');
+  });
+
+  it("reads today's month's limit from the limit history (1.0.3 BUG-140)", () => {
+    budget('cat_groceries', 300);
+    budget('cat_groceries', 400, { effectiveFrom: '2026-07' }); // from next month
+    expect(renderOne('budgets', 'large', {}).html).toContain('of $300.00 budgeted');
+    budget('cat_groceries', 400, { effectiveFrom: '2026-06' }); // from this month
+    expect(renderOne('budgets', 'large', {}).html).toContain('of $400.00 budgeted');
   });
 
   it('includes cumulative rollover in the effective limit', () => {

@@ -87,10 +87,6 @@ window.I18n.dicts.en = {
   'history.bulkRecurring.body': 'Some of the selected transactions belong to a recurring series. How would you like to proceed?',
   'history.bulkRecurring.onlySelected': 'Delete ONLY selected ({count} items)',
   'history.bulkRecurring.withFuture': 'Delete selected AND all linked future transactions',
-  'history.recurringDelete.title': 'Delete Recurring Item',
-  'history.recurringDelete.body': 'This item is part of a recurring series. How would you like to proceed?',
-  'history.recurringDelete.onlyThis': 'Delete ONLY this item',
-  'history.recurringDelete.withFuture': 'Delete this and all FUTURE items',
   'history.deleteOne.title': 'Delete Transaction',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -630,7 +626,7 @@ window.I18n.dicts.en = {
   'recUpdate.allSeries': 'All transactions in the series',
   'recUpdate.futureSub': 'Apply the change from this point on',
   'recUpdate.allSub': 'Also update past transactions (their dates never move)',
-  'recUpdate.futureSubStop': 'Stop the series: upcoming scheduled transactions are removed',
+  'recUpdate.futureSubStop': 'Stop the series: payments after today are removed; earlier ones stay',
   'recUpdate.allSubStop': 'Also unlink past transactions (they stay in your history)',
   'recUpdate.futureSubDate': 'Upcoming transactions shift to the new day',
   'recUpdate.allSubDate': 'Past dates never move; upcoming shift to the new day',
@@ -1383,4 +1379,26 @@ window.I18n.dicts.en = {
   'others.importCreatedAccounts.other': "Created {count} missing accounts automatically.",
   'others.importCreatedCategories.one': "Created {count} missing category automatically.",
   'others.importCreatedCategories.other': "Created {count} missing categories automatically.",
+  // 1.0.3 U4
+  'debt.err.costName': "Enter a name for this cost.",
+  'debt.err.costAmount': "Enter an amount of 0 or more.",
+  'debt.err.loanName': "Enter a name for this loan.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'The new limit applies from {month} on. Earlier months keep theirs.',
+  'budget.endBeforeStart': "End month can't be before the start month.",
+  'budget.removeConfirm.title': 'Remove the {name} budget?',
+  'budget.removeConfirm.body': 'Its limit, months and Cumulative Rollover setting will be cleared.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Payments you deleted from this series come back with the new schedule.',
+  // 1.0.3 U2
+  'openingDate.txTitle': "Before the opening balance",
+  'openingDate.txBody': "{account} opens on {date}. Earlier entries are kept but don't count in balances, budgets or charts.",
+  'openingDate.move': "Move opening date to {date}",
+  'openingDate.saveAnyway': "Save anyway",
+  'openingDate.accountTitle': "Entries before this date",
+  'openingDate.accountBody.one': "{count} entry ({amount}) is dated before {date}. It will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.accountBody.other': "{count} entries ({amount}) are dated before {date}. They will stay in History but no longer count in balances, budgets or charts.",
+  'openingDate.useEarliest': "Open on {date} instead",
+  'openingDate.changeAnyway': "Change anyway",
+  'history.beforeOpening': "Before opening balance · not counted",
 };

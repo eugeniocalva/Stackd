@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -94,6 +94,17 @@ describe('Recurring transfers and the generation engine', () => {
     acctA = Store.getState().accounts[0].id;
     acctB = Store.getState().accounts[1].id;
   });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // 1.0.3 (BUG-136): a stop keeps the payments dated up to today — the stop
+  // cases below run on 6 Oct 2026 (the tapped pair is 15 Oct)
+  const pinToday = () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 6, 12, 0, 0));
+  };
 
   // ── 1. ADD_TRANSFER materialization & one-generator-per-pair invariant ──
   it('materializes a monthly transfer series: N pairs, both legs per pair, exactly one generator overall', () => {
@@ -209,6 +220,7 @@ describe('Recurring transfers and the generation engine', () => {
 
   // ── 6. recurrence:null with future scope (stop series) ──
   it('recurrence:null + future scope removes future pairs entirely (both legs) and leaves no generator', () => {
+    pinToday();
     const sid = createMonthlyTransfer(); // Aug..Jan
     const oct = series(sid).find(t => t.date === '2026-10-15' && t.type === 'expense');
     const octRef = oct.transferRef;
@@ -236,6 +248,7 @@ describe('Recurring transfers and the generation engine', () => {
 
   // ── 7. recurrence:null with all scope (unlink everything) ──
   it('recurrence:null + all scope unlinks past pairs and removes future pairs', () => {
+    pinToday();
     const sid = createMonthlyTransfer();
     const oct = series(sid).find(t => t.date === '2026-10-15' && t.type === 'expense');
     Store.dispatch('UPDATE_TRANSFER', transferEditPayload(oct, { recurrence: null, updateAll: true }));

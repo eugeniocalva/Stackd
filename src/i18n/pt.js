@@ -83,10 +83,6 @@ window.I18n.dicts.pt = {
   'history.bulkRecurring.body': 'Alguns movimentos selecionados pertencem a uma série recorrente. Como quer continuar?',
   'history.bulkRecurring.onlySelected': 'Eliminar APENAS os selecionados ({count} itens)',
   'history.bulkRecurring.withFuture': 'Eliminar os selecionados E todos os movimentos futuros associados',
-  'history.recurringDelete.title': 'Eliminar movimento recorrente',
-  'history.recurringDelete.body': 'Este item faz parte de uma série recorrente. Como quer continuar?',
-  'history.recurringDelete.onlyThis': 'Eliminar APENAS este item',
-  'history.recurringDelete.withFuture': 'Eliminar este e todos os itens FUTUROS',
   'history.deleteOne.title': 'Eliminar movimento',
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
@@ -617,7 +613,7 @@ window.I18n.dicts.pt = {
   'recUpdate.allSeries': 'Todos os movimentos da série',
   'recUpdate.futureSub': 'Aplicar a alteração a partir daqui',
   'recUpdate.allSub': 'Atualizar também os movimentos passados (as suas datas nunca mudam)',
-  'recUpdate.futureSubStop': 'Parar a série: os movimentos agendados futuros são removidos',
+  'recUpdate.futureSubStop': 'Parar a série: os movimentos depois de hoje são removidos; os anteriores ficam',
   'recUpdate.allSubStop': 'Desassociar também os movimentos passados (permanecem no histórico)',
   'recUpdate.futureSubDate': 'Os movimentos futuros passam para o novo dia',
   'recUpdate.allSubDate': 'As datas passadas nunca mudam; as futuras passam para o novo dia',
@@ -1362,4 +1358,26 @@ window.I18n.dicts.pt = {
   'others.importCreatedAccounts.other': "Criadas automaticamente {count} contas em falta.",
   'others.importCreatedCategories.one': "Criada automaticamente {count} categoria em falta.",
   'others.importCreatedCategories.other': "Criadas automaticamente {count} categorias em falta.",
+  // 1.0.3 U4
+  'debt.err.costName': "Introduza um nome para este custo.",
+  'debt.err.costAmount': "Introduza um montante igual ou superior a 0.",
+  'debt.err.loanName': "Introduza um nome para este empréstimo.",
+  // 1.0.3 U3
+  'budget.appliesFrom': 'O novo limite aplica-se a partir de {month}. Os meses anteriores mantêm o seu.',
+  'budget.endBeforeStart': 'O mês final não pode ser anterior ao mês inicial.',
+  'budget.removeConfirm.title': 'Remover o orçamento de {name}?',
+  'budget.removeConfirm.body': 'O limite, os meses e a transição cumulativa serão apagados.',
+  // 1.0.3 U1
+  'recUpdate.gapNote': 'Os movimentos que eliminou desta série voltam com o novo calendário.',
+  // 1.0.3 U2
+  'openingDate.txTitle': "Antes do saldo inicial",
+  'openingDate.txBody': "{account} abre a {date}. Os movimentos anteriores são mantidos, mas não contam nos saldos, orçamentos ou gráficos.",
+  'openingDate.move': "Mudar a data de abertura para {date}",
+  'openingDate.saveAnyway': "Guardar mesmo assim",
+  'openingDate.accountTitle': "Movimentos antes desta data",
+  'openingDate.accountBody.one': "{count} movimento ({amount}) tem data anterior a {date}. Continuará no histórico, mas deixará de contar nos saldos, orçamentos e gráficos.",
+  'openingDate.accountBody.other': "{count} movimentos ({amount}) têm data anterior a {date}. Continuarão no histórico, mas deixarão de contar nos saldos, orçamentos e gráficos.",
+  'openingDate.useEarliest': "Abrir a {date}",
+  'openingDate.changeAnyway': "Alterar mesmo assim",
+  'history.beforeOpening': "Antes do saldo inicial · não conta",
 };

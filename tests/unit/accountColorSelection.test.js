@@ -35,7 +35,13 @@ describe('Account Color Selection', () => {
         dispatch: vi.fn(),
         _isPositiveTx: () => true,
         // 1.0.2 (BUG-25/BUG-38): EditAccountView's opening-balance date default
-        _todayYMD: () => '2026-07-01'
+        _todayYMD: () => '2026-07-01',
+        // 1.0.3 (BUG-46/BUG-153/BUG-137): Opening Balance decimals, name keys
+        // and the opening-date check (nothing newly left out here)
+        currencyDigits: () => 2,
+        _collapseName: (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim(),
+        _nameKey: (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase(),
+        openingDateImpact: () => ({ count: 0, net: 0, earliest: null })
       },
       Router: {
         getParams: () => ({ id: 'acc1' }),

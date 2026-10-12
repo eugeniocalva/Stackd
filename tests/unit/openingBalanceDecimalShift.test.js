@@ -28,6 +28,8 @@ describe('Opening Balance Numeric Input & Decimal Shift', () => {
           defaultAccountId: ''
         }),
         getCurrencySymbol: () => '$',
+        // 1.0.3 (BUG-46): the Opening Balance field's decimals per currency
+        currencyDigits: () => 2,
         _isPositiveTx: () => true,
         // 1.0.2 (BUG-25/BUG-38): EditAccountView's opening-balance date default
         _todayYMD: () => '2026-07-01'
