@@ -44,7 +44,7 @@ during an incident.
 | The 15-minute monitoring cron | ~~built~~ **IN PLACE** — `[triggers]` in both envs |
 | `preflight --secrets` after a rotation (§3) | ~~built~~ **IN PLACE** — `broker/scripts/preflight.mjs` |
 | The end-to-end smoke (§7) | ~~built~~ **IN PLACE** — `broker/scripts/smoke.mjs` |
-| The Service status line to notify on (§6) | ~~built~~ **IN PLACE** — `StackdSite/support.html` |
+| The Service status line to notify on (§6) | ~~built~~ **IN PLACE** — `support.status` in `tools/site/strings/*.cjs`, generated into `StackdSite/support.html` and `<lang>/support.html` |
 | **The production Worker itself** | **MISSING** — `api.stackdplatform.com` does not answer at all. Every command below points there, so today they hang rather than fail |
 | **`EB_APP_ID` in `[env.production.vars]`** | **MISSING** — empty, so `deploy:production` is refused by its own preflight |
 | **`ALERT_WEBHOOK_URL`** | **UNKNOWN from here** — it is a secret; with it unset the cron only keeps counters and pages nobody |
@@ -240,8 +240,12 @@ If you are past 72 hours, notify anyway and state the reason for the delay.
 There is no push channel and no mailing list — by design, since the app has no
 accounts. So:
 
-1. Put it on the support page's **Service status** line
-   (`StackdSite/support.html`), which exists for this.
+1. Put it on the support page's **Service status** line, which exists for
+   this. The site is in five languages, so the line is `support.status.p` in
+   each of `tools/site/strings/{en,fr,it,es,pt}.cjs` in this repo: write the
+   notice in all five, run `node tools/site/pages.cjs`, then commit and push
+   the site repo (StackdSite) to `main`. Do not edit `support.html` by hand:
+   the next generator run overwrites it.
 2. Reply to anyone who writes to `hi@stackdplatform.com`.
 3. If bank re-linking is required, the app already shows a reconnect state,
    but say why in plain words on the status line.

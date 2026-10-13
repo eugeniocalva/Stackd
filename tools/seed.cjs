@@ -8,16 +8,24 @@
 //
 // Everything here is invented. Never seed a real bank name, IBAN or amount:
 // these images are published, and store review explicitly looks for it.
-const SEED = () => {
+//
+// `loc` (optional) localizes the example data, which is user data and so is
+// never translated by the app itself: loc.accounts maps the English account
+// names, loc.notes the English notes (an 'Invoice #' entry is a prefix).
+// The website's per-language shots pass it (tools/site/screens.cjs); the
+// store shots do not, so they keep the English names.
+const SEED = (loc) => {
   const S = window.Store; const st = () => S.getState();
+  const A = (n) => (loc && loc.accounts && loc.accounts[n]) || n;
+  const N = (n) => (loc && loc.notes && loc.notes[n]) || n;
   const pad = n => String(n).padStart(2, '0');
   const today = new Date(); const y = today.getFullYear(), m = today.getMonth();
   const dOf = (mo, day) => { const d = new Date(y, m + mo, day, 12); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
-  S.dispatch('ADD_ACCOUNT', { name: 'Main Bank', type: 'Bank', icon: 'landmark', openingBalance: 4200, openingDate: dOf(-6, 1) });
-  S.dispatch('ADD_ACCOUNT', { name: 'Revolut', type: 'Debit card', icon: 'credit-card', openingBalance: 860, openingDate: dOf(-6, 1) });
-  S.dispatch('ADD_ACCOUNT', { name: 'Cash', type: 'Cash', icon: 'wallet', openingBalance: 120, openingDate: dOf(-6, 1) });
-  S.dispatch('ADD_ACCOUNT', { name: 'Savings', type: 'Savings', icon: 'piggy-bank', openingBalance: 9500, openingDate: dOf(-6, 1) });
-  const byName = n => st().accounts.find(a => a.name === n).id;
+  S.dispatch('ADD_ACCOUNT', { name: A('Main Bank'), type: 'Bank', icon: 'landmark', openingBalance: 4200, openingDate: dOf(-6, 1) });
+  S.dispatch('ADD_ACCOUNT', { name: A('Revolut'), type: 'Debit card', icon: 'credit-card', openingBalance: 860, openingDate: dOf(-6, 1) });
+  S.dispatch('ADD_ACCOUNT', { name: A('Cash'), type: 'Cash', icon: 'wallet', openingBalance: 120, openingDate: dOf(-6, 1) });
+  S.dispatch('ADD_ACCOUNT', { name: A('Savings'), type: 'Savings', icon: 'piggy-bank', openingBalance: 9500, openingDate: dOf(-6, 1) });
+  const byName = n => st().accounts.find(a => a.name === A(n)).id;
   const bank = byName('Main Bank'), rev = byName('Revolut'), cash = byName('Cash'), sav = byName('Savings');
   const first = dOf(0, 1);
   // v1.15: budget startDate is a MONTH ("YYYY-MM"), which is what the app's
@@ -28,7 +36,7 @@ const SEED = () => {
   const firstMonth = first.slice(0, 7);
   [['cat_groceries', 320], ['cat_dining', 150], ['cat_shopping', 120], ['cat_transport', 60], ['cat_entertainment', 40], ['cat_health', 80]].forEach(([categoryId, amount]) =>
     S.dispatch('SAVE_BUDGET', { categoryId, amount, startDate: firstMonth, endDate: null, isCumulative: false }));
-  const add = (accountId, categoryId, type, amount, date, comment) => S.dispatch('ADD_TRANSACTION', { accountId, categoryId, type, amount, date, comment });
+  const add = (accountId, categoryId, type, amount, date, comment) => S.dispatch('ADD_TRANSACTION', { accountId, categoryId, type, amount, date, comment: N(comment) });
   for (let mo = -5; mo <= 0; mo++) {
     add(bank, 'cat_salary', 'income', 3250, dOf(mo, 1), 'Salary');
     add(bank, 'cat_rent', 'expense', 1150, dOf(mo, 3), 'Rent');
@@ -41,14 +49,14 @@ const SEED = () => {
       add(rev, 'cat_shopping', 'expense', 72, dOf(mo, 18), 'Clothes');
       add(cash, 'cat_dining', 'expense', 12.5, dOf(mo, 20), 'Coffee');
       add(bank, 'cat_health', 'expense', 45, dOf(mo, 22), 'Pharmacy');
-      add(bank, 'cat_freelance', 'income', 600, dOf(mo, 15), 'Invoice #' + (40 + mo));
-      S.dispatch('ADD_TRANSFER', { fromAccountId: bank, toAccountId: sav, amount: 400, date: dOf(mo, 2), comment: 'Monthly saving' });
+      add(bank, 'cat_freelance', 'income', 600, dOf(mo, 15), N('Invoice #') + (40 + mo));
+      S.dispatch('ADD_TRANSFER', { fromAccountId: bank, toAccountId: sav, amount: 400, date: dOf(mo, 2), comment: N('Monthly saving') });
     }
   }
   const lim = Math.min(today.getDate(), 27);
-  const cur = [['cat_groceries', 'expense', rev, 42.3, 4, 'Esselunga'], ['cat_transport', 'expense', rev, 39, 2, 'Monthly pass'], ['cat_dining', 'expense', cash, 9.8, 3, 'Coffee'], ['cat_entertainment', 'expense', rev, 15.99, 5, 'Streaming'], ['cat_groceries', 'expense', bank, 88.15, 6, 'Weekly shop'], ['cat_dining', 'expense', rev, 46, 8, 'Dinner out'], ['cat_shopping', 'expense', rev, 59.9, 10, 'Sneakers'], ['cat_health', 'expense', bank, 22, 12, 'Pharmacy'], ['cat_freelance', 'income', bank, 600, 15, 'Invoice #41']];
+  const cur = [['cat_groceries', 'expense', rev, 42.3, 4, 'Esselunga'], ['cat_transport', 'expense', rev, 39, 2, 'Monthly pass'], ['cat_dining', 'expense', cash, 9.8, 3, 'Coffee'], ['cat_entertainment', 'expense', rev, 15.99, 5, 'Streaming'], ['cat_groceries', 'expense', bank, 88.15, 6, 'Weekly shop'], ['cat_dining', 'expense', rev, 46, 8, 'Dinner out'], ['cat_shopping', 'expense', rev, 59.9, 10, 'Sneakers'], ['cat_health', 'expense', bank, 22, 12, 'Pharmacy'], ['cat_freelance', 'income', bank, 600, 15, N('Invoice #') + 41]];
   cur.forEach(([c, t, a, amt, day, cm]) => { if (day <= lim) add(a, c, t, amt, dOf(0, day), cm); });
-  S.dispatch('ADD_TRANSFER', { fromAccountId: bank, toAccountId: sav, amount: 400, date: dOf(0, Math.min(2, lim)), comment: 'Monthly saving' });
+  S.dispatch('ADD_TRANSFER', { fromAccountId: bank, toAccountId: sav, amount: 400, date: dOf(0, Math.min(2, lim)), comment: N('Monthly saving') });
   // A second widget so the widgets area shows more than one card.
   try { S.dispatch('ADD_HOME_WIDGET', { type: 'categories', size: 'large', config: {} }); } catch (e) { /* optional */ }
   try { S.dispatch('ADD_HOME_WIDGET', { type: 'incomeExpense', size: 'small', config: {} }); } catch (e) { /* optional */ }
