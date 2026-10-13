@@ -1,8 +1,8 @@
 # Website in five languages — plan
 
 Status: **built on branch `site-i18n` in both repos (2026-10-13)** — phases 2–5
-done and checked locally; translation review (step 11), the preview deploy
-(phase 6) and launch remain. See "As built" at the end.
+done; translations reviewed by the owner (no changes); preview deployed and
+verified (step 18). Owner test (step 19), merge and phase 7 remain. See "As built" at the end.
 
 Goal: every page of https://stackdplatform.com in the app's five languages
 (en, fr, it, es, pt), with a language menu on every page and an automatic
@@ -138,10 +138,14 @@ history with stray published tools.
   the string tables.
 - **Review aid:** `tools/site/review-sheet.cjs` writes a side-by-side HTML
   table of every string.
-- **Still to verify on the preview deploy (step 18):** that `functions/` and
-  `_routes.json` are not served, and whether Pages applies `_headers` to a
-  Function's pass-through response (the function sets the headers only when
-  missing, so either way they are present once).
+- **Preview verified (step 18, 2026-10-13, `site-i18n.stackd-site.pages.dev`):**
+  302 to `/<lang>/…` for it, fr-CH, es, pt-BR on all four root pages; 200
+  for English, German-then-English and no `Accept-Language`; same-origin
+  Referer → 200, external Referer → 302. `/functions/_middleware.js` and
+  `/_routes.json` → 404. Security headers present exactly once on the
+  function routes, the redirect (with `Cache-Control: no-store`) and static
+  pages. `/it/nope` serves the Italian 404. One pt-BR `/support` request
+  returned 404 during the rollout and did not reproduce on three retries.
 
 ## Out of scope, noted
 
