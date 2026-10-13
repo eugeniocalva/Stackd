@@ -1,8 +1,10 @@
 # Website in five languages — plan
 
 Status: **built on branch `site-i18n` in both repos (2026-10-13)** — phases 2–5
-done; translations reviewed by the owner (no changes); preview deployed and
-verified (step 18). Owner test (step 19), merge and phase 7 remain. See "As built" at the end.
+done; translations reviewed by the owner (no changes); preview verified
+(step 18) and tested by the owner (step 19). **Merged to `main` in both repos
+and live on stackdplatform.com since 2026-10-13**, re-verified on production.
+Remaining: phase 7 step 21 (owner resubmits the sitemap in Search Console). See "As built" at the end.
 
 Goal: every page of https://stackdplatform.com in the app's five languages
 (en, fr, it, es, pt), with a language menu on every page and an automatic
