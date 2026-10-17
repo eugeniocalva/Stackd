@@ -25,7 +25,7 @@ const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
-const { chromium } = require('playwright');
+const playwright = require('playwright');
 const sharp = require('sharp');
 const { SITE, LANGS, S, attr } = require('./layout.cjs');
 const { heroTitle } = require('./hero.cjs');
@@ -121,7 +121,13 @@ function serve() {
 // Chromium turns subpixel (LCD) text off wherever layers are composited, so
 // leaving it on would make a static frame differ from an animated one — and
 // LCD fringes are wrong in a video anyway.
-const launch = () => chromium.launch({ args: ['--force-color-profile=srgb', '--disable-gpu', '--disable-lcd-text', '--font-render-hinting=none'] });
+// --engine=webkit|firefox runs the --site checks in the other engines
+// (plan P3); frames and videos are always Chromium.
+const ENGINE = args.engine || 'chromium';
+if (!['chromium', 'webkit', 'firefox'].includes(ENGINE)) throw new Error(`unknown engine ${ENGINE}`);
+const launch = () => (ENGINE === 'chromium'
+  ? playwright.chromium.launch({ args: ['--force-color-profile=srgb', '--disable-gpu', '--disable-lcd-text', '--font-render-hinting=none'] })
+  : playwright[ENGINE].launch());
 
 // Runs in the page once it has loaded. Fails rather than render a frame with
 // a fallback font, and refuses any animation that is not the hero motion.
@@ -159,7 +165,7 @@ function variants(kind) {
       const [w, h] = format.split('x').map(Number);
       out.push({ kind, lang, theme, format, w, h, name: `scene-${lang}-${format}-${theme}`, path: `/__hero/scene?lang=${lang}&format=${format}` });
     } else for (const w of opt.widths) for (const dpr of opt.dprs || [WIDTHS[w][1]]) {
-      out.push({ kind, lang, theme, w, h: WIDTHS[w][0], dpr, name: `site-${lang}-${w}@${dpr}x-${theme}`, path: lang === 'en' ? '/' : `/${lang}/` });
+      out.push({ kind, lang, theme, w, h: WIDTHS[w][0], dpr, name: `site-${lang}-${w}@${dpr}x-${theme}${ENGINE === 'chromium' ? '' : `-${ENGINE}`}`, path: lang === 'en' ? '/' : `/${lang}/` });
     }
   }
   return out;
@@ -212,7 +218,7 @@ async function sheets(browser, base, kind) {
       cells.push({ t, src: `data:image/png;base64,${thumb.toString('base64')}` });
     }
     await ctx.close();
-    const key = kind === 'scene' ? `scene-${v.format}-${v.theme}` : `site-${v.lang}-${v.theme}`;
+    const key = (kind === 'scene' ? `scene-${v.format}-${v.theme}` : `site-${v.lang}-${v.theme}`) + (ENGINE === 'chromium' ? '' : `-${ENGINE}`);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ label: kind === 'scene' ? v.lang : `${v.w}px`, cells, end: info.end, n: info.animations });
     console.log(`  ${v.name}: ${info.animations} animations, rest state at ${info.end.toFixed(2)} s`);
@@ -335,13 +341,9 @@ function titleLayout() {
 // The real home pages (plan §6), per language × width × theme × density:
 // key frames identical across two browsers, the rest state equal to the
 // reduced-motion render, every word inside the viewport, one level-1 heading
-// named by the whole sentence, the title in the first screen on phones (D3),
-// and, when Manrope never arrives, the metric-matched fallback face keeping
-// the title's line count, so nothing below it moves. Its breaks may differ —
-// text-wrap: balance reacts to tiny per-word widths — and are listed, not failed.
+// named by the whole sentence, and the title in the first screen on phones (D3).
 async function verifySite(base) {
   const problems = [];
-  const rewraps = [];
   const times = SHEET_T.map(t => Math.round(t * opt.fps) / opt.fps);
   const browsers = [await launch(), await launch()];
   try {
@@ -365,16 +367,6 @@ async function verifySite(base) {
           if (v.w <= 860 && layout.bottom > v.h) bad(`title ends at ${Math.round(layout.bottom)} px, below the first screen (${v.h} px)`);
           const aria = await o.page.locator('.hero h1').ariaSnapshot();
           if (aria.trim() !== `- heading "${plain}" [level=1]`) bad(`accessible heading is ${aria.trim()}`);
-          // Manrope blocked: the fallback face must keep the same lines.
-          const ctx = await browser.newContext({ viewport: { width: v.w, height: v.h }, deviceScaleFactor: v.dpr, colorScheme: v.theme, locale: v.lang });
-          await ctx.route(/manrope-latin\.woff2/, r => r.abort());
-          const fb = await ctx.newPage();
-          await fb.goto(`${base}${v.path}?render`, { waitUntil: 'load' });
-          await fb.evaluate(() => document.fonts.ready);
-          const fbLines = (await fb.evaluate(titleLayout)).lines;
-          if (fbLines.length !== layout.lines.length) bad(`fallback font has ${fbLines.length} lines, Manrope ${layout.lines.length}: ${fbLines.join(' / ')}`);
-          else if (fbLines.join(' / ') !== layout.lines.join(' / ')) rewraps.push(`${v.name}: ${fbLines.join(' / ')}`);
-          await ctx.close();
         }
         await o.ctx.close();
       }
@@ -384,10 +376,6 @@ async function verifySite(base) {
     }
   } finally {
     await Promise.all(browsers.map(b => b.close()));
-  }
-  if (rewraps.length) {
-    console.log(`\nSame line count, other breaks with the fallback font (${rewraps.length}):`);
-    rewraps.forEach(r => console.log(`  ~ ${r}`));
   }
   if (problems.length) {
     console.error(`\nverify --site: ${problems.length} problem(s)`);

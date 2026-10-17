@@ -77,7 +77,7 @@ const home = (lang) => {
         </div>`).join('\n');
   const principles = h.studio.principles.map(p => `          <div><b>${p.b}</b><span>${p.p}</span></div>`).join('\n');
 
-  return page(lang, `${head({ lang, page: '', title: h.title, description: h.description, preload: [HERO_FONT] })}
+  return page(lang, `${head({ lang, page: '', title: h.title, description: h.description })}
 <body>
 
 ${header({ lang, current: 'home', page: '' })}
@@ -295,7 +295,8 @@ const compare = (en, other, lang, at) => {
 };
 LANGS.filter(l => l !== 'en' && S[l]).forEach(l => compare(S.en, S[l], l, ''));
 
-// The animated title must come from the one preloaded font file.
+// The animated title must come from one font file, or a second one could
+// arrive while it animates.
 for (const lang of LANGS.filter(l => S[l])) {
   const out = outsideHeroFont(S[lang].home.hero.h1);
   if (out.length) problems.push(`${lang}: home.hero.h1 has ${out.map(c => `U+${c.codePointAt(0).toString(16).toUpperCase()}`).join(', ')} outside ${HERO_FONT}.woff2`);

@@ -3,7 +3,8 @@
 Status: **approved 2026-10-17** with the recommended decisions (D1 A, D2 as
 proposed, D3 A, D4 videos after the site ships). **P1 built, motion approved
 and pushed** (§10, app `4e8f444`). **P2 built and checked** (§11), committed;
-site on branch `hero-animation` (preview only). P3 in progress.
+site on branch `hero-animation` (preview only). **P3 checked** (§12), incl. Android
+Chrome on the emulator; the owner's own phones remain.
 
 Goal: animate the home page title ("Money tracking that stays on your phone."
 and its four translations) on stackdplatform.com, starting from **one HTML
@@ -126,10 +127,10 @@ curves, not the same pixels.
 - **Progressive:** the hidden state exists only inside the animation
   (`animation-fill-mode: backwards`, §11); without CSS or animation support the title is
   simply there. No `opacity: 0` in the base styles.
-- **Fonts:** preload `manrope-latin.woff2`, plus a metric-matched fallback face
-  (`size-adjust`, `ascent-override` on local Arial Bold) so a late swap keeps
-  the title's line count — nothing below it moves. Words may still change
-  lines in that rare case (§11).
+- **Fonts:** ~~preload `manrope-latin.woff2`, plus a metric-matched fallback
+  face~~ — built in P2 (§11), measured in P3 and removed (§12): on a slow
+  phone each delayed first paint by ~100 ms. The title font loads as it does
+  today; the generator still checks every title glyph is in that one file.
 - **Test matrix:** widths 320, 360, 390, 412, 768, 1024, 1280, 1440, 1920, each
   at its device's pixel density (§11), × light/dark × 5 languages in Chromium; WebKit and Firefox through
   Playwright; Chrome on the Android emulator; the owner's phones for real iOS
@@ -257,7 +258,7 @@ older than the strings.
   static page itself, and visitors' devices keep no idle animations. The
   renderer now keeps the list of animations it captured at load, since a
   finished one drops out of `document.getAnimations()`.
-- **Fallback face:** Arial Bold with Manrope 800's ascent/descent, and
+- **Fallback face (removed in P3, §12):** Arial Bold with Manrope 800's ascent/descent, and
   `size-adjust: 103.4 %` rather than the measured average width ratio
   (102.6 %). `text-wrap: balance` reacts to per-word widths, and Italian's
   words are relatively wider in Arial (1.038), so no single value keeps every
@@ -302,3 +303,66 @@ frame changed); after the underline fix it reports all 15 changed since P1,
 as it should, and still byte-identical across runs with every last frame
 equal to the reduced-motion render. The site check was rerun after the
 underline fix: 90 of 90 pass.
+
+## 12. P3 — engines, devices, performance (2026-10-17)
+
+App `bebfc30` (P2) is on main. The site is on branch `hero-animation`,
+previewed at https://hero-animation.stackd-site.pages.dev (Cloudflare adds
+`noindex`; the production CSP applies). Main is untouched.
+
+**Engines.** `hero-render.cjs --verify --site --engine=…` (new option):
+Chromium 90/90, **WebKit 26.6 90/90, Firefox 155 90/90** — same motion,
+layout, line breaks, accessible heading, phone layout. Playwright's WebKit on
+Windows (the WinCairo port) draws Manrope at its thinnest weight, production
+included, even with `font-variation-settings`: it can't drive the variable
+font's weight axis. A test-engine artefact; real Safari still has to be seen
+on an iPhone.
+
+**Android.** On the emulator (`Medium_Phone_API_36.1`, real Chrome 134, an
+older engine than Playwright's): with the owner's OK, Chrome's first-run
+screen was accepted without an account, with usage reporting, site-suggested
+ads and ad measurement turned off (ad topics declined). The preview renders
+correctly in en, fr and es: Manrope ExtraBold (the variable weight works on a
+real engine), the skip-ink underline running across the line break, the title
+above the screenshot on two to three balanced lines at 411 px, and — caught
+mid-load — the title's space reserved while its words are still invisible, the
+screenshot already in place (no shift). Screen recordings of en and es are in
+`tools/site/out/hero/android/` (the emulator renders in software, so they show
+the motion, not real-phone smoothness).
+
+**Performance** (`tools/site/hero-perf.cjs`, new: 390×844 @3x, 4× CPU,
+Slow 4G, cold cache, medians, each page also with reduced motion):
+
+- *The animation itself:* about 3 ms of main-thread work per frame while the
+  words land and 4 ms while the accent draws (painting the underline), at 4×
+  CPU slowdown — far inside a 16.7 ms frame. The compositor draws 53–54 fps
+  through it; CLS is 0.000 in every run. The skip-ink halo costs nothing
+  measurable; `both` fill would save ~15 ms in total (the 8 layouts when
+  each word lets go), not worth losing the exact rest state.
+- *The fonts:* P2's two font measures each delayed first paint by ~100 ms.
+  The preloaded 24 KB font shares the slow link with the render-blocking
+  stylesheet (`fetchpriority="low"` changed nothing); the local Arial Bold
+  fallback face holds the text while it loads — even scoped to the title.
+  Both are removed: first paint and LCP are back at production's (local
+  A/B, same server: 852–912 ms vs 860–884 ms). The trade-off: on a slow
+  first visit Manrope lands ~100 ms after first paint, as the first word
+  starts to fade in — the swap today's static title already has; repeat
+  visits use the cached font (`/fonts/*` is immutable for a year).
+- *Method, corrected:* the first A/B rewrote pages through request
+  interception, which delivered their HTML outside the emulated network, so
+  rewritten variants won for no reason of their own (it briefly made
+  `fetchpriority="low"` look like a fix — it was pushed to the preview, then
+  measured on the real deploy and found no better). `hero-perf.cjs` now
+  gives every run the same simulated Slow 4G delivery; the fonts conclusion
+  above comes from that and from a local A/B with both versions on one server.
+- Earlier "472 ms busy" readings came from a WebKit/Firefox job running in
+  parallel; all numbers above were taken on an otherwise idle machine.
+
+**P3 result, on the deployed preview (site `d54d6c7`) vs production**
+(`hero-perf.cjs --runs=9`, idle machine): first paint 1,336 vs 1,312 ms, LCP
+1,368 vs 1,360 ms (the screenshot is the LCP element in both), CLS 0.000 vs
+0.000, compositor 53 fps through the animation. With reduced motion: LCP
+1,364 vs 1,380 ms. Re-checked after the font change: `--verify --site` 90/90
+(Chromium) and 9/9 in WebKit and Firefox; scene `--verify` 15/15
+byte-identical and unchanged. Open: the owner's own phones on the preview
+(real iOS Safari in particular), then P5.

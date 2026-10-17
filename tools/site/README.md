@@ -19,6 +19,7 @@ URLs), the others under `/fr/`, `/it/`, `/es/`, `/pt/`.
 | `sitemap.cjs` | `sitemap.xml` |
 | `redirect-check.cjs` | nothing — tests the site's language redirect, `StackdSite/functions/_middleware.js` |
 | `hero-render.cjs` | nothing in the site — frames, contact sheets and previews of the animated home title in `tools/site/out/hero/` (gitignored), from `hero-scene.html`, `hero.cjs` and the motion in the site's `styles.css` |
+| `hero-perf.cjs` | nothing — measures a deployed home page on a simulated mid-range phone on Slow 4G |
 
 `layout.cjs` is shared: URLs, `<head>`, the header with the language menu, the
 footer. `strings/<lang>.cjs` holds all site copy; every language has the same
@@ -148,10 +149,26 @@ node tools/site/hero-render.cjs --verify --site --theme=dark,light
 Per language × width × theme, each width at its device's pixel density (iPhone
 SE 320 @2x … desktop 1920 @1x; `--dpr=1,2,3` overrides): key frames identical across
 two browsers, the landed title equal to the reduced-motion render, every word
-inside the viewport, one level-1 heading named by the whole sentence, the
-title in the first screen on phones, and — with Manrope blocked — the
-`Manrope Fallback` face keeping the title's line count. Different breaks with
-the same line count are listed, not failed.
+inside the viewport, one level-1 heading named by the whole sentence, and the
+title in the first screen on phones. Add `--engine=webkit` or
+`--engine=firefox` to run the same checks in those engines (after
+`npx playwright install webkit firefox`). Playwright's WebKit on Windows
+draws Manrope at its thinnest weight, on production too: it can't drive the
+variable font's weight axis. Check real Safari on a device.
+
+Performance, the way a mid-range phone on Slow 4G sees a deployed page
+(LCP, CLS, first paint, when the title font arrives, and the animation's
+main-thread and compositor cost, each also with reduced motion):
+
+```bash
+node tools/site/hero-perf.cjs https://stackd-site.pages.dev/ https://<branch>.stackd-site.pages.dev/
+```
+
+`--preload=none|low|high` rewrites a font preload in flight to compare (the
+site has none since P3: on Slow 4G it slowed the stylesheet and first paint
+by ~100 ms; plan §12). Every run gets its HTML through the same simulated
+Slow 4G delay, rewritten or not, so variants compare fairly. Keep the machine
+otherwise idle while it runs: a parallel job skews every timing.
 
 Without a full ffmpeg on PATH (or in `FFMPEG`), `--preview` falls back to
 the VP8-only ffmpeg Playwright bundles for its own recorder.
