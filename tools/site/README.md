@@ -173,6 +173,20 @@ otherwise idle while it runs: a parallel job skews every timing.
 Without a full ffmpeg on PATH (or in `FFMPEG`), `--preview` falls back to
 the VP8-only ffmpeg Playwright bundles for its own recorder.
 
+The deliverable videos, for social posts and the store listings:
+
+```bash
+node tools/site/hero-render.cjs --video --format=1920x1080,1080x1920
+```
+
+writes `out/hero/video/stackd-title-<lang>-16x9.mp4` and `-9x16.mp4`:
+H.264 High, 4:2:0, CRF 18, 60 fps, 4 s, silent, `+faststart`, converted with
+the BT.709 matrix and tagged BT.709. Add `--theme=light` for light versions,
+`--format=1080x1080` for square. It needs a full ffmpeg with libx264
+(`winget install Gyan.FFmpeg`; a shell opened before the install needs
+`FFMPEG` set to the exe). Frames and encode are deterministic: the same
+inputs give a byte-identical MP4.
+
 ## Sitemap
 
 ```bash

@@ -4,7 +4,8 @@ Status: **LIVE on stackdplatform.com since 2026-10-17** (site main `1dbd33c`,
 §13), with the header overflow fix from branch `header-nav-overflow`.
 Approved 2026-10-17 with the recommended decisions (D1 A, D2 as proposed,
 D3 A, D4 videos after the site ships). P1 `4e8f444`, P2 `bebfc30`, P3
-`52d2c8b` in the app repo. **Next: P4** (MP4s; needs a full ffmpeg).
+`52d2c8b` in the app repo. **P4 done** (§14): ten MP4s, 5 languages ×
+16:9 / 9:16. All five phases complete.
 
 Goal: animate the home page title ("Money tracking that stays on your phone."
 and its four translations) on stackdplatform.com, starting from **one HTML
@@ -388,3 +389,29 @@ with the title at 150 px; `hero-perf.cjs`: LCP 1,412 ms with motion /
 
 The branches `hero-animation` and `header-nav-overflow` remain on GitHub
 (their Pages previews too); delete them when no longer useful.
+
+## 14. P4 — videos (2026-10-17)
+
+FFmpeg 9.0.2 (Gyan's static full build) installed with `winget install
+Gyan.FFmpeg` (user scope; on PATH for new shells). `hero-render.cjs
+--video` pipes the deterministic PNG frames into libx264: High profile,
+4:2:0, CRF 18, `-tune animation`, 60 fps, 241 frames (4.017 s), silent,
+`+faststart` (`moov` before `mdat`). Ten files,
+`stackd-title-<lang>-{16x9,9x16}.mp4`, 143–240 KB each (flat backgrounds
+compress well), dark theme.
+
+- **Colour.** ffmpeg converts RGB with the BT.601 matrix by default, while
+  players decode HD as BT.709, which would shift every colour; the frames are
+  converted with `out_color_matrix=bt709` and accurate rounding. ffmpeg 9
+  also ignored `-color_primaries`/`-color_trc` given as output options
+  (they probed "unknown"), so the tags are set on the frames with
+  `setparams`: all ten probe `bt709/bt709/bt709`, limited range. Decoding
+  the last frame and comparing with the renderer's PNG: PSNR 43.6 dB,
+  background `#0c0f1a` for `#0b0f19`, accent `#38bef5` for `#38bdf8`
+  (1–3 levels, invisible; 4:2:0 softens the colour on the blue text's edges,
+  inherent to the format platforms require).
+- **Determinism.** Rendering English 16:9 again from scratch gives the same
+  SHA-256 MP4 (`f0b5cee0…`): the whole pipeline, HTML scene to video file,
+  is reproducible on this machine.
+- **Checked by eye:** decoded frames at 0.5 s (rising), 0.9 s (landed), 3.5 s
+  (accent and skip-ink underline).

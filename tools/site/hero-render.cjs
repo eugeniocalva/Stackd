@@ -12,6 +12,7 @@
 //                                                   check the last frame equals the reduced-motion render
 //   node tools/site/hero-render.cjs --preview       a WebM of each scene variant, encoded from the frames
 //   node tools/site/hero-render.cjs --frames        write the full PNG sequences
+//   node tools/site/hero-render.cjs --video         the MP4s (H.264, BT.709) for social posts and the stores; needs a full ffmpeg
 //   node tools/site/hero-render.cjs --serve         serve the scene to watch it play in a browser
 //
 // Narrow any run with --lang=en,es --format=1920x1080 --theme=dark,light
@@ -386,9 +387,10 @@ async function verifySite(base) {
 
 // A full ffmpeg (FFMPEG env or PATH) or, for a preview only, the VP8-only one
 // Playwright bundles for its own recorder, which reads MJPEG frames.
-function ffmpeg() {
+function ffmpeg({ full = false } = {}) {
   const candidates = [process.env.FFMPEG, 'ffmpeg'].filter(Boolean);
   for (const c of candidates) if (spawnSync(c, ['-version']).status === 0) return c;
+  if (full) throw new Error('--video needs a full ffmpeg with libx264: `winget install Gyan.FFmpeg`, or set FFMPEG');
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.cache'), 'ms-playwright');
   for (const d of fs.existsSync(root) ? fs.readdirSync(root).filter(d => d.startsWith('ffmpeg')).sort().reverse() : []) {
     const exe = fs.readdirSync(path.join(root, d)).find(f => /^ffmpeg[\w-]*(\.exe)?$/.test(f));
@@ -412,6 +414,34 @@ async function preview(browser, base) {
     ff.stdin.end();
     await done;
     console.log(`→ ${rel(file)}`);
+  }
+}
+
+// The deliverable videos (plan P4): H.264 High, 4:2:0, CRF 18, 60 fps, moov
+// atom first so a browser can start playing before the end arrives. The RGB
+// frames are converted with the BT.709 matrix and tagged BT.709 — ffmpeg's
+// default conversion is BT.601, which players then decode as 709 and every
+// colour, the accent blue included, comes out slightly off. The tags are set
+// on the frames (setparams): ffmpeg 9 ignored -color_primaries/-color_trc
+// given as output options and left them "unknown".
+const ASPECT = { '1920x1080': '16x9', '1080x1920': '9x16', '1080x1080': '1x1' };
+
+async function video(browser, base) {
+  const bin = ffmpeg({ full: true });
+  fs.mkdirSync(path.join(OUT, 'video'), { recursive: true });
+  for (const v of variants('scene')) {
+    const file = path.join(OUT, 'video', `stackd-title-${v.lang}-${ASPECT[v.format]}${v.theme === 'dark' ? '' : `-${v.theme}`}.mp4`);
+    const ff = spawn(bin, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'png', '-framerate', String(opt.fps), '-i', 'pipe:0',
+      '-vf', 'scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int+full_chroma_inp,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv',
+      '-c:v', 'libx264', '-profile:v', 'high', '-preset', 'slow', '-tune', 'animation', '-crf', '18',
+      '-movflags', '+faststart', '-an', file], { stdio: ['pipe', 'inherit', 'inherit'] });
+    const done = new Promise((res, rej) => ff.on('close', c => (c ? rej(new Error(`ffmpeg exited ${c}`)) : res())));
+    await sequence(browser, base, v, async (png) => {
+      if (!ff.stdin.write(png)) await new Promise(r => ff.stdin.once('drain', r));
+    });
+    ff.stdin.end();
+    await done;
+    console.log(`→ ${rel(file)} (${(fs.statSync(file).size / 1024).toFixed(0)} KB)`);
   }
 }
 
@@ -439,7 +469,8 @@ async function frames(browser, base) {
     else {
       const browser = await launch();
       try {
-        if (args.preview) await preview(browser, base);
+        if (args.video) await video(browser, base);
+        else if (args.preview) await preview(browser, base);
         else if (args.frames) await frames(browser, base);
         else await sheets(browser, base, args.site ? 'site' : 'scene');
       } finally { await browser.close(); }
