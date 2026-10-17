@@ -18,7 +18,7 @@ URLs), the others under `/fr/`, `/it/`, `/es/`, `/pt/`.
 | `make-og.cjs` | `img/og.png` — the 1200×630 link-preview image, rendered from `og.html` (English only, decision D7) |
 | `sitemap.cjs` | `sitemap.xml` |
 | `redirect-check.cjs` | nothing — tests the site's language redirect, `StackdSite/functions/_middleware.js` |
-| `hero-render.cjs` | nothing in the site — frames, contact sheets and previews of the animated home title in `tools/site/out/hero/` (gitignored), from `hero-scene.html`, `hero-motion.css` and `hero.cjs` |
+| `hero-render.cjs` | nothing in the site — frames, contact sheets and previews of the animated home title in `tools/site/out/hero/` (gitignored), from `hero-scene.html`, `hero.cjs` and the motion in the site's `styles.css` |
 
 `layout.cjs` is shared: URLs, `<head>`, the header with the language menu, the
 footer. `strings/<lang>.cjs` holds all site copy; every language has the same
@@ -107,7 +107,7 @@ Re-run it after a headline change or a new hero screenshot.
 ## Hero title animation
 
 `docs/site-hero-animation-plan.md` is the reference. The home title's motion
-is CSS (`hero-motion.css`; phase 2 moves it into the site's `styles.css`) on
+is CSS in the site's `styles.css` (the "Hero title animation" block), on
 the word spans `hero.cjs` builds from the title string, where `<em>` marks
 the accent phrase. `hero-scene.html` draws the same title on a video-sized
 canvas. `hero-render.cjs` holds every animation paused from the first style
@@ -137,6 +137,21 @@ last frame equals the reduced-motion render (mismatches are kept in
 `out/hero/verify/`), and `--preview` encodes a WebM per variant. `--frames`
 writes the PNG sequences and `--serve` serves the scene to watch it play.
 Narrow a run with `--lang=en,es --format=1920x1080 --theme=dark,light`.
+
+After `pages.cjs`, check the real home pages (it refuses a page older than
+the strings):
+
+```bash
+node tools/site/hero-render.cjs --verify --site --theme=dark,light
+```
+
+Per language × width × theme, each width at its device's pixel density (iPhone
+SE 320 @2x … desktop 1920 @1x; `--dpr=1,2,3` overrides): key frames identical across
+two browsers, the landed title equal to the reduced-motion render, every word
+inside the viewport, one level-1 heading named by the whole sentence, the
+title in the first screen on phones, and — with Manrope blocked — the
+`Manrope Fallback` face keeping the title's line count. Different breaks with
+the same line count are listed, not failed.
 
 Without a full ffmpeg on PATH (or in `FFMPEG`), `--preview` falls back to
 the VP8-only ffmpeg Playwright bundles for its own recorder.

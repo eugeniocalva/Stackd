@@ -1,8 +1,9 @@
 # Site hero title animation — plan
 
 Status: **approved 2026-10-17** with the recommended decisions (D1 A, D2 as
-proposed, D3 A, D4 videos after the site ships). **P1 built and the motion
-approved** (§10). P2 in progress.
+proposed, D3 A, D4 videos after the site ships). **P1 built, motion approved
+and pushed** (§10, app `4e8f444`). **P2 built and checked** (§11), committed;
+site on branch `hero-animation` (preview only). P3 in progress.
 
 Goal: animate the home page title ("Money tracking that stays on your phone."
 and its four translations) on stackdplatform.com, starting from **one HTML
@@ -123,13 +124,14 @@ curves, not the same pixels.
 - **No layout shift:** each word holds its final box from frame 0 and is
   hidden by opacity only — CLS 0.
 - **Progressive:** the hidden state exists only inside the animation
-  (`animation-fill-mode: both`); without CSS or animation support the title is
+  (`animation-fill-mode: backwards`, §11); without CSS or animation support the title is
   simply there. No `opacity: 0` in the base styles.
 - **Fonts:** preload `manrope-latin.woff2`, plus a metric-matched fallback face
-  (`size-adjust`, `ascent-override` on local Arial) so a late swap cannot move
-  words mid-reveal.
-- **Test matrix:** widths 320, 360, 390, 412, 768, 1024, 1280, 1440, 1920 ×
-  DPR 1/2/3 × light/dark × 5 languages in Chromium; WebKit and Firefox through
+  (`size-adjust`, `ascent-override` on local Arial Bold) so a late swap keeps
+  the title's line count — nothing below it moves. Words may still change
+  lines in that rare case (§11).
+- **Test matrix:** widths 320, 360, 390, 412, 768, 1024, 1280, 1440, 1920, each
+  at its device's pixel density (§11), × light/dark × 5 languages in Chromium; WebKit and Firefox through
   Playwright; Chrome on the Android emulator; the owner's phones for real iOS
   Safari and Android, on the branch preview.
 - **Automated checks on the real pages:** the last frame equals the
@@ -230,3 +232,73 @@ Changes from the plan, found while building:
 - **Preview video without installing anything:** `--preview` uses
   Playwright's bundled VP8-only ffmpeg when no full one is found. P4 still
   needs a full ffmpeg for H.264.
+
+## 11. As built — P2 (2026-10-17)
+
+Site repo: the motion block in `styles.css` (from P1's `hero-motion.css`,
+now deleted), the `Manrope Fallback` face, the phone layout (D3), and the five
+regenerated home pages. App repo: `pages.cjs` emits `heroTitle()` and a
+`hero-copy` class, `head()` takes a `preload` list (home pages only), and the
+generator fails on a title character outside `manrope-latin.woff2`'s
+`unicode-range` (read from `styles.css`) or a language missing the `<em>`.
+`hero-render.cjs --verify --site` is the P2 check (§6); it refuses a home page
+older than the strings.
+
+- **Phones (D3):** under 860 px `.hero-copy` is `display: contents`, and the
+  eyebrow, title and screenshot take `order: -1`, so the order is eyebrow →
+  title → screenshot → lede → buttons → facts. The title now starts at
+  y = 150 px on every phone width in every language (was 831 px, below the
+  fold on 320 and 360).
+- **`animation-fill-mode: backwards`, not `both`.** With `both`, a finished
+  animation keeps applying its end value forever, and Chromium draws that
+  text a hair differently from plain text: the landed title was 2 pixels,
+  one anti-aliasing level, off the reduced-motion render at 320 and 390 px.
+  With `backwards` a finished animation lets go, so the landed title is the
+  static page itself, and visitors' devices keep no idle animations. The
+  renderer now keeps the list of animations it captured at load, since a
+  finished one drops out of `document.getAnimations()`.
+- **Fallback face:** Arial Bold with Manrope 800's ascent/descent, and
+  `size-adjust: 103.4 %` rather than the measured average width ratio
+  (102.6 %). `text-wrap: balance` reacts to per-word widths, and Italian's
+  words are relatively wider in Arial (1.038), so no single value keeps every
+  line break. The value was chosen by scanning every width from 320 to
+  1920 px in 4 px steps for the five titles: at 103.4 % the line count
+  matches in 1,985 of 2,005 cases, including every common device width
+  (320, 360, 375, 390, 393, 412, 414, 428, 430, 440, 768, 820, 1024, 1280,
+  1366, 1440, 1536, 1920). The rest sit at in-between widths: en/fr 404–408,
+  it 380 and 1128–1180, pt 512–516. The fallback only shows if the preloaded
+  24 KB font misses the swap block period, so the check fails on a changed
+  line count and lists other breaks.
+- **Device matrix:** each width at its device's pixel density — 320 @2x
+  (iPhone SE), 360 @3x (Android), 390 @3x (iPhone), 412 @3x (Pixel), 768 and
+  1024 @2x (iPad), 1280 @1x (laptop), 1440 @2x (MacBook), 1920 @1x — instead
+  of every density at every width (270 variants, about two hours, and no
+  3x 1920 px screens exist).
+- **Underline moved up, with skip-ink.** P1's 0.07em bottom padding put the
+  bar under the descenders, which looked right while the phrase sat on one
+  line (the 16:9 scene) but ran into the next line's accents once it wrapped
+  ("sin salir" over "teléfono" on a phone). Measured in Manrope 800:
+  descenders reach 0.266em below the baseline and the next line's é/ó rise to
+  0.287em below it at line-height 1.1, so no bar fits between them. Three
+  options were rendered side by side: line-height 1.19 (clean, but loosens
+  the title's typography), a bar through the descenders (busy), and a bar
+  at a real underline's place, 0.11–0.17em below the baseline, with a halo in
+  the page colour (`--paper`) on the accent words that breaks it around the
+  descenders, as browsers' skip-ink does. The third keeps the title's
+  spacing and is what ships; forced-colours mode drops the halo and shows a
+  plain bar.
+- **Found, not fixed (pre-existing, live today):** the header nav overflows
+  the viewport just above the 640 px breakpoint in every language — en
+  644–680 px, fr 644–812 px (longer labels), it 644–712, es 644–696, pt
+  644–700. Unrelated to the title; left for its own change.
+
+**P2 result.** `--verify --site --theme=dark,light`: **90 of 90 variants
+pass** (5 languages × 9 device widths × light/dark). The French fallback
+breaks "gardés sur / votre téléphone." instead of "gardés sur votre /
+téléphone." at 360, 390, 1024, 1280, 1440 and 1920 px, at the same line count.
+The scene `--verify` (15 variants) was byte-identical to P1's manifests
+after the move into `styles.css` and the switch to backwards fill (no scene
+frame changed); after the underline fix it reports all 15 changed since P1,
+as it should, and still byte-identical across runs with every last frame
+equal to the reduced-motion render. The site check was rerun after the
+underline fix: 90 of 90 pass.

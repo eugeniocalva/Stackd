@@ -46,7 +46,9 @@ const fill = (str, vars = {}) => String(str).replace(/\{(\w+)\}/g, (m, k) => {
   throw new Error(`unfilled placeholder ${m} in: ${str}`);
 });
 
-const head = ({ lang, page, title, description, alternates = true, noindex = false }) => {
+// preload: font files (by name, from /fonts/) the page needs before its first
+// paint — the home page's animated title (docs/site-hero-animation-plan.md).
+const head = ({ lang, page, title, description, alternates = true, noindex = false, preload = [] }) => {
   const s = S[lang];
   const links = [];
   if (noindex) {
@@ -82,7 +84,7 @@ ${links.join('\n')}
   <meta name="theme-color" content="#0b0f19" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="/img/icon-512.webp" type="image/webp">
   <link rel="apple-touch-icon" href="/img/icon.png">
-  <link rel="stylesheet" href="/styles.css">
+${preload.map(f => `  <link rel="preload" href="/fonts/${f}.woff2" as="font" type="font/woff2" crossorigin>\n`).join('')}  <link rel="stylesheet" href="/styles.css">
 </head>`;
 };
 

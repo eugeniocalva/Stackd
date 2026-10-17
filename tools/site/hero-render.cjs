@@ -32,7 +32,6 @@ const { heroTitle } = require('./hero.cjs');
 
 const OUT = path.join(__dirname, 'out', 'hero');
 const SCENE = fs.readFileSync(path.join(__dirname, 'hero-scene.html'), 'utf8');
-const MOTION = path.join(__dirname, 'hero-motion.css');
 
 // Video formats (plan §3): the title inside the 90 % title-safe area.
 const FORMATS = {
@@ -40,8 +39,9 @@ const FORMATS = {
   '1080x1920': { FS: 118, MAXW: 940, EYEBROW: 30, ICON: 76, GAP: 48, BGAP: 22 },
   '1080x1080': { FS: 98, MAXW: 940, EYEBROW: 26, ICON: 64, GAP: 36, BGAP: 18 },
 };
-// Site widths (plan §6), each with a typical height for that device class.
-const WIDTHS = { 320: 640, 360: 780, 390: 844, 412: 915, 768: 1024, 1024: 768, 1280: 800, 1440: 900, 1920: 1080 };
+// Site widths (plan §6), each as the device that has it: [height, pixel density]
+// — iPhone SE, Android, iPhone, Pixel, iPad ×2, laptop, MacBook, desktop.
+const WIDTHS = { 320: [568, 2], 360: [780, 3], 390: [844, 3], 412: [915, 3], 768: [1024, 2], 1024: [768, 2], 1280: [800, 1], 1440: [900, 2], 1920: [1080, 1] };
 
 // ── Arguments ──────────────────────────────────────────────────────────────
 const args = Object.fromEntries(process.argv.slice(2).map(a => {
@@ -54,6 +54,7 @@ const opt = {
   formats: list(args.format, Object.keys(FORMATS)),
   themes: list(args.theme, ['dark']),
   widths: list(args.width, Object.keys(WIDTHS)).map(Number),
+  dprs: args.dpr ? list(args.dpr).map(Number) : null, // null: each width's own density
   fps: Number(args.fps || 60),
   duration: Number(args.duration || 4),
 };
@@ -61,7 +62,7 @@ for (const l of opt.langs) if (!S[l]) throw new Error(`unknown language ${l}`);
 for (const f of opt.formats) if (!FORMATS[f]) throw new Error(`unknown format ${f} (${Object.keys(FORMATS).join(', ')})`);
 for (const w of opt.widths) if (!WIDTHS[w]) throw new Error(`unknown width ${w} (${Object.keys(WIDTHS).join(', ')})`);
 
-// ── Local server: the site repo, the motion CSS and the scene ──────────────
+// ── Local server: the site repo and the scene ──────────────────────────────
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.woff2': 'font/woff2', '.webp': 'image/webp', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 const fill = (tpl, slots) => tpl.replace(/\{\{(\w+)\}\}/g, (m, k) => {
   if (!(k in slots)) throw new Error(`scene slot {{${k}}} has no value`);
@@ -77,16 +78,10 @@ function scene(lang, format) {
   });
 }
 
-// Phase 1 preview of the site: until pages.cjs emits the word spans (phase 2),
-// the home page's plain <h1> is swapped for heroTitle() and the motion CSS is
-// linked, on the fly. A page that already has them is served untouched.
+// The generated home page must carry the title pages.cjs builds from today's strings.
 function sitePage(lang, html) {
-  if (html.includes('class="w"')) return html;
-  const h1 = S[lang].home.hero.h1;
-  const plain = h1.replace(/<[^>]+>/g, '');
-  const m = /<h1>([^<]*)<\/h1>/.exec(html);
-  if (!m || m[1].replace(/<[^>]+>/g, '') !== plain) throw new Error(`${lang} home page: hero <h1> is not "${plain}"`);
-  return html.replace(m[0], heroTitle(h1)).replace('</head>', '<link rel="stylesheet" href="/__hero/motion.css">\n</head>');
+  if (!html.includes(heroTitle(S[lang].home.hero.h1))) throw new Error(`${lang} home page is out of date: run node tools/site/pages.cjs`);
+  return html;
 }
 
 // A page requested with ?render is held at t = 0 from its very first style
@@ -103,7 +98,6 @@ function serve() {
     const url = new URL(req.url, 'http://x');
     const send = (type, body) => { res.setHeader('content-type', type); res.setHeader('cache-control', 'no-store'); res.end(body); };
     try {
-      if (url.pathname === '/__hero/motion.css') return send(TYPES['.css'], fs.readFileSync(MOTION));
       if (url.pathname === '/__hero/scene') return send(TYPES['.html'], held(url, scene(url.searchParams.get('lang') || 'en', url.searchParams.get('format') || '1920x1080')));
       const home = /^\/(?:(fr|it|es|pt)\/)?$/.exec(url.pathname);
       if (home) {
@@ -140,6 +134,8 @@ async function ready() {
   const stray = anims.filter(a => !/^hero-/.test(a.animationName || ''));
   if (stray.length) throw new Error(`animations outside the hero motion: ${stray.map(a => a.animationName || a.constructor.name).join(', ')}`);
   for (const a of anims) a.pause();
+  // Kept: a finished animation with backwards fill drops out of getAnimations().
+  window.__heroAnims = anims;
   const h1 = document.querySelector('.hero h1').getBoundingClientRect();
   const size = parseFloat(getComputedStyle(document.querySelector('.hero h1')).fontSize);
   return {
@@ -152,7 +148,7 @@ async function ready() {
 // The clock: every animation paused at exactly ms, then two frames so the
 // new style is painted before the screenshot.
 async function seek(ms) {
-  for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; }
+  for (const a of window.__heroAnims) { a.pause(); a.currentTime = ms; }
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
@@ -162,8 +158,8 @@ function variants(kind) {
     if (kind === 'scene') for (const format of opt.formats) {
       const [w, h] = format.split('x').map(Number);
       out.push({ kind, lang, theme, format, w, h, name: `scene-${lang}-${format}-${theme}`, path: `/__hero/scene?lang=${lang}&format=${format}` });
-    } else for (const w of opt.widths) {
-      out.push({ kind, lang, theme, w, h: WIDTHS[w], name: `site-${lang}-${w}-${theme}`, path: lang === 'en' ? '/' : `/${lang}/` });
+    } else for (const w of opt.widths) for (const dpr of opt.dprs || [WIDTHS[w][1]]) {
+      out.push({ kind, lang, theme, w, h: WIDTHS[w][0], dpr, name: `site-${lang}-${w}@${dpr}x-${theme}`, path: lang === 'en' ? '/' : `/${lang}/` });
     }
   }
   return out;
@@ -171,7 +167,7 @@ function variants(kind) {
 
 async function open(browser, base, v, { reduce = false } = {}) {
   const ctx = await browser.newContext({
-    viewport: { width: v.w, height: v.h }, deviceScaleFactor: 1, colorScheme: v.theme,
+    viewport: { width: v.w, height: v.h }, deviceScaleFactor: v.dpr || 1, colorScheme: v.theme,
     reducedMotion: reduce ? 'reduce' : 'no-preference', locale: v.lang,
   });
   const page = await ctx.newPage();
@@ -316,6 +312,90 @@ async function verify(base) {
   if (bad) { console.error(`verify: ${bad} problem(s)`); process.exitCode = 1; } else console.log('verify: every frame identical across runs, every animation lands on the static design');
 }
 
+// The title's layout at rest, read in the page: its lines (words grouped by
+// their line box; transforms don't move offsetTop), words poking out of the
+// viewport, and where the title ends.
+function titleLayout() {
+  const h1 = document.querySelector('.hero h1');
+  const words = [...h1.querySelectorAll('.w')];
+  const lines = [];
+  let top = null;
+  for (const w of words) {
+    if (w.offsetTop !== top) { lines.push([]); top = w.offsetTop; }
+    lines.at(-1).push(w.textContent);
+  }
+  const outside = words.filter(w => { const r = w.getBoundingClientRect(); return r.left < -0.5 || r.right > innerWidth + 0.5; });
+  return {
+    lines: lines.map(l => l.join(' ').replace(/ \.$/, '.')),
+    outside: outside.map(w => w.textContent),
+    bottom: h1.getBoundingClientRect().bottom + scrollY,
+  };
+}
+
+// The real home pages (plan §6), per language × width × theme × density:
+// key frames identical across two browsers, the rest state equal to the
+// reduced-motion render, every word inside the viewport, one level-1 heading
+// named by the whole sentence, the title in the first screen on phones (D3),
+// and, when Manrope never arrives, the metric-matched fallback face keeping
+// the title's line count, so nothing below it moves. Its breaks may differ —
+// text-wrap: balance reacts to tiny per-word widths — and are listed, not failed.
+async function verifySite(base) {
+  const problems = [];
+  const rewraps = [];
+  const times = SHEET_T.map(t => Math.round(t * opt.fps) / opt.fps);
+  const browsers = [await launch(), await launch()];
+  try {
+    for (const v of variants('site')) {
+      const bad = (msg) => problems.push(`${v.name}: ${msg}`);
+      const plain = S[v.lang].home.hero.h1.replace(/<[^>]+>/g, '');
+      const hashes = [];
+      let layout;
+      for (const [run, browser] of browsers.entries()) {
+        const o = await open(browser, base, v);
+        const pngs = [];
+        for (const t of times) pngs.push(await o.shot(t));
+        hashes.push(pngs.map(sha));
+        if (run === 0) {
+          const still = await open(browser, base, v, { reduce: true });
+          const reduced = await still.shot(times.at(-1));
+          if (sha(reduced) !== hashes[0].at(-1)) bad(`rest ≠ reduced-motion render: ${await keep(v, 'rest', pngs.at(-1), reduced)}`);
+          await still.ctx.close();
+          layout = await o.page.evaluate(titleLayout);
+          if (layout.outside.length) bad(`words outside the viewport: ${layout.outside.join(' ')}`);
+          if (v.w <= 860 && layout.bottom > v.h) bad(`title ends at ${Math.round(layout.bottom)} px, below the first screen (${v.h} px)`);
+          const aria = await o.page.locator('.hero h1').ariaSnapshot();
+          if (aria.trim() !== `- heading "${plain}" [level=1]`) bad(`accessible heading is ${aria.trim()}`);
+          // Manrope blocked: the fallback face must keep the same lines.
+          const ctx = await browser.newContext({ viewport: { width: v.w, height: v.h }, deviceScaleFactor: v.dpr, colorScheme: v.theme, locale: v.lang });
+          await ctx.route(/manrope-latin\.woff2/, r => r.abort());
+          const fb = await ctx.newPage();
+          await fb.goto(`${base}${v.path}?render`, { waitUntil: 'load' });
+          await fb.evaluate(() => document.fonts.ready);
+          const fbLines = (await fb.evaluate(titleLayout)).lines;
+          if (fbLines.length !== layout.lines.length) bad(`fallback font has ${fbLines.length} lines, Manrope ${layout.lines.length}: ${fbLines.join(' / ')}`);
+          else if (fbLines.join(' / ') !== layout.lines.join(' / ')) rewraps.push(`${v.name}: ${fbLines.join(' / ')}`);
+          await ctx.close();
+        }
+        await o.ctx.close();
+      }
+      const diff = hashes[0].filter((h, i) => h !== hashes[1][i]).length;
+      if (diff) bad(`${diff} of ${times.length} key frames differ between browsers`);
+      console.log(`  ${problems.some(p => p.startsWith(`${v.name}:`)) ? '✗' : '✓'} ${v.name.padEnd(26)} ${layout.lines.join(' / ')}`);
+    }
+  } finally {
+    await Promise.all(browsers.map(b => b.close()));
+  }
+  if (rewraps.length) {
+    console.log(`\nSame line count, other breaks with the fallback font (${rewraps.length}):`);
+    rewraps.forEach(r => console.log(`  ~ ${r}`));
+  }
+  if (problems.length) {
+    console.error(`\nverify --site: ${problems.length} problem(s)`);
+    problems.forEach(p => console.error(`  ! ${p}`));
+    process.exitCode = 1;
+  } else console.log('verify --site: all checks pass');
+}
+
 // A full ffmpeg (FFMPEG env or PATH) or, for a preview only, the VP8-only one
 // Playwright bundles for its own recorder, which reads MJPEG frames.
 function ffmpeg() {
@@ -367,7 +447,7 @@ async function frames(browser, base) {
     return;
   }
   try {
-    if (args.verify) await verify(base);
+    if (args.verify) await (args.site ? verifySite(base) : verify(base));
     else {
       const browser = await launch();
       try {

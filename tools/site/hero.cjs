@@ -17,9 +17,27 @@
 //   (U+2060) in front, so a line can never break before it.
 // - The heading is named by aria-label and the spans are aria-hidden: a
 //   screen reader hears one sentence, and the text stays in the page.
-const { attr } = require('./layout.cjs');
+const fs = require('fs');
+const path = require('path');
+const { SITE, attr } = require('./layout.cjs');
 
 const WJ = '&#8288;';
+
+// The one Manrope file the home page preloads. Every title must be drawn from
+// it alone, or a second file would arrive mid-animation.
+const HERO_FONT = 'manrope-latin';
+
+// Characters of a title outside HERO_FONT's unicode-range, read from the
+// site's styles.css so the range has a single source. The word joiner counts.
+function outsideHeroFont(h1) {
+  const css = fs.readFileSync(path.join(SITE, 'styles.css'), 'utf8');
+  const face = css.split('@font-face').find(f => f.includes(`fonts/${HERO_FONT}.woff2`));
+  const range = face && /unicode-range:\s*([^;}]+)/.exec(face);
+  if (!range) throw new Error(`styles.css: no unicode-range for ${HERO_FONT}.woff2`);
+  const spans = range[1].split(',').map(r => r.trim().replace(/^U\+/i, '').split('-').map(h => parseInt(h, 16)));
+  const text = h1.replace(/<[^>]+>/g, '') + '⁠';
+  return [...new Set([...text].filter(ch => !spans.some(([a, b = a]) => ch.codePointAt(0) >= a && ch.codePointAt(0) <= b)))];
+}
 
 function heroTitle(h1) {
   const m = /^([^<]*)(?:<em>([^<]*)<\/em>([^<]*))?$/.exec(h1);
@@ -50,4 +68,4 @@ function heroTitle(h1) {
   return `<h1 aria-label="${attr(plain)}" style="--n:${i + 1}"><span aria-hidden="true">${out}</span></h1>`;
 }
 
-module.exports = { heroTitle };
+module.exports = { heroTitle, HERO_FONT, outsideHeroFont };
