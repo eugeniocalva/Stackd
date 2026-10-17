@@ -26,7 +26,7 @@ module.exports = {
     description: "Stack'd Development Studio makes Stack'd, a privacy-first personal finance tracker. No accounts and no tracking: every wallet, log and budget stays on your device, and the only thing that goes online is the bank link you can choose to turn on.",
     hero: {
       eyebrow: "Stack'd · personal finance tracker",
-      h1: 'Money tracking that stays on your phone.',
+      h1: 'Money tracking that <em>stays on your phone</em>.',
       lede: "Stack'd keeps every wallet, every log and every budget on your device. There is no account to create and no cloud to sync with. The only thing that ever goes online is the bank link you can choose to turn on, and it shows you every transaction before saving it.",
       play: 'Get it on Google Play',
       ios: 'iPhone version in progress',

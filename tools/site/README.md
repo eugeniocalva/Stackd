@@ -18,6 +18,7 @@ URLs), the others under `/fr/`, `/it/`, `/es/`, `/pt/`.
 | `make-og.cjs` | `img/og.png` — the 1200×630 link-preview image, rendered from `og.html` (English only, decision D7) |
 | `sitemap.cjs` | `sitemap.xml` |
 | `redirect-check.cjs` | nothing — tests the site's language redirect, `StackdSite/functions/_middleware.js` |
+| `hero-render.cjs` | nothing in the site — frames, contact sheets and previews of the animated home title in `tools/site/out/hero/` (gitignored), from `hero-scene.html`, `hero-motion.css` and `hero.cjs` |
 
 `layout.cjs` is shared: URLs, `<head>`, the header with the language menu, the
 footer. `strings/<lang>.cjs` holds all site copy; every language has the same
@@ -102,6 +103,43 @@ node tools/site/make-og.cjs
 `og.html` is a fixed 1200×630 layout using the site's own fonts, palette and
 `home-dark.webp`. It is rendered at 2x and downsampled so the type stays crisp.
 Re-run it after a headline change or a new hero screenshot.
+
+## Hero title animation
+
+`docs/site-hero-animation-plan.md` is the reference. The home title's motion
+is CSS (`hero-motion.css`; phase 2 moves it into the site's `styles.css`) on
+the word spans `hero.cjs` builds from the title string, where `<em>` marks
+the accent phrase. `hero-scene.html` draws the same title on a video-sized
+canvas. `hero-render.cjs` holds every animation paused from the first style
+pass, seeks it to t = n / 60 and screenshots each frame, so a frame depends
+only on language, format, theme and t:
+
+```bash
+node tools/site/hero-render.cjs
+```
+
+```bash
+node tools/site/hero-render.cjs --site
+```
+
+```bash
+node tools/site/hero-render.cjs --verify
+```
+
+```bash
+node tools/site/hero-render.cjs --preview
+```
+
+The first writes contact sheets of the scene (5 languages × 16:9, 9:16, 1:1),
+`--site` the same for the real home page at nine widths, `--verify` renders
+every frame twice in fresh browsers and compares their SHA-256 and checks the
+last frame equals the reduced-motion render (mismatches are kept in
+`out/hero/verify/`), and `--preview` encodes a WebM per variant. `--frames`
+writes the PNG sequences and `--serve` serves the scene to watch it play.
+Narrow a run with `--lang=en,es --format=1920x1080 --theme=dark,light`.
+
+Without a full ffmpeg on PATH (or in `FFMPEG`), `--preview` falls back to
+the VP8-only ffmpeg Playwright bundles for its own recorder.
 
 ## Sitemap
 

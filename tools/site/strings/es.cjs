@@ -18,7 +18,7 @@ module.exports = {
     description: "Stack'd Development Studio crea Stack'd, una app de finanzas personales que pone la privacidad primero. Sin cuentas de usuario y sin rastreo: cada cuenta, movimiento y presupuesto se queda en tu dispositivo, y lo único que se conecta a internet es el enlace bancario que puedes decidir activar.",
     hero: {
       eyebrow: "Stack'd · finanzas personales",
-      h1: 'Tu dinero bajo control, sin salir de tu teléfono.',
+      h1: 'Tu dinero bajo control, <em>sin salir de tu teléfono</em>.',
       lede: "Stack'd guarda cada cuenta, cada movimiento y cada presupuesto en tu dispositivo. No hay cuenta de usuario que crear ni nube con la que sincronizar. Lo único que se conecta a internet es el enlace bancario que puedes decidir activar, y te muestra cada movimiento antes de guardarlo.",
       play: 'Disponible en Google Play',
       ios: 'Versión para iPhone en camino',

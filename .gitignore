@@ -17,3 +17,6 @@ tools/store/out/
 # Vite writes these beside the config while resolving it.
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Hero title frames, contact sheets and videos (tools/site/hero-render.cjs)
+tools/site/out/

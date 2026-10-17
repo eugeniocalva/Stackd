@@ -18,7 +18,7 @@ module.exports = {
     description: "Stack'd Development Studio crée Stack'd, un gestionnaire de finances personnelles qui protège votre vie privée. Ni compte ni pistage : chaque compte, opération et budget reste sur votre appareil, et la seule chose qui passe en ligne est le lien bancaire que vous pouvez choisir d'activer.",
     hero: {
       eyebrow: "Stack'd · finances personnelles",
-      h1: 'Vos comptes, gardés sur votre téléphone.',
+      h1: 'Vos comptes, gardés <em>sur votre téléphone</em>.',
       lede: "Stack'd garde chaque compte, chaque opération et chaque budget sur votre appareil. Aucun compte utilisateur à créer, aucun cloud à synchroniser. La seule chose qui passe en ligne est le lien bancaire que vous pouvez choisir d'activer, et il vous montre chaque opération avant de l'enregistrer.",
       play: 'Disponible sur Google Play',
       ios: 'Version iPhone en préparation',

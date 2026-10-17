@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  The hero title scene (docs/site-hero-animation-plan.md §2): the site's own
+  title, styles, fonts and motion on a video-sized canvas. hero-render.cjs
+  serves it with the {{…}} slots filled, then seeks every animation to an
+  exact t and screenshots it. Opened in a browser through
+  `node tools/site/hero-render.cjs --serve`, it simply plays.
+
+  No script, ever: the scene must not read a clock (plan §4).
+-->
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<title>Hero scene · {{LANG}} · {{W}}×{{H}}</title>
+<link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/__hero/motion.css">
+<style>
+  html, body { width: {{W}}px; height: {{H}}px; margin: 0; overflow: hidden; scroll-behavior: auto; }
+  /* 90 % title-safe area (SMPTE ST 2046-1): 5 % in from every edge. */
+  .scene { width: 100%; height: 100%; padding: 5vh 5vw; display: flex; flex-direction: column; justify-content: center; gap: {{GAP}}px; }
+  .scene.hero h1 { font-size: {{FS}}px; max-width: {{MAXW}}px; margin: 0; }
+  .scene .brand-row { display: flex; align-items: center; gap: {{BGAP}}px; }
+  .scene .brand-row img { width: {{ICON}}px; height: {{ICON}}px; border-radius: 22%; }
+  .scene .eyebrow { font-size: {{EYEBROW}}px; }
+  .url { position: absolute; margin: 0; left: 5%; bottom: 5%; font-family: var(--font-display); font-weight: 700; font-size: {{EYEBROW}}px; letter-spacing: -0.01em; color: var(--muted); }
+</style>
+</head>
+<body>
+<section class="hero scene">
+  <div class="brand-row"><img src="/img/icon-512.webp" alt=""><p class="eyebrow">{{EYEBROW_TEXT}}</p></div>
+  {{TITLE}}
+</section>
+<p class="url">stackdplatform.com</p>
+</body>
+</html>
