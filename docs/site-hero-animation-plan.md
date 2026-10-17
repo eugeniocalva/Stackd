@@ -1,10 +1,10 @@
 # Site hero title animation — plan
 
-Status: **approved 2026-10-17** with the recommended decisions (D1 A, D2 as
-proposed, D3 A, D4 videos after the site ships). **P1 built, motion approved
-and pushed** (§10, app `4e8f444`). **P2 built and checked** (§11), committed;
-site on branch `hero-animation` (preview only). **P3 checked** (§12), incl. Android
-Chrome on the emulator; the owner's own phones remain.
+Status: **LIVE on stackdplatform.com since 2026-10-17** (site main `1dbd33c`,
+§13), with the header overflow fix from branch `header-nav-overflow`.
+Approved 2026-10-17 with the recommended decisions (D1 A, D2 as proposed,
+D3 A, D4 videos after the site ships). P1 `4e8f444`, P2 `bebfc30`, P3
+`52d2c8b` in the app repo. **Next: P4** (MP4s; needs a full ffmpeg).
 
 Goal: animate the home page title ("Money tracking that stays on your phone."
 and its four translations) on stackdplatform.com, starting from **one HTML
@@ -366,3 +366,25 @@ Slow 4G, cold cache, medians, each page also with reduced motion):
 (Chromium) and 9/9 in WebKit and Firefox; scene `--verify` 15/15
 byte-identical and unchanged. Open: the owner's own phones on the preview
 (real iOS Safari in particular), then P5.
+
+## 13. P5 — live (2026-10-17)
+
+The owner checked the preview on their phone (it first looked static: the
+cause was on the phone's side — Reduce Motion, the live URL or a missed
+1.5 s — and it animated once checked) and chose to ship the title together
+with the header overflow fix. Site main: `hero-animation` fast-forwarded,
+`header-nav-overflow` (1a2cb1d) merged (5aef0e1), sitemap regenerated
+(1dbd33c, the five home pages dated 2026-10-17).
+
+Checked on the merged tree before the push: `pages.cjs`/`legal.cjs`
+reproduce it byte for byte; `--verify --site` 45/45 (5 languages × 9
+device widths); no horizontal overflow on any of the 20 pages, 320–1920 px;
+`redirect-check.cjs` 35/35. On production after the push: all five home
+pages serve their animated title, production CSP, no `noindex`; a French
+browser from Google is redirected to /fr/, an English one is not; iPhone
+(WebKit) and Pixel (Chromium) profiles show the words rising in sequence
+with the title at 150 px; `hero-perf.cjs`: LCP 1,412 ms with motion /
+1,344 ms reduced vs 1,360 / 1,380 before launch, CLS 0, 53 fps.
+
+The branches `hero-animation` and `header-nav-overflow` remain on GitHub
+(their Pages previews too); delete them when no longer useful.
