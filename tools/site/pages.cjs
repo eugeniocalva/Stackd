@@ -91,10 +91,7 @@ ${header({ lang, current: 'home', page: '' })}
       ${heroTitle(h.hero.h1)}
       <p class="lede">${h.hero.lede}</p>
       <div class="cta">
-        <a class="btn btn-primary" href="${L.playUrl(lang)}">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M4 3.5v17a1 1 0 0 0 1.5.86l14.5-8.5a1 1 0 0 0 0-1.72L5.5 2.64A1 1 0 0 0 4 3.5z"/></svg>
-          ${h.hero.play}
-        </a>
+        <a class="play-badge" href="${L.playUrl(lang)}"><img src="/img/google-play-${lang}.png" alt="${h.hero.play}" width="148" height="44"></a>
         <span class="btn btn-ghost" aria-disabled="true">${h.hero.ios}</span>
       </div>
       <div class="facts">

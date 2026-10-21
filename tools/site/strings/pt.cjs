@@ -20,7 +20,7 @@ module.exports = {
       eyebrow: "Stack'd · finanças pessoais",
       h1: 'O seu dinheiro, controlado <em>no seu telemóvel</em>.',
       lede: "O Stack'd guarda cada conta, cada movimento e cada orçamento no seu dispositivo. Não há conta de utilizador para criar nem nuvem com que sincronizar. A única coisa que vai à internet é a ligação bancária que pode optar por ativar, e ela mostra-lhe cada movimento antes de o guardar.",
-      play: 'Disponível no Google Play',
+      play: 'Obter no Google Play',
       ios: 'Versão para iPhone a caminho',
       facts: ['<b>0</b> contas de utilizador ou rastreadores', '<b>5</b> idiomas', '<b>CSV</b> à entrada e à saída, sempre'],
       imgAlt: "Painel do Stack'd: saldo total de €28 088,91, gráfico do saldo, cartões das contas Banco principal e Poupança, e smart insights."
