@@ -34,6 +34,14 @@ The signed AAB is built, and iOS build 10003 is uploaded to App Store Connect.
 - **Android:** upload it to *Closed testing – Alpha*. 15 testers opted in on
   2026-09-30, so the 14 days end about 2026-10-14. Then apply for production
   access with answers 8–10 rewritten to match the build, and promote 1.0.3.
+  **Update 2026-10-14:** 1.0.3 is on *Closed testing – Alpha*, the §1b
+  listing copy is pasted in five languages, and **production access was
+  APPLIED FOR** (O-16). Google usually answers within 7 days.
+  **Update 2026-10-17: production access GRANTED.** Next: the production
+  release of 10003 (O-16, "Once granted").
+  **Update 2026-10-21: LIVE on Google Play** —
+  `play.google.com/store/apps/details?id=com.stackd.finance` (published
+  2026-10-17, 1.0.3 / 10003, EEA + UK).
 - **iOS:** 1.0.2 has been *Waiting for Review* since 2026-10-05, and the
   owner's support emails (2026-10-06 and 2026-10-09) have had no answer.
   Leave it in the queue and never release it (release is manual). When it is
@@ -628,6 +636,22 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   *Closed testing – Alpha*; the tester clock does not reset. "What's new" in
   five languages is at the end of `docs/deep-test-fixes-1.0.3-plan.md`.
   1.0.3 is the build to promote to production.
+  **Production access APPLIED FOR 2026-10-14**, with 1.0.3 on the closed track
+  and the §1b listing pasted. The questionnaire fields take 300 characters
+  each. The answers describe only what the build contains (no Share App), not
+  the Testers Community draft. Keep the closed test running and the testers
+  opted in until Google answers: a refusal can ask for more testing.
+  **Production access GRANTED (email received by 2026-10-17).**
+  **Production release IN REVIEW 2026-10-17:** 10003 (1.0.3), full rollout,
+  31 countries (EEA + UK), managed publishing off, so it goes live on
+  approval. The owner kept the legal address as the public one (on a personal
+  account, earning money publishes it; there is no separate trader switch).
+  **Once granted:** check that the account's DSA trader status is declared
+  (an app that sells Pro in the EU must come from a trader, or it is not
+  shown there); Production → Countries/regions = EEA + UK (D7); create a
+  release from the library with 10003 (no new upload); use first-release notes
+  in five languages, not 1.0.3's fix notes (every public user installs fresh);
+  roll out to 100%, with Managed publishing on if the go-live moment matters.
 
 ### App Store Connect — ~~once enrolled~~ **open now (2026-09-27)**
 
