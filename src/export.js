@@ -2,16 +2,19 @@
 window.StackdExport = {
   _busy: false, // 1.0.2 (BUG-37): a native share sheet is open
 
-  _download(filename, content, type = 'text/csv;charset=utf-8;') {
+  _download(filename, content, type = 'text/csv;charset=utf-8;', opts = {}) {
     // 1.0.2 (BUG-37): Android's WebView has no DownloadListener and iOS's no
     // download delegate, so the <a download> below was silently dropped in the
     // native apps. There the file goes through the system share sheet (Save to
     // Files / Drive / mail). Returns a Promise of whether the file went out.
+    // 1.1.0 (IE-1): opts.bom === false leaves the UTF-8 BOM out (the ledger
+    // export's "Add BOM for Excel" setting); every backup keeps it.
+    const text = (opts.bom === false ? '' : '\uFEFF') + content;
     const cap = window.Capacitor;
     if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
-      return this._shareNative(filename, '\uFEFF' + content);
+      return this._shareNative(filename, text);
     }
-    const blob = new Blob(['\uFEFF' + content], { type });
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

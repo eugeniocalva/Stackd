@@ -137,6 +137,42 @@ describe('Native CSV export goes through the share sheet (1.0.2, BUG-37)', () =>
   });
 });
 
+describe('BOM option on _download (1.1.0 IE-1)', () => {
+  let created;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete global.URL.createObjectURL;
+    delete global.URL.revokeObjectURL;
+  });
+  const webBoot = () => {
+    boot({ native: false });
+    created = [];
+    global.URL.createObjectURL = vi.fn((blob) => { created.push(blob); return 'blob:stackd-test'; });
+    global.URL.revokeObjectURL = vi.fn();
+  };
+
+  it('native: bom:false writes the text as is; the default still adds the BOM', async () => {
+    boot();
+    await E()._download('ledger.csv', '"Conto";"Data"', 'text/csv;charset=utf-8;', { bom: false });
+    expect(Filesystem.writeFile.mock.calls[0][0].data).toBe('"Conto";"Data"');
+    await E()._download('ledger.csv', '"Conto";"Data"');
+    expect(Filesystem.writeFile.mock.calls[1][0].data).toBe('\uFEFF"Conto";"Data"');
+    await run('exportTransactions');
+    expect(Filesystem.writeFile.mock.calls[2][0].data.startsWith('\uFEFFDate,Time,Type')).toBe(true);
+  });
+
+  it('web: bom:false and a text/plain type reach the Blob', async () => {
+    webBoot();
+    await E()._download('ledger.txt', 'a\tb', 'text/plain;charset=utf-8;', { bom: false });
+    await E()._download('ledger.csv', 'a;b');
+    // Raw bytes: Blob.text() decodes UTF-8 and drops a leading BOM.
+    const bytes = async (b) => Array.from(new Uint8Array(await b.arrayBuffer()));
+    expect(created[0].type).toBe('text/plain;charset=utf-8;');
+    expect(await bytes(created[0])).toEqual([0x61, 0x09, 0x62]);
+    expect(await bytes(created[1])).toEqual([0xEF, 0xBB, 0xBF, 0x61, 0x3B, 0x62]);
+  });
+});
+
 describe('Web CSV export is unchanged (guard)', () => {
   let created;
   beforeEach(() => {

@@ -2077,6 +2077,188 @@ window.StackdImport = {
     return null;
   },
 
+  // ── 1.1.0 (IE-1) the Auto reader (docs/import-export-plan.md §6b) ──────────
+  // Used by the Import screen's Check and, from IE-2, by the ledger and QIF
+  // readers. The restore readers above (_readRecords, _detectDelimiter,
+  // _normalizeDate, _restoreDecimal) are pinned by the backup tests and stay
+  // as they are.
+
+  AUTO_DELIMITERS: [';', ',', '\t', '|'],
+
+  // { delimiter, rowDelimiter, records, rows } for `text`. opts (the Import
+  // settings sheet, every one 'auto' by default):
+  //  - delimiter: 'auto' | ';' | ',' | '\t' | '|'
+  //  - rowDelimiter: 'auto' | 'lf' | 'crlf' | 'cr' — a CR-only file (old Mac
+  //    exports) is otherwise one long line
+  //  - ignoreQuotes: '"' is an ordinary character
+  // Auto delimiter: the candidate whose column count stays the most
+  // consistent over the first 20 records (a header alone can't tell a Tab
+  // file); ties fall back to _detectDelimiter, so a ';' or ',' file reads as
+  // the restore reader reads it.
+  _readTextAuto(text, opts = {}) {
+    let t = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+    const rowOpt = opts.rowDelimiter || 'auto';
+    let rowDelimiter;
+    if (rowOpt === 'cr' || (rowOpt === 'auto' && t.indexOf('\n') === -1 && t.indexOf('\r') !== -1)) {
+      t = t.replace(/\r\n?/g, '\n');
+      rowDelimiter = 'cr';
+    } else {
+      rowDelimiter = /\r\n/.test(t) ? 'crlf' : 'lf';
+    }
+    const ignoreQuotes = !!opts.ignoreQuotes;
+    const forced = this.AUTO_DELIMITERS.indexOf(opts.delimiter) !== -1 ? opts.delimiter : null;
+    const delimiter = forced || this._autoDelimiter(t, ignoreQuotes);
+    const records = this._autoRecords(t, delimiter, ignoreQuotes);
+    const rows = records.map(r => this._autoFields(r, delimiter, ignoreQuotes));
+    return { delimiter, rowDelimiter, records, rows };
+  },
+
+  _autoRecords(text, delimiter, ignoreQuotes) {
+    if (ignoreQuotes) return this._physicalLines(text);
+    return this._splitRecords(text, delimiter) || this._physicalLines(text);
+  },
+
+  _autoFields(record, delimiter, ignoreQuotes) {
+    if (ignoreQuotes) return record.split(delimiter).map(f => f.trim());
+    return this._parseRow(record, delimiter);
+  },
+
+  _autoDelimiter(text, ignoreQuotes) {
+    // The head of the file is enough; a 6,000-row file is not split 4 times.
+    const head = text.length > 65536 ? text.slice(0, 65536) : text;
+    const legacy = this._detectDelimiter(this._physicalLines(head)[0] || '');
+    let best = null;
+    this.AUTO_DELIMITERS.forEach(d => {
+      const recs = this._autoRecords(head, d, ignoreQuotes).slice(0, 21);
+      if (!recs.length) return;
+      const cols = this._autoFields(recs[0], d, ignoreQuotes).length;
+      if (cols < 2) return;
+      const data = recs.slice(1);
+      const same = data.filter(r => this._autoFields(r, d, ignoreQuotes).length === cols).length;
+      const cons = data.length ? same / data.length : 1;
+      const better = !best || cons > best.cons ||
+        (cons === best.cons && (cols > best.cols || (cols === best.cols && d === legacy)));
+      if (better) best = { d, cols, cons };
+    });
+    return best ? best.d : legacy;
+  },
+
+  // ── 1.1.0 (IE-1) file-level dates (§6b) ───────────────────────────────────
+  // One token order per file, from every value (not a 50-row sample):
+  // a 4-digit first token → ymd; a first token over 12 → dmy; a second token
+  // over 12 → mdy. `ambiguous` = no value decides (all days ≤ 12) — then
+  // `fallback` (the install's export date format, IE-4) or day-first.
+  // `mixed` = values contradict each other (both orders seen).
+  _guessDateOrder(values, fallback) {
+    let yearFirst = false;
+    let firstOver12 = false;
+    let secondOver12 = false;
+    (values || []).forEach(v => {
+      const m = this._dateTokens(v);
+      if (!m) return;
+      if (m[1].length === 4) yearFirst = true;
+      else if (+m[1] > 12) firstOver12 = true;
+      if (+m[2] > 12 && m[1].length !== 4) secondOver12 = true;
+    });
+    const fb = ['dmy', 'mdy', 'ymd'].indexOf(fallback) !== -1 ? fallback : 'dmy';
+    if (yearFirst) return { order: 'ymd', ambiguous: false, mixed: firstOver12 || secondOver12 };
+    if (firstOver12 && secondOver12) return { order: fb, ambiguous: false, mixed: true };
+    if (firstOver12) return { order: 'dmy', ambiguous: false, mixed: false };
+    if (secondOver12) return { order: 'mdy', ambiguous: false, mixed: false };
+    return { order: fb, ambiguous: true, mixed: false };
+  },
+
+  _dateTokens(raw) {
+    const str = String(raw == null ? '' : raw).trim().split(/[T ]/)[0];
+    return str.match(/^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$/);
+  },
+
+  // 'YYYY-MM-DD' or null. Like _normalizeBankDate, plus a real calendar check
+  // ('31/02/2026' is null, not '2026-02-31') and a sane year range.
+  _parseDateStrict(raw, order) {
+    const m = this._dateTokens(raw);
+    if (!m) return null;
+    let y, mo, d;
+    if (order === 'ymd') { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if (order === 'mdy') { mo = +m[1]; d = +m[2]; y = +m[3]; }
+    else { d = +m[1]; mo = +m[2]; y = +m[3]; }
+    if ((order === 'ymd' ? m[1] : m[3]).length === 3) return null;
+    if (y < 100) y += 2000;
+    if (y < 1900 || y > 2199 || mo < 1 || mo > 12 || d < 1) return null;
+    const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    if (d > dim) return null;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  },
+
+  // ── 1.1.0 (IE-1) amounts and the amount factor (§6b, §4b) ─────────────────
+  // 'comma' | 'dot' for a whole column: a value ending in a separator plus
+  // 1–2 digits is evidence; the majority wins; a tie follows the delimiter
+  // (';' is an EU spreadsheet).
+  _guessDecimal(values, delimiter) {
+    let comma = 0;
+    let dot = 0;
+    (values || []).forEach(v => {
+      const s = String(v == null ? '' : v).replace(/[^0-9.,]/g, '');
+      if (/,\d{1,2}$/.test(s)) comma++;
+      else if (/\.\d{1,2}$/.test(s)) dot++;
+    });
+    if (comma !== dot) return comma > dot ? 'comma' : 'dot';
+    return delimiter === ';' ? 'comma' : 'dot';
+  },
+
+  // The amount factor typed in the settings sheet: a sign, a comma or a point
+  // and up to 6 decimals (a rate like 1,95583 or 0.001), never 0. null =
+  // unreadable. Not Store.parseAmount: that is a money reader (≤ 2 decimals).
+  _parseFactor(raw) {
+    const s = String(raw == null ? '' : raw).trim().replace(/−/g, '-');
+    if (!/^[+-]?(\d+([.,]\d{1,6})?|[.,]\d{1,6})$/.test(s)) return null;
+    const n = Number(s.replace(',', '.'));
+    return n === 0 || !isFinite(n) ? null : n;
+  },
+
+  // A cell → a signed amount in cents precision, or null. parseBankAmount's
+  // leniency (currency letters, '(12,34)', '12,34-') in the file's decimal
+  // convention, times the factor, rounded once.
+  _ledgerAmount(raw, decimal, factor) {
+    const n = this.parseBankAmount(raw, decimal || 'auto');
+    if (n === null) return null;
+    const f = typeof factor === 'number' && isFinite(factor) && factor !== 0 ? factor : 1;
+    const r = Math.round(n * f * 100) / 100;
+    return r === 0 ? 0 : r; // no -0
+  },
+
+  // ── 1.1.0 (IE-1) Check: what a text is, without touching the store ────────
+  // { kind, … } — kind is 'statement' (camt/MT940), 'backup' (a Stack'd
+  // export: backupKind loans|rules|budgets|accounts|categories|transactions),
+  // 'bank' (a single-account statement CSV for #import-map), 'empty' or
+  // 'unknown'. IE-2/IE-3 add 'ledger' and 'qif'. The text is read once with
+  // the Auto reader; `decided` is what Auto chose, for the Review card.
+  analyzeText(text, opts = {}) {
+    const fmt = this.sniffFormat(text);
+    if (fmt === 'camt' || fmt === 'mt940') return { kind: 'statement', format: fmt };
+    const read = this._readTextAuto(text, opts);
+    const decided = { delimiter: read.delimiter, rowDelimiter: read.rowDelimiter, ignoreQuotes: !!opts.ignoreQuotes };
+    const base = { delimiter: read.delimiter, records: read.records, rows: read.rows, decided };
+    if (!read.rows.length) return Object.assign({ kind: 'empty', rowCount: 0 }, base);
+    const header = read.rows[0];
+    const rowCount = read.rows.length - 1;
+    const key = {};
+    header.forEach(h => { key[String(h).toLowerCase().replace(/[^a-z0-9]/g, '')] = ''; });
+    const probe = [key];
+    const has = (k) => Object.prototype.hasOwnProperty.call(key, k);
+    const backupKind = this.isLoanRows(probe) ? 'loans'
+      : this.isRuleRows(probe) ? 'rules'
+      : this.isBudgetRows(probe) ? 'budgets'
+      : this.isAccountRows(probe) ? 'accounts'
+      : this.isCategoryRows(probe) ? 'categories'
+      : ['date', 'amount', 'account', 'type'].every(has) ? 'transactions'
+      : null;
+    const out = Object.assign({ header, rowCount }, base);
+    if (backupKind) return Object.assign(out, { kind: 'backup', backupKind });
+    if (header.length >= 2 && rowCount >= 1) return Object.assign(out, { kind: 'bank' });
+    return Object.assign(out, { kind: rowCount ? 'unknown' : 'empty' });
+  },
+
   importLoans(file, state, onComplete, onError) {
     // 1.0.3 (BUG-152): decoded by _readFileText like importCSV
     this._readFileText(file, (text) => {
@@ -2117,6 +2299,24 @@ window.StackdImport = {
   // Stack'd backup is handed back as a bank statement ({ kind: 'bank' }) for
   // the column-mapping flow; the file itself is never imported blind.
   importCSV(file, state, onComplete, onError) {
+    // 1.0.3 (BUG-152): the file is decoded by _readFileText (bytes → UTF-8,
+    // else Windows-1252); a decode failure reaches `onError` once, from there,
+    // and never runs the batch in importText.
+    // 1.1.0 (IE-1): the routing moved to importText so pasted text takes the
+    // same path; a file is always a restore (mode 'restore').
+    this._readFileText(file, (csvText) => {
+      this.importText(csvText, { mode: 'restore' }, onComplete, onError);
+    }, onError);
+  },
+
+  // 1.1.0 (IE-1): the routing of importCSV, for text that is already decoded
+  // (a picked file or the Import screen's paste box). opts.mode:
+  //  - 'restore' (default; Backup's "Restore from a file"): every kind
+  //    behaves as it always has. From IE-2 a ledger or QIF file returns a
+  //    non-writing hand-off instead of landing unreviewed.
+  //  - 'commit': only Review's Import button (IE-6) — writes ledger/QIF rows.
+  // Callbacks run once, synchronously, after the change has settled.
+  importText(csvText, opts, onComplete, onError) {
     // 1.0.2 (BUG-34, D-U7-5): a restore is ONE change — a file that does not
     // fit, or a route that fails part-way, lands nothing. The routing body
     // reports through these holders; the caller's callbacks run once the
@@ -2212,30 +2412,25 @@ window.StackdImport = {
         if (onError) onError(err);
       }
     };
-    // 1.0.3 (BUG-152): the file is decoded by _readFileText (bytes → UTF-8,
-    // else Windows-1252); a decode failure reaches `fail` once, from there,
-    // and never runs the batch below.
-    this._readFileText(file, (csvText) => {
-      let landed = false;
-      let thrown = null;
+    let landed = false;
+    let thrown = null;
+    try {
+      landed = window.Store.batch(() => {
+        route(csvText);
+        if (outcome && outcome.error) throw outcome.error; // roll back whatever the route wrote
+      });
+    } catch (error) {
+      thrown = error || new Error('import failed');
+    }
+    if (landed) {
       try {
-        landed = window.Store.batch(() => {
-          route(csvText);
-          if (outcome && outcome.error) throw outcome.error; // roll back whatever the route wrote
-        });
+        if (done && outcome) done(outcome.result);
       } catch (error) {
-        thrown = error || new Error('import failed');
+        if (fail) fail(error); // as before: a throwing callback still ends in 'Import failed'
       }
-      if (landed) {
-        try {
-          if (done && outcome) done(outcome.result);
-        } catch (error) {
-          if (fail) fail(error); // as before: a throwing callback still ends in 'Import failed'
-        }
-        return;
-      }
-      const f = window.Store.takeSaveFailure(); // this flow reports it itself
-      if (fail) fail(thrown || new Error(window.I18n.t(f && f.quota ? 'others.importStorageFull' : 'storage.failedBody')));
-    }, fail);
+      return;
+    }
+    const f = window.Store.takeSaveFailure(); // this flow reports it itself
+    if (fail) fail(thrown || new Error(window.I18n.t(f && f.quota ? 'others.importStorageFull' : 'storage.failedBody')));
   }
 };

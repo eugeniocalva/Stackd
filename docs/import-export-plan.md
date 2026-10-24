@@ -1,6 +1,6 @@
 # Import & Export Plan — MoneyStats-style import, export and backup
 
-> Status: **PLANNED 2026-10-24, not started.** Cold-start reference for the
+> Status: **IE-1 DONE 2026-10-24 (engine prep, no visible change); IE-2 next.** Cold-start reference for the
 > import/export redesign. Owner decisions taken on 2026-10-24 are in §1 and
 > §12; MoneyStats samples in it/en/de/pt are analysed in §2.
 > Code facts were mapped on 2026-10-24 against `main` at `d38bb6a`
@@ -670,9 +670,27 @@ every src file it edits (house rule), and is tagged `// 1.1.0 (IE-n)`.
 | **IE-3 QIF import** | `sniffFormat` qif, `parseQIF`, splits, transfers, investment refusal | `qifImport.test.js` (Quicken + MoneyStats-style samples); `importCSV` on QIF writes nothing |
 | **IE-4 Ledger export** | `buildLedger`/`exportLedger`, quote-all, date patterns, decimals, balance-row rules, synthetic rows, adjacency, cross-currency columns 13–15, `exportPrefs` slice | `ledgerExport.test.js`: Italian header = MoneyStats byte for byte (BOM off); **round trip** export → import on an empty install gives the same accounts, balances, transfers (incl. cross-currency), categories and UI-charset tags in all 5 languages × setting combinations; fixtures: 0-opening account with pre-opening rows, opening after the period end, partial export of an account without an opening row |
 | **IE-5 Settings + Backup** | Data card, Import/Export sheet, `#backup`, ids kept, routes/views, icons in `EMERGENCY_ICONS`, `#bank-go-import` → `#import` | spec/test updates (§10) |
-| **IE-6 Import screen + Review** | `#import`, settings sheet, `#import-review` (all §4c states), bank handoff with analysis, result sheet secondary action + currency switch | new `import_export.spec.js` (paste → Check → Review → Import; file → Check; ledger picked on `#backup` → Review; TSV and CR-only bank files → `#import-map` with separate columns; camt on `#import`); escapeGuard VIEWS + seeded-draft steps; **device check**: file picker with QIF/TXT/CSV from Downloads and Drive, Check + Import timing on 6k rows |
+| **IE-6 Import screen + Review** | `#import`, settings sheet, `#import-review` (all §4c states), **bank handoff with analysis (§6g) — owner reminder 2026-10-24: after IE-1 a bank file sent to `#import-map` is still re-read by `analyzeBankCSV` with the old `;`/`,` reader; IE-6 must pass Check's records and overrides, verified by the Tab/CR-only e2e below**, result sheet secondary action + currency switch | new `import_export.spec.js` (paste → Check → Review → Import; file → Check; ledger picked on `#backup` → Review; TSV and CR-only bank files → `#import-map` with separate columns; camt on `#import`); escapeGuard VIEWS + seeded-draft steps; **device check**: file picker with QIF/TXT/CSV from Downloads and Drive, Check + Import timing on 6k rows |
 | **IE-7 Export screen** | `#export`, preview, format, settings sheet, period sheet + planned toggle, web notice | e2e download content = expected Italian file; native share/BOM/type unit tests |
 | **IE-8 Copy, docs, release** | manual/FAQ (5 languages, `supportProse` counts), Settings copy (`others.importDesc/exportDesc` retired), terms text pointing to Backup (§12 Q10), CLAUDE.md section, `docs/import-ux-plan.md` status, What's new, version 1.1.0 | full suite + device check (Android, iOS) in 5 languages, light/dark |
+
+**IE-1 as built (2026-10-24, `?v=76` for import.js and export.js):**
+`StackdImport.importText(text, {mode}, done, fail)` holds the routing and
+the `Store.batch` wrapper; `importCSV` = `_readFileText` → `importText`
+(`mode:'restore'`; `mode` is accepted but nothing branches on it until
+IE-2). `analyzeText(text, opts)` returns `statement | backup (backupKind) |
+bank | empty | unknown` with `{delimiter, records, rows, header, rowCount,
+decided}` and never writes. Auto reader `_readTextAuto` (+ `_autoDelimiter`,
+`_autoRecords`, `_autoFields`, `AUTO_DELIMITERS`): Tab/`|`, consistency
+score over 20 records on the first 64 KB, CR-only rows, forced
+delimiter/row delimiter, ignore quotes. Dates: `_guessDateOrder(values,
+fallback)` → `{order, ambiguous, mixed}`, `_parseDateStrict(raw, order)`.
+Amounts: `_guessDecimal`, `_parseFactor`, `_ledgerAmount`.
+`StackdExport._download(name, content, type, {bom})`. Tests:
+`csvDetect.test.js` (17), `importText.test.js` (13), `exportNative.test.js`
++2; full suite 153 files / 1,807 unit + 96 e2e green, lint clean. The
+bank handoff (§6g) still re-reads with `analyzeBankCSV` — it gets the
+analysis in IE-6 with the Import screen.
 
 IE-1…IE-4 change nothing a user can see (a ledger/QIF file picked on
 Settings still writes nothing) and land on `main` one by one. **IE-5…IE-7
