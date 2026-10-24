@@ -84,8 +84,8 @@ What stays untouched (hard requirement):
   - **Hashtags** joined with ` | `, case and accents kept, no `#`; 2 cells
     contain commas.
   - Ricevente/Uso/Marchio always empty, Tasso di cambio always `1,00`,
-    second Ammontare/Valuta equal to the first, Stato always `pagato` (the
-    unpaid word has never been observed).
+    second Ammontare/Valuta equal to the first, Stato always `pagato` in this
+    file (an unpaid row reads `non pagato`, seen in a later screenshot).
   - Rows ascending by date; future scheduled rows included (to 2027-02-28,
     ~4 months ahead).
 - **The same data exported with MoneyStats in English, German and
@@ -112,6 +112,28 @@ What stays untouched (hard requirement):
   | 16 | Stato del pagamento | Payment status | Zahlungsstatus | Status do pagamento |
   | 17 | Marchio | Mark | Markierung | Marca |
   | paid word | pagato | paid | bezahlt | pago |
+  | unpaid word | non pagato | not paid | nicht bezahlt | não pago |
+
+  French and Spanish (owner screenshots, 2026-10-24; only part of the header
+  row was visible):
+
+  | Col | fr | es |
+  |---|---|---|
+  | 3 / 13 | ? | Cantidad (seen as "…idad") |
+  | 4 / 6 / 14 | ? | Moneda |
+  | 5 | ? | Saldo |
+  | 9 | ? | Uso |
+  | 10 | Catégorie | Categoría |
+  | 11 | Note | Comentario |
+  | 12 | Tags | ? |
+  | 15 | Taux de change | Tipo de cambio |
+  | 16 | Statut de paiement (seen as "Statut de…") | Estado de pago (seen as "…do de pago") |
+  | 17 | Marque | Marca |
+  | paid / unpaid | payé / impayé | pagado / no pagado |
+
+  Columns marked `?` or "seen as" are inferred; a screenshot of the full
+  first line in fr and es would complete them (not blocking — §6c's
+  structural fallback reads those files anyway).
 
   Consequences:
   - **"Saldo" and "Trasferimento" are data, not vocabulary**: they stay
@@ -121,8 +143,8 @@ What stays untouched (hard requirement):
   - Date format (`dd/MM/yyyy`), delimiter (`;`) and decimal comma are
     MoneyStats *settings*, not tied to the language (the English file uses
     them too).
-  - The **unpaid** word is still unobserved (no unpaid row in any sample),
-    and MoneyStats' fr/es headers are unknown.
+  - The paid/unpaid words are now known in all six MoneyStats languages;
+    MoneyStats' fr/es header rows are only partly known (table above).
 
 ## 3. Target experience — Settings and Backup
 
@@ -367,9 +389,11 @@ preview and the file share it; never adds a BOM) and
 
 Header sets and the fixed words (*Balance*, *Transfer*, *paid*, *unpaid*)
 are dictionary keys `ledger.col.*` / `ledger.word.*` created in **IE-2**
-(§8). **it, en and pt headers and paid words equal MoneyStats exactly**
-(§2 table), so a Stack'd export in those languages is the file MoneyStats
-writes; fr and es use Stack'd's own translations (MoneyStats' are unknown).
+(§8). **it, en and pt headers equal MoneyStats exactly, and the paid/unpaid
+words equal MoneyStats in all five Stack'd languages** (§2 tables), so a
+Stack'd export in it/en/pt is the file MoneyStats writes; fr and es use the
+MoneyStats headers seen so far and Stack'd's own translations for the rest
+(to be aligned once the full fr/es header rows are known).
 The *Balance* / *Transfer* words that Stack'd writes in Titolo/Categoria are
 localized (`Saldo`, `Trasferimento` in Italian); the importer does not
 depend on them (§6d). Category names are written as stored (never translate
@@ -452,7 +476,8 @@ the 5 patterns; CRLF for CSV, LF for TXT.
   `parseCSV` keys would keep the wrong copy). The **first** occurrence wins;
   13/14 are read as the counterpart amount/currency.
 - Alias table: Stack'd's own 5 `ledger.col.*` sets (all dictionaries) +
-  MoneyStats' **verified it/en/de/pt sets** (§2 table) + common fr/es words
+  MoneyStats' **verified it/en/de/pt sets** and the **seen fr/es headers**
+  (§2 tables) + common fr/es words
   for account, date, amount, currency, balance, title, payee, purpose,
   category, comment, hashtags/tags, rate, payment status, brand/mark. The
   structural fallback covers MoneyStats languages not sampled: 17 columns
@@ -517,11 +542,15 @@ keys); `buildTransactions(rows, {ledger:true})` adds ledger-only rules.
   `[a-z0-9-_]`, collapse `-`. (Spelled out here — the UI normaliser at
   `views.js:2351` deletes spaces and accented letters instead.) Commas inside
   a tag cell are part of the tag, not separators.
-- **Paid** — the whole cell, case-insensitive, against the paid/unpaid words
-  of all 5 languages + MoneyStats' verified paid words (`pagato`, `paid`,
-  `bezahlt`, `pago`); never by substring ("non pagato" contains "pagato").
-  MoneyStats' unpaid word is unobserved, so anything else → Review heads-up
-  with a paid/unpaid choice (never silently paid).
+- **Paid** — the whole cell, case-insensitive and accent-folded, against
+  MoneyStats' verified words in six languages: paid `pagato` / `paid` /
+  `bezahlt` / `pago` / `pagado` / `payé`; unpaid `non pagato` / `not paid` /
+  `nicht bezahlt` / `não pago` / `no pagado` / `impayé` (plus Stack'd's own
+  `ledger.word.paid/unpaid`). Never by substring — every unpaid word
+  contains a paid word ("non pagato" ⊃ "pagato", "impayé" ⊃ "payé"), so a
+  `contains` test would read every unpaid row as paid; a unit test pins all
+  twelve. Any other value → Review heads-up with a paid/unpaid choice (never
+  silently paid).
 - **Currency** from the first Valuta.
 - **Order**: `BATCH_IMPORT_TRANSACTIONS {keepOrder:true}` stamps a monotonic
   `createdAt` so rows of one day keep the file's order (today every row gets
@@ -607,7 +636,9 @@ New key groups (all 5 dictionaries, enforced by `i18n.test.js`):
 
 - **IE-2:** `ledger.col.*` (17 headers) and `ledger.word.*` (balance,
   transfer, paid, unpaid) — file vocabulary, read by the importer and
-  written by the exporter. Italian equals MoneyStats exactly. Once shipped,
+  written by the exporter. `paid`/`unpaid` equal MoneyStats in all 5
+  languages; `col.*` equal MoneyStats in it/en/pt and as far as seen in
+  fr/es (§2). Once shipped,
   a value may only gain aliases, never change (old exports must keep
   importing); a unit test pins the five sets. Ledger tests load all 5
   dictionaries.
@@ -722,4 +753,4 @@ Owner task:
 
 | # | Task | Status |
 |---|---|---|
-| Q9 | MoneyStats samples in other languages | **Done 2026-10-24**: en, de, pt exports received; headers and paid words in §2. Still open (optional, not blocking): one row marked **unpaid** to learn that word — until then an unknown status asks in Review |
+| Q9 | MoneyStats samples in other languages | **Done 2026-10-24**: en, de, pt exports + it/de/en/es/fr/pt screenshots of an unpaid row; headers, paid and unpaid words in §2. Optional, not blocking: a screenshot of the full first line in fr and es to complete those header rows |
