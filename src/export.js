@@ -88,6 +88,140 @@ window.StackdExport = {
     return dateStr; // default yyyy-mm-dd
   },
 
+  // ── 1.1.0 (IE-4) the ledger export (docs/import-export-plan.md §5b) ────────
+  // MoneyStats' 17 columns in the app's language: a file for Excel, Numbers,
+  // Google Sheets or MoneyStats, read back by the ledger importer. Not a
+  // backup: no times, repeats, ids, loans or budgets.
+  LEDGER_COLS: ['account', 'date', 'amount', 'currency', 'balance', 'balanceCurrency', 'title', 'payee', 'purpose',
+    'category', 'comment', 'tags', 'amount2', 'currency2', 'rate', 'status', 'brand'],
+
+  // 'YYYY-MM-DD' in one of Store.EXPORT_DATE_FORMATS.
+  _ledgerDate(ymd, pattern) {
+    const [y, m, d] = String(ymd || '').split('-');
+    if (!d) return ymd || '';
+    return pattern.replace('yyyy', y).replace('MM', m).replace('dd', d);
+  },
+
+  // { text, lineCount, fileName, prefs }. opts: any export pref (format,
+  // delimiter, dateFormat, decimal, quoteAll, bom) over the saved ones,
+  // period {start, end} ('YYYY-MM-DD', inclusive; empty = all time),
+  // includePlanned (rows after today; default true), now (a Date, for the
+  // file name). The text carries no BOM (_download adds it per prefs.bom).
+  buildLedger(state, opts = {}) {
+    const Store = window.Store;
+    const I = window.I18n;
+    const prefs = Store.normalizeExportPrefs(Object.assign({}, Store.getExportPrefs(), opts));
+    const txt = prefs.format === 'txt';
+    const delim = txt ? '\t' : prefs.delimiter;
+    const eol = txt ? '\n' : '\r\n';
+    const today = Store._todayYMD();
+    const start = (opts.period && opts.period.start) || '';
+    const end = (opts.period && opts.period.end) || '';
+    const planned = opts.includePlanned !== false;
+    const inPeriod = (d) => (!start || d >= start) && (!end || d <= end);
+    const accById = new Map(state.accounts.map(a => [a.id, a]));
+    const catById = new Map(state.categories.map(c => [c.id, c]));
+    const word = (k) => I.t('ledger.word.' + k);
+    const ccyOf = (acc) => acc.currency || state.currency;
+    const num = (n, digits) => {
+      let s = Math.abs(n).toFixed(digits);
+      const zero = Number(s) === 0;
+      if (prefs.decimal === 'comma') s = s.replace('.', ',');
+      return (n < 0 && !zero ? '-' : '') + s;
+    };
+    const money = (n, ccy) => num(n, Math.min(2, Store.currencyDigits(ccy)));
+    const one = num(1, 2);
+    const cell = (v) => {
+      const s = String(v == null ? '' : v);
+      if (prefs.quoteAll && !txt) return '"' + s.replace(/"/g, '""') + '"';
+      return (s.includes(delim) || s.includes('"')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const line = (vals) => vals.map(cell).join(delim);
+
+    // Entries: ascending by date, time, creation; a transfer's two legs
+    // together, the incoming one first.
+    const ts = (t) => (t.date || '') + 'T' + (t.time || '') + '|' + (t.createdAt || '') + '|' + (t.id || '');
+    const entries = state.transactions
+      .filter(t => t.type !== 'opening_balance' && accById.has(t.accountId) && inPeriod(t.date) && (planned || t.date <= today))
+      .sort((a, b) => (ts(a) < ts(b) ? -1 : ts(a) > ts(b) ? 1 : 0));
+    const chosen = new Set(entries);
+    const byRef = new Map();
+    entries.forEach(t => { if (t.transferRef) { if (!byRef.has(t.transferRef)) byRef.set(t.transferRef, []); byRef.get(t.transferRef).push(t); } });
+    const ordered = [];
+    const done = new Set();
+    entries.forEach(t => {
+      if (done.has(t)) return;
+      const legs = t.transferRef ? (byRef.get(t.transferRef) || [t]).filter(x => chosen.has(x)) : [t];
+      legs.sort((a, b) => (a.type === 'income' ? 0 : 1) - (b.type === 'income' ? 0 : 1)).forEach(x => { if (!done.has(x)) { done.add(x); ordered.push(x); } });
+    });
+
+    const entryRow = (t) => {
+      const acc = accById.get(t.accountId);
+      const ccy = ccyOf(acc);
+      const signed = t.type === 'expense' ? -Number(t.amount) : Number(t.amount);
+      const cat = t.transferRef ? word('transfer') : ((t.categoryId && catById.get(t.categoryId)) ? catById.get(t.categoryId).name : '');
+      let amt2 = signed;
+      let ccy2 = ccy;
+      let rate = one;
+      const partner = t.transferRef ? (byRef.get(t.transferRef) || []).find(x => x !== t) ||
+        state.transactions.find(x => x.transferRef === t.transferRef && x !== t) : null;
+      if (partner && accById.has(partner.accountId) && ccyOf(accById.get(partner.accountId)) !== ccy) {
+        ccy2 = ccyOf(accById.get(partner.accountId));
+        amt2 = partner.type === 'expense' ? -Number(partner.amount) : Number(partner.amount);
+        rate = num(Math.abs(amt2) / (Math.abs(signed) || 1), 4);
+      }
+      const note = String(t.comment || t.note || '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+      return [acc.name, this._ledgerDate(t.date, prefs.dateFormat), money(signed, ccy), ccy, money(0, ccy), ccy, cat, '', '', cat,
+        note, (Array.isArray(t.tags) ? t.tags : []).join(' | '), money(amt2, ccy2), ccy2, rate,
+        word(t.isPaid === false ? 'unpaid' : 'paid'), ''];
+    };
+    const balanceRow = (acc, date, amount) => {
+      const ccy = ccyOf(acc);
+      return [acc.name, this._ledgerDate(date, prefs.dateFormat), money(0, ccy), ccy, money(amount, ccy), ccy, word('balance'),
+        '', '', '', '', '', money(0, ccy), ccy, one, word('paid'), ''];
+    };
+
+    // Balance rows, one per account: its opening when the period holds it
+    // (or when the file holds entries dated before it, so they stay
+    // uncounted on re-import); otherwise, when the period starts later, the
+    // counted balance the day before the period starts.
+    const dayBefore = (ymd) => {
+      const d = new Date(ymd + 'T12:00:00');
+      d.setDate(d.getDate() - 1);
+      return Store._localYMD(d);
+    };
+    const balances = [];
+    state.accounts.forEach(acc => {
+      const ob = state.transactions.find(t => t.accountId === acc.id && t.type === 'opening_balance');
+      const mine = ordered.filter(t => t.accountId === acc.id);
+      if (ob && (inPeriod(ob.date) || mine.some(t => t.date < ob.date))) {
+        balances.push(balanceRow(acc, ob.date, Number(ob.amount)));
+        return;
+      }
+      if (!start) return;
+      const opened = ob ? ob.date < start
+        : state.transactions.some(t => t.accountId === acc.id && t.date < start && t.isPaid !== false);
+      if (!opened) return;
+      const bal = Store.getBalanceAtDate(dayBefore(start), [acc.id]);
+      if (!mine.length && Math.round(bal * 100) === 0) return;
+      balances.push(balanceRow(acc, start, Math.round(bal * 100) / 100));
+    });
+
+    const header = this.LEDGER_COLS.map(k => I.t('ledger.col.' + k));
+    const lines = [line(header)].concat(balances.map(line), ordered.map(t => line(entryRow(t))));
+    const now = opts.now instanceof Date ? opts.now : new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const stamp = now.getFullYear() + p2(now.getMonth() + 1) + p2(now.getDate()) + p2(now.getHours()) + p2(now.getMinutes()) + p2(now.getSeconds());
+    return { text: lines.join(eol), lineCount: lines.length, fileName: 'Stackd_export_' + stamp + (txt ? '.txt' : '.csv'), prefs };
+  },
+
+  // The ledger file through the share sheet (native) or a download (web).
+  exportLedger(state, opts = {}) {
+    const b = this.buildLedger(state, opts);
+    const type = b.prefs.format === 'txt' ? 'text/plain;charset=utf-8;' : 'text/csv;charset=utf-8;';
+    return this._download(b.fileName, b.text, type, { bom: b.prefs.bom });
+  },
+
   exportAccounts(state) {
     // v1.02: Currency column appended (plan §6).
     // v1.19 (A-17): the file finally restores (import.js isAccountRows /

@@ -3311,7 +3311,12 @@ window.StackdImport = {
         const auto = commit ? this._readTextAuto(csvText, opts) : null;
         const shape = commit ? this._ledgerShape(auto.rows) : null;
         if (shape) {
-          commitLedger(auto, shape, 'ledger', opts);
+          // 1.1.0 (IE-4): a file whose every date is ambiguous reads in this
+          // install's own export date order, when one was chosen.
+          const saved = window.Store.state.exportPrefs;
+          const fallback = opts.dateFallback || (saved && saved.dateFormat
+            ? (/^MM/.test(saved.dateFormat) ? 'mdy' : /^yyyy/.test(saved.dateFormat) ? 'ymd' : 'dmy') : undefined);
+          commitLedger(auto, shape, 'ledger', Object.assign({}, opts, { dateFallback: fallback }));
           return;
         }
         const rows = this.parseCSV(csvText);

@@ -159,6 +159,7 @@ window.Store = {
     historySortOrder: 'desc', // 'asc' or 'desc'
     defaultAccountId: '', // v0.53
     enableTimeInput: false,
+    exportPrefs: null, // 1.1.0 (IE-4): the Export screen's settings; null = the language's defaults
     isSelectionMode: false,
     selectedTransactionIds: [],
 
@@ -316,6 +317,7 @@ window.Store = {
     this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', '');
     this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
+    this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); // 1.1.0 (IE-4)
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
     // v0.72 Phase 5: Recent Activities left the dashboard when the widget area
     // shipped, so a user who has NEVER configured widgets (key absent — distinct
@@ -596,6 +598,7 @@ window.Store = {
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
         if (e.key === 'stackd_v1_language') { this.state.language = window.StackdDB.load('language', 'en'); if (window.I18n) window.I18n.setLang(this.state.language); changed = true; } // v0.86 P8a
+        if (e.key === 'stackd_v1_exportPrefs') { this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); changed = true; } // 1.1.0 (IE-4)
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
@@ -1924,6 +1927,7 @@ window.Store = {
         return true;
       case 'theme': s.theme = L('theme', 'system'); this.applyTheme(); return true;
       case 'enableTimeInput': s.enableTimeInput = L('enableTimeInput', false); return true;
+      case 'exportPrefs': s.exportPrefs = L('exportPrefs', null); return true; // 1.1.0 (IE-4)
       case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
       case 'historyFilterSortOrder': s.historyFilters.sortOrder = L('historyFilterSortOrder', 'asc'); return true;
       case 'defaultAccountId': s.defaultAccountId = L('defaultAccountId', ''); return true;
@@ -3496,6 +3500,8 @@ window.Store = {
         window.StackdDB.save('expandedGraphFilters', this.state.expandedGraphFilters);
         this.state.defaultAccountId = '';
         window.StackdDB.save('defaultAccountId', '');
+        this.state.exportPrefs = null; // 1.1.0 (IE-4)
+        window.StackdDB.remove('exportPrefs');
         // Clear the first-launch flag so the region setup modal shows again
         // (v0.97: through StackdDB so the native file mirror deletes it too —
         // a raw removeItem would let the mirror resurrect it at next boot).
@@ -3710,6 +3716,16 @@ window.Store = {
         // v0.86 P8a: the emit() below re-renders the active view wholesale,
         // so flipping I18n.lang here is all live language switching needs.
         if (window.I18n) window.I18n.setLang(payload);
+        changed = true;
+        break;
+      }
+
+      // 1.1.0 (IE-4, docs/import-export-plan.md §7c): the Export screen's
+      // settings, kept between visits (not in the CSV backup, like every pref).
+      // Only known values are kept; anything else falls back to the default.
+      case 'SET_EXPORT_PREFS': {
+        this.state.exportPrefs = this.normalizeExportPrefs(Object.assign({}, this.getExportPrefs(), payload || {}));
+        window.StackdDB.save('exportPrefs', this.state.exportPrefs);
         changed = true;
         break;
       }
@@ -4427,6 +4443,33 @@ window.Store = {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return this.getBalanceAtDate(today);
+  },
+
+  // 1.1.0 (IE-4): the Export screen's settings. Defaults follow the app's
+  // language (MoneyStats' own choices for it/fr/es/pt; en-US for en).
+  EXPORT_DATE_FORMATS: ['dd/MM/yyyy', 'dd-MM-yyyy', 'dd.MM.yyyy', 'MM/dd/yyyy', 'yyyy-MM-dd'],
+
+  exportDefaults(lang) {
+    const en = (lang || this.state.language || 'en') === 'en';
+    return { format: 'csv', delimiter: en ? ',' : ';', dateFormat: en ? 'MM/dd/yyyy' : 'dd/MM/yyyy',
+      decimal: en ? 'dot' : 'comma', quoteAll: true, bom: true };
+  },
+
+  normalizeExportPrefs(p) {
+    const d = this.exportDefaults();
+    const src = p || {};
+    return {
+      format: src.format === 'txt' ? 'txt' : 'csv',
+      delimiter: [';', ',', '\t'].indexOf(src.delimiter) !== -1 ? src.delimiter : d.delimiter,
+      dateFormat: this.EXPORT_DATE_FORMATS.indexOf(src.dateFormat) !== -1 ? src.dateFormat : d.dateFormat,
+      decimal: src.decimal === 'comma' || src.decimal === 'dot' ? src.decimal : d.decimal,
+      quoteAll: typeof src.quoteAll === 'boolean' ? src.quoteAll : d.quoteAll,
+      bom: typeof src.bom === 'boolean' ? src.bom : d.bom
+    };
+  },
+
+  getExportPrefs() {
+    return this.normalizeExportPrefs(this.state.exportPrefs || this.exportDefaults());
   },
 
   getBalanceAtDate(date, accountIds = [], categoryIds = []) {

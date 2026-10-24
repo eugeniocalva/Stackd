@@ -1,6 +1,6 @@
 # Import & Export Plan — MoneyStats-style import, export and backup
 
-> Status: **IE-1, IE-2, IE-3 DONE (engine only, no visible change); IE-4 (ledger export) next.** Cold-start reference for the
+> Status: **IE-1…IE-4 DONE (engine only, no visible change); IE-5…IE-7 (screens, one feature-branch merge) next.** Cold-start reference for the
 > import/export redesign. Owner decisions taken on 2026-10-24 are in §1 and
 > §12; MoneyStats samples in it/en/de/pt are analysed in §2.
 > Code facts were mapped on 2026-10-24 against `main` at `d38bb6a`
@@ -735,6 +735,25 @@ file; `!Type:Invst` records skipped as 'investment accounts are not
 supported'. `analyzeText`/`checkText` handle `'qif'`; restore mode still
 answers 'unrecognised file'. Tests: `qifImport.test.js` (8); suite 1,897
 unit + 98 e2e green.
+
+**IE-4 as built (2026-10-25, `?v=79` for store, export, import):**
+`StackdExport.buildLedger(state, opts) → {text, lineCount, fileName, prefs}`
+(no BOM) and `exportLedger` (through `_download` with `{bom}` and the
+csv/txt type). 17 MoneyStats columns from `ledger.col.*`; balance rows
+first (an account's opening when the period holds it or the file holds
+entries dated before it; otherwise, for a later period start, the counted
+balance the day before — `getBalanceAtDate`), then entries by date, time,
+creation with a transfer's incoming leg first; cross-currency legs carry the
+other leg in 13/14 and a 4-decimal rate; `includePlanned` (default true);
+TXT = Tab + LF, CSV = CRLF; file name `Stackd_export_<YYYYMMDDHHmmss>`.
+Store: `exportPrefs` slice (`SET_EXPORT_PREFS`, `getExportPrefs`,
+`normalizeExportPrefs`, `exportDefaults` — it/fr/es/pt `;` dd/MM/yyyy
+comma, en `,` MM/dd/yyyy dot; quoteAll and bom on), reload, cross-tab,
+`RESET_APP`. The ledger importer falls back to the saved export date order
+for all-ambiguous files. Tests: `ledgerExport.test.js` (37, incl. a
+25-combination round trip over 5 languages × 5 date formats with varying
+decimal/delimiter/format/quoting); the owner's 6,051-row file round-trips
+identically in all 5 languages. Suite 1,934 unit + 98 e2e green.
 
 IE-1…IE-4 change nothing a user can see (a ledger/QIF file picked on
 Settings still writes nothing) and land on `main` one by one. **IE-5…IE-7
