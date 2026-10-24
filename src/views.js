@@ -4325,7 +4325,10 @@ Object.assign(window.Views, {
               // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
               // and MT940 statements route to the statement-details step of the
               // same flow (plan §4).
-              if (result.kind === 'bank' || result.kind === 'statement') {
+              // 1.1.0 (IE-2): a ledger file (MoneyStats) comes back unwritten as
+              // kind 'ledger'. Until the Review screen exists (IE-6) it opens the
+              // column-mapping flow, as it always has.
+              if (result.kind === 'bank' || result.kind === 'statement' || result.kind === 'ledger') {
                 if (!state.accounts || state.accounts.length === 0) {
                   // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
                   window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });

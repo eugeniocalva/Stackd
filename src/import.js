@@ -307,16 +307,48 @@ window.StackdImport = {
   // checked BEFORE anything is created — its id, a series this install holds,
   // its bank key (rebased through this import), then a content fingerprint —
   // and only a row that is none of those creates its account and category.
-  buildTransactions(rows) {
+  // 1.1.0 (IE-2, docs/import-export-plan.md §6d): opts.ledger is the mode for
+  // rows that ledgerToRows built from another app's file (or Stack'd's own
+  // ledger export). It changes three things and nothing else:
+  //  - a transfer is a duplicate only as a PAIR: both legs must match store
+  //    legs sharing one transferRef. Leg by leg, a new same-day same-amount
+  //    transfer listed first in its group could absorb legs of two different
+  //    old pairs and vanish;
+  //  - no orphan-leg claim: a leg that matches a plain store row (typically
+  //    one imported from a bank statement) is a duplicate, and its other leg
+  //    is still imported;
+  //  - an opening balance kept by an account that already exists is counted
+  //    in stats.openingsKept, not as a skipped row.
+  buildTransactions(rows, opts = {}) {
+    const ledger = !!(opts && opts.ledger);
     const stats = {
       importedCount: 0, newAccounts: 0, newCategories: 0, skippedCount: 0, skipped: {},
       duplicateCount: 0, ambiguousRows: 0, ambiguousAccounts: []
     };
+    if (ledger) { stats.openingsKept = 0; stats.openingsKeptAccounts = []; }
     const skip = (reason) => {
       stats.skippedCount++;
       stats.skipped[reason] = (stats.skipped[reason] || 0) + 1;
     };
     const OWNED = 'opening balance rows are owned by the account';
+    const owned = (name) => {
+      if (!ledger) { skip(OWNED); return; }
+      stats.openingsKept++;
+      if (stats.openingsKeptAccounts.indexOf(name) === -1) stats.openingsKeptAccounts.push(name);
+    };
+    const legFp = new Map(); // ledger: transfer leg -> its fingerprint, deduped as a pair below
+    const plainFp = new Map(); // ledger: plain row with no plain store match, tried again after the pairs
+    // ledger: where each file account ('name|currency') landed — its kept
+    // rows and its opening (counted or kept) — for the Review's figures.
+    const placement = ledger ? new Map() : null;
+    const txFileKey = new Map();
+    const place = (key, accId, rows) => {
+      if (!placement || !accId) return;
+      if (!placement.has(key)) placement.set(key, { accIds: [], rows: 0 });
+      const p = placement.get(key);
+      if (p.accIds.indexOf(accId) === -1) p.accIds.push(accId);
+      p.rows += rows;
+    };
     const txs = [];
     // v1.19 (A-17): accounts this import created, and so may give an opening
     // balance to. Anything not in here existed before and keeps its own.
@@ -408,6 +440,7 @@ window.StackdImport = {
       // (older backups do not), so an account re-created here keeps its own
       // currency instead of silently taking the new phone's primary one.
       const accountCurrency = this._currencyCode(row['accountcurrency']);
+      const fileKey = accountName + '|' + (accountCurrency || ''); // 1.1.0 (IE-2): placement
       const csvId = idCell(row, 'id');
       const csvAccId = idCell(row, 'accountid');
       const sid = String(row['seriesid'] || '').trim();
@@ -444,7 +477,8 @@ window.StackdImport = {
         if (csvAccId) acc = resolve.find(csvAccId, csvAccId, accountName, accountCurrency).acc;
         else {
           const c = legacyCands();
-          if (c.some(a => !createdHere.has(a.id))) { skip(OWNED); return; }
+          const held = c.find(a => !createdHere.has(a.id));
+          if (held) { owned(accountName); place(fileKey, held.id, 0); return; }
           const k = accountName + '|' + (accountCurrency || '');
           obNth[k] = (obNth[k] || 0) + 1;
           acc = c[obNth[k] - 1] || null; // the k-th opening never overwrites the first
@@ -452,10 +486,12 @@ window.StackdImport = {
         if (acc && createdHere.has(acc.id)) {
           Store.dispatch('UPDATE_ACCOUNT', { id: acc.id, openingBalance: signed, openingDate: date });
           opened.add(acc.id);
+          place(fileKey, acc.id, 0);
           return;
         }
-        if (acc || preNamed.length) { skip(OWNED); return; }
-        if (create({ openingBalance: signed, openingDate: date })) stats.newAccounts++;
+        if (acc || preNamed.length) { owned(accountName); place(fileKey, (acc || preNamed[0]).id, 0); return; }
+        const made = create({ openingBalance: signed, openingDate: date });
+        if (made) { stats.newAccounts++; place(fileKey, made.id, 0); }
         return;
       }
       if (type !== 'expense' && type !== 'income') type = 'expense';
@@ -518,11 +554,25 @@ window.StackdImport = {
       // account that existed before the import.
       const fpAccs = byId ? [account.id]
         : [...new Set([account && account.id].concat(preNamed.map(a => a.id)).filter(Boolean))];
-      const hit = this._takeFingerprint(pool, fpAccs, { date, time: row['time'], type, amount, note });
-      if (hit) { dup(hit.series, hit.transfer); return; }
-      // 1.0.2 (BUG-78 x BUG-14): the leg left behind when the other account was deleted.
-      const left = ref ? this._takeOrphanLeg(pool, fpAccs, { date, time: row['time'], type, amount }) : null;
-      if (left) { dup(left.series, true); return; }
+      const fpRow = { date, time: row['time'], type, amount, note };
+      const pairLater = ledger && !!ref; // 1.1.0 (IE-2): a ledger transfer leg is deduped with its pair
+      // 1.1.0 (IE-2): a plain ledger row takes a PLAIN store row first. On a
+      // day holding a transfer and a plain row of the same account and amount
+      // it used to take the stored transfer leg, so the file's own pair no
+      // longer found its stored pair and one leg was imported again. It may
+      // still match a transfer leg, but only after the pairs (plainLater).
+      let plainLater = false;
+      if (ledger && !ref) {
+        const hit = this._takeFingerprint(pool, fpAccs, fpRow, e => !e.ref);
+        if (hit) { dup(hit.series, hit.transfer); return; }
+        plainLater = true;
+      } else if (!pairLater) {
+        const hit = this._takeFingerprint(pool, fpAccs, fpRow);
+        if (hit) { dup(hit.series, hit.transfer); return; }
+        // 1.0.2 (BUG-78 x BUG-14): the leg left behind when the other account was deleted.
+        const left = ref ? this._takeOrphanLeg(pool, fpAccs, { date, time: row['time'], type, amount }) : null;
+        if (left) { dup(left.series, true); return; }
+      }
 
       // (f) A new row: only now is its account created (and taken back below
       // if the ownership pass drops the row); its category after that pass.
@@ -568,8 +618,68 @@ window.StackdImport = {
       if (recurrence) tx.recurrence = recurrence;
 
       if (!csvAccId) legacy.push({ tx, name: accountName, ccy: accountCurrency, hinted, guess });
+      if (pairLater) legFp.set(tx, { fpAccs, r: fpRow });
+      if (placement) txFileKey.set(tx, fileKey);
+      if (plainLater) plainFp.set(tx, { fpAccs, r: fpRow });
       txs.push(tx);
       stats.importedCount++;
+    });
+
+    // 1.1.0 (IE-2): ledger transfer legs, deduped as pairs (see above).
+    const ledgerDup = new Set();
+    const drop = (tx) => { ledgerDup.add(tx); stats.duplicateCount++; stats.importedCount--; };
+    if (ledger && legFp.size) {
+      const byRef = new Map();
+      legFp.forEach((v, tx) => {
+        const k = tx._csvTransferRef;
+        if (!byRef.has(k)) byRef.set(k, []);
+        byRef.get(k).push(tx);
+      });
+      // Two phases: every file pair tries the stored pairs first, so one pair's
+      // lone legs never take a stored leg another pair of the file needs.
+      const unmatched = [];
+      byRef.forEach(legs => {
+        if (legs.length === 2) {
+          const [a, b] = legs.map(tx => legFp.get(tx));
+          if (this._takeStorePair(pool, a, b)) { legs.forEach(drop); return; }
+        }
+        unmatched.push(legs);
+      });
+      // Not a stored pair: a leg on its own is a duplicate only of a store row
+      // that is provably that leg — one imported from a bank statement (an
+      // importKey: same note, or any note while it is uncategorised), or the
+      // leg DELETE_ACCOUNT left behind (BUG-14: its note suffix; shape, any
+      // category). Any other look-alike (same account, day and amount) lands:
+      // a NEW transfer must not lose a leg to an unrelated row. The other leg
+      // lands either way (no orphan-leg claim); Review lists look-alikes.
+      unmatched.forEach(legs => {
+        const dropped = legs.filter(tx => {
+          const f = legFp.get(tx);
+          const shape = { date: f.r.date, time: f.r.time, type: f.r.type, amount: f.r.amount };
+          if (this._takeFingerprint(pool, f.fpAccs, f.r, e => !e.ref && e.bank) ||
+              this._takeOrphanLeg(pool, f.fpAccs, shape, e => e.bank) ||
+              this._takeOrphanLeg(pool, f.fpAccs, shape, null, 'leftovers')) {
+            drop(tx);
+            return true;
+          }
+          return false;
+        });
+        // One leg is provably here, so the pair was imported before and its
+        // other leg landed alone, as a plain row: that row is it (same
+        // account, day, amount and note). Without this every re-import added
+        // the other leg once more.
+        if (dropped.length === 1 && legs.length === 2) {
+          const other = legs.find(tx => tx !== dropped[0]);
+          const f = legFp.get(other);
+          if (this._takeFingerprint(pool, f.fpAccs, f.r, e => !e.ref)) drop(other);
+        }
+      });
+    }
+    // Plain rows that found no plain store row may match what is left (a row
+    // stored as a transfer leg, e.g. one the user paired by hand) — only on a
+    // note, never on an empty one: a new same-amount expense would vanish.
+    plainFp.forEach((f, tx) => {
+      if (String(f.r.note || '').trim() && this._takeFingerprint(pool, f.fpAccs, f.r)) drop(tx);
     });
 
     // 1.0.2 (BUG-78, D11): a series one of whose rows is already here, and the
@@ -577,6 +687,7 @@ window.StackdImport = {
     // here: their missing rows count as duplicates and are not re-added (one
     // pass — the legs of a recurring transfer share a series).
     const out = txs.filter(t => {
+      if (ledgerDup.has(t)) return false; // counted above
       const owned = (t.recurrence && t.recurrence.seriesId && matchedSeries.has(t.recurrence.seriesId))
         || (t._csvTransferRef && dupRefs.has(t._csvTransferRef));
       if (owned) { stats.duplicateCount++; stats.importedCount--; }
@@ -623,11 +734,12 @@ window.StackdImport = {
       if (r.guess || same > 1) { stats.ambiguousRows++; names.add(r.name); }
     });
     stats.ambiguousAccounts = [...names];
+    if (placement) out.forEach(tx => place(txFileKey.get(tx), tx.accountId, 1));
 
     this._relinkTransfers(out);
     this._relinkSeries(out);
 
-    return { transactions: out, stats: stats };
+    return placement ? { transactions: out, stats: stats, placement } : { transactions: out, stats: stats };
   },
 
   // 1.0.2 (BUG-78): rows Stack'd already holds under another id — old
@@ -649,15 +761,28 @@ window.StackdImport = {
   // type|cents with no note, the plain legs DELETE_ACCOUNT left behind
   // (BUG-14: no transferRef, no category, a note with the deleted account's
   // name appended). An entry taken through one list is 'taken' in both.
+  // 1.1.0 (IE-2): two more facts per entry for ledger mode — `bank` (the row
+  // came from a bank statement: it carries an importKey) and `leftover` (its
+  // note ends with DELETE_ACCOUNT's "Transfer to/from deleted account"
+  // suffix, BUG-14) — and a `leftovers` map listing the latter by shape
+  // whatever their category. Restore mode reads neither.
   _fingerprintPool(storeTxs, excludeIds) {
     const lists = new Map();
     const byKey = new Map();
     const orphans = new Map();
+    const leftovers = new Map();
     const push = (map, k, e) => { if (!map.has(k)) map.set(k, []); map.get(k).push(e); };
+    const leftoverRe = this._deletedTransferNoteRe();
     storeTxs.forEach(t => {
       if (excludeIds.has(t.id)) return;
       const e = { time: this._normalizeTime(t.time) || '',
-        series: !!(t.recurrence && t.recurrence.seriesId), transfer: !!t.transferRef };
+        series: !!(t.recurrence && t.recurrence.seriesId), transfer: !!t.transferRef,
+        ref: t.transferRef || '', // 1.1.0 (IE-2): which stored pair, for _takeStorePair
+        bank: !!t.importKey,
+        leftover: !t.transferRef && !!leftoverRe && leftoverRe.test(String(t.comment || t.note || '')) };
+      if (e.leftover && (t.type === 'income' || t.type === 'expense')) {
+        push(leftovers, t.accountId + '|' + this._fpBase(t.date, t.type, t.amount, ''), e);
+      }
       if (t.type === 'opening_balance') { // 1.0.2 (BUG-25 x BUG-78)
         const adj = Number(t.amount) < 0 ? 'expense' : 'income';
         push(lists, t.accountId + '|' + this._fpBase(t.date, adj, t.amount, t.comment), e);
@@ -671,18 +796,66 @@ window.StackdImport = {
         push(orphans, t.accountId + '|' + this._fpBase(t.date, t.type, t.amount, ''), e);
       }
     });
-    return { lists, byKey, orphans };
+    return { lists, byKey, orphans, leftovers };
   },
 
-  _takeFingerprint(pool, accountIds, r) {
+  // 1.1.0 (IE-2): the end of a note DELETE_ACCOUNT rewrote ("… · Transfer to
+  // deleted account “X”"), in any of the loaded languages; null when no
+  // dictionary is loaded.
+  _deletedTransferNoteRe() {
+    const dicts = (window.I18n && window.I18n.dicts) || {};
+    const sig = Object.keys(dicts).sort().join(',');
+    if (this._leftoverReCache && this._leftoverReCache.sig === sig) return this._leftoverReCache.re;
+    const parts = [];
+    Object.keys(dicts).forEach(lang => {
+      ['account.deletedTransferTo', 'account.deletedTransferFrom'].forEach(k => {
+        const tpl = dicts[lang] && dicts[lang][k];
+        if (!tpl || tpl.indexOf('{name}') === -1) return;
+        parts.push(tpl.split('{name}').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+'));
+      });
+    });
+    const re = parts.length ? new RegExp('(?:^|\\s·\\s)(?:' + parts.join('|') + ')$') : null;
+    this._leftoverReCache = { sig, re };
+    return re;
+  },
+
+  // 1.1.0 (IE-2): `where` narrows the entries a row may take (ledger mode
+  // lets a transfer leg take only a plain store row).
+  _takeFingerprint(pool, accountIds, r, where) {
     const base = this._fpBase(r.date, r.type, r.amount, r.note);
     const time = this._normalizeTime(r.time) || '';
     for (const id of accountIds) {
       const list = pool.lists.get(id + '|' + base);
-      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time)) : -1;
+      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time) && (!where || where(e))) : -1;
       if (i !== -1) { const e = list.splice(i, 1)[0]; e.taken = true; return e; } // the pool entry it matched
     }
     return null;
+  },
+
+  // 1.1.0 (IE-2): both legs of a file transfer against ONE stored pair — leg
+  // a and leg b each match a store leg, and the two store legs share a
+  // transferRef. Takes both and returns true; false leaves the pool as it was.
+  _takeStorePair(pool, a, b) {
+    const cands = (leg) => {
+      const base = this._fpBase(leg.r.date, leg.r.type, leg.r.amount, leg.r.note);
+      const time = this._normalizeTime(leg.r.time) || '';
+      const out = [];
+      leg.fpAccs.forEach(id => {
+        const list = pool.lists.get(id + '|' + base);
+        if (list) list.forEach(e => { if (!e.taken && e.ref && (!time || !e.time || e.time === time)) out.push({ e, list }); });
+      });
+      return out;
+    };
+    const ca = cands(a);
+    if (!ca.length) return false;
+    const cb = cands(b);
+    for (const x of ca) {
+      const y = cb.find(c => c.e.ref === x.e.ref && c.e !== x.e);
+      if (!y) continue;
+      [x, y].forEach(c => { c.list.splice(c.list.indexOf(c.e), 1); c.e.taken = true; });
+      return true;
+    }
+    return false;
   },
 
   // 1.0.2 (BUG-78 x BUG-14, integrated review): a transfer leg of a pre-1.0.2
@@ -690,12 +863,15 @@ window.StackdImport = {
   // the transferRef and gained a "Transfer to deleted account" note, so the
   // fingerprint (which holds the note) misses it; match the leftover shape
   // instead (same account, date, type and cents; note ignored).
-  _takeOrphanLeg(pool, accountIds, r) {
+  // 1.1.0 (IE-2): `where` narrows the entries (ledger mode: bank rows only);
+  // `map` 'leftovers' reads the deleted-account leftovers instead.
+  _takeOrphanLeg(pool, accountIds, r, where, map) {
     const base = this._fpBase(r.date, r.type, r.amount, '');
     const time = this._normalizeTime(r.time) || '';
+    const from = map === 'leftovers' ? pool.leftovers : pool.orphans;
     for (const id of accountIds) {
-      const list = pool.orphans.get(id + '|' + base);
-      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time)) : -1;
+      const list = from.get(id + '|' + base);
+      const i = list ? list.findIndex(e => !e.taken && (!time || !e.time || e.time === time) && (!where || where(e))) : -1;
       if (i !== -1) { const e = list.splice(i, 1)[0]; e.taken = true; return e; }
     }
     return null;
@@ -2227,6 +2403,591 @@ window.StackdImport = {
     return r === 0 ? 0 : r; // no -0
   },
 
+  // ── 1.1.0 (IE-2) ledger files: MoneyStats and Stack'd's own export ────────
+  // (docs/import-export-plan.md §2, §6c, §6d). A ledger file lists every
+  // account in one file, one row per entry: account, date, signed amount and
+  // optional currency, balance, title, payee, purpose, category, comment,
+  // tags, rate and payment status. Columns are found by header in any
+  // language; MoneyStats repeats Amount/Currency, and the FIRST occurrence is
+  // the entry's own amount.
+
+  // Folded, squashed header words per field. The it/en/de/pt sets are
+  // MoneyStats' own (owner samples, 2026-10-24); fr/es as far as seen, plus
+  // Stack'd's ledger.col.* values (read from the dictionaries as well, see
+  // _ledgerVocab). File vocabulary: entries may be added, never changed.
+  LEDGER_ALIASES: {
+    account: ['conto', 'account', 'konto', 'conta', 'cuenta', 'compte', 'accountname'],
+    date: ['data', 'date', 'datum', 'fecha'],
+    amount: ['ammontare', 'amount', 'betrag', 'montante', 'cantidad', 'importo', 'importe', 'montant', 'valor'],
+    currency: ['valuta', 'currency', 'wahrung', 'moeda', 'moneda', 'devise', 'divisa'],
+    balance: ['saldo', 'accountbalance', 'kontostand', 'solde', 'balance'],
+    title: ['titolo', 'title', 'titel', 'titulo', 'titre'],
+    payee: ['ricevente', 'receiver', 'empfanger', 'recebedor', 'receptor', 'destinataire', 'payee', 'beneficiario', 'beneficiaire'],
+    purpose: ['uso', 'usage', 'verwendung', 'verwendungszweck', 'utilisation', 'purpose'],
+    category: ['categoria', 'category', 'kategorie', 'categorie'],
+    comment: ['commento', 'comment', 'notiz', 'comentario', 'note', 'notes', 'nota', 'memo', 'kommentar', 'commentaire'],
+    tags: ['hashtags', 'tags', 'tag', 'etiquetas', 'etichette', 'etiquettes'],
+    rate: ['tassodicambio', 'exchangerate', 'wechselkurs', 'taxadecambio', 'tipodecambio', 'tauxdechange'],
+    status: ['statodelpagamento', 'paymentstatus', 'zahlungsstatus', 'statusdopagamento', 'estadodepago', 'statutdepaiement', 'statut'],
+    brand: ['marchio', 'mark', 'markierung', 'marca', 'marque', 'brand']
+  },
+
+  // Cell words, folded (accents stripped, lower case, single spaces). Whole
+  // cells only: every unpaid word contains its paid word.
+  LEDGER_WORDS: {
+    paid: ['pagato', 'paid', 'bezahlt', 'pago', 'pagado', 'paye'],
+    unpaid: ['non pagato', 'not paid', 'nicht bezahlt', 'nao pago', 'no pagado', 'impaye', 'unpaid', 'unbezahlt'],
+    transfer: ['trasferimento', 'transfer', 'transferencia', 'virement', 'umbuchung', 'ubertrag'],
+    balance: ['saldo', 'balance', 'solde', 'kontostand', 'opening balance', 'saldo iniziale', 'saldo inicial',
+      'solde initial', 'anfangssaldo', 'startsaldo']
+  },
+
+  // The 17 MoneyStats columns by position, for the structural fallback.
+  MONEYSTATS_COLUMNS: ['account', 'date', 'amount', 'currency', 'balance', 'balanceCurrency', 'title', 'payee',
+    'purpose', 'category', 'comment', 'tags', 'amount2', 'currency2', 'rate', 'status', 'brand'],
+
+  _fold(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
+  },
+
+  _foldKey(s) {
+    return this._fold(s).replace(/[^a-z0-9]/g, '');
+  },
+
+  // A tag in the app's own charset (views.js tag input: [a-z0-9-_]): accents
+  // folded, runs of blanks or '/' → '-'. 'Pranzo a Lavoro' → 'pranzo-a-lavoro'.
+  _foldTag(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+      .replace(/[\s/]+/g, '-').replace(/[^a-z0-9\-_]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  },
+
+  // { aliases: {field: Set}, paid, unpaid, transfer, balance: Set } — the
+  // tables above plus every loaded dictionary's ledger.col.* / ledger.word.*.
+  _ledgerVocab() {
+    const dicts = (window.I18n && window.I18n.dicts) || {};
+    const sig = Object.keys(dicts).sort().join(',');
+    if (this._ledgerVocabCache && this._ledgerVocabCache.sig === sig) return this._ledgerVocabCache.v;
+    const v = { aliases: {} };
+    Object.keys(this.LEDGER_ALIASES).forEach(f => { v.aliases[f] = new Set(this.LEDGER_ALIASES[f]); });
+    Object.keys(this.LEDGER_WORDS).forEach(w => { v[w] = new Set(this.LEDGER_WORDS[w]); });
+    const colField = { account: 'account', date: 'date', amount: 'amount', currency: 'currency', balance: 'balance',
+      balanceCurrency: 'currency', title: 'title', payee: 'payee', purpose: 'purpose', category: 'category',
+      comment: 'comment', tags: 'tags', amount2: 'amount', currency2: 'currency', rate: 'rate', status: 'status', brand: 'brand' };
+    Object.keys(dicts).forEach(lang => {
+      const d = dicts[lang] || {};
+      Object.keys(colField).forEach(c => { if (d['ledger.col.' + c]) v.aliases[colField[c]].add(this._foldKey(d['ledger.col.' + c])); });
+      ['paid', 'unpaid', 'transfer', 'balance'].forEach(w => { if (d['ledger.word.' + w]) v[w].add(this._fold(d['ledger.word.' + w])); });
+    });
+    this._ledgerVocabCache = { sig, v };
+    return v;
+  },
+
+  // Field → column index from a header row (first occurrence wins; the
+  // currency right after the balance is the balance's, the amount and
+  // currency seen again later are the counterpart pair). Unknown labels → -1.
+  _ledgerColumns(header) {
+    const V = this._ledgerVocab();
+    const cols = {};
+    const labels = header.map(h => this._foldKey(h));
+    labels.forEach((k, i) => {
+      if (!k) return;
+      const field = Object.keys(V.aliases).find(f => V.aliases[f].has(k));
+      if (!field) return;
+      if (field === 'amount') {
+        if (cols.amount === undefined) cols.amount = i;
+        else if (cols.amount2 === undefined) cols.amount2 = i;
+      } else if (field === 'currency') {
+        if (cols.balance !== undefined && i === cols.balance + 1 && cols.balanceCurrency === undefined) cols.balanceCurrency = i;
+        else if (cols.amount2 !== undefined && i === cols.amount2 + 1 && cols.currency2 === undefined) cols.currency2 = i;
+        else if (cols.currency === undefined) cols.currency = i;
+      } else if (cols[field] === undefined) {
+        cols[field] = i;
+      }
+    });
+    return { cols, labels };
+  },
+
+  // An account cell that names an account, not an IBAN or a number. A name
+  // may hold digits ('N26', '401k', 'Girokonto 0532013000').
+  _isAccountName(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!/\p{L}/u.test(s)) return false;
+    const compact = s.replace(/^iban\s*(n\.?|nr\.?|no\.?)?\s*:?\s*/i, '')
+      .replace(/\s*(\([A-Z]{3}\)|\/[A-Z]{3}|\s[A-Z]{3})$/i, '')
+      .replace(/[\s:.-]+/g, '').toUpperCase();
+    // an IBAN, masked or not ('DE89…3000', 'ES91 ···· 1332'): its body holds
+    // digits, so 'CC 01 Mastercard Gold' stays a name
+    const body = (/^[A-Z]{2}[\d*•…·]{2}([A-Z0-9*•…·]{4,30})$/.exec(compact) || [])[1];
+    if (body) {
+      const digits = (body.match(/\d/g) || []).length;
+      const masked = (body.match(/[*•…·]/g) || []).length;
+      if (digits >= 4 && (digits + masked) / body.length >= 0.3) return false;
+    }
+    // a masked card or account number ('5355 XXXX XXXX 1234')
+    return !(/^[\dX*•…·]+$/.test(compact) && (compact.match(/\d/g) || []).length >= 4);
+  },
+
+  // How a balance column behaves (rows without the header):
+  //  - signal: MoneyStats' pattern — a balance on some zero-amount rows
+  //    (the balance rows) and none on at least 95% of the entries (0 of 6,046
+  //    in the owner's files). Only then is it a ledger column.
+  //  - running: a bank's running balance (a balance on the entries). It never
+  //    makes a file a ledger on its own, and never opens an account from a
+  //    0,00 closing row.
+  // An empty column is neither.
+  _balancePattern(rows, cols) {
+    if (cols.balance === undefined || cols.amount === undefined) return { signal: false, running: false };
+    if (!rows.length) return { signal: false, running: false }; // a header-only file: other columns decide
+    let moving = 0;
+    let movingWithBalance = 0;
+    let zeroWithBalance = 0;
+    rows.forEach(r => {
+      const amt = this.parseBankAmount(r[cols.amount], 'auto');
+      const bal = this.parseBankAmount(r[cols.balance], 'auto');
+      if (amt) { moving++; if (bal) movingWithBalance++; } else if (bal) zeroWithBalance++;
+    });
+    const signal = zeroWithBalance >= 1 && movingWithBalance <= 0.05 * moving;
+    return { signal, running: !signal && movingWithBalance > 0 };
+  },
+
+  // null, or { layout: 'header'|'plain'|'moneystats', cols } when `rows`
+  // (header + data, from _readTextAuto) is a ledger file. Never a Stack'd
+  // backup: a Type column keeps a file out.
+  _ledgerShape(rows) {
+    if (!rows || !rows.length) return null;
+    const header = rows[0];
+    const data = rows.slice(1);
+    const { cols, labels } = this._ledgerColumns(header);
+    if (labels.indexOf('type') !== -1) return null;
+    const namesOk = (idx) => {
+      const vals = data.map(r => r[idx]).filter(v => v !== undefined && String(v).trim() !== '');
+      if (!vals.length) return true;
+      return vals.filter(v => this._isAccountName(v)).length / vals.length >= 0.8;
+    };
+    if (cols.account !== undefined && cols.date !== undefined && cols.amount !== undefined) {
+      const bp = this._balancePattern(data, cols);
+      // A running balance across SEVERAL accounts is a multi-account file
+      // (each account's own balance); a single account's is a bank statement.
+      // Names of real entries only: a footer ('Totale movimenti') has no date.
+      const names = new Set(data
+        .filter(r => this._looksLikeBankDate(r[cols.date]) && this.parseBankAmount(r[cols.amount], 'auto') !== null)
+        .map(r => String(r[cols.account] == null ? '' : r[cols.account]).trim().toLowerCase()).filter(Boolean));
+      const balanceCounts = bp.signal || (bp.running && names.size >= 2);
+      const extras = ['balance', 'title', 'category', 'tags', 'status']
+        .filter(f => cols[f] !== undefined && (f !== 'balance' || balanceCounts)).length;
+      // Plain = exactly Account, Date, Amount, Category[, Note]: every column
+      // known, none but those (an extra 'Description' is a bank file). An
+      // empty column (a trailing delimiter) is no column.
+      const V = this._ledgerVocab();
+      const emptyCol = (i) => !labels[i] && data.every(r => String(r[i] == null ? '' : r[i]).trim() === '');
+      const width = header.filter((h, i) => !emptyCol(i)).length;
+      const known = labels.filter(k => k && Object.keys(V.aliases).some(f => V.aliases[f].has(k))).length;
+      const plain = cols.category !== undefined && extras === 1 && width === known &&
+        Object.keys(cols).every(f => ['account', 'date', 'amount', 'category', 'comment'].indexOf(f) !== -1);
+      if ((extras >= 2 || plain) && namesOk(cols.account)) {
+        return { layout: extras >= 2 ? 'header' : 'plain', cols, runningBalance: bp.running };
+      }
+    }
+    // Structural fallback: MoneyStats in a language we have not seen — 17
+    // columns with currency codes at 3, 5 and 13.
+    if (header.length === 17 && data.length) {
+      const code = (v) => /^[A-Z]{3}$/.test(String(v == null ? '' : v).trim());
+      const hits = data.filter(r => r.length === 17 && code(r[3]) && code(r[5]) && code(r[13])).length;
+      if (hits / data.length >= 0.8 && namesOk(0)) {
+        const fixed = {};
+        this.MONEYSTATS_COLUMNS.forEach((f, i) => { fixed[f] = i; });
+        return { layout: 'moneystats', cols: fixed, runningBalance: this._balancePattern(data, fixed).running };
+      }
+    }
+    return null;
+  },
+
+  // 1.1.0 (IE-2): per file account, after the import: the account its rows
+  // and opening actually landed on (buildTransactions' placement; a name
+  // lookup only when nothing of it landed), whether that account was already
+  // here, this file account's own rows added, and the account's opening
+  // balance and balance now. `alsoOn` names further accounts its rows went to
+  // (case variants of a name). No ids: the same figures come out of Check's
+  // dry run and the real import.
+  _ledgerAfter(fileAccounts, placement, existed) {
+    const Store = window.Store;
+    const st = Store.getState();
+    const trim = (a) => String(a.name == null ? '' : a.name).trim();
+    const byId = (id) => st.accounts.find(a => a.id === id) || null;
+    return (fileAccounts || []).map(fa => {
+      const p = placement && placement.get(fa.name + '|' + (fa.currency || ''));
+      let ids = p ? p.accIds.filter(byId) : [];
+      if (!ids.length) {
+        const ccyOk = (a) => !fa.currency || a.currency === fa.currency;
+        const hit = st.accounts.find(a => trim(a) === fa.name && ccyOk(a)) ||
+          st.accounts.find(a => trim(a).toLowerCase() === fa.name.toLowerCase() && ccyOk(a));
+        ids = hit ? [hit.id] : [];
+      }
+      if (!ids.length) return { name: fa.name, currency: fa.currency, found: false };
+      const acc = byId(ids[0]);
+      const ob = st.transactions.find(t => t.accountId === acc.id && t.type === 'opening_balance');
+      const out = {
+        name: fa.name,
+        currency: fa.currency,
+        found: true,
+        account: trim(acc),
+        existed: existed.has(acc.id),
+        rowsAdded: p ? p.rows : 0,
+        opening: ob ? Number(ob.amount) : null,
+        openingDate: Store.getAccountOpeningDate(acc.id) || '',
+        balance: Math.round(Store.getAccountBalance(acc.id) * 100) / 100 || 0
+      };
+      if (ids.length > 1) out.alsoOn = ids.slice(1).map(id => trim(byId(id)));
+      return out;
+    });
+  },
+
+  // A maximum matching of one day|amount|category group: `left` are its
+  // incoming rows, `right` its outgoing ones (a transfer pairs one of each),
+  // ok(l, r) says whether two rows may pair. Kuhn's augmenting paths, started
+  // from `seed` (pairs already chosen, kept whenever a larger matching allows:
+  // augmenting never unmatches a row). Each row's candidates are listed once,
+  // and a free partner is taken before any path is searched, so an
+  // account-sorted day of hundreds of same-amount rows stays fast. [[l, r], …]
+  _maxMatching(left, right, ok, seed) {
+    const mL = new Map();
+    const mR = new Map();
+    (seed || []).forEach(([l, r]) => { if (ok(l, r)) { mL.set(l, r); mR.set(r, l); } });
+    const cand = new Map(left.map(u => [u, right.filter(v => ok(u, v))]));
+    left.forEach(u => {
+      if (mL.has(u)) return;
+      const v = cand.get(u).find(w => !mR.has(w));
+      if (v !== undefined) { mL.set(u, v); mR.set(v, u); }
+    });
+    const augment = (u, seen) => {
+      for (const v of cand.get(u)) {
+        if (seen.has(v)) continue;
+        seen.add(v);
+        if (!mR.has(v) || augment(mR.get(v), seen)) { mL.set(u, v); mR.set(v, u); return true; }
+      }
+      return false;
+    };
+    left.forEach(u => { if (!mL.has(u) && cand.get(u).length) augment(u, new Set()); });
+    return [...mL.entries()];
+  },
+
+  // { rows, skipped, skippedCount, facts } — backup-shaped rows (squashed
+  // keys, ISO dates, dot amounts) that buildTransactions(rows, {ledger:true})
+  // reads. `read` is _readTextAuto's result, `shape` _ledgerShape's.
+  // opts (the Import settings sheet and the Review choices):
+  //  - dateOrder 'dmy'|'mdy'|'ymd' (default: guessed for the whole file),
+  //    dateFallback (the install's export date order, for all-ambiguous files)
+  //  - decimal 'comma'|'dot' (default: guessed), factor (default 1)
+  //  - transfers: false imports transfer rows as plain income/expense;
+  //    transferCategories: { foldedCategory: false } does it for one category
+  //    (Review's switch on a learned transfer category)
+  //  - statusMap: { foldedWord: true (paid) | false } for status words
+  //    outside the known ones (default: unpaid — never silently counted)
+  //  - categoryMap: { fileCategory: 'Stack'd category name' | '' }
+  ledgerToRows(read, shape, opts = {}) {
+    const V = this._ledgerVocab();
+    const c = shape.cols;
+    const data = (read.rows || []).slice(1);
+    const cell = (r, f) => (c[f] === undefined ? '' : String(r[c[f]] == null ? '' : r[c[f]]).trim());
+    const skipped = {};
+    let skippedCount = 0;
+    const skip = (reason) => { skippedCount++; skipped[reason] = (skipped[reason] || 0) + 1; };
+
+    const dateOrder = ['dmy', 'mdy', 'ymd'].indexOf(opts.dateOrder) !== -1
+      ? { order: opts.dateOrder, ambiguous: false, mixed: false, forced: true }
+      : this._guessDateOrder(data.map(r => cell(r, 'date')), opts.dateFallback);
+    const decimal = opts.decimal === 'comma' || opts.decimal === 'dot' ? opts.decimal
+      : this._guessDecimal(data.map(r => cell(r, 'amount')).concat(data.map(r => cell(r, 'balance'))), read.delimiter);
+    const factor = typeof opts.factor === 'number' && isFinite(opts.factor) && opts.factor !== 0 ? opts.factor : 1;
+    const isBalWord = (s) => !!s && V.balance.has(this._fold(s));
+    const statusMap = opts.statusMap || {};
+    const unknownStatus = new Map();
+
+    // 1. Read every row.
+    const running = !!shape.runningBalance;
+    const parsed = [];
+    data.forEach((r, line) => {
+      const account = cell(r, 'account');
+      const rawDate = cell(r, 'date');
+      let rawAmount = cell(r, 'amount');
+      const title = cell(r, 'title');
+      const category = cell(r, 'category');
+      const balWord = isBalWord(title) || isBalWord(category);
+      // A hand-made ledger may leave its balance rows' amount empty.
+      if (!rawAmount && (cell(r, 'balance') || balWord)) rawAmount = '0';
+      if (!account || !rawDate || !rawAmount) { skip('missing date, amount or account'); return; }
+      const date = this._parseDateStrict(rawDate, dateOrder.order);
+      if (!date) { skip('unrecognised date format'); return; }
+      const amount = this._ledgerAmount(rawAmount, decimal, factor);
+      if (amount === null) { skip('invalid amount'); return; }
+      const bal = cell(r, 'balance') ? this._ledgerAmount(cell(r, 'balance'), decimal, factor) : null;
+      const ccy = this._currencyCode(cell(r, 'currency') || cell(r, 'balanceCurrency'));
+      parsed.push({ r, line, account, date, amount, ccy, title, category, balWord, bal });
+    });
+
+    // Opening balances, one per account, decided by DATE (a file may list
+    // newest first, by account, or keep each day's entry order):
+    //  - MoneyStats/Stack'd balances: the account's earliest balance row
+    //    opens it, unless most of its entries come before it (a closing or
+    //    check row: "SALDO FINAL"). Stack'd's own pre-opening entries stay a
+    //    minority, so their opening keeps its date.
+    //  - a running balance (a bank's Saldo, several accounts): the earliest
+    //    row in time that carries a balance; the opening is that balance less
+    //    every amount up to it, dated at the account's earliest row.
+    // Within a day, time follows the file — reversed for an account listed
+    // newest first.
+    const isBalanceRow = (p) => p.amount === 0 && (running ? (p.bal !== null || p.balWord) : ((p.bal !== null && p.bal !== 0) || p.balWord));
+    const byAccount = new Map();
+    parsed.forEach((p, i) => {
+      if (!byAccount.has(p.account)) byAccount.set(p.account, []);
+      byAccount.get(p.account).push(i);
+    });
+    const openings = [];
+    const anchors = new Set();
+    byAccount.forEach(list => {
+      let up = 0;
+      let down = 0;
+      for (let k = 1; k < list.length; k++) {
+        if (parsed[list[k]].date > parsed[list[k - 1]].date) up++;
+        else if (parsed[list[k]].date < parsed[list[k - 1]].date) down++;
+      }
+      const newestFirst = down > up;
+      const timeline = list.slice().sort((x, y) => (parsed[x].date < parsed[y].date ? -1 : parsed[x].date > parsed[y].date ? 1
+        : (newestFirst ? y - x : x - y)));
+      const rowsCcy = [...new Set(list.map(i => parsed[i].ccy).filter(Boolean))];
+      const ccyOf = (p) => p.ccy || (rowsCcy.length === 1 ? rowsCcy[0] : '');
+      if (running) {
+        const at = timeline.findIndex(i => parsed[i].bal !== null);
+        if (at === -1) return;
+        const p = parsed[timeline[at]];
+        const moved = timeline.slice(0, at + 1).reduce((s, i) => s + Math.round(parsed[i].amount * 100), 0);
+        const ob = (Math.round(p.bal * 100) - moved) / 100;
+        anchors.add(timeline[at]);
+        openings.push({ account: p.account, ccy: ccyOf(p), date: parsed[timeline[0]].date, amount: ob === 0 ? 0 : ob, line: p.line });
+        return;
+      }
+      const a = timeline.find(i => isBalanceRow(parsed[i]));
+      if (a === undefined) return;
+      const p = parsed[a];
+      const entries = list.filter(i => !isBalanceRow(parsed[i]));
+      const before = entries.filter(i => parsed[i].date < p.date).length;
+      if (entries.length && before > entries.length - before) return; // a closing row
+      anchors.add(a);
+      openings.push({ account: p.account, ccy: ccyOf(p), date: p.date, amount: p.bal || 0, line: p.line });
+    });
+    const items = [];
+    parsed.forEach((p, i) => {
+      const { r, line, account, date, amount, ccy, title, category } = p;
+      if (amount === 0) {
+        if (anchors.has(i)) return; // it opened its account above
+        skip(isBalanceRow(p) ? 'extra balance row' : 'zero amount');
+        return;
+      }
+      const statusRaw = cell(r, 'status');
+      const status = this._fold(statusRaw);
+      let paid = true;
+      if (status && !V.paid.has(status)) {
+        if (V.unpaid.has(status)) paid = false;
+        else {
+          paid = statusMap[status] === true;
+          const u = unknownStatus.get(status) || { value: statusRaw, rows: 0 };
+          u.rows++;
+          unknownStatus.set(status, u);
+        }
+      }
+      const amount2 = cell(r, 'amount2') ? this._ledgerAmount(cell(r, 'amount2'), decimal, factor) : null;
+      items.push({
+        line, account, ccy, date, amount, title, category, paid,
+        ccy2: this._currencyCode(cell(r, 'currency2')), amount2,
+        payee: cell(r, 'payee'), purpose: cell(r, 'purpose'), comment: cell(r, 'comment'), tagsRaw: cell(r, 'tags'),
+        catKey: this._fold(category || (isBalWord(title) ? '' : title))
+      });
+    });
+
+    // 2. Transfers: a known transfer word, or a category whose rows pair up
+    // structurally almost always (MoneyStats keeps the user's own category
+    // name, e.g. 'Trasferimento' in an English export).
+    const cents = (n) => Math.round(Math.abs(n) * 100);
+    // Across currencies when the two legs' currencies differ, or a leg's own
+    // counterpart columns (13/14 in Stack'd's export) name another currency.
+    // An empty currency cell says nothing either way.
+    const legCcy = (x) => x.ccy || x.ccy2 || '';
+    const crossCcy = (a, b) => (!!legCcy(a) && !!legCcy(b) && legCcy(a) !== legCcy(b)) ||
+      (!!a.ccy && !!a.ccy2 && a.ccy2 !== a.ccy) || (!!b.ccy && !!b.ccy2 && b.ccy2 !== b.ccy);
+    // A leg whose counterpart columns name another currency (Stack'd's export
+    // writes the other leg's amount and currency there) pairs only with the
+    // leg those columns describe.
+    const counterpartOk = (x, y) => !(x.ccy && x.ccy2 && x.ccy2 !== x.ccy) ||
+      (y.ccy === x.ccy2 && (x.amount2 === null || cents(x.amount2) === cents(y.amount)));
+    const canPair = (a, b) => a.account !== b.account && a.date === b.date && a.paid === b.paid &&
+      !!a.catKey && a.catKey === b.catKey && (a.amount > 0) !== (b.amount > 0) &&
+      (crossCcy(a, b) ? counterpartOk(a, b) && counterpartOk(b, a) : cents(a.amount) === cents(b.amount));
+    // Pair every category once: neighbours first (MoneyStats and Stack'd write
+    // a transfer's legs next to each other), then a maximum matching inside
+    // each day|amount|category group, so a file sorted another way (by
+    // account) gets the real pairs instead of an invented one; then the
+    // cross-currency legs that are not neighbours, through their counterpart
+    // columns. Only transfer categories keep their pairs; the others only
+    // teach what pairs up.
+    // A cross-currency pair is proven when a leg's counterpart columns name
+    // the other leg; MoneyStats' columns repeat the row's own currency, so its
+    // cross-currency neighbours stay unproven and only pair at the very end,
+    // when neither found a same-currency partner.
+    const proven = (x) => !!x.ccy && !!x.ccy2 && x.ccy2 !== x.ccy && x.amount2 !== null;
+    const settles = (a, b) => canPair(a, b) && (!crossCcy(a, b) || proven(a) || proven(b));
+    const mate = new Array(items.length).fill(-1);
+    for (let i = 0; i + 1 < items.length; i++) {
+      if (settles(items[i], items[i + 1])) { mate[i] = i + 1; mate[i + 1] = i; i++; }
+    }
+    const groups = new Map();
+    items.forEach((it, i) => {
+      if (!it.catKey || (mate[i] !== -1 && crossCcy(it, items[mate[i]]))) return;
+      const k = it.date + '|' + cents(it.amount) + '|' + it.catKey;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(i);
+    });
+    groups.forEach(g => {
+      if (g.length < 2 || g.every(i => mate[i] !== -1)) return;
+      const left = g.filter(i => items[i].amount > 0);
+      const right = g.filter(i => items[i].amount < 0);
+      const seed = left.filter(i => mate[i] !== -1).map(i => [i, mate[i]]);
+      // Same currency first: augmenting never unmatches a row, so these pairs
+      // survive when the cross-currency ones are added.
+      const same = this._maxMatching(left, right, (i, j) => canPair(items[i], items[j]) && !crossCcy(items[i], items[j]), seed);
+      const best = this._maxMatching(left, right, (i, j) => settles(items[i], items[j]), same);
+      g.forEach(i => { mate[i] = -1; });
+      best.forEach(([i, j]) => { mate[i] = j; mate[j] = i; });
+    });
+    const counterIdx = new Map();
+    items.forEach((it, i) => {
+      if (mate[i] !== -1 || !it.catKey) return;
+      const k = it.date + '|' + it.catKey + '|' + it.ccy + '|' + cents(it.amount);
+      if (!counterIdx.has(k)) counterIdx.set(k, []);
+      counterIdx.get(k).push(i);
+    });
+    items.forEach((it, i) => {
+      if (mate[i] !== -1 || !it.ccy || !it.ccy2 || it.ccy2 === it.ccy || it.amount2 === null) return;
+      const list = counterIdx.get(it.date + '|' + it.catKey + '|' + it.ccy2 + '|' + cents(it.amount2)) || [];
+      const j = list.find(x => mate[x] === -1 && x !== i && canPair(it, items[x]));
+      if (j !== undefined) { mate[i] = j; mate[j] = i; }
+    });
+    // Last: unproven cross-currency neighbours that are both still alone.
+    for (let i = 0; i + 1 < items.length; i++) {
+      if (mate[i] === -1 && mate[i + 1] === -1 && canPair(items[i], items[i + 1])) { mate[i] = i + 1; mate[i + 1] = i; i++; }
+    }
+    const rowsByCat = new Map();
+    const pairsByCat = new Map();
+    items.forEach((it, i) => {
+      if (!it.catKey) return;
+      rowsByCat.set(it.catKey, (rowsByCat.get(it.catKey) || 0) + 1);
+      if (mate[i] > i) pairsByCat.set(it.catKey, (pairsByCat.get(it.catKey) || 0) + 1);
+    });
+    const optOut = opts.transferCategories || {};
+    // Every category that reads as transfers, kept in the facts even when
+    // switched off (Review shows it with its switch).
+    const transferLike = new Map(); // catKey -> { name, learned, off }
+    rowsByCat.forEach((n, k) => {
+      const pairs = pairsByCat.get(k) || 0;
+      const word = V.transfer.has(k);
+      const learned = !word && pairs >= 4 && (2 * pairs) / n >= 0.9;
+      if (word || learned) {
+        const first = items.find(it => it.catKey === k);
+        transferLike.set(k, { learned, name: first.category || first.title, off: opts.transfers === false || optOut[k] === false });
+      }
+    });
+    const transferCats = new Map([...transferLike].filter(([, t]) => !t.off));
+    const cand = (it) => transferCats.has(it.catKey);
+    let refN = 0;
+    items.forEach((it, i) => {
+      if (mate[i] > i && cand(it)) it.ref = items[mate[i]].ref = 'L' + (++refN);
+    });
+
+    // 3. Rows for buildTransactions: openings first, then the file's order.
+    const map = opts.categoryMap || {};
+    const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    const out = [];
+    openings.forEach(o => {
+      out.push({ date: o.date, type: 'opening_balance', amount: o.amount.toFixed(2), account: o.account,
+        accountcurrency: o.ccy, note: 'Opening Balance' });
+    });
+    const tagRenames = new Map();
+    const tagsDropped = new Map(); // tags with nothing left after the fold (Cyrillic, emoji…)
+    const catCount = new Map();
+    items.forEach(it => {
+      let category = '';
+      if (!it.ref) {
+        const fileCat = it.category || (isBalWord(it.title) ? '' : it.title);
+        category = has(map, fileCat) ? String(map[fileCat] || '') : fileCat;
+        if (category) catCount.set(category, (catCount.get(category) || 0) + 1);
+      }
+      const titleNote = it.category && it.title && this._fold(it.title) !== this._fold(it.category) && !isBalWord(it.title)
+        ? it.title : '';
+      const note = [titleNote, it.payee, it.purpose, it.comment].filter(Boolean).join(' — ');
+      const tags = [];
+      const droppedHere = new Set();
+      it.tagsRaw.split('|').forEach(raw => {
+        const t = raw.trim();
+        if (!t) return;
+        const f = this._foldTag(t);
+        if (!f) {
+          if (!droppedHere.has(t)) tagsDropped.set(t, (tagsDropped.get(t) || 0) + 1); // rows, not occurrences
+          droppedHere.add(t);
+          return;
+        }
+        if (f !== t) tagRenames.set(t, f);
+        if (tags.indexOf(f) === -1) tags.push(f);
+      });
+      out.push({
+        date: it.date, type: it.amount < 0 ? 'expense' : 'income', amount: Math.abs(it.amount).toFixed(2),
+        account: it.account, category, note, tags: tags.join('|'), ispaid: it.paid ? '' : 'false',
+        transferref: it.ref || '', accountcurrency: it.ccy
+      });
+    });
+
+    // 4. Facts for the Review screen.
+    const today = window.Store._todayYMD();
+    const accounts = new Map();
+    const acct = (name, ccy) => {
+      const k = name + '|' + ccy;
+      if (!accounts.has(k)) accounts.set(k, { name, currency: ccy, rows: 0, opening: null, openingDate: '', balanceCents: 0 });
+      return accounts.get(k);
+    };
+    openings.forEach(o => { const a = acct(o.account, o.ccy); a.opening = o.amount; a.openingDate = o.date; a.balanceCents += Math.round(o.amount * 100); });
+    let from = '';
+    let to = '';
+    items.concat(openings).forEach(it => {
+      if (!from || it.date < from) from = it.date;
+      if (!to || it.date > to) to = it.date;
+    });
+    items.forEach(it => {
+      const a = acct(it.account, it.ccy);
+      a.rows++;
+      if (it.paid && it.date <= today && (!a.openingDate || it.date >= a.openingDate)) a.balanceCents += Math.round(it.amount * 100);
+    });
+    const facts = {
+      layout: shape.layout,
+      dateOrder,
+      decimal,
+      factor,
+      rowCount: data.length,
+      dateRange: { from, to },
+      planned: items.filter(it => it.date > today).length,
+      accounts: [...accounts.values()].map(a => ({ name: a.name, currency: a.currency, rows: a.rows, opening: a.opening,
+        openingDate: a.openingDate, balance: a.balanceCents / 100 })),
+      transfers: {
+        paired: refN,
+        unpaired: items.filter(it => !it.ref && cand(it)).length,
+        categories: [...transferLike.entries()].map(([k, t]) => ({ key: k, name: t.name, learned: t.learned, off: t.off, pairs: pairsByCat.get(k) || 0 }))
+      },
+      categories: [...catCount.entries()].map(([name, rows]) => ({ name, rows })),
+      tagRenames: [...tagRenames.entries()].map(([from, to]) => ({ from, to })),
+      tagsDropped: [...tagsDropped.entries()].map(([from, rows]) => ({ from, rows })),
+      unknownStatuses: [...unknownStatus.entries()].map(([key, u]) => ({ key, value: u.value, rows: u.rows }))
+    };
+    return { rows: out, skipped, skippedCount, facts };
+  },
+
   // ── 1.1.0 (IE-1) Check: what a text is, without touching the store ────────
   // { kind, … } — kind is 'statement' (camt/MT940), 'backup' (a Stack'd
   // export: backupKind loans|rules|budgets|accounts|categories|transactions),
@@ -2255,8 +3016,26 @@ window.StackdImport = {
       : null;
     const out = Object.assign({ header, rowCount }, base);
     if (backupKind) return Object.assign(out, { kind: 'backup', backupKind });
+    const shape = this._ledgerShape(read.rows); // 1.1.0 (IE-2)
+    if (shape) return Object.assign(out, { kind: 'ledger', ledger: shape });
     if (header.length >= 2 && rowCount >= 1) return Object.assign(out, { kind: 'bank' });
     return Object.assign(out, { kind: rowCount ? 'unknown' : 'empty' });
+  },
+
+  // 1.1.0 (IE-2, §6f): Check. analyzeText, plus — for a ledger file — the
+  // real import run inside Store.dryRun, so `result` holds exactly the stats
+  // and facts Import would report (or `error`), and nothing is written.
+  // opts are importText's (the Import settings and Review choices).
+  checkText(text, opts = {}) {
+    const a = this.analyzeText(text, opts);
+    if (a.kind !== 'ledger') return a;
+    let outcome = null;
+    window.Store.dryRun(() => {
+      this.importText(text, Object.assign({}, opts, { mode: 'commit' }),
+        (result) => { outcome = { result }; },
+        (error) => { outcome = { error }; });
+    });
+    return Object.assign(a, outcome || {});
   },
 
   importLoans(file, state, onComplete, onError) {
@@ -2316,7 +3095,8 @@ window.StackdImport = {
   //    non-writing hand-off instead of landing unreviewed.
   //  - 'commit': only Review's Import button (IE-6) — writes ledger/QIF rows.
   // Callbacks run once, synchronously, after the change has settled.
-  importText(csvText, opts, onComplete, onError) {
+  importText(csvText, opts = {}, onComplete, onError) {
+    opts = opts || {};
     // 1.0.2 (BUG-34, D-U7-5): a restore is ONE change — a file that does not
     // fit, or a route that fails part-way, lands nothing. The routing body
     // reports through these holders; the caller's callbacks run once the
@@ -2342,6 +3122,29 @@ window.StackdImport = {
         const emptyKind = this._stackdKindOfHeaderOnly(csvText);
         if (emptyKind) {
           if (onComplete) onComplete({ kind: emptyKind, importedCount: 0, skippedCount: 0, skipped: {}, newAccounts: 0, newCategories: 0 });
+          return;
+        }
+        // 1.1.0 (IE-2, §6a/§6c): a ledger file (MoneyStats, Stack'd's own
+        // export), written only in 'commit' mode (Review's Import button). Read
+        // by the Auto reader — it may be Tab-separated or header-only, which
+        // parseCSV refuses. Restore mode never takes this branch: it routes as
+        // it always has and only labels the bank hand-off below.
+        const commit = opts.mode === 'commit';
+        const auto = commit ? this._readTextAuto(csvText, opts) : null;
+        const shape = commit ? this._ledgerShape(auto.rows) : null;
+        if (shape) {
+          const conv = this.ledgerToRows(auto, shape, opts);
+          const existed = new Set(window.Store.getState().accounts.map(a => a.id));
+          const { transactions, stats, placement } = this.buildTransactions(conv.rows, { ledger: true });
+          stats.skippedCount += conv.skippedCount;
+          Object.keys(conv.skipped).forEach(k => { stats.skipped[k] = (stats.skipped[k] || 0) + conv.skipped[k]; });
+          if (transactions.length > 0) {
+            window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions, keepOrder: true });
+          }
+          // What landed, per account the file names (Check runs this inside
+          // Store.dryRun, so Review shows these exact figures).
+          conv.facts.after = this._ledgerAfter(conv.facts.accounts, placement, existed);
+          if (onComplete) onComplete({ ...stats, kind: 'ledger', ledger: conv.facts });
           return;
         }
         const rows = this.parseCSV(csvText);
@@ -2404,6 +3207,14 @@ window.StackdImport = {
         const { delimiter, records } = this._readRecords(csvText); // 1.0.2 (BUG-33)
         const rawCols = this._parseRow(records[0], delimiter);
         if (rawCols.length >= 2 && rows.length >= 1) {
+          // 1.1.0 (IE-2): the same unwritten hand-off, labelled 'ledger' when
+          // the text is a ledger file (Settings opens the mapping flow for
+          // both until the Review screen exists, IE-6).
+          const ledgerRows = this._readTextAuto(csvText, opts).rows;
+          if (this._ledgerShape(ledgerRows)) {
+            if (onComplete) onComplete({ kind: 'ledger', csvText: csvText, rowCount: Math.max(0, ledgerRows.length - 1) });
+            return;
+          }
           if (onComplete) onComplete({ kind: 'bank', csvText: csvText });
           return;
         }

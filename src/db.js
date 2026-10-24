@@ -333,7 +333,13 @@ window.StackdDB = {
       return defaultValue;
     }
   },
+  // 1.1.0 (IE-2): Store.dryRun's scope. While set, save()/remove() only note
+  // the key (Store.dryRun reloads it from disk afterwards): nothing reaches
+  // localStorage or the native mirror, so a Check can run the real import.
+  _dry: null,
+
   save(key, data) {
+    if (this._dry) { this._dry.touched.add(key); return true; }
     const fullKey = this.PREFIX + key;
     const j = this._journal;
     if (j) {
@@ -353,6 +359,7 @@ window.StackdDB = {
     }
   },
   remove(key) {
+    if (this._dry) { this._dry.touched.add(key); return true; } // 1.1.0 (IE-2)
     const fullKey = this.PREFIX + key;
     const j = this._journal;
     if (j) {

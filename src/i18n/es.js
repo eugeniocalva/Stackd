@@ -1380,4 +1380,29 @@ window.I18n.dicts.es = {
   'openingDate.useEarliest': "Abrir el {date}",
   'openingDate.changeAnyway': "Cambiar igualmente",
   'history.beforeOpening': "Antes del saldo inicial · no se cuenta",
+  // 1.1.0 (IE-2) ledger file vocabulary (docs/import-export-plan.md §2, §8): the
+  // export's header row and fixed words, read back by the importer in every
+  // language. it/en/pt equal MoneyStats' own; paid/unpaid equal MoneyStats' in
+  // all five. Values may only gain importer aliases, never change.
+  'ledger.col.account': 'Cuenta',
+  'ledger.col.date': 'Fecha',
+  'ledger.col.amount': 'Cantidad',
+  'ledger.col.currency': 'Moneda',
+  'ledger.col.balance': 'Saldo',
+  'ledger.col.balanceCurrency': 'Moneda',
+  'ledger.col.title': 'Título',
+  'ledger.col.payee': 'Receptor',
+  'ledger.col.purpose': 'Uso',
+  'ledger.col.category': 'Categoría',
+  'ledger.col.comment': 'Comentario',
+  'ledger.col.tags': 'Hashtags',
+  'ledger.col.amount2': 'Cantidad',
+  'ledger.col.currency2': 'Moneda',
+  'ledger.col.rate': 'Tipo de cambio',
+  'ledger.col.status': 'Estado de pago',
+  'ledger.col.brand': 'Marca',
+  'ledger.word.balance': 'Saldo',
+  'ledger.word.transfer': 'Transferencia',
+  'ledger.word.paid': 'pagado',
+  'ledger.word.unpaid': 'no pagado',
 };

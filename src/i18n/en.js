@@ -1401,4 +1401,29 @@ window.I18n.dicts.en = {
   'openingDate.useEarliest': "Open on {date} instead",
   'openingDate.changeAnyway': "Change anyway",
   'history.beforeOpening': "Before opening balance · not counted",
+  // 1.1.0 (IE-2) ledger file vocabulary (docs/import-export-plan.md §2, §8): the
+  // export's header row and fixed words, read back by the importer in every
+  // language. it/en/pt equal MoneyStats' own; paid/unpaid equal MoneyStats' in
+  // all five. Values may only gain importer aliases, never change.
+  'ledger.col.account': 'Account',
+  'ledger.col.date': 'Date',
+  'ledger.col.amount': 'Amount',
+  'ledger.col.currency': 'Currency',
+  'ledger.col.balance': 'Account balance',
+  'ledger.col.balanceCurrency': 'Currency',
+  'ledger.col.title': 'Title',
+  'ledger.col.payee': 'Receiver',
+  'ledger.col.purpose': 'Usage',
+  'ledger.col.category': 'Category',
+  'ledger.col.comment': 'Comment',
+  'ledger.col.tags': 'Tags',
+  'ledger.col.amount2': 'Amount',
+  'ledger.col.currency2': 'Currency',
+  'ledger.col.rate': 'Exchange rate',
+  'ledger.col.status': 'Payment status',
+  'ledger.col.brand': 'Mark',
+  'ledger.word.balance': 'Balance',
+  'ledger.word.transfer': 'Transfer',
+  'ledger.word.paid': 'paid',
+  'ledger.word.unpaid': 'not paid',
 };

@@ -1,6 +1,6 @@
 # Import & Export Plan — MoneyStats-style import, export and backup
 
-> Status: **IE-1 DONE 2026-10-24 (engine prep, no visible change); IE-2 next.** Cold-start reference for the
+> Status: **IE-1 and IE-2 DONE (engine only, no visible change); IE-3 (QIF) next.** Cold-start reference for the
 > import/export redesign. Owner decisions taken on 2026-10-24 are in §1 and
 > §12; MoneyStats samples in it/en/de/pt are analysed in §2.
 > Code facts were mapped on 2026-10-24 against `main` at `d38bb6a`
@@ -691,6 +691,35 @@ Amounts: `_guessDecimal`, `_parseFactor`, `_ledgerAmount`.
 +2; full suite 153 files / 1,807 unit + 96 e2e green, lint clean. The
 bank handoff (§6g) still re-reads with `analyzeBankCSV` — it gets the
 analysis in IE-6 with the Import screen.
+
+**IE-2 as built (2026-10-24/25, `?v=77` for db, store, import, views and
+the 5 dictionaries):** ledger vocabulary (`LEDGER_ALIASES`, `LEDGER_WORDS`,
+`ledger.col.*`/`ledger.word.*` pinned per language); `_ledgerShape`
+(header / plain / MoneyStats structural layouts; a balance column counts
+only in MoneyStats' pattern — `_balancePattern` — or as several accounts'
+running balances; `_isAccountName` rejects IBANs incl. masked/suffixed and
+masked card numbers; footer rows don't count as accounts);
+`ledgerToRows` (openings decided by date: earliest balance row unless most
+entries precede it; running balances open from the earliest row with a
+balance, Saldo − amounts; blank-currency openings take the account's
+currency; transfers: adjacency, then same-currency-first Kuhn matching per
+day|amount|category, counterpart columns for cross-currency legs, learned
+categories from final pairs, `transferCategories` opt-out kept in facts;
+whole-cell paid words in 6 languages, unknown → unpaid + reported; tag fold
+with `tagsDropped`); `buildTransactions(rows,{ledger:true})` (pair dedup in
+two phases; lone legs only against provable legs — bank rows with an
+importKey or BUG-14 leftovers by their localized note; plain rows plain
+first, cross-kind only on a non-empty note; `openingsKept`; `placement`);
+`checkText` = commit inside `Store.dryRun` (db `_dry` scope, state restored,
+own render dropped, pending save failure kept) with `ledger.after`
+per-account figures; `BATCH_IMPORT_TRANSACTIONS {keepOrder}`. Restore mode
+routes exactly as before and only relabels the bank hand-off `ledger`
+(Settings still opens `#import-map`). Three adversarial review rounds; the
+owner's 6,051-row exports (it/en/de/pt) import with the hand-checked
+balances, 229 transfers, Check == Import, re-import 0. Tests:
+`ledgerImport.test.js` (82), `ledger_handoff.spec.js` (2); suite 1,889 unit
++ 98 e2e green. Known limit: renaming an account in Stack'd then
+re-importing an old export duplicates that account's rows.
 
 IE-1…IE-4 change nothing a user can see (a ledger/QIF file picked on
 Settings still writes nothing) and land on `main` one by one. **IE-5…IE-7

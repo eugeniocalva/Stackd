@@ -1821,8 +1821,63 @@ window.Store = {
     return ok;
   },
 
+  // 1.1.0 (IE-2, docs/import-export-plan.md §6f): runs fn as if for real and
+  // takes it all back. Every dispatch inside mutates memory as usual, but
+  // StackdDB's dry scope keeps saves off disk; afterwards each touched slice is
+  // reloaded from disk and the in-memory-only state is restored, so memory
+  // equals disk again. No render is queued by the run and no save failure is
+  // announced. Returns fn's result (a throw is rethrown after the restore).
+  // The Import screen's Check runs the real ledger import through it, so the
+  // Review counts are the counts Import will land.
+  dryRun(fn) {
+    const db = window.StackdDB;
+    if (db._dry || db._journal) throw new Error('dryRun inside a change');
+    const wasQueued = !!this._emitQueued;
+    const prevFailure = this._saveFailure; // a real change's failure not shown yet stays
+    const memory = {};
+    Object.keys(this.state).forEach(k => {
+      if (k !== 'transactions') memory[k] = JSON.stringify(this.state[k]);
+    });
+    const txs = this.state.transactions;
+    db._dry = { touched: new Set() };
+    let result;
+    let thrown = null;
+    try {
+      result = fn();
+    } catch (error) {
+      thrown = error || new Error('dry run failed');
+    }
+    const touched = db._dry.touched;
+    db._dry = null;
+    if (db._journal) db._journal = null; // a scope fn left open (it threw mid-batch)
+    Object.keys(memory).forEach(k => {
+      this.state[k] = memory[k] === undefined ? undefined : JSON.parse(memory[k]);
+    });
+    Object.keys(this.state).forEach(k => {
+      if (k !== 'transactions' && !(k in memory)) delete this.state[k];
+    });
+    this.state.transactions = txs;
+    touched.forEach(key => {
+      try {
+        if (!this._reloadSlice(key)) console.error('Store: no reload for', key);
+      } catch (error) {
+        console.error('Store: reload failed for', key, error);
+      }
+    });
+    this._openingIdx = null;
+    this._budgetSpendIdx = null;
+    this._importKeyIdx = null;
+    this._primaryIdx = null;
+    if (touched.size) this._sortData(); // as _settleChange: the disk order is not memory's
+    if (!wasQueued) this._emitQueued = false; // drop the run's own render
+    this._saveFailure = prevFailure; // also undoes a claim made inside the run
+    if (thrown) throw thrown;
+    return result;
+  },
+
   _settleChange(j) {
     const db = window.StackdDB;
+    if (db._dry) return !(j ? j.failed : (db._journal && db._journal.failed)); // 1.1.0 (IE-2): dryRun restores
     if (!j) return !(db._journal && db._journal.failed); // nested: the outer scope settles
     if (!j.failed) return true;
     j.touched.forEach((key) => {
@@ -3017,7 +3072,11 @@ window.Store = {
         const importTime = this._getSystemTimeString();
         const ids = new Set(this.state.transactions.map(t => t.id));
         const newTxs = [];
-        payload.transactions.forEach(t => {
+        // 1.1.0 (IE-2): keepOrder stamps createdAt one millisecond apart in
+        // payload order, so rows of one day (one import time) keep the file's
+        // order instead of the random id order the sort's last tie-break gives.
+        const base = Date.now();
+        payload.transactions.forEach((t, i) => {
           const id = this.safeId(t.id) || window.StackdDB.generateId();
           if (ids.has(id)) return;
           ids.add(id);
@@ -3025,7 +3084,7 @@ window.Store = {
             time: t.time || importTime,
             ...t,
             id: id,
-            createdAt: t.createdAt || new Date().toISOString()
+            createdAt: t.createdAt || new Date(payload.keepOrder ? base + i : base).toISOString()
           });
         });
         if (!newTxs.length) break;

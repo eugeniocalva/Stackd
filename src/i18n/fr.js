@@ -1380,4 +1380,29 @@ window.I18n.dicts.fr = {
   'openingDate.useEarliest': "Ouvrir le {date} à la place",
   'openingDate.changeAnyway': "Modifier quand même",
   'history.beforeOpening': "Avant le solde initial · non compté",
+  // 1.1.0 (IE-2) ledger file vocabulary (docs/import-export-plan.md §2, §8): the
+  // export's header row and fixed words, read back by the importer in every
+  // language. it/en/pt equal MoneyStats' own; paid/unpaid equal MoneyStats' in
+  // all five. Values may only gain importer aliases, never change.
+  'ledger.col.account': 'Compte',
+  'ledger.col.date': 'Date',
+  'ledger.col.amount': 'Montant',
+  'ledger.col.currency': 'Devise',
+  'ledger.col.balance': 'Solde',
+  'ledger.col.balanceCurrency': 'Devise',
+  'ledger.col.title': 'Titre',
+  'ledger.col.payee': 'Destinataire',
+  'ledger.col.purpose': 'Utilisation',
+  'ledger.col.category': 'Catégorie',
+  'ledger.col.comment': 'Note',
+  'ledger.col.tags': 'Tags',
+  'ledger.col.amount2': 'Montant',
+  'ledger.col.currency2': 'Devise',
+  'ledger.col.rate': 'Taux de change',
+  'ledger.col.status': 'Statut de paiement',
+  'ledger.col.brand': 'Marque',
+  'ledger.word.balance': 'Solde',
+  'ledger.word.transfer': 'Virement',
+  'ledger.word.paid': 'payé',
+  'ledger.word.unpaid': 'impayé',
 };

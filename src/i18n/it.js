@@ -1380,4 +1380,29 @@ window.I18n.dicts.it = {
   'openingDate.useEarliest': "Apri il {date}",
   'openingDate.changeAnyway': "Modifica comunque",
   'history.beforeOpening': "Prima del saldo iniziale · non conteggiato",
+  // 1.1.0 (IE-2) ledger file vocabulary (docs/import-export-plan.md §2, §8): the
+  // export's header row and fixed words, read back by the importer in every
+  // language. it/en/pt equal MoneyStats' own; paid/unpaid equal MoneyStats' in
+  // all five. Values may only gain importer aliases, never change.
+  'ledger.col.account': 'Conto',
+  'ledger.col.date': 'Data',
+  'ledger.col.amount': 'Ammontare',
+  'ledger.col.currency': 'Valuta',
+  'ledger.col.balance': 'Saldo',
+  'ledger.col.balanceCurrency': 'Valuta',
+  'ledger.col.title': 'Titolo',
+  'ledger.col.payee': 'Ricevente',
+  'ledger.col.purpose': 'Uso',
+  'ledger.col.category': 'Categoria',
+  'ledger.col.comment': 'Commento',
+  'ledger.col.tags': 'Hashtags',
+  'ledger.col.amount2': 'Ammontare',
+  'ledger.col.currency2': 'Valuta',
+  'ledger.col.rate': 'Tasso di cambio',
+  'ledger.col.status': 'Stato del pagamento',
+  'ledger.col.brand': 'Marchio',
+  'ledger.word.balance': 'Saldo',
+  'ledger.word.transfer': 'Trasferimento',
+  'ledger.word.paid': 'pagato',
+  'ledger.word.unpaid': 'non pagato',
 };
