@@ -1,6 +1,6 @@
 # Import & Export Plan — MoneyStats-style import, export and backup
 
-> Status: **IE-1 and IE-2 DONE (engine only, no visible change); IE-3 (QIF) next.** Cold-start reference for the
+> Status: **IE-1, IE-2, IE-3 DONE (engine only, no visible change); IE-4 (ledger export) next.** Cold-start reference for the
 > import/export redesign. Owner decisions taken on 2026-10-24 are in §1 and
 > §12; MoneyStats samples in it/en/de/pt are analysed in §2.
 > Code facts were mapped on 2026-10-24 against `main` at `d38bb6a`
@@ -720,6 +720,21 @@ balances, 229 transfers, Check == Import, re-import 0. Tests:
 `ledgerImport.test.js` (82), `ledger_handoff.spec.js` (2); suite 1,889 unit
 + 98 e2e green. Known limit: renaming an account in Stack'd then
 re-importing an old export duplicates that account's rows.
+
+**IE-3 as built (2026-10-25, `import.js?v=78`):** `sniffFormat` → `'qif'`
+on a leading `!Type:`/`!Account`/`!Option:`; `parseQIF(text, opts)` turns
+records into ledger rows (`layout:'qif'`) imported by the same
+`commitLedger` path (kind `'qif'`, `ledger.qif = {accounts, named,
+defaultAccount}`): `!Account` blocks name accounts, a single-account file
+takes its name from `opts.accountName` (Review) or its `POpening Balance` /
+`L[X]` record, else 'QIF'; the first `L[Self]` record is the opening;
+`L[Other]` legs are `Transfer` rows (paired by the ledger rules, the other
+account kept in the note); splits (`S`/`E`/`$`) one row each; `Cat:Sub/Class`
+→ category + tags; one date order (incl. `M/D'YY`) and decimal mark per
+file; `!Type:Invst` records skipped as 'investment accounts are not
+supported'. `analyzeText`/`checkText` handle `'qif'`; restore mode still
+answers 'unrecognised file'. Tests: `qifImport.test.js` (8); suite 1,897
+unit + 98 e2e green.
 
 IE-1…IE-4 change nothing a user can see (a ledger/QIF file picked on
 Settings still writes nothing) and land on `main` one by one. **IE-5…IE-7

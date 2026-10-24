@@ -1568,6 +1568,8 @@ window.StackdImport = {
   // banks hand out .txt/.sta/.xml interchangeably.
   sniffFormat(text) {
     const head = String(text || '').replace(/^\uFEFF/, '').slice(0, 4000);
+    // 1.1.0 (IE-3): QIF opens with a !Type:, !Account or !Option header.
+    if (/^\s*!(Type:|Account|Option:)/i.test(head)) return 'qif';
     if (/^\s*</.test(head) &&
         (/BkToCstmrStmt|BkToCstmrAcctRpt/.test(head) || /urn:iso:std:iso:20022[^"']*camt/.test(head))) {
       return 'camt';
@@ -2988,6 +2990,150 @@ window.StackdImport = {
     return { rows: out, skipped, skippedCount, facts };
   },
 
+  // ── 1.1.0 (IE-3) QIF (docs/import-export-plan.md §6e) ─────────────────────
+  // Quicken Interchange Format: '!Type:Bank' (Cash, CCard, Oth A, Oth L)
+  // blocks of records, one field per line — D date, T/U amount, P payee,
+  // M memo, L category ('Cat:Sub/Class', or '[Account]' for a transfer),
+  // N number, C cleared, S/E/$ split category/memo/amount — each ended by
+  // '^'. '!Account' blocks (N name, T type) name the account of the records
+  // that follow. The records become ledger rows, so openings, transfer
+  // pairing, dedup, Check and placement are the ledger's.
+  QIF_BANK_TYPES: ['bank', 'cash', 'ccard', 'oth a', 'oth l'],
+
+  // { read, shape, skipped, facts }. opts: dateOrder, decimal (as the
+  // Import settings), accountName (for a file without '!Account', from
+  // Review; default 'QIF').
+  parseQIF(text, opts = {}) {
+    const lines = String(text == null ? '' : text).replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
+    const skipped = {};
+    const skip = (reason, n = 1) => { skipped[reason] = (skipped[reason] || 0) + n; };
+    const records = []; // { account, type, fields: [[code, value]] }
+    let account = '';
+    let type = '';
+    let inAccount = false;
+    let acc = {};
+    let fields = [];
+    const fallbackName = String(opts.accountName || '').trim() || 'QIF';
+    const accountsSeen = [];
+    lines.forEach(raw => {
+      const line = raw.replace(/\s+$/, '');
+      if (!line.trim()) return;
+      if (line[0] === '!') {
+        const h = line.slice(1).trim();
+        if (/^account/i.test(h)) { inAccount = true; acc = {}; return; }
+        if (/^type:/i.test(h)) { inAccount = false; type = h.slice(5).trim().toLowerCase(); fields = []; return; }
+        inAccount = false; // !Option:, !Clear:
+        return;
+      }
+      if (line[0] === '^') {
+        if (inAccount) {
+          if (acc.N) { account = acc.N; if (accountsSeen.indexOf(account) === -1) accountsSeen.push(account); }
+          inAccount = false;
+        } else if (fields.length) {
+          records.push({ account: account || fallbackName, type, fields });
+        }
+        fields = [];
+        return;
+      }
+      const code = line[0];
+      const value = line.slice(1).trim();
+      if (inAccount) { if (!acc[code]) acc[code] = value; return; }
+      fields.push([code, value]);
+    });
+    if (fields.length && !inAccount) records.push({ account: account || fallbackName, type, fields });
+    // A single-account export (no '!Account') names its account in its
+    // 'Opening Balance' record: 'L[Checking]'. Review's name wins.
+    if (!accountsSeen.length && !String(opts.accountName || '').trim() && records.length) {
+      const first = records[0].fields;
+      const p = (first.find(([c]) => c === 'P') || [])[1] || '';
+      const l = (first.find(([c]) => c === 'L') || [])[1] || '';
+      const m = /^\[(.+)\]$/.exec(l.trim());
+      if (m && /opening balance/i.test(p)) records.forEach(r => { if (r.account === fallbackName) r.account = m[1].trim(); });
+    }
+
+    // One date order and one decimal convention for the whole file.
+    const normDate = (v) => String(v || '').replace(/\s+/g, '').replace(/'/g, '/');
+    const dateVals = [];
+    const amountVals = [];
+    records.forEach(r => r.fields.forEach(([c, v]) => {
+      if (c === 'D') dateVals.push(normDate(v));
+      if (c === 'T' || c === 'U' || c === '$') amountVals.push(v);
+    }));
+    const dateOrder = ['dmy', 'mdy', 'ymd'].indexOf(opts.dateOrder) !== -1
+      ? { order: opts.dateOrder, ambiguous: false, mixed: false, forced: true }
+      : this._guessDateOrder(dateVals, opts.dateFallback);
+    const decimal = opts.decimal === 'comma' || opts.decimal === 'dot' ? opts.decimal : this._guessDecimal(amountVals, '');
+    const num = (v) => {
+      const n = this.parseBankAmount(v, decimal);
+      return n === null ? String(v || '') : n.toFixed(2);
+    };
+
+    // Rows: account, date, amount, balance, title, payee, purpose, category,
+    // comment, tags.
+    const header = ['Account', 'Date', 'Amount', 'Balance', 'Title', 'Payee', 'Purpose', 'Category', 'Comment', 'Tags'];
+    const rows = [header];
+    let investment = 0;
+    const splitCat = (l) => {
+      const s = String(l || '').trim();
+      const m = /^\[(.*)\]$/.exec(s.split('/')[0].trim());
+      if (m) return { transferTo: m[1].trim(), cat: '', tags: [] };
+      const [catPart, cls] = s.split('/');
+      const [cat, ...subs] = String(catPart || '').split(':').map(x => x.trim());
+      return { transferTo: '', cat: cat || '', tags: subs.concat(cls ? [cls.trim()] : []).filter(Boolean) };
+    };
+    const seenOpening = new Set();
+    records.forEach(r => {
+      if (r.type && this.QIF_BANK_TYPES.indexOf(r.type) === -1) {
+        if (/^invst/.test(r.type)) investment++;
+        else skip('not a bank, cash or card record');
+        return;
+      }
+      const f = {};
+      const splits = [];
+      r.fields.forEach(([c, v]) => {
+        if (c === 'S') splits.push({ cat: v, memo: '', amount: '' });
+        else if (c === 'E' && splits.length) splits[splits.length - 1].memo = v;
+        else if (c === '$' && splits.length) splits[splits.length - 1].amount = v;
+        else if (f[c] === undefined) f[c] = v;
+      });
+      const date = this._parseDateStrict(normDate(f.D), dateOrder.order) || normDate(f.D);
+      const amount = f.T !== undefined ? f.T : f.U;
+      const payee = f.P || '';
+      const memo = f.M || '';
+      const main = splitCat(f.L);
+      // The first record 'Opening Balance' into the account itself opens it.
+      if (main.transferTo && main.transferTo === r.account && !seenOpening.has(r.account)) {
+        seenOpening.add(r.account);
+        rows.push([r.account, date, '0', num(amount), 'Opening Balance', '', '', '', '', '']);
+        return;
+      }
+      const push = (amt, cat, comment) => {
+        const c = splitCat(cat);
+        if (c.transferTo) {
+          rows.push([r.account, date, num(amt), '', '', payee, '→ ' + c.transferTo, 'Transfer', comment, '']);
+        } else {
+          rows.push([r.account, date, num(amt), '', '', payee, '', c.cat, comment, c.tags.join('|')]);
+        }
+      };
+      if (splits.length && splits.some(s => s.amount !== '')) {
+        splits.forEach(s => push(s.amount, s.cat, [memo, s.memo].filter(Boolean).join(' — ')));
+      } else {
+        push(amount, f.L, memo);
+      }
+    });
+    if (investment) skip('investment accounts are not supported', investment);
+    const cols = { account: 0, date: 1, amount: 2, balance: 3, title: 4, payee: 5, purpose: 6, category: 7, comment: 8, tags: 9 };
+    return {
+      read: { rows, delimiter: '' },
+      shape: { layout: 'qif', cols, runningBalance: false },
+      skipped,
+      facts: {
+        dateOrder, decimal,
+        qif: { accounts: accountsSeen, named: accountsSeen.length > 0, defaultAccount: accountsSeen.length ? '' : fallbackName }
+      }
+    };
+  },
+
   // ── 1.1.0 (IE-1) Check: what a text is, without touching the store ────────
   // { kind, … } — kind is 'statement' (camt/MT940), 'backup' (a Stack'd
   // export: backupKind loans|rules|budgets|accounts|categories|transactions),
@@ -2997,6 +3143,10 @@ window.StackdImport = {
   analyzeText(text, opts = {}) {
     const fmt = this.sniffFormat(text);
     if (fmt === 'camt' || fmt === 'mt940') return { kind: 'statement', format: fmt };
+    if (fmt === 'qif') { // 1.1.0 (IE-3)
+      const q = this.parseQIF(text, opts);
+      return { kind: 'qif', rowCount: q.read.rows.length - 1, qif: q.facts.qif, decided: { dateOrder: q.facts.dateOrder, decimal: q.facts.decimal } };
+    }
     const read = this._readTextAuto(text, opts);
     const decided = { delimiter: read.delimiter, rowDelimiter: read.rowDelimiter, ignoreQuotes: !!opts.ignoreQuotes };
     const base = { delimiter: read.delimiter, records: read.records, rows: read.rows, decided };
@@ -3028,7 +3178,7 @@ window.StackdImport = {
   // opts are importText's (the Import settings and Review choices).
   checkText(text, opts = {}) {
     const a = this.analyzeText(text, opts);
-    if (a.kind !== 'ledger') return a;
+    if (a.kind !== 'ledger' && a.kind !== 'qif') return a;
     let outcome = null;
     window.Store.dryRun(() => {
       this.importText(text, Object.assign({}, opts, { mode: 'commit' }),
@@ -3130,21 +3280,38 @@ window.StackdImport = {
         // parseCSV refuses. Restore mode never takes this branch: it routes as
         // it always has and only labels the bank hand-off below.
         const commit = opts.mode === 'commit';
-        const auto = commit ? this._readTextAuto(csvText, opts) : null;
-        const shape = commit ? this._ledgerShape(auto.rows) : null;
-        if (shape) {
-          const conv = this.ledgerToRows(auto, shape, opts);
+        const commitLedger = (read, shape, kind, convOpts, extra) => {
+          const conv = this.ledgerToRows(read, shape, convOpts);
           const existed = new Set(window.Store.getState().accounts.map(a => a.id));
           const { transactions, stats, placement } = this.buildTransactions(conv.rows, { ledger: true });
-          stats.skippedCount += conv.skippedCount;
-          Object.keys(conv.skipped).forEach(k => { stats.skipped[k] = (stats.skipped[k] || 0) + conv.skipped[k]; });
+          const merge = (skipped) => Object.keys(skipped).forEach(k => {
+            stats.skipped[k] = (stats.skipped[k] || 0) + skipped[k];
+            stats.skippedCount += skipped[k];
+          });
+          merge(conv.skipped);
+          if (extra && extra.skipped) merge(extra.skipped);
           if (transactions.length > 0) {
             window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions, keepOrder: true });
           }
           // What landed, per account the file names (Check runs this inside
           // Store.dryRun, so Review shows these exact figures).
           conv.facts.after = this._ledgerAfter(conv.facts.accounts, placement, existed);
-          if (onComplete) onComplete({ ...stats, kind: 'ledger', ledger: conv.facts });
+          if (extra && extra.facts) Object.assign(conv.facts, extra.facts);
+          if (onComplete) onComplete({ ...stats, kind, ledger: conv.facts });
+        };
+        // 1.1.0 (IE-3, §6e): a QIF file, read into ledger rows and imported
+        // the same way. Restore mode leaves it to the old route ('unrecognised
+        // file'), as before, until the Review screen takes it (IE-6).
+        if (commit && fmt === 'qif') {
+          const q = this.parseQIF(csvText, opts);
+          commitLedger(q.read, q.shape, 'qif',
+            Object.assign({}, opts, { dateOrder: 'ymd', decimal: 'dot', dateFallback: undefined }), q);
+          return;
+        }
+        const auto = commit ? this._readTextAuto(csvText, opts) : null;
+        const shape = commit ? this._ledgerShape(auto.rows) : null;
+        if (shape) {
+          commitLedger(auto, shape, 'ledger', opts);
           return;
         }
         const rows = this.parseCSV(csvText);
