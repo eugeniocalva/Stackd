@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// 1.1.0 (IE-5): the restore input lives on #backup, one tap from Settings.
+const toBackup = async (page) => {
+  if (await page.locator('#import-csv-file').count()) return;
+  await page.click('#btn-open-backup');
+  await page.waitForSelector('#btn-import-csv');
+};
 
 // v1.01 category rules (docs/bank-import-plan.md §5): pick a category on a
 // preview row → a "Remember" pill appears → tapping it saves a rule
@@ -33,11 +39,12 @@ test.describe('Import category rules E2E flow', () => {
 
   const goToSettings = async (page) => {
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
   };
 
   const uploadCsv = async (page, csv) => {
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'bank.csv', mimeType: 'text/csv', buffer: Buffer.from(csv)
     });
@@ -56,7 +63,7 @@ test.describe('Import category rules E2E flow', () => {
     await expect(page.locator('#import-success-imported')).toContainText(importedText);
     await page.click('#import-success-done');
     await expect(page.locator('#import-success-modal')).toHaveCount(0);
-    await page.waitForSelector('#btn-import-csv');
+    await page.waitForSelector('#btn-open-backup');
   };
 
   test('teaches a rule from the preview and auto-categorizes the next import', async ({ page }) => {

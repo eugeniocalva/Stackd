@@ -116,8 +116,8 @@ describe('1.0.1 review fixes (misc)', () => {
     const renderSettings = () => {
       const c = $('router-view');
       const state = S().getState();
-      c.innerHTML = global.window.Views.OthersView.render(state);
-      global.window.Views.OthersView.attachEvents(c, state);
+      c.innerHTML = global.window.Views.BackupView.render(state); // 1.1.0 (IE-5): the restore moved to Backup
+      global.window.Views.BackupView.attachEvents(c, state);
     };
 
     it('the body carries only the reason, never the title again', () => {

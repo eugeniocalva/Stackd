@@ -19,6 +19,10 @@ window.Router = {
     '#debt-results': 'debt-results',
     '#import-map': 'import-map', // v0.99: bank-statement column mapping
     '#import-preview': 'import-preview', // v0.99: bank-statement review & confirm
+    '#backup': 'backup', // 1.1.0 (IE-5): the six backup files + restore
+    '#import': 'import', // 1.1.0 (IE-6): Import screen (paste, file, settings, Check)
+    '#import-review': 'import-review', // 1.1.0 (IE-6): the Check result
+    '#export': 'export', // 1.1.0 (IE-7): ledger export
     '#bank-connect': 'bank-connect', // v1.05: online banking hub
     '#bank-connect-add': 'bank-connect-add', // v1.05: bank picker
     '#bank-connect-map': 'bank-connect-map', // v1.07: account mapping after the bank confirms

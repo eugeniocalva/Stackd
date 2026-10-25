@@ -1,6 +1,6 @@
 # Bank Import UX Plan — making the feature findable, guided, and habitual
 
-> Status: **U2 SHIPPED 2026-09-07 (v1.06) — U1, U3–U5 not started; §9 D3 taken as recommended, the other §9 decisions still open.** This is the cold-start reference for the
+> Status: **U2 SHIPPED 2026-09-07 (v1.06). U1 DROPPED 2026-10-24 (owner Q7) — superseded by the 1.1.0 Import and export screens (`docs/import-export-plan.md`: Settings → Data → Import and export → Import, which reads bank files too). U3–U5 not started; §9 D3 taken as recommended, the other §9 decisions still open.** This is the cold-start reference for the
 > import UX work. The underlying LOGIC is complete (v0.99–v1.03, see
 > `docs/bank-import-plan.md` §3f–§7a — read that first); this plan is about
 > how a user DISCOVERS, TRUSTS, and RETURNS to it. Written 2026-09-04 for

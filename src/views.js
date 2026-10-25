@@ -3989,27 +3989,12 @@ Object.assign(window.Views, {
             </div>
           </div>
 
-          <div class="section-title">${window.I18n.t('others.dataExport')}</div>
-          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
-            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
-              ${window.I18n.t('others.exportDesc')}
-            </p>
-            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-              <button class="btn btn-secondary" id="btn-export-accounts">${window.I18n.t('others.exportAccounts')}</button>
-              <button class="btn btn-secondary" id="btn-export-categories">${window.I18n.t('others.exportCategories')}</button>
-              <button class="btn btn-secondary" id="btn-export-transactions">${window.I18n.t('others.exportTransactions')}</button>
-              <button class="btn btn-secondary" id="btn-export-loans">${window.I18n.t('others.exportLoans')}</button>
-              <button class="btn btn-secondary" id="btn-export-budgets">${window.I18n.t('others.exportBudgets')}</button>
-              <button class="btn btn-secondary" id="btn-export-rules">${window.I18n.t('bankImport.exportRules')}</button>
-            </div>
-          </div>
-
-          <!-- v1.05 Bank Connect (D-C16): the "Data Import" section becomes
-               "Bank data" and gains the Online banking row above the file
-               import. Row subtitle = BankConnect.settingsSubtitle (status
-               line once enabled). -->
-          <div class="section-title">${window.I18n.t('others.bankData')}</div>
-          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+          <!-- 1.1.0 (IE-5, docs/import-export-plan.md §3a): one Data card —
+               Online banking (when enabled), Import and export (a sheet:
+               Import file / Export file), Backup (the six Stack'd backup
+               files and their restore) and Import rules. -->
+          <div class="section-title">${window.I18n.t('others.data')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
             ${(window.BankConnect && window.BankConnect.featureEnabled()) ? `
             <div id="btn-open-bank-connect" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4); width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('bank.title')}">
               <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
@@ -4021,12 +4006,21 @@ Object.assign(window.Views, {
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
             </div>` : ''}
-            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">
-              ${window.I18n.t('others.importDesc', { columns: '<b>Date, Amount, Type, Account, Category, Note</b>' })}
-            </p>
-            <input type="file" id="import-csv-file" accept=".csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
-            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${window.I18n.t('others.importCsv')}</button>
-            <button class="btn btn-secondary" id="btn-import-rules" style="width: 100%; margin-top: var(--space-3);">${window.I18n.t('bankImport.rulesManage')}</button>
+            ${[
+              ['btn-open-import-export', 'arrow-up-down', 'others.importExport', 'others.importExportDesc'],
+              ['btn-open-backup', 'shield-check', 'others.backup', 'others.backupDesc'],
+              ['btn-import-rules', 'list', 'bankImport.rulesManage', 'others.importRulesDesc']
+            ].map(([id, icon, title, sub], i, all) => `
+            <div id="${id}" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;${i < all.length - 1 ? ' border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4);' : ''}" tabindex="0" role="button" aria-label="${escapeAttr(window.I18n.t(title))}">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;"><i data-lucide="${icon}"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title">${window.I18n.t(title)}</div>
+                  <div class="list-item-subtitle" style="white-space: normal; line-height: 1.4;">${window.I18n.t(sub)}</div>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
+            </div>`).join('')}
           </div>
 
           <div class="section-title">${window.I18n.t('others.support')}</div>
@@ -4137,37 +4131,17 @@ Object.assign(window.Views, {
           if (url) window.Views._openExternal(url);
         });
       }
-      const exportAccBtn = document.getElementById('btn-export-accounts');
-      if (exportAccBtn) {
-        exportAccBtn.addEventListener('click', () => window.StackdExport.exportAccounts(state));
-      }
-      const exportCatBtn = document.getElementById('btn-export-categories');
-      if (exportCatBtn) {
-        exportCatBtn.addEventListener('click', () => window.StackdExport.exportCategories(state));
-      }
-      const exportTxBtn = document.getElementById('btn-export-transactions');
-      if (exportTxBtn) {
-        exportTxBtn.addEventListener('click', () => window.StackdExport.exportTransactions(state));
-      }
-
-      // v1.01: import-rules export + management sheet
-      const exportRulesBtn = document.getElementById('btn-export-rules');
-      if (exportRulesBtn) {
-        exportRulesBtn.addEventListener('click', () => window.StackdExport.exportImportRules(state));
-      }
-      const importRulesBtn = document.getElementById('btn-import-rules');
-      if (importRulesBtn) {
-        importRulesBtn.addEventListener('click', () => window.Components.ImportRulesModal.show());
-      }
-      const exportLoansBtn = document.getElementById('btn-export-loans');
-      if (exportLoansBtn) {
-        exportLoansBtn.addEventListener('click', () => window.StackdExport.exportLoans(state));
-      }
-      // v1.19: budgets join the backup (export.js exportBudgets)
-      const exportBudgetsBtn = document.getElementById('btn-export-budgets');
-      if (exportBudgetsBtn) {
-        exportBudgetsBtn.addEventListener('click', () => window.StackdExport.exportBudgets(state));
-      }
+      // 1.1.0 (IE-5): the Data card's rows. The six backup files and their
+      // restore moved to #backup (BackupView); import rules stay here.
+      const rowAction = (id, run) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', run);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
+      };
+      rowAction('btn-open-import-export', () => window.Components.ImportExportSheet.show());
+      rowAction('btn-open-backup', () => window.Router.navigate('#backup'));
+      rowAction('btn-import-rules', () => window.Components.ImportRulesModal.show()); // v1.01
 
       const toggleTimeInput = document.getElementById('toggle-enable-time-input');
       if (toggleTimeInput) {
@@ -4300,115 +4274,6 @@ Object.assign(window.Views, {
         });
       }
       
-      // Data Import
-      const fileInput = document.getElementById('import-csv-file');
-      const btnImport = document.getElementById('btn-import-csv');
-      
-      if (btnImport && fileInput) {
-        btnImport.addEventListener('click', () => {
-          fileInput.click();
-        });
-        
-        fileInput.addEventListener('change', (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          
-          btnImport.textContent = window.I18n.t('others.importing');
-          btnImport.disabled = true;
-          
-          if (window.StackdImport) {
-            // v0.71: importCSV routes on the file's shape, so the same button
-            // accepts a transactions export or a loans export.
-            window.StackdImport.importCSV(file, state, (result) => {
-              // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
-              // export) routes to the column-mapping flow instead of the direct
-              // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
-              // and MT940 statements route to the statement-details step of the
-              // same flow (plan §4).
-              // 1.1.0 (IE-2): a ledger file (MoneyStats) comes back unwritten as
-              // kind 'ledger'. Until the Review screen exists (IE-6) it opens the
-              // column-mapping flow, as it always has.
-              if (result.kind === 'bank' || result.kind === 'statement' || result.kind === 'ledger') {
-                if (!state.accounts || state.accounts.length === 0) {
-                  // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
-                  window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });
-                } else if (result.kind === 'statement') {
-                  window.Views._ImportShared.startStatement(result.statement, file.name, state);
-                  window.Router.navigate('#import-map');
-                } else {
-                  window.Views._ImportShared.start(result.csvText, file.name, state);
-                  window.Router.navigate('#import-map');
-                }
-                btnImport.textContent = window.I18n.t('others.importCsv');
-                btnImport.disabled = false;
-                fileInput.value = ''; // reset
-                return;
-              }
-              // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
-              // rows) used to vanish silently — report them.
-              let message = result.kind === 'loans'
-                ? window.I18n.t('others.importedLoans', { count: result.importedCount })
-                : result.kind === 'rules' // v1.01: restored import rules
-                ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
-                : result.kind === 'budgets' // v1.19: restored budgets
-                ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
-                : result.kind === 'accounts' // v1.19 (A-17)
-                ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
-                : result.kind === 'categories' // v1.19 (A-17)
-                ? window.I18n.t('others.importedCategories', { count: result.importedCount })
-                // 1.0.2 (live-U6-N2): whole-sentence plurals; a 'Created 0 …' line is left out
-                : [window.I18n.t('others.importedTx', { count: result.importedCount })]
-                    .concat(result.newAccounts > 0 ? [window.I18n.t('others.importCreatedAccounts', { count: result.newAccounts })] : [])
-                    .concat(result.newCategories > 0 ? [window.I18n.t('others.importCreatedCategories', { count: result.newCategories })] : [])
-                    .join('\n');
-              if (result.skippedCount) {
-                const reasons = Object.keys(result.skipped)
-                  .map(r => `• ${result.skipped[r]} — ${r}`)
-                  .join('\n');
-                message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
-              }
-              // 1.0.2 (BUG-78): rows (or loans) already in Stack'd were skipped.
-              if (result.duplicateCount) {
-                message += '\n\n' + window.I18n.t('others.importDuplicates', { count: result.duplicateCount });
-              }
-              // 1.0.2 (BUG-30): a backup from before 1.0.2 cannot tell two
-              // same-named accounts apart. Raw names: the sheet escapes its body.
-              if (result.ambiguousRows) {
-                message += '\n\n' + window.I18n.t('others.importAmbiguousAccounts', {
-                  count: result.ambiguousRows,
-                  names: (result.ambiguousAccounts || []).join(', ')
-                });
-              }
-              window.Components.NoticeSheet.show({
-                id: 'import-result-modal',
-                tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
-                title: window.I18n.t('bankImport.successTitle'),
-                body: message
-              });
-              btnImport.textContent = window.I18n.t('others.importCsv');
-              btnImport.disabled = false;
-              fileInput.value = ''; // reset
-            }, (err) => {
-              window.Components.NoticeSheet.show({
-                id: 'import-result-modal',
-                tone: 'error',
-                title: window.I18n.t('others.importFailedTitle'),
-                // 1.0.1 (BUG-21): the title already says "Import failed" — the
-                // body carries only the reason (localized fallback when none).
-                body: (err && err.message) || window.I18n.t('others.importFailedBody')
-              });
-              btnImport.textContent = window.I18n.t('others.importCsv');
-              btnImport.disabled = false;
-              fileInput.value = ''; // reset
-            });
-          } else {
-            window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', body: window.I18n.t('others.importModuleMissing') });
-            btnImport.textContent = window.I18n.t('others.importCsv');
-            btnImport.disabled = false;
-          }
-        });
-      }
-      
       // Manage Accounts — navigate to EditAccountView for each account row
       const btnManageAccounts = document.getElementById('btn-manage-accounts');
       if (btnManageAccounts) {
@@ -4483,6 +4348,742 @@ Object.assign(window.Views, {
           });
         });
       }
+    }
+  }
+});
+
+// -------------------------
+// BACKUP VIEW (1.1.0 IE-5)
+// -------------------------
+// docs/import-export-plan.md §3b: the six Stack'd backup files (ids kept
+// from Settings) and their one-tap restore, wired exactly as Settings did.
+// A ledger or QIF file picked here is never written unreviewed (§6a).
+Object.assign(window.Views, {
+  BackupView: {
+    render(state) {
+      const t = (k) => window.I18n.t(k);
+      const btn = (id, key) => `<button class="btn btn-secondary" id="${id}">${t(key)}</button>`;
+      return `
+        <div class="container" style="padding-bottom: 100px;" id="backup-view">
+          <a href="#settings" data-router-leave class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${escapeAttr(t('others.title'))}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${t('others.title')}</a>
+          <h1 class="page-header-title" style="margin-bottom: var(--space-4);">${t('backup.title')}</h1>
+
+          <div class="section-title">${t('backup.createTitle')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.createDesc')}</p>
+            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+              ${btn('btn-export-accounts', 'others.exportAccounts')}
+              ${btn('btn-export-categories', 'others.exportCategories')}
+              ${btn('btn-export-transactions', 'others.exportTransactions')}
+              ${btn('btn-export-loans', 'others.exportLoans')}
+              ${btn('btn-export-budgets', 'others.exportBudgets')}
+              ${btn('btn-export-rules', 'bankImport.exportRules')}
+            </div>
+          </div>
+
+          <div class="section-title">${t('backup.restoreTitle')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.restoreDesc')}</p>
+            <input type="file" id="import-csv-file" accept=".csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
+            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${t('backup.restoreBtn')}</button>
+          </div>
+        </div>`;
+    },
+    attachEvents(container, state) {
+      window.StackdHydrateIcons(container);
+      const E = window.StackdExport;
+      [['btn-export-accounts', 'exportAccounts'], ['btn-export-categories', 'exportCategories'],
+        ['btn-export-transactions', 'exportTransactions'], ['btn-export-loans', 'exportLoans'],
+        ['btn-export-budgets', 'exportBudgets'], ['btn-export-rules', 'exportImportRules']].forEach(([id, fn]) => {
+        const b = document.getElementById(id);
+        if (b) b.addEventListener('click', () => E[fn](state));
+      });
+      window.Views._bindRestoreFile(state);
+    }
+  },
+
+  // The restore button (moved from Settings in IE-5, unchanged): importCSV,
+  // a bank CSV or statement to #import-map, every result in a sheet.
+  _bindRestoreFile(state) {
+    const fileInput = document.getElementById('import-csv-file');
+    const btnImport = document.getElementById('btn-import-csv');
+    
+    if (btnImport && fileInput) {
+      btnImport.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        btnImport.textContent = window.I18n.t('others.importing');
+        btnImport.disabled = true;
+        
+        if (window.StackdImport) {
+          // v0.71: importCSV routes on the file's shape, so the same button
+          // accepts a transactions export or a loans export.
+          window.StackdImport.importCSV(file, state, (result) => {
+            // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
+            // export) routes to the column-mapping flow instead of the direct
+            // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
+            // and MT940 statements route to the statement-details step of the
+            // same flow (plan §4).
+            // 1.1.0 (IE-2): a ledger file (MoneyStats) comes back unwritten as
+            // kind 'ledger'. Until the Review screen exists (IE-6) it opens the
+            // column-mapping flow, as it always has.
+            if (result.kind === 'bank' || result.kind === 'statement' || result.kind === 'ledger') {
+              if (!state.accounts || state.accounts.length === 0) {
+                // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
+                window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });
+              } else if (result.kind === 'statement') {
+                window.Views._ImportShared.startStatement(result.statement, file.name, state);
+                window.Router.navigate('#import-map');
+              } else {
+                window.Views._ImportShared.start(result.csvText, file.name, state);
+                window.Router.navigate('#import-map');
+              }
+              btnImport.textContent = window.I18n.t('backup.restoreBtn');
+              btnImport.disabled = false;
+              fileInput.value = ''; // reset
+              return;
+            }
+            // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
+            // rows) used to vanish silently — report them.
+            let message = result.kind === 'loans'
+              ? window.I18n.t('others.importedLoans', { count: result.importedCount })
+              : result.kind === 'rules' // v1.01: restored import rules
+              ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
+              : result.kind === 'budgets' // v1.19: restored budgets
+              ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
+              : result.kind === 'accounts' // v1.19 (A-17)
+              ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
+              : result.kind === 'categories' // v1.19 (A-17)
+              ? window.I18n.t('others.importedCategories', { count: result.importedCount })
+              // 1.0.2 (live-U6-N2): whole-sentence plurals; a 'Created 0 …' line is left out
+              : [window.I18n.t('others.importedTx', { count: result.importedCount })]
+                  .concat(result.newAccounts > 0 ? [window.I18n.t('others.importCreatedAccounts', { count: result.newAccounts })] : [])
+                  .concat(result.newCategories > 0 ? [window.I18n.t('others.importCreatedCategories', { count: result.newCategories })] : [])
+                  .join('\n');
+            if (result.skippedCount) {
+              const reasons = Object.keys(result.skipped)
+                .map(r => `• ${result.skipped[r]} — ${r}`)
+                .join('\n');
+              message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
+            }
+            // 1.0.2 (BUG-78): rows (or loans) already in Stack'd were skipped.
+            if (result.duplicateCount) {
+              message += '\n\n' + window.I18n.t('others.importDuplicates', { count: result.duplicateCount });
+            }
+            // 1.0.2 (BUG-30): a backup from before 1.0.2 cannot tell two
+            // same-named accounts apart. Raw names: the sheet escapes its body.
+            if (result.ambiguousRows) {
+              message += '\n\n' + window.I18n.t('others.importAmbiguousAccounts', {
+                count: result.ambiguousRows,
+                names: (result.ambiguousAccounts || []).join(', ')
+              });
+            }
+            window.Components.NoticeSheet.show({
+              id: 'import-result-modal',
+              tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
+              title: window.I18n.t('bankImport.successTitle'),
+              body: message
+            });
+            btnImport.textContent = window.I18n.t('backup.restoreBtn');
+            btnImport.disabled = false;
+            fileInput.value = ''; // reset
+          }, (err) => {
+            window.Components.NoticeSheet.show({
+              id: 'import-result-modal',
+              tone: 'error',
+              title: window.I18n.t('others.importFailedTitle'),
+              // 1.0.1 (BUG-21): the title already says "Import failed" — the
+              // body carries only the reason (localized fallback when none).
+              body: (err && err.message) || window.I18n.t('others.importFailedBody')
+            });
+            btnImport.textContent = window.I18n.t('backup.restoreBtn');
+            btnImport.disabled = false;
+            fileInput.value = ''; // reset
+          });
+        } else {
+          window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', body: window.I18n.t('others.importModuleMissing') });
+          btnImport.textContent = window.I18n.t('backup.restoreBtn');
+          btnImport.disabled = false;
+        }
+      });
+    }
+  }
+});
+
+// -------------------------
+// IMPORT + REVIEW (1.1.0 IE-6)
+// -------------------------
+// docs/import-export-plan.md §4. The Import screen holds a draft — the text
+// (pasted or read from a file), its file name, the settings sheet's
+// overrides, the last Check and the Review choices — outside the store:
+// nothing of a file is ever saved (privacy terms), and a re-render keeps it.
+// Check reads the text once (analyzeText) and routes: ledger and QIF files
+// to #import-review (the real import run in Store.dryRun), Stack'd backups
+// to #import-review in backup mode, bank CSVs and statements to #import-map.
+Object.assign(window.Views, {
+  _ImportDraft: {
+    text: '', fileName: '', fromFile: false, overrides: {}, check: null, choices: null, fileCategories: null,
+    clear() {
+      this.text = ''; this.fileName = ''; this.fromFile = false; this.overrides = {};
+      this.check = null; this.choices = null; this.fileCategories = null;
+    },
+    opts() { return Object.assign({}, this.overrides, this.choices || {}); },
+    recheck() { this.check = window.StackdImport.checkText(this.text, this.opts()); return this.check; }
+  },
+
+  _IMPORT_PREVIEW_LINES: 200,
+
+  // Android's chooser drops extensions it cannot map to a MIME type (.qif,
+  // .940, .sta) and greys those files out; the content is sniffed anyway.
+  _importAccept() {
+    const cap = window.Capacitor;
+    const native = cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform();
+    return native ? '*/*' : '.csv,.txt,.qif,.xml,.940,.mt940,.sta,text/*';
+  },
+
+  _importError(container, msg) {
+    const el = container.querySelector('#import-check-error');
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  },
+
+  // { fileCategory: built-in category name } for the file's categories that
+  // Stack'd does not have and the synonym table recognises (owner Q2).
+  _suggestedCategoryMap(check) {
+    const r = check && check.result;
+    if (!r || !r.ledger) return {};
+    const cats = window.Store.getState().categories;
+    const has = new Set(cats.map(c => c.name.trim().toLowerCase()));
+    const map = {};
+    (r.ledger.categories || []).forEach(({ name }) => {
+      if (has.has(name.trim().toLowerCase())) return;
+      const id = window.StackdImport.suggestCategoryId(name);
+      const target = id && cats.find(c => c.id === id);
+      if (target) map[name] = target.name;
+    });
+    return map;
+  },
+
+  _runCheck(container) {
+    const d = this._ImportDraft;
+    const t = (k, p) => window.I18n.t(k, p);
+    const I = window.StackdImport;
+    const btn = container.querySelector('#btn-import-check');
+    const err = container.querySelector('#import-check-error');
+    if (err) err.hidden = true;
+    if (!d.text.trim()) { this._importError(container, t('import.err.empty')); return; }
+    if (btn) { btn.disabled = true; btn.textContent = t('import.checking'); }
+    const done = () => { if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = t('import.check'); } };
+    setTimeout(() => { // the busy label paints before a 6,000-row Check
+      try {
+        const a = I.analyzeText(d.text, d.overrides);
+        const name = d.fileName || t('import.pasted');
+        const state = window.Store.getState();
+        if (a.kind === 'ledger' || a.kind === 'qif') {
+          d.choices = { skipLookalikes: 'bank' }; // owner Q8: bank look-alikes skipped by default
+          let c = d.recheck();
+          d.fileCategories = c.result && c.result.ledger ? c.result.ledger.categories.map(x => x.name) : [];
+          const map = this._suggestedCategoryMap(c);
+          if (Object.keys(map).length) { d.choices.categoryMap = map; c = d.recheck(); }
+          window.Router.navigate('#import-review');
+          return;
+        }
+        if (a.kind === 'backup') {
+          d.check = { kind: 'backup', backupKind: a.backupKind, rowCount: a.rowCount };
+          window.Router.navigate('#import-review');
+          return;
+        }
+        if (a.kind === 'bank' || a.kind === 'statement') {
+          if (!(state.accounts || []).length) { this._importError(container, t('bankImport.noAccounts')); done(); return; }
+          if (a.kind === 'bank') {
+            // plan §6g: the mapping screen reads what Check read, with the settings.
+            window.Views._ImportShared.start(d.text, name, state,
+              { rows: a.rows, dateOrder: d.overrides.dateOrder, decimal: d.overrides.decimal, factor: d.overrides.factor });
+          } else {
+            window.Views._ImportShared.startStatement(a.format === 'camt' ? I.parseCamt(d.text) : I.parseMT940(d.text), name, state);
+          }
+          window.Router.navigate('#import-map');
+          return;
+        }
+        this._importError(container, t(a.kind === 'empty' ? 'import.err.empty' : 'import.err.unknown'));
+      } catch (e) {
+        console.error('Import check failed:', e);
+        this._importError(container, t('import.err.unknown'));
+      }
+      done();
+    }, 30);
+  },
+
+  ImportView: {
+    render() {
+      const t = (k, p) => window.I18n.t(k, p);
+      const d = window.Views._ImportDraft;
+      const lines = d.fromFile ? d.text.split(/\r\n|\r|\n/).length : 0;
+      const shown = Math.min(lines, window.Views._IMPORT_PREVIEW_LINES);
+      const o = d.overrides;
+      const changed = !!(o.delimiter || o.rowDelimiter || o.dateOrder || o.decimal || o.ignoreQuotes || (typeof o.factor === 'number' && o.factor !== 1));
+      return `
+        <div class="container" style="padding-bottom: 100px;" id="import-view">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-4);">
+            <h1 class="header-title" style="margin: 0;">${t('import.title')}</h1>
+            <a href="#settings" data-router-leave id="import-close" class="touch-target" aria-label="${escapeAttr(t('common.close'))}" style="font-size: 1.4rem; color: var(--text-secondary); text-decoration: none;">✕</a>
+          </div>
+          ${d.fromFile ? `
+          <div id="import-file-line" style="display: flex; justify-content: space-between; gap: var(--space-3); align-items: center; font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-2);">
+            <span style="overflow-wrap: anywhere;">${esc(t('import.fileLine', { count: lines, file: d.fileName }) + (lines > shown ? ' · ' + t('import.previewCut', { shown }) : ''))}</span>
+            <button type="button" class="btn btn-secondary" id="import-clear" style="width: auto; padding: 4px 12px; min-height: 0;">${t('import.clear')}</button>
+          </div>` : ''}
+          <textarea id="import-text" class="note-textarea" spellcheck="false" autocomplete="off" ${d.fromFile ? 'readonly' : ''} aria-label="${escapeAttr(t('import.title'))}" placeholder="${escapeAttr(t('import.placeholder'))}" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 12px; white-space: pre; overflow: auto; margin-bottom: var(--space-4);"></textarea>
+          <input type="file" id="import-file-input" accept="${escapeAttr(window.Views._importAccept())}" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+            <button class="btn btn-secondary" id="btn-import-choose">${t('import.choose')}</button>
+            <button class="btn btn-secondary" id="btn-import-settings">${t('import.settings')}${changed ? ' ·  ' + t('import.set.changed') : ''}</button>
+          </div>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; margin: var(--space-4) 0;">${t('import.hint')}</p>
+          <div id="import-check-error" role="alert" hidden style="color: var(--color-expense); font-size: var(--text-sm); margin-bottom: var(--space-3);"></div>
+          <button class="btn btn-primary" id="btn-import-check" style="padding: var(--space-4); border-radius: var(--radius-lg);" ${d.text.trim() ? '' : 'disabled'}>${t('import.check')}</button>
+        </div>`;
+    },
+
+    attachEvents(container) {
+      window.StackdHydrateIcons(container);
+      const d = window.Views._ImportDraft;
+      const t = (k) => window.I18n.t(k);
+      const $ = (id) => container.querySelector('#' + id);
+      const area = $('import-text');
+      const check = $('btn-import-check');
+      if (area) {
+        // .value, never the markup: the text is file content.
+        area.value = d.fromFile ? d.text.split(/\r\n|\r|\n/).slice(0, window.Views._IMPORT_PREVIEW_LINES).join('\n') : d.text;
+        if (!d.fromFile) {
+          area.addEventListener('input', () => {
+            d.text = area.value;
+            d.check = null;
+            d.choices = null;
+            if (check) check.disabled = !d.text.trim();
+          });
+        }
+      }
+      const close = $('import-close');
+      if (close) close.addEventListener('click', () => d.clear());
+      const clear = $('import-clear');
+      if (clear) {
+        clear.addEventListener('click', () => {
+          d.text = ''; d.fileName = ''; d.fromFile = false; d.check = null; d.choices = null;
+          window.Store.emit();
+        });
+      }
+      const input = $('import-file-input');
+      $('btn-import-choose').addEventListener('click', () => input.click());
+      input.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        window.StackdImport._readFileText(file, (text) => {
+          d.text = text; d.fileName = file.name; d.fromFile = true; d.check = null; d.choices = null;
+          input.value = '';
+          window.Store.emit();
+        }, () => { input.value = ''; window.Views._importError(container, t('others.importFailedBody')); });
+      });
+      $('btn-import-settings').addEventListener('click', () => window.Components.ImportSettingsSheet.show({
+        overrides: d.overrides,
+        onSave: (o) => { d.overrides = o; d.check = null; d.choices = null; window.Store.emit(); }
+      }));
+      check.addEventListener('click', () => window.Views._runCheck(container));
+    }
+  },
+
+  // Localized label of an engine skip reason (the engine keeps English keys).
+  _skipLabel(reason) {
+    const k = {
+      'missing date, amount or account': 'review.reason.missing',
+      'unrecognised date format': 'review.reason.date',
+      'invalid amount': 'review.reason.amount',
+      'zero amount': 'review.reason.zero',
+      'extra balance row': 'review.reason.extraBalance',
+      'investment accounts are not supported': 'review.reason.investment',
+      'not a bank, cash or card record': 'review.reason.notBank'
+    }[reason];
+    return k ? window.I18n.t(k) : reason;
+  },
+
+  _fmtDay(ymd) {
+    if (!ymd) return '';
+    try {
+      return new Intl.DateTimeFormat(window.Store.getLocale(), { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(ymd + 'T12:00:00'));
+    } catch (e) { return ymd; }
+  },
+
+  ImportReviewView: {
+    render(state) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const S = window.Store;
+      const d = window.Views._ImportDraft;
+      const c = d.check;
+      const card = (inner, id) => `<div class="card card-elevated" ${id ? `id="${id}"` : ''} style="margin-bottom: var(--space-4); padding: var(--space-4) var(--space-5);">${inner}</div>`;
+      const sub = (s) => `<div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.5;">${s}</div>`;
+      const header = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-4);">
+          <h1 class="header-title" style="margin: 0;">${t('review.title')}</h1>
+          <a href="#settings" data-router-leave id="review-close" class="touch-target" aria-label="${escapeAttr(t('common.close'))}" style="font-size: 1.4rem; color: var(--text-secondary); text-decoration: none;">✕</a>
+        </div>`;
+      const wrap = (inner) => `<div class="container" style="padding-bottom: 100px;" id="import-review">${header}${inner}</div>`;
+      if (!c) {
+        return wrap(card(`${sub(t('review.empty'))}<a href="#import" data-router-leave class="btn btn-secondary" style="margin-top: var(--space-4); text-decoration: none;">${t('import.title')}</a>`, 'review-empty'));
+      }
+      if (c.kind === 'backup') {
+        return wrap(card(`
+          <div class="list-item-title" style="margin-bottom: var(--space-2);">${t('review.format.backup')}</div>
+          ${sub(esc(t('review.backupInfo', { file: d.fileName || t('import.pasted'), count: c.rowCount })))}
+          ${sub(t('review.notApply'))}`) + `
+          <button class="btn btn-primary" id="btn-import-confirm" style="padding: var(--space-4); border-radius: var(--radius-lg);">${t('review.backupImport')}</button>`);
+      }
+      if (c.error || !c.result) {
+        return wrap(card(`${sub(esc((c.error && c.error.message) || t('import.err.unknown')))}<a href="#import" data-router-leave class="btn btn-secondary" style="margin-top: var(--space-4); text-decoration: none;">${t('review.change')}</a>`, 'review-error'));
+      }
+      const r = c.result;
+      const f = r.ledger;
+      const ch = d.choices || {};
+      const money = (n, ccy) => S.formatCurrency(Number(n) || 0, ccy || state.currency);
+      const nowrap = (s) => `<span style="white-space: nowrap;">${esc(s)}</span>`; // keeps "-€84.00" on one line
+      const decided = c.decided || {};
+      const delim = { ';': ';', ',': ',', '\t': t('import.set.tab'), '|': '|' }[decided.delimiter];
+      const delimLabel = delim ? t('import.set.delimiter') + ' ' + delim : '';
+      const orderLabel = { dmy: t('bankImport.dateDMY'), mdy: t('bankImport.dateMDY'), ymd: t('bankImport.dateYMD') }[f.dateOrder && f.dateOrder.order] || '';
+      const decLabel = f.decimal === 'comma' ? t('bankImport.decimalComma') : t('bankImport.decimalDot');
+      const summary = card(`
+        <div class="list-item-title" style="margin-bottom: var(--space-1);">${t(f.layout === 'qif' ? 'review.format.qif' : 'review.format.ledger')}</div>
+        ${sub(esc(d.fileName || t('import.pasted')))}
+        ${sub(esc(t('review.rows', { count: f.rowCount })) + (f.dateRange.from ? ' · ' + esc(window.Views._fmtDay(f.dateRange.from)) + ' – ' + esc(window.Views._fmtDay(f.dateRange.to)) : ''))}
+        ${sub(esc([delimLabel, orderLabel, decLabel, f.factor !== 1 ? '× ' + f.factor : ''].filter(Boolean).join(' · ')))}
+        <a href="#import" id="review-change" style="display: inline-block; margin-top: var(--space-2); font-size: var(--text-sm);">${t('review.change')}</a>`, 'review-summary');
+
+      const qifName = f.qif && !f.qif.named ? card(`
+        <label class="form-label" for="review-qif-account">${t('review.qifAccount')}</label>
+        <input id="review-qif-account" class="form-control" type="text" autocomplete="off" value="${escapeAttr(ch.accountName || f.qif.defaultAccount || '')}">
+        ${sub(t('review.qifAccountHelp'))}`, 'review-qif') : '';
+
+      const accounts = card(`
+        <div class="section-title" style="margin: 0 0 var(--space-3);">${t('review.accounts')}</div>
+        ${(f.after || []).filter(a => a.found).map((a, i) => {
+          const key = a.name + '|' + (a.currency || '');
+          const move = a.before && a.existed ? `
+            <div class="review-heads-up" style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-secondary);">
+              ${esc(t('review.before', { count: a.before.count, account: a.account, date: window.Views._fmtDay(a.openingDate) }))}
+              <label style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);">
+                <input type="checkbox" class="review-move" data-key="${escapeAttr(key)}" data-date="${escapeAttr(a.before.earliest)}" ${(ch.openingMoves || {})[key] ? 'checked' : ''}>
+                ${esc(t('review.moveOpening', { date: window.Views._fmtDay(a.before.earliest) }))}
+              </label>
+            </div>` : '';
+          return `
+            <div class="review-account" style="padding: var(--space-3) 0; ${i ? 'border-top: 1px solid var(--border-color);' : ''}">
+              <div style="display: flex; justify-content: space-between; gap: var(--space-3);">
+                <span class="list-item-title" style="overflow-wrap: anywhere;">${esc(a.account)}${a.currency && a.currency !== state.currency ? ' · ' + esc(a.currency) : ''}</span>
+                <span style="font-size: var(--text-xs); color: var(--text-secondary); white-space: nowrap;">${t(a.existed ? 'review.existing' : 'review.new')}</span>
+              </div>
+              ${sub(esc(t('review.rowsAdded', { count: a.rowsAdded })) + (a.opening !== null ? ' · ' + t('review.opening', { amount: nowrap(money(a.opening, a.currency)) }) : ''))}
+              ${sub(t('review.balanceAfter', { amount: nowrap(money(a.balance, a.currency)) }))}
+              ${move}
+            </div>`;
+        }).join('')}`, 'review-accounts');
+
+      const tr = f.transfers || { paired: 0, categories: [] };
+      const transfers = tr.categories.length ? card(`
+        <div class="section-title" style="margin: 0 0 var(--space-2);">${t('review.transfersTitle')}</div>
+        ${sub(esc(t('review.transfers', { count: tr.paired })))}
+        ${tr.categories.map(cat => `
+          <label style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); font-size: var(--text-sm);">
+            <input type="checkbox" class="review-transfer-cat" data-key="${escapeAttr(cat.key)}" ${cat.off ? '' : 'checked'}>
+            ${esc(t('review.transferCat', { name: cat.name, count: cat.pairs }))}
+          </label>`).join('')}`, 'review-transfers') : '';
+
+      // A file category Stack'd already has lands on it by name — nothing to choose.
+      const have = new Set(state.categories.map(cc => cc.name.trim().toLowerCase()));
+      const fileCats = (d.fileCategories || []).filter(name => !have.has(name.trim().toLowerCase()));
+      const map = ch.categoryMap || {};
+      const options = (cur) => [`<option value="" ${cur ? '' : 'selected'}>${esc(t('review.keepName'))}</option>`]
+        .concat(state.categories.map(cc => `<option value="${escapeAttr(cc.name)}" ${cur === cc.name ? 'selected' : ''}>${esc(cc.name)}</option>`)).join('');
+      const categories = fileCats.length ? card(`
+        <div class="section-title" style="margin: 0 0 var(--space-3);">${t('review.categories')}</div>
+        ${fileCats.map(name => `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2);">
+            <span style="font-size: var(--text-sm); overflow-wrap: anywhere; min-width: 0;">${esc(name)}</span>
+            <select class="form-control review-cat" data-name="${escapeAttr(name)}" style="appearance: none; max-width: 55%;" aria-label="${escapeAttr(name)}">${options(map[name] || '')}</select>
+          </div>`).join('')}`, 'review-categories') : '';
+
+      const heads = [];
+      if (f.planned) heads.push(sub(esc(t('review.planned', { count: f.planned }))));
+      if (r.lookalikes) {
+        heads.push(sub(esc(t('review.lookalikes', { count: r.lookalikes }))) + (r.lookalikesBank ? `
+          <label style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); font-size: var(--text-sm);">
+            <input type="checkbox" id="review-skip-lookalikes" ${ch.skipLookalikes === 'bank' ? 'checked' : ''}>
+            ${esc(t('review.skipLookalikes', { count: r.lookalikesBank }))}
+          </label>` : ''));
+      }
+      (f.unknownStatuses || []).forEach(u => {
+        const paid = (ch.statusMap || {})[u.key] === true;
+        heads.push(`
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);">
+            ${sub(esc(t('review.status', { value: u.value, count: u.rows })))}
+            <select class="form-control review-status" data-key="${escapeAttr(u.key)}" style="appearance: none; max-width: 40%;">
+              <option value="unpaid" ${paid ? '' : 'selected'}>${t('review.unpaid')}</option>
+              <option value="paid" ${paid ? 'selected' : ''}>${t('review.paid')}</option>
+            </select>
+          </div>`);
+      });
+      if ((f.tagRenames || []).length) heads.push(sub(esc(t('review.tagsRenamed', { count: f.tagRenames.length }))));
+      if ((f.tagsDropped || []).length) heads.push(sub(esc(t('review.tagsDropped', { count: f.tagsDropped.length }))));
+      if (r.duplicateCount) heads.push(sub(esc(t('others.importDuplicates', { count: r.duplicateCount }))));
+      const problems = Object.keys(r.skipped || {}).map(k => sub(esc(window.Views._skipLabel(k) + ' — ' + r.skipped[k])));
+      const headsUp = heads.length ? card(heads.join('<div style="height: var(--space-3);"></div>'), 'review-heads-up') : '';
+      const problemCard = problems.length ? card(`<div class="section-title" style="margin: 0 0 var(--space-2);">${t('review.problems')}</div>${problems.join('')}`, 'review-problems') : '';
+      const n = r.importedCount;
+      return wrap(summary + qifName + accounts + transfers + categories + headsUp + problemCard + `
+        <button class="btn btn-primary" id="btn-import-confirm" style="padding: var(--space-4); border-radius: var(--radius-lg);" ${n ? '' : 'disabled'}>${esc(t('review.importBtn', { count: n }))}</button>`);
+    },
+
+    attachEvents(container) {
+      window.StackdHydrateIcons(container);
+      const d = window.Views._ImportDraft;
+      const t = (k, p) => window.I18n.t(k, p);
+      const $ = (id) => container.querySelector('#' + id);
+      const close = $('review-close');
+      if (close) close.addEventListener('click', () => d.clear());
+      const change = $('review-change');
+      if (change) change.addEventListener('click', (e) => { e.preventDefault(); leaveTo('#import'); });
+      const rerun = () => { d.recheck(); window.Store.emit(); };
+      const ch = () => { d.choices = d.choices || {}; return d.choices; };
+      container.querySelectorAll('.review-move').forEach(el => el.addEventListener('change', () => {
+        const m = Object.assign({}, ch().openingMoves || {});
+        if (el.checked) m[el.dataset.key] = el.dataset.date; else delete m[el.dataset.key];
+        ch().openingMoves = m;
+        rerun();
+      }));
+      container.querySelectorAll('.review-transfer-cat').forEach(el => el.addEventListener('change', () => {
+        const m = Object.assign({}, ch().transferCategories || {});
+        if (el.checked) delete m[el.dataset.key]; else m[el.dataset.key] = false;
+        ch().transferCategories = m;
+        rerun();
+      }));
+      container.querySelectorAll('.review-cat').forEach(el => el.addEventListener('change', () => {
+        const m = Object.assign({}, ch().categoryMap || {});
+        if (el.value) m[el.dataset.name] = el.value; else delete m[el.dataset.name];
+        ch().categoryMap = m;
+        rerun();
+      }));
+      container.querySelectorAll('.review-status').forEach(el => el.addEventListener('change', () => {
+        ch().statusMap = Object.assign({}, ch().statusMap || {}, { [el.dataset.key]: el.value === 'paid' });
+        rerun();
+      }));
+      const skip = $('review-skip-lookalikes');
+      if (skip) skip.addEventListener('change', () => { ch().skipLookalikes = skip.checked ? 'bank' : ''; rerun(); });
+      const qif = $('review-qif-account');
+      if (qif) qif.addEventListener('change', () => { ch().accountName = qif.value.trim(); rerun(); });
+      const confirm = $('btn-import-confirm');
+      if (!confirm) return;
+      confirm.addEventListener('click', () => {
+        const c = d.check;
+        confirm.disabled = true;
+        confirm.textContent = t('others.importing');
+        const backup = c && c.kind === 'backup';
+        const opts = backup ? { mode: 'restore' } : Object.assign({}, d.opts(), { mode: 'commit' });
+        const text = d.text;
+        const fail = (err) => {
+          window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', title: t('others.importFailedTitle'),
+            body: (err && err.message) || t('others.importFailedBody') });
+          confirm.disabled = false;
+          confirm.textContent = backup ? t('review.backupImport') : t('review.importBtn', { count: c && c.result ? c.result.importedCount : 0 });
+        };
+        window.StackdImport.importText(text, opts, (res) => {
+          if (backup && (res.kind === 'bank' || res.kind === 'statement' || res.kind === 'ledger')) { fail(); return; }
+          d.clear();
+          leaveTo('#settings');
+          window.Views._showImportResult(res);
+        }, fail);
+      });
+    }
+  },
+
+  // The result sheet after an import from the Review screen.
+  _showImportResult(res) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const S = window.Store;
+    const kindKey = { loans: 'others.importedLoans', rules: 'bankImport.importedRules', budgets: 'others.importedBudgets',
+      accounts: 'others.importedAccounts', categories: 'others.importedCategories' }[res.kind] || 'others.importedTx';
+    const lines = [t(kindKey, { count: res.importedCount || 0 })]
+      .concat(res.newAccounts > 0 ? [t('others.importCreatedAccounts', { count: res.newAccounts })] : [])
+      .concat(res.newCategories > 0 ? [t('others.importCreatedCategories', { count: res.newCategories })] : [])
+      .concat(res.duplicateCount ? [t('others.importDuplicates', { count: res.duplicateCount })] : []);
+    let action = null;
+    const after = (res.ledger && res.ledger.after) || [];
+    const landed = [...new Set(after.filter(a => a.found && !a.existed).map(a => a.currency).filter(Boolean))];
+    const base = S.getState().currency;
+    if (landed.length === 1 && landed[0] !== base && !after.some(a => a.found && a.existed && a.currency === base)) {
+      const next = landed[0];
+      action = { text: t('review.switchCurrency', { code: next }),
+        onClick: () => window.Components.CurrencySwitchConfirm.show({ prev: base, next, impact: S.currencySwitchImpact(next) }) };
+    }
+    window.Components.NoticeSheet.show({
+      id: 'import-result-modal',
+      tone: res.skippedCount || res.duplicateCount ? 'info' : 'success',
+      title: t('bankImport.successTitle'),
+      body: lines.join('\n'),
+      action
+    });
+  }
+});
+
+// -------------------------
+// EXPORT (1.1.0 IE-7)
+// -------------------------
+// docs/import-export-plan.md §5a. The file is StackdExport.buildLedger's
+// MoneyStats-layout ledger; format and settings are the saved exportPrefs,
+// the period is per visit (owner Q3: everything, planned rows included).
+Object.assign(window.Views, {
+  _ExportDraft: { start: '', end: '', planned: true }, // months 'YYYY-MM', '' = open
+
+  _EXPORT_PREVIEW_LINES: 50,
+
+  _exportOpts() {
+    const d = this._ExportDraft;
+    const last = (ym) => { const [y, m] = ym.split('-').map(Number); return ym + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0'); };
+    return { period: { start: d.start ? d.start + '-01' : '', end: d.end ? last(d.end) : '' }, includePlanned: d.planned };
+  },
+
+  // First and last month holding a transaction (opening balances included).
+  _dataMonths(state) {
+    let from = '';
+    let to = '';
+    state.transactions.forEach(tx => {
+      const ym = String(tx.date || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(ym)) return;
+      if (!from || ym < from) from = ym;
+      if (!to || ym > to) to = ym;
+    });
+    return { from, to };
+  },
+
+  _fmtMonth(ym) {
+    if (!ym) return '';
+    const [y, m] = ym.split('-').map(Number);
+    return window.I18n.monthNames('short')[m - 1] + ' ' + y;
+  },
+
+  _periodLabel(state) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const d = this._ExportDraft;
+    const data = this._dataMonths(state);
+    const from = d.start || data.from;
+    const to = d.end || data.to;
+    const range = from ? this._fmtMonth(from) + ' – ' + this._fmtMonth(to) : '';
+    const base = !d.start && !d.end ? [t('export.allTime'), range].filter(Boolean).join(' · ') : range;
+    return d.planned ? base : base + ' · ' + t('export.noPlanned');
+  },
+
+  ExportView: {
+    _build: null,
+
+    render(state) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const V = window.Views;
+      const prefs = window.Store.getExportPrefs();
+      const b = window.StackdExport.buildLedger(state, V._exportOpts());
+      this._build = b; // reused by attachEvents in the same pass
+      const row = (id, icon, title, value) => `
+        <div id="${id}" class="touch-target" style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); cursor: pointer; padding: var(--space-3) 0;" tabindex="0" role="button" aria-label="${escapeAttr(title)}">
+          <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+            <div class="list-item-icon" style="margin: 0; flex-shrink: 0;"><i data-lucide="${icon}"></i></div>
+            <div style="min-width: 0;">
+              <div class="list-item-title">${esc(title)}</div>
+              <div class="list-item-subtitle" style="white-space: normal; line-height: 1.4;">${esc(value)}</div>
+            </div>
+          </div>
+          <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>
+        </div>`;
+      const fmt = prefs.format === 'txt' ? t('export.formatTxt') : t('export.formatCsv');
+      const delim = prefs.format === 'txt' ? t('import.set.tab') : ({ ';': ';', ',': ',', '\t': t('import.set.tab') }[prefs.delimiter]);
+      const settings = [t('import.set.delimiter') + ' ' + delim, prefs.dateFormat, prefs.decimal === 'comma' ? t('bankImport.decimalComma') : t('bankImport.decimalDot')].join(' · ');
+      return `
+        <div class="container" style="padding-bottom: 100px;" id="export-view">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4);">
+            <h1 class="header-title" style="margin: 0;">${t('export.title')}</h1>
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <button type="button" id="export-share" class="touch-target" aria-label="${escapeAttr(t('export.file'))}" style="background: none; border: none; color: var(--text-secondary); cursor: pointer;"><i data-lucide="share-2"></i></button>
+              <a href="#settings" data-router-leave id="export-close" class="touch-target" aria-label="${escapeAttr(t('common.close'))}" style="font-size: 1.4rem; color: var(--text-secondary); text-decoration: none;">✕</a>
+            </div>
+          </div>
+          <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 var(--space-4);">${t('export.subtitle')}</p>
+          <div class="card card-elevated" id="export-info" style="display: flex; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-4) var(--space-5);">
+            <i data-lucide="info" style="color: var(--color-primary); width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <div style="font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.5;">${t('export.info')}
+              <a href="#backup" id="export-backup-link" style="display: inline-block; margin-top: var(--space-1);">${t('export.toBackup')}</a></div>
+          </div>
+          <textarea id="export-preview" class="note-textarea" readonly spellcheck="false" aria-label="${escapeAttr(t('export.preview'))}" style="width: 100%; min-height: 200px; font-family: monospace; font-size: 12px; white-space: pre; overflow: auto;"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: var(--text-xs); color: var(--text-secondary); margin: var(--space-2) 0 var(--space-4);">
+            <span id="export-lines">${esc(t('export.lines', { count: b.lineCount }))}</span>
+            <button type="button" id="export-copy" style="background: none; border: none; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; padding: 4px 0;">${t('export.copy')}</button>
+          </div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-5); padding: var(--space-2) var(--space-5);">
+            ${row('export-format', 'file-text', t('export.format'), fmt)}
+            <div style="border-top: 1px solid var(--border-color);"></div>
+            ${row('export-settings', 'settings', t('export.settings'), settings)}
+            <div style="border-top: 1px solid var(--border-color);"></div>
+            ${row('export-period', 'calendar', t('export.period'), window.Views._periodLabel(state))}
+          </div>
+          <button class="btn btn-primary" id="btn-export-file" style="padding: var(--space-4); border-radius: var(--radius-lg);">${t('export.file')}</button>
+        </div>`;
+    },
+
+    attachEvents(container, state) {
+      window.StackdHydrateIcons(container);
+      const t = (k, p) => window.I18n.t(k, p);
+      const V = window.Views;
+      const $ = (id) => container.querySelector('#' + id);
+      const b = this._build || window.StackdExport.buildLedger(state, V._exportOpts());
+      const eol = b.text.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
+      $('export-preview').value = b.text.split(eol).slice(0, V._EXPORT_PREVIEW_LINES).join('\n'); // .value: stored text
+      const tap = (id, run) => {
+        const el = $(id);
+        el.addEventListener('click', run);
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
+      };
+      $('export-close').addEventListener('click', () => { V._ExportDraft = { start: '', end: '', planned: true }; });
+      $('export-backup-link').addEventListener('click', (e) => { e.preventDefault(); leaveTo('#backup'); });
+      $('export-copy').addEventListener('click', () => {
+        const full = window.StackdExport.buildLedger(window.Store.getState(), V._exportOpts()).text;
+        const btn = $('export-copy');
+        const ok = () => { btn.textContent = t('export.copied'); setTimeout(() => { if (btn.isConnected) btn.textContent = t('export.copy'); }, 1500); };
+        if (navigator.clipboard) navigator.clipboard.writeText(full).then(ok).catch(() => {});
+      });
+      tap('export-format', () => window.Components.ListPicker.show({
+        title: t('export.format'),
+        items: [{ id: 'csv', name: t('export.formatCsv') }, { id: 'txt', name: t('export.formatTxt') }],
+        selectedValue: window.Store.getExportPrefs().format,
+        onSelect: (id) => window.Store.dispatch('SET_EXPORT_PREFS', { format: id })
+      }));
+      tap('export-settings', () => window.Components.ExportSettingsSheet.show());
+      tap('export-period', () => window.Components.ExportPeriodSheet.show({
+        draft: V._ExportDraft,
+        data: V._dataMonths(window.Store.getState()),
+        onSave: (d) => { V._ExportDraft = d; window.Store.emit(); }
+      }));
+      const run = () => {
+        const out = window.StackdExport.exportLedger(window.Store.getState(), V._exportOpts());
+        const cap = window.Capacitor;
+        const native = cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform();
+        if (native) return; // the share sheet is the feedback (plan §12 Q4)
+        Promise.resolve(out).then((sent) => {
+          if (!sent) return;
+          window.Components.NoticeSheet.show({ id: 'export-done-modal', tone: 'success', title: t('export.doneTitle'), body: t('export.doneBody') });
+        });
+      };
+      $('btn-export-file').addEventListener('click', run);
+      $('export-share').addEventListener('click', run);
     }
   }
 });
@@ -6225,8 +6826,13 @@ Object.assign(window.Views, {
   _ImportShared: {
     draft: null,
 
-    start(csvText, fileName, state) {
-      const analysis = window.StackdImport.analyzeBankCSV(csvText);
+    // 1.1.0 (IE-6, plan §6g): `opts` from the Import screen's Check — `rows`
+    // as its Auto reader read them, and the settings sheet's dateOrder,
+    // decimal and factor. Without opts this is the 1.0 path (Backup restore,
+    // Bank Connect).
+    start(csvText, fileName, state, opts) {
+      const o = opts || {};
+      const analysis = window.StackdImport.analyzeBankCSV(csvText, o.rows ? { rows: o.rows } : undefined);
       let mapping = { ...analysis.guess };
       let presetApplied = false;
       // Presets match by exact header signature; a stored mapping is only
@@ -6249,6 +6855,8 @@ Object.assign(window.Views, {
       const accountId = (state.defaultAccountId && accs.some(a => a.id === state.defaultAccountId))
         ? state.defaultAccountId
         : (accs[0] ? accs[0].id : '');
+      if (['dmy', 'mdy', 'ymd'].indexOf(o.dateOrder) !== -1) mapping.dateFormat = o.dateOrder;
+      if (o.decimal === 'comma' || o.decimal === 'dot') mapping.decimal = o.decimal;
       this.draft = {
         kind: 'csv', // v1.00: statement drafts (camt/MT940) carry kind 'statement'
         fileName: fileName,
@@ -6256,6 +6864,7 @@ Object.assign(window.Views, {
         mapping: mapping,
         presetApplied: presetApplied,
         accountId: accountId,
+        factor: typeof o.factor === 'number' ? o.factor : 1, // 1.1.0 (IE-6)
         items: null,
         stats: null,
         itemsStale: false
@@ -6292,7 +6901,7 @@ Object.assign(window.Views, {
     rebuildItems(d) {
       const res = d.kind === 'statement'
         ? window.StackdImport.buildStatementTransactions(d.statement, d.accountId)
-        : window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, d.mapping, d.accountId);
+        : window.StackdImport.buildBankTransactions(d.analysis.rowsRaw, d.mapping, d.accountId, d.factor);
       // Only clean rows are includable; duplicates/errors can never be armed
       res.items.forEach(it => { it.include = !!it.tx && !it.duplicate && !it.error; });
       window.StackdImport.annotateImportMatches(res.items, d.accountId);
@@ -6546,7 +7155,7 @@ Object.assign(window.Views, {
       const refreshPreview = () => {
         const box = $('imap-preview');
         if (!box) return;
-        const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw.slice(0, 3), m, d.accountId);
+        const res = window.StackdImport.buildBankTransactions(d.analysis.rowsRaw.slice(0, 3), m, d.accountId, d.factor);
         box.innerHTML = res.items.map(it => it.tx ? `
           <div class="import-preview-row">
             <span style="color: var(--text-tertiary); flex-shrink: 0;">${it.tx.date}</span>

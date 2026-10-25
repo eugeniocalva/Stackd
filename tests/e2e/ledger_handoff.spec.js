@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// 1.1.0 (IE-5): the restore input lives on #backup, one tap from Settings.
+const toBackup = async (page) => {
+  if (await page.locator('#import-csv-file').count()) return;
+  await page.click('#btn-open-backup');
+  await page.waitForSelector('#btn-import-csv');
+};
 
 // 1.1.0 (IE-2, docs/import-export-plan.md §6a): the engine now recognises a
 // MoneyStats export as a ledger file, but nothing from another app is written
@@ -34,13 +40,14 @@ test.describe('MoneyStats file on Settings (IE-2 hand-off)', () => {
     });
 
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
 
     const before = await page.evaluate(() => ({
       tx: window.Store.getState().transactions.length,
       accounts: window.Store.getState().accounts.length
     }));
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'Export_MoneyStats.csv',
       mimeType: 'text/csv',
@@ -77,9 +84,10 @@ test.describe('MoneyStats file on Settings (IE-2 hand-off)', () => {
       window.Store.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 1000, openingDate: '2020-01-01' });
     });
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
 
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'Export_MoneyStats.txt',
       mimeType: 'text/plain',

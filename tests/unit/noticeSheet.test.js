@@ -120,8 +120,8 @@ describe('Settings import results use the NoticeSheet (1.0.1 BUG-21)', () => {
   const renderSettings = () => {
     const c = $('router-view');
     const state = global.window.Store.getState();
-    c.innerHTML = global.window.Views.OthersView.render(state);
-    global.window.Views.OthersView.attachEvents(c, state);
+    c.innerHTML = global.window.Views.BackupView.render(state); // 1.1.0 (IE-5): the restore moved to Backup
+    global.window.Views.BackupView.attachEvents(c, state);
   };
 
   it('a restore result opens #import-result-modal (no alert)', () => {

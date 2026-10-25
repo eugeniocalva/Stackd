@@ -285,6 +285,36 @@ the Universal Links entitlement in `ios/App/App/App.entitlements`. After
 `npm install`, `npx cap sync android` regenerates the gitignored
 `android/capacitor-cordova-android-plugins/` and `assets/public`.
 
+## Import and export (1.1.0)
+
+**`docs/import-export-plan.md` is the reference** (§9 has the IE-1…IE-7
+as-built notes). Settings' Data card: Online banking, *Import and export*
+(`Components.ImportExportSheet` → `#import` / `#export`), *Backup*
+(`#backup`, `Views.BackupView`: the six backup exports and the old restore
+input `#import-csv-file`) and Import rules.
+
+- **Two import modes.** `StackdImport.importText(text, {mode})`:
+  `'restore'` (Backup's file input) routes exactly as before 1.1.0 and never
+  writes a ledger or QIF file; `'commit'` (the Review screen's Import) also
+  takes ledger files (MoneyStats, Stack'd's own export) and QIF.
+  `analyzeText` says what a text is without writing; `checkText` runs the
+  real commit inside `Store.dryRun`, so Review's figures are the import's
+  own. Nothing of a file is ever stored — the Import draft
+  (`Views._ImportDraft`) lives in memory only.
+- **The ledger file** (`StackdExport.buildLedger` / `exportLedger`) is
+  MoneyStats' 17-column layout with headers and words (`ledger.col.*`,
+  `ledger.word.*`) **in the app language** — the one deliberate exception to
+  "CSV headers stay English": it is an interchange format the importer reads
+  back in every language. Backups stay English. A shipped `ledger.col.*` /
+  `ledger.word.*` value may only gain aliases, never change, or old exports
+  stop importing. Export settings persist in `exportPrefs`
+  (`SET_EXPORT_PREFS`, `getExportPrefs`); the period is per visit.
+- **Bank files from `#import`** reach `#import-map` with the rows Check read
+  and the settings overrides (`_ImportShared.start(…, {rows, dateOrder,
+  decimal, factor})`); Backup's input still re-reads them the old way.
+- `tests/e2e/import_export.spec.js` covers both screens; the ledger engine
+  has `ledgerImport.test.js` / `ledgerExport.test.js`.
+
 ## Stack'd Pro — one-time unlock (v1.13)
 
 `window.Pro` (`src/pro.js`, loaded after `bank-connect.js`) owns the free
