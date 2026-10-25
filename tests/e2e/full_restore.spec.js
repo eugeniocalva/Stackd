@@ -22,7 +22,8 @@ test.describe('Full restore E2E', () => {
 
   const goToSettings = async (page) => {
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.click('#btn-open-backup'); // 1.1.0 (IE-5): backup and restore live on #backup
     await page.waitForSelector('#btn-import-csv');
   };
 

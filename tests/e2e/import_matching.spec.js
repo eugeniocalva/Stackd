@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// 1.1.0 (IE-5): the restore input lives on #backup, one tap from Settings.
+const toBackup = async (page) => {
+  if (await page.locator('#import-csv-file').count()) return;
+  await page.click('#btn-open-backup');
+  await page.waitForSelector('#btn-import-csv');
+};
 
 // v1.03 match/link + transfer detection (docs/bank-import-plan.md §7): a bank
 // row matching an existing manual entry defaults to LINK (the manual entry
@@ -42,11 +48,12 @@ test.describe('Import matching E2E flow', () => {
 
   const goToSettings = async (page) => {
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
   };
 
   const uploadToPreview = async (page) => {
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'bank.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV)
     });
@@ -87,7 +94,7 @@ test.describe('Import matching E2E flow', () => {
 
     // ── Confirm: 1 link + 1 pair + 1 plain insert ──────────────────────────
     await page.click('#btn-iprev-confirm');
-    await page.waitForSelector('#btn-import-csv');
+    await page.waitForSelector('#btn-open-backup');
 
     // v1.06 U2: the success sheet lists imported / linked / paired as rows.
     await page.waitForSelector('#import-success-modal.open');

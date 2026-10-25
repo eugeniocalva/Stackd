@@ -313,14 +313,15 @@ describe('Bank Connect (v1.05 B2)', () => {
       expect(html).toContain('href="#settings"');
     });
 
-    it('OthersView shows the Bank data section with the Online banking row above the file import', () => {
+    // 1.1.0 (IE-5): the Data card; file import lives behind its Import and export row.
+    it('OthersView shows the Data card with the Online banking row above Import and export', () => {
       boot({ stub: makeStub() });
       const html = window.Views.OthersView.render(state());
-      expect(html).toContain('Bank data');
+      expect(html).toContain('>Data<');
       expect(html).toContain('id="btn-open-bank-connect"');
       expect(html).toContain('id="bank-settings-subtitle"');
       expect(html).toContain('Connect your bank and import your latest transactions automatically.');
-      expect(html.indexOf('btn-open-bank-connect')).toBeLessThan(html.indexOf('btn-import-csv'));
+      expect(html.indexOf('btn-open-bank-connect')).toBeLessThan(html.indexOf('btn-open-import-export'));
     });
   });
 });

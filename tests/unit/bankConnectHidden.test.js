@@ -101,13 +101,15 @@ describe('Bank Connect hidden at launch (v1.15, A-04)', () => {
   });
 
   describe('the surfaces a reviewer would find', () => {
-    it('Settings has no Online banking row, but keeps the file import', () => {
+    it('Settings has no Online banking row, but keeps Import and export and Backup', () => {
       const w = boot();
       const html = w.Views.OthersView.render(w.Store.getState());
       expect(html).not.toContain('btn-open-bank-connect');
       expect(html).not.toContain('bank-settings-subtitle');
-      // The section itself stays — statement import lives in it and is free.
-      expect(html).toContain('btn-import-csv');
+      // 1.1.0 (IE-5): the Data card stays — statement import lives behind it and is free.
+      expect(html).toContain('btn-open-import-export');
+      expect(html).toContain('btn-open-backup');
+      expect(w.Views.BackupView.render(w.Store.getState())).toContain('btn-import-csv');
     });
 
     it('the purchases screen sells one product, with no subscriptions tab', () => {

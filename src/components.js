@@ -383,7 +383,7 @@ window.Components = {
   FaqModal: {
     // v0.91 P8f: 7 stable ids; the text lives in the dictionary, so the
     // list is rebuilt in the active language on every show().
-    IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags', 'bankConnect', 'bankPending'], // v1.10 B6: Bank Connect entries
+    IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags', 'bankConnect', 'bankPending', 'moveApp'], // v1.10 B6: Bank Connect entries; 1.1.0 (IE-8): moveApp
 
     get FAQS() {
       return this.IDS.map(id => ({
@@ -451,7 +451,7 @@ window.Components = {
       { id: 'categories', items: ['manage', 'fields', 'detailEdit', 'deleting'] },
       { id: 'tags',       items: ['add', 'browse', 'lifecycle'] },
       { id: 'widgets',    items: ['add', 'types', 'editMode', 'shortcuts', 'options'] },
-      { id: 'others',     items: ['manage', 'region', 'preferences', 'export', 'import', 'factoryReset', 'privacy'] }
+      { id: 'others',     items: ['manage', 'region', 'preferences', 'import', 'export', 'backup', 'factoryReset', 'privacy'] } // 1.1.0 (IE-8): + backup
     ],
 
     get SECTIONS() {
@@ -3210,7 +3210,9 @@ window.Components = {
   // MONTH PICKER (v0.16)
   // -------------------------
   MonthPicker: {
-    MONTHS: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    // 1.1.0 (IE-8): the Export Period sheet reuses the picker, so the grid
+    // and the Selected line follow the app language (were English literals).
+    get MONTHS() { return window.I18n.monthNames('short'); },
     get MONTHS_FULL() { return window.I18n.monthNames('long'); },
 
     show(options = {}) {
@@ -3296,7 +3298,7 @@ window.Components = {
 
               <!-- Selected Label -->
               <div style="text-align: center; margin-top: 20px; color: var(--text-secondary); font-size: 0.85rem;">
-                Selected: <strong id="mp-selected-label" style="color: var(--text-primary);">${this.MONTHS_FULL[selectedMonth]} ${selectedYear}</strong>
+                ${window.I18n.t('monthPicker.selected')} <strong id="mp-selected-label" style="color: var(--text-primary);">${this.MONTHS_FULL[selectedMonth]} ${selectedYear}</strong>
               </div>
               ${clearText && onClear ? `<button type="button" class="btn btn-secondary" id="mp-clear" style="width: 100%; margin-top: 16px;">${clearText}</button>` : ''}
             </div>
@@ -4820,6 +4822,7 @@ Object.assign(window.Components, {
           <i data-lucide="${icon}" aria-hidden="true" style="width: 20px; height: 20px; color: ${color}; flex-shrink: 0; margin-top: 2px;"></i>
           <p id="${id}-${o.title ? 'body' : 'title'}" style="margin: 0; white-space: pre-line; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);">${esc(o.body)}</p>
         </div>
+        ${o.action && o.action.text ? `<button type="button" class="btn btn-secondary" id="${id}-action" style="margin-bottom: var(--space-3);">${esc(o.action.text)}</button>` : ''}
         <button type="button" class="btn btn-primary" id="${id}-ok" data-back-dismiss>${esc(o.okText || window.I18n.t('common.ok'))}</button>`);
       if (!backdrop) return null;
       if (o.title) backdrop.setAttribute('aria-describedby', `${id}-body`);
@@ -4838,6 +4841,10 @@ Object.assign(window.Components, {
       };
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
       okBtn.addEventListener('click', close);
+      // 1.1.0 (IE-6): one optional secondary action (the import result's
+      // "Switch main currency" / "View transactions"); closes, then runs.
+      const actionBtn = backdrop.querySelector(`#${id}-action`);
+      if (actionBtn) actionBtn.addEventListener('click', () => { close(); if (typeof o.action.onClick === 'function') o.action.onClick(); });
       document.addEventListener('keydown', onKey);
       // alert() used to take focus; keep keyboard / screen-reader users on it.
       setTimeout(() => { if (!closed && okBtn.isConnected) { try { okBtn.focus({ preventScroll: true }); } catch (e) { okBtn.focus(); } } }, 50);
@@ -4968,6 +4975,190 @@ Object.assign(window.Components, {
 
   // v1.08 B4 (UX plan §3.2 "Manage"): consent dates, history limit, the
   // linked accounts, Link accounts / Reconnect, and Disconnect (danger).
+  // 1.1.0 (IE-5, docs/import-export-plan.md §3a): Settings → Import and
+  // export, as MoneyStats does: Import file / Export file / Cancel.
+  ImportExportSheet: {
+    show() {
+      const t = (k) => window.I18n.t(k);
+      const backdrop = window.Components._bankSheet('import-export-sheet', `
+        <h2 id="import-export-sheet-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('others.importExport')}</h2>
+        <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0 0 var(--space-4); line-height: 1.5;">${t('ie.sheet.body')}</p>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button class="btn btn-secondary" id="ie-sheet-import">${t('ie.sheet.import')}</button>
+          <button class="btn btn-secondary" id="ie-sheet-export">${t('ie.sheet.export')}</button>
+          <button class="btn btn-secondary" id="ie-sheet-cancel" data-back-dismiss>${t('common.cancel')}</button>
+        </div>`);
+      if (!backdrop) return;
+      const go = (path) => { backdrop._close(); window.Router.navigate(path); };
+      backdrop.querySelector('#ie-sheet-import').addEventListener('click', () => go('#import'));
+      backdrop.querySelector('#ie-sheet-export').addEventListener('click', () => go('#export'));
+      backdrop.querySelector('#ie-sheet-cancel').addEventListener('click', () => backdrop._close());
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+    }
+  },
+
+  // 1.1.0 (IE-6, plan §4b): the Import screen's settings — every one Auto by
+  // default. show({ overrides, onSave(overrides) }); overrides are kept in
+  // the Import draft only (a remembered override would misread the next file).
+  ImportSettingsSheet: {
+    show(options) {
+      const o = options || {};
+      const cur = o.overrides || {};
+      const t = (k) => window.I18n.t(k);
+      const esc = window.I18n.esc;
+      const sel = (id, label, value, opts) => `
+        <div class="form-group" style="margin-bottom: var(--space-3);">
+          <label class="form-label" for="${id}">${t(label)}</label>
+          <select id="${id}" class="form-control" style="appearance: none;">
+            ${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === (value || 'auto') ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+          </select>
+        </div>`;
+      const auto = t('import.set.auto');
+      const factorVal = typeof cur.factor === 'number' && cur.factor !== 1 ? String(cur.factor) : '';
+      const backdrop = window.Components._bankSheet('import-settings-sheet', `
+        <h2 id="import-settings-sheet-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('import.set.title')}</h2>
+        ${sel('iset-delimiter', 'import.set.delimiter', cur.delimiter === '\t' ? 'tab' : cur.delimiter, [['auto', auto], [';', ';'], [',', ','], ['tab', t('import.set.tab')], ['|', '|']])}
+        ${sel('iset-rows', 'import.set.rows', cur.rowDelimiter, [['auto', auto], ['lf', 'LF'], ['crlf', 'CRLF'], ['cr', 'CR']])}
+        ${sel('iset-date', 'import.set.date', cur.dateOrder, [['auto', auto], ['dmy', t('bankImport.dateDMY')], ['mdy', t('bankImport.dateMDY')], ['ymd', t('bankImport.dateYMD')]])}
+        ${sel('iset-decimal', 'import.set.decimal', cur.decimal, [['auto', auto], ['comma', t('bankImport.decimalComma')], ['dot', t('bankImport.decimalDot')]])}
+        <div class="form-group" style="margin-bottom: var(--space-3);">
+          <label class="form-label" for="iset-factor">${t('import.set.factor')}</label>
+          <input id="iset-factor" class="form-control" type="text" inputmode="decimal" autocomplete="off" placeholder="1" value="${esc(factorVal)}">
+          <div style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1);">${t('import.set.factorHelp')}</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-5);">
+          <span class="list-item-title" id="iset-quotes-label">${t('import.set.quotes')}</span>
+          <label class="toggle-switch"><input type="checkbox" id="iset-quotes" aria-labelledby="iset-quotes-label" ${cur.ignoreQuotes ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+        <button class="btn btn-primary" id="iset-save" style="margin-bottom: var(--space-3);">${t('common.save')}</button>
+        <button class="btn btn-secondary" id="iset-cancel" data-back-dismiss>${t('common.cancel')}</button>`);
+      if (!backdrop) return;
+      const $ = (id) => backdrop.querySelector('#' + id);
+      $('iset-cancel').addEventListener('click', () => backdrop._close());
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+      $('iset-save').addEventListener('click', () => {
+        const raw = $('iset-factor').value.trim();
+        const factor = raw === '' ? 1 : window.StackdImport._parseFactor(raw);
+        if (factor === null) {
+          const input = $('iset-factor');
+          input.setAttribute('aria-invalid', 'true');
+          let err = $('iset-factor-error');
+          if (!err) {
+            err = document.createElement('div');
+            err.id = 'iset-factor-error';
+            err.setAttribute('role', 'alert');
+            err.style.cssText = 'color: var(--color-expense); font-size: var(--text-xs); margin-top: var(--space-1);';
+            input.parentNode.appendChild(err);
+          }
+          err.textContent = t('import.set.factorError');
+          return;
+        }
+        const pick = (id) => { const v = $(id).value; return v === 'auto' ? undefined : v; };
+        const delim = pick('iset-delimiter');
+        const next = { delimiter: delim === 'tab' ? '\t' : delim, rowDelimiter: pick('iset-rows'), dateOrder: pick('iset-date'),
+          decimal: pick('iset-decimal'), factor, ignoreQuotes: $('iset-quotes').checked };
+        backdrop._close();
+        if (typeof o.onSave === 'function') o.onSave(next);
+      });
+    }
+  },
+
+  // 1.1.0 (IE-7, plan §5a.4): the Export screen's settings, saved in
+  // exportPrefs (SET_EXPORT_PREFS). The delimiter is CSV-only — TXT is Tab.
+  ExportSettingsSheet: {
+    show() {
+      const t = (k) => window.I18n.t(k);
+      const esc = window.I18n.esc;
+      const S = window.Store;
+      const cur = S.getExportPrefs();
+      const txt = cur.format === 'txt';
+      const sel = (id, label, value, opts, disabled) => `
+        <div class="form-group" style="margin-bottom: var(--space-3);">
+          <label class="form-label" for="${id}">${t(label)}</label>
+          <select id="${id}" class="form-control" style="appearance: none;" ${disabled ? 'disabled' : ''}>
+            ${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+          </select>
+        </div>`;
+      const toggle = (id, label, on) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
+          <span class="list-item-title" id="${id}-label">${t(label)}</span>
+          <label class="toggle-switch"><input type="checkbox" id="${id}" aria-labelledby="${id}-label" ${on ? 'checked' : ''}><span class="slider"></span></label>
+        </div>`;
+      const backdrop = window.Components._bankSheet('export-settings-sheet', `
+        <h2 id="export-settings-sheet-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('export.settings')}</h2>
+        ${sel('eset-delimiter', 'import.set.delimiter', txt ? 'tab' : (cur.delimiter === '\t' ? 'tab' : cur.delimiter), [[';', ';'], [',', ','], ['tab', t('import.set.tab')]], txt)}
+        ${sel('eset-date', 'export.dateFormat', cur.dateFormat, S.EXPORT_DATE_FORMATS.map(f => [f, f]))}
+        ${sel('eset-decimal', 'import.set.decimal', cur.decimal, [['comma', t('bankImport.decimalComma')], ['dot', t('bankImport.decimalDot')]])}
+        ${toggle('eset-quote', 'export.quoteAll', cur.quoteAll)}
+        ${toggle('eset-bom', 'export.bom', cur.bom)}
+        <button class="btn btn-primary" id="eset-save" style="margin-bottom: var(--space-3);">${t('common.save')}</button>
+        <button class="btn btn-secondary" id="eset-cancel" data-back-dismiss>${t('common.cancel')}</button>`);
+      if (!backdrop) return;
+      const $ = (id) => backdrop.querySelector('#' + id);
+      $('eset-cancel').addEventListener('click', () => backdrop._close());
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+      $('eset-save').addEventListener('click', () => {
+        const d = $('eset-delimiter').value;
+        const next = { dateFormat: $('eset-date').value, decimal: $('eset-decimal').value,
+          quoteAll: $('eset-quote').checked, bom: $('eset-bom').checked };
+        if (!txt) next.delimiter = d === 'tab' ? '\t' : d;
+        backdrop._close();
+        S.dispatch('SET_EXPORT_PREFS', next);
+      });
+    }
+  },
+
+  // 1.1.0 (IE-7, plan §5a.5): Start/End month (MonthPicker), All time and
+  // Include planned payments. show({ draft, data:{from,to}, onSave(draft) }).
+  ExportPeriodSheet: {
+    show(options) {
+      const o = options || {};
+      const t = (k) => window.I18n.t(k);
+      const V = window.Views;
+      const data = o.data || { from: '', to: '' };
+      const d = Object.assign({ start: '', end: '', planned: true }, o.draft || {});
+      const field = (id, label) => `
+        <div class="form-group" style="margin-bottom: var(--space-3);">
+          <label class="form-label" for="${id}">${t(label)}</label>
+          <button type="button" id="${id}" class="form-control" style="text-align: left; cursor: pointer;"></button>
+        </div>`;
+      const backdrop = window.Components._bankSheet('export-period-sheet', `
+        <h2 id="export-period-sheet-title" class="header-title" style="margin: 0 0 var(--space-4); font-size: 1.1rem;">${t('export.period')}</h2>
+        ${field('eper-start', 'export.start')}
+        ${field('eper-end', 'export.end')}
+        <button type="button" id="eper-all" class="btn btn-secondary" style="width: auto; padding: 6px 16px; min-height: 0; margin-bottom: var(--space-4);">${t('export.allTime')}</button>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2);">
+          <span class="list-item-title" id="eper-planned-label">${t('export.planned')}</span>
+          <label class="toggle-switch"><input type="checkbox" id="eper-planned" aria-labelledby="eper-planned-label" ${d.planned ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+        <div style="font-size: var(--text-xs); color: var(--text-secondary); margin-bottom: var(--space-5);">${t('export.plannedHelp')}</div>
+        <button class="btn btn-primary" id="eper-save" style="margin-bottom: var(--space-3);">${t('common.save')}</button>
+        <button class="btn btn-secondary" id="eper-cancel" data-back-dismiss>${t('common.cancel')}</button>`);
+      if (!backdrop) return;
+      const $ = (id) => backdrop.querySelector('#' + id);
+      const paint = () => {
+        $('eper-start').textContent = d.start ? V._fmtMonth(d.start) : (data.from ? V._fmtMonth(data.from) + ' · ' + t('export.first') : t('export.allTime'));
+        $('eper-end').textContent = d.end ? V._fmtMonth(d.end) : (data.to ? V._fmtMonth(data.to) + ' · ' + t('export.last') : t('export.allTime'));
+      };
+      paint();
+      const pick = (key, fallback) => window.Components.MonthPicker.show({
+        initialValue: d[key] || fallback || undefined,
+        onSelect: (ym) => { d[key] = ym; paint(); }
+      });
+      $('eper-start').addEventListener('click', () => pick('start', data.from));
+      $('eper-end').addEventListener('click', () => pick('end', data.to));
+      $('eper-all').addEventListener('click', () => { d.start = ''; d.end = ''; paint(); });
+      $('eper-cancel').addEventListener('click', () => backdrop._close());
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+      $('eper-save').addEventListener('click', () => {
+        if (d.start && d.end && d.start > d.end) { const s = d.start; d.start = d.end; d.end = s; } // the two months in order
+        d.planned = $('eper-planned').checked;
+        backdrop._close();
+        if (typeof o.onSave === 'function') o.onSave({ start: d.start, end: d.end, planned: d.planned });
+      });
+    }
+  },
+
   BankManageModal: {
     show(options) {
       const o = options || {};

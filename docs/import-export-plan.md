@@ -1,6 +1,6 @@
 # Import & Export Plan — MoneyStats-style import, export and backup
 
-> Status: **IE-1…IE-4 DONE (engine only, no visible change); IE-5…IE-7 (screens, one feature-branch merge) next.** Cold-start reference for the
+> Status: **DONE — IE-1…IE-4 on main; IE-5…IE-8 on `feature/import-export-screens` as 1.1.0 (10100), awaiting the one merge; device check (Android, iOS) still to do.** Cold-start reference for the
 > import/export redesign. Owner decisions taken on 2026-10-24 are in §1 and
 > §12; MoneyStats samples in it/en/de/pt are analysed in §2.
 > Code facts were mapped on 2026-10-24 against `main` at `d38bb6a`
@@ -754,6 +754,50 @@ for all-ambiguous files. Tests: `ledgerExport.test.js` (37, incl. a
 25-combination round trip over 5 languages × 5 date formats with varying
 decimal/delimiter/format/quoting); the owner's 6,051-row file round-trips
 identically in all 5 languages. Suite 1,934 unit + 98 e2e green.
+
+**IE-5…IE-7 as built (2026-10-25, branch `feature/import-export-screens`,
+`?v=81` for views, components, router, main, import and the 5 i18n files):**
+- IE-5: Settings' Data card = Bank Connect (when enabled), *Import and
+  export* (`#btn-open-import-export` → `Components.ImportExportSheet`),
+  *Backup* (`#btn-open-backup` → `#backup`, `Views.BackupView`: the six
+  backup exports with their old ids plus the restore input
+  `#import-csv-file` / `#btn-import-csv`, handled by
+  `Views._bindRestoreFile`) and Import rules. Restore behaves exactly as
+  before; only its screen moved.
+- IE-6: `#import` → `Views.ImportView` with `Views._ImportDraft` (text,
+  file name, settings overrides, last Check, Review choices — never stored).
+  Paste box or *Choose a file* (`#import-file-input`, read through
+  `_readFileText`; a file shows its first 200 lines read-only), *Import
+  settings* (`Components.ImportSettingsSheet`), *Check* (`_runCheck`):
+  ledger/QIF → `checkText` → `#import-review`; a Stack'd backup → Review in
+  backup mode (restore on confirm); bank CSV → `_ImportShared.start` with
+  the rows Check read plus the date order, decimal and factor overrides
+  (`analyzeBankCSV({rows})`, `buildBankTransactions(…, factor)`) — the
+  owner's reminder: Tab and CR-only bank files now reach `#import-map` with
+  separate columns; camt/MT940 → `startStatement`. `#import-review` →
+  `Views.ImportReviewView`: summary + *Change settings*, QIF account name,
+  accounts from `ledger.after` (new/existing, rows added, opening, balance
+  after, *Move the opening date* → `openingMoves`), transfer categories
+  (`transferCategories`), categories Stack'd lacks with a built-in
+  suggestion (`suggestCategoryId`, owner Q2), heads-up (planned rows,
+  look-alikes with *Skip bank look-alikes* on by default, owner Q8, unknown
+  statuses → `statusMap`, tags renamed/dropped, duplicates), problems, and
+  *Import N transactions*. Every change re-runs Check in `Store.dryRun`, so
+  the figures are the import's own. The result sheet offers a currency
+  switch when every new account shares one non-base currency
+  (`NoticeSheet` gained `action`).
+- IE-7: `#export` → `Views.ExportView`: info card (→ Backup), 50-line
+  preview, *Copy text* (whole file), Format (`ListPicker` csv/txt),
+  `Components.ExportSettingsSheet` (saved exportPrefs; delimiter disabled
+  for TXT), `Components.ExportPeriodSheet` (From/To via `MonthPicker`, All
+  time, *Include planned payments*; per visit in `Views._ExportDraft`),
+  *Export file* and the share icon → `exportLedger`; on the web a "File
+  exported" sheet follows.
+- Tests: `tests/e2e/import_export.spec.js` (10), escapeGuard renders the
+  three new views. Owner's 6,051-row file through the UI: Check 0.8 s,
+  Import 0.3 s, same balances as IE-2.
+
+**IE-8 as built (2026-10-25):** retired `others.dataExport/dataImport/bankData/exportDesc/importDesc/importCsv`; manual Others = import, export, **backup** (60 items) and FAQ **moveApp** (10 entries), all 5 languages; FAQ Online banking path now Others & Settings → Data; terms *yourData* and *rights* point at Backup (wording only — `terms.updatedDate` not bumped, §12 Q10); `MonthPicker` grid uses `I18n.monthNames('short')` and `monthPicker.selected`; CLAUDE.md "Import and export (1.1.0)" section; `docs/import-ux-plan.md` marks U1 dropped; What's new in 5 languages in `docs/store-listing.md` §1c; version 1.1.0 (`npm run version:sync`: title v1.1, versionCode 10100).
 
 IE-1…IE-4 change nothing a user can see (a ledger/QIF file picked on
 Settings still writes nothing) and land on `main` one by one. **IE-5…IE-7

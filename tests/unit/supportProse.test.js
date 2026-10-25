@@ -33,7 +33,7 @@ describe('Support prose (v0.91 P8f)', () => {
     it.each(LANGS)('%s FAQ has no unresolved keys', (lang) => {
       global.window.I18n.setLang(lang);
       const faqs = global.window.Components.FaqModal.FAQS;
-      expect(faqs).toHaveLength(9); // v1.10 B6: + bankConnect, bankPending
+      expect(faqs).toHaveLength(10); // v1.10 B6: + bankConnect, bankPending; 1.1.0 IE-8: + moveApp
       const unresolved = faqs.flatMap(f => [f.q, f.a]).filter(s => /^faq\./.test(s));
       expect(unresolved).toEqual([]);
     });
@@ -43,7 +43,7 @@ describe('Support prose (v0.91 P8f)', () => {
       const sections = global.window.Components.ManualModal.SECTIONS;
       expect(sections).toHaveLength(13);
       const strings = sections.flatMap(s => [s.title, ...s.items.flatMap(i => [i.h, i.d])]);
-      expect(strings).toHaveLength(13 + 59 * 2);
+      expect(strings).toHaveLength(13 + 60 * 2); // 1.1.0 (IE-8): + others.backup
       expect(strings.filter(s => /^manual\./.test(s))).toEqual([]);
     });
 

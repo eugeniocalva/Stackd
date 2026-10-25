@@ -342,12 +342,13 @@ window.StackdImport = {
     // rows and its opening (counted or kept) — for the Review's figures.
     const placement = ledger ? new Map() : null;
     const txFileKey = new Map();
-    const place = (key, accId, rows) => {
+    const place = (key, accId, rows, tx) => {
       if (!placement || !accId) return;
-      if (!placement.has(key)) placement.set(key, { accIds: [], rows: 0 });
+      if (!placement.has(key)) placement.set(key, { accIds: [], rows: 0, txs: [] });
       const p = placement.get(key);
       if (p.accIds.indexOf(accId) === -1) p.accIds.push(accId);
       p.rows += rows;
+      if (tx) p.txs.push(tx);
     };
     const txs = [];
     // v1.19 (A-17): accounts this import created, and so may give an opening
@@ -681,6 +682,32 @@ window.StackdImport = {
     plainFp.forEach((f, tx) => {
       if (String(f.r.note || '').trim() && this._takeFingerprint(pool, f.fpAccs, f.r)) drop(tx);
     });
+    // 1.1.0 (IE-6, plan §4c): look-alikes — a row about to land next to a
+    // store row of the same account, day, type and amount that nothing took
+    // (typically the same payment imported from a bank statement, with the
+    // bank's own text as its note). Counted for Review; opts.skipLookalikes
+    // 'bank' drops the ones whose store row came from a bank statement,
+    // 'all' every one.
+    if (ledger) {
+      const shapes = new Map();
+      pool.lists.forEach((list, k) => {
+        const shape = k.split('|').slice(0, 4).join('|');
+        list.forEach(e => { if (!e.taken) { if (!shapes.has(shape)) shapes.set(shape, []); shapes.get(shape).push(e); } });
+      });
+      stats.lookalikes = 0;
+      stats.lookalikesBank = 0;
+      const mode = opts.skipLookalikes;
+      txs.forEach(tx => {
+        if (ledgerDup.has(tx)) return;
+        const shape = tx.accountId + '|' + [this._normalizeDate(tx.date) || '', tx.type, Math.round(Math.abs(Number(tx.amount)) * 100)].join('|');
+        const e = (shapes.get(shape) || []).find(x => !x.taken);
+        if (!e) return;
+        e.taken = true;
+        stats.lookalikes++;
+        if (e.bank) stats.lookalikesBank++;
+        if (mode === 'all' || (mode === 'bank' && e.bank)) drop(tx);
+      });
+    }
 
     // 1.0.2 (BUG-78, D11): a series one of whose rows is already here, and the
     // other leg of a transfer one of whose legs is already here, are owned
@@ -734,7 +761,7 @@ window.StackdImport = {
       if (r.guess || same > 1) { stats.ambiguousRows++; names.add(r.name); }
     });
     stats.ambiguousAccounts = [...names];
-    if (placement) out.forEach(tx => place(txFileKey.get(tx), tx.accountId, 1));
+    if (placement) out.forEach(tx => place(txFileKey.get(tx), tx.accountId, 1, tx));
 
     this._relinkTransfers(out);
     this._relinkSeries(out);
@@ -1326,13 +1353,23 @@ window.StackdImport = {
   // Parses once with the shared quoted-CSV logic, then builds a best-effort
   // mapping guess (-1 for anything not confidently detected) that the mapping
   // view presents for correction.
-  analyzeBankCSV(csvText) {
-    // 1.0.2 (BUG-33): a quoted line break no longer splits a statement row.
-    const { delimiter, records } = this._readRecords(csvText);
-    if (records.length < 2) throw new Error("File is empty or missing headers");
-
-    const headerLabels = this._parseRow(records[0], delimiter);
-    const rowsRaw = records.slice(1).map(rec => this._parseRow(rec, delimiter));
+  // 1.1.0 (IE-6, plan §6g): opts.rows (header + data, already read by the
+  // Import screen's Check with its Auto reader and settings — Tab, '|',
+  // CR-only rows, ignore quotes) replaces the re-read.
+  analyzeBankCSV(csvText, opts) {
+    let headerLabels;
+    let rowsRaw;
+    if (opts && Array.isArray(opts.rows)) {
+      if (opts.rows.length < 2) throw new Error("File is empty or missing headers");
+      headerLabels = opts.rows[0].slice();
+      rowsRaw = opts.rows.slice(1).map(r => r.slice());
+    } else {
+      // 1.0.2 (BUG-33): a quoted line break no longer splits a statement row.
+      const { delimiter, records } = this._readRecords(csvText);
+      if (records.length < 2) throw new Error("File is empty or missing headers");
+      headerLabels = this._parseRow(records[0], delimiter);
+      rowsRaw = records.slice(1).map(rec => this._parseRow(rec, delimiter));
+    }
 
     const columns = headerLabels.map((label, index) => {
       const samples = [];
@@ -1464,7 +1501,11 @@ window.StackdImport = {
   // rows have tx: null. Every parseable row gets a deterministic importKey —
   // 'ref:' when a bank reference is mapped and present, else a fingerprint —
   // so re-importing the same statement dedups against the store.
-  buildBankTransactions(rowsRaw, mapping, accountId) {
+  // 1.1.0 (IE-6): `factor` (the Import settings' amount factor) multiplies
+  // every amount, rounded to cents once; a negative one flips the type.
+  buildBankTransactions(rowsRaw, mapping, accountId, factor) {
+    const f = typeof factor === 'number' && isFinite(factor) && factor !== 0 ? factor : 1;
+    const scale = (n) => (f === 1 ? n : Math.round(n * f * 100) / 100);
     const items = [];
     const stats = { total: rowsRaw.length, ok: 0, duplicates: 0, errors: 0 };
     // Intra-file twins (same day, amount and description) get '#2', '#3'…
@@ -1489,11 +1530,13 @@ window.StackdImport = {
       if (mapping.amountMode === 'split') {
         const debit = mapping.debit >= 0 ? this.parseBankAmount(row[mapping.debit], mapping.decimal) : null;
         const credit = mapping.credit >= 0 ? this.parseBankAmount(row[mapping.credit], mapping.decimal) : null;
-        if (debit !== null && debit !== 0) { type = 'expense'; amount = Math.abs(debit); }
-        else if (credit !== null && credit !== 0) { type = 'income'; amount = Math.abs(credit); }
+        if (debit !== null && debit !== 0) { const v = scale(-Math.abs(debit)); type = v < 0 ? 'expense' : 'income'; amount = Math.abs(v); }
+        else if (credit !== null && credit !== 0) { const v = scale(Math.abs(credit)); type = v < 0 ? 'expense' : 'income'; amount = Math.abs(v); }
         else { fail('missing amount'); return; }
+        if (amount === 0) { fail('invalid amount'); return; }
       } else {
-        const parsed = this.parseBankAmount(row[mapping.amount], mapping.decimal);
+        const raw = this.parseBankAmount(row[mapping.amount], mapping.decimal);
+        const parsed = raw === null ? null : scale(raw);
         if (parsed === null || parsed === 0) { fail('invalid amount'); return; }
         type = parsed < 0 ? 'expense' : 'income';
         amount = Math.abs(parsed);
@@ -2641,6 +2684,16 @@ window.StackdImport = {
         balance: Math.round(Store.getAccountBalance(acc.id) * 100) / 100 || 0
       };
       if (ids.length > 1) out.alsoOn = ids.slice(1).map(id => trim(byId(id)));
+      // Rows of this file landing before the account's opening date: they
+      // stay out of every balance (Review offers to move the opening date).
+      const before = (p ? p.txs : []).filter(t => out.openingDate && t.date < out.openingDate);
+      if (before.length) {
+        out.before = {
+          count: before.length,
+          net: Math.round(before.reduce((s, t) => s + (t.type === 'expense' ? -1 : 1) * Number(t.amount), 0) * 100) / 100,
+          earliest: before.reduce((m, t) => (!m || t.date < m ? t.date : m), '')
+        };
+      }
       return out;
     });
   },
@@ -2990,6 +3043,34 @@ window.StackdImport = {
     return { rows: out, skipped, skippedCount, facts };
   },
 
+  // ── 1.1.0 (IE-6) built-in category suggestions (plan §4c, owner Q2) ───────
+  // A file category whose folded name is one of these is suggested as the
+  // built-in category (by id); Review lets the user keep the file's name.
+  CATEGORY_SYNONYMS: {
+    cat_dining: ['ristoranti', 'ristorante', 'mangiare fuori', 'restaurants', 'restaurant', 'dining', 'dining out', 'eating out',
+      'restaurantes', 'restaurante', 'comer fuera', 'restauration', 'restaurants et bars', 'comer fora', 'restaurantes e bares'],
+    cat_groceries: ['supermercato', 'supermercato e alimentari', 'spesa', 'alimentari', 'groceries', 'grocery', 'supermarket',
+      'courses', 'alimentation', 'supermarche', 'supermercado', 'alimentacion', 'mercearia', 'supermercado e mercearia', 'lebensmittel'],
+    cat_salary: ['stipendio', 'salario', 'salary', 'wages', 'paycheck', 'salaire', 'sueldo', 'nomina', 'ordenado', 'gehalt'],
+    cat_health: ['mediche', 'medico', 'salute', 'spese mediche', 'health', 'medical', 'sante', 'salud', 'saude', 'gesundheit'],
+    cat_transport: ['trasporti', 'trasporto', 'transport', 'transportation', 'transports', 'transporte', 'transportes', 'verkehr'],
+    cat_entertainment: ['tempo libero', 'svago', 'intrattenimento', 'entertainment', 'leisure', 'loisirs', 'divertissement',
+      'ocio', 'entretenimiento', 'lazer', 'entretenimento', 'freizeit'],
+    cat_investments: ['investimento', 'investimenti', 'investments', 'investment', 'investissements', 'inversiones', 'investimentos'],
+    cat_shopping: ['shopping', 'acquisti', 'compras', 'achats', 'einkaufen'],
+    cat_rent: ['affitto', 'rent', 'loyer', 'alquiler', 'renda', 'aluguel', 'miete'],
+    cat_utilities: ['bollette', 'utenze', 'utilities', 'bills', 'factures', 'facturas', 'contas da casa', 'nebenkosten'],
+    cat_freelance: ['freelance'],
+    cat_other: ['altro', 'altri', 'other', 'others', 'autre', 'autres', 'otros', 'outros', 'sonstiges']
+  },
+
+  // The built-in category id a file category maps onto, or ''.
+  suggestCategoryId(name) {
+    const k = this._fold(name);
+    if (!k) return '';
+    return Object.keys(this.CATEGORY_SYNONYMS).find(id => this.CATEGORY_SYNONYMS[id].indexOf(k) !== -1) || '';
+  },
+
   // ── 1.1.0 (IE-3) QIF (docs/import-export-plan.md §6e) ─────────────────────
   // Quicken Interchange Format: '!Type:Bank' (Cash, CCard, Oth A, Oth L)
   // blocks of records, one field per line — D date, T/U amount, P payee,
@@ -3283,7 +3364,7 @@ window.StackdImport = {
         const commitLedger = (read, shape, kind, convOpts, extra) => {
           const conv = this.ledgerToRows(read, shape, convOpts);
           const existed = new Set(window.Store.getState().accounts.map(a => a.id));
-          const { transactions, stats, placement } = this.buildTransactions(conv.rows, { ledger: true });
+          const { transactions, stats, placement } = this.buildTransactions(conv.rows, { ledger: true, skipLookalikes: opts.skipLookalikes });
           const merge = (skipped) => Object.keys(skipped).forEach(k => {
             stats.skipped[k] = (stats.skipped[k] || 0) + skipped[k];
             stats.skippedCount += skipped[k];
@@ -3293,6 +3374,17 @@ window.StackdImport = {
           if (transactions.length > 0) {
             window.Store.dispatch('BATCH_IMPORT_TRANSACTIONS', { transactions: transactions, keepOrder: true });
           }
+          // 1.1.0 (IE-6): Review's "Move opening date to …" for an account
+          // that was already here: { 'name|currency': 'YYYY-MM-DD' }, only
+          // ever earlier than its opening date (UPDATE_ACCOUNT keeps the amount).
+          Object.entries(opts.openingMoves || {}).forEach(([key, date]) => {
+            const p = placement && placement.get(key);
+            const id = p && p.accIds.find(a => existed.has(a));
+            const cur = id ? window.Store.getAccountOpeningDate(id) : null;
+            if (id && cur && /^\d{4}-\d{2}-\d{2}$/.test(date) && date < cur) {
+              window.Store.dispatch('UPDATE_ACCOUNT', { id, openingDate: date });
+            }
+          });
           // What landed, per account the file names (Check runs this inside
           // Store.dryRun, so Review shows these exact figures).
           conv.facts.after = this._ledgerAfter(conv.facts.accounts, placement, existed);

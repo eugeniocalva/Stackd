@@ -64,7 +64,8 @@ test.describe('Markup safety (1.0.2 BUG-24)', () => {
     page.on('pageerror', err => errors.push(err));
     await freshInstall(page);
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.click('#btn-open-backup'); // 1.1.0 (IE-5): backup and restore live on #backup
     await page.waitForSelector('#btn-import-csv');
 
     const accounts = 'id,name,opening_balance,created_at,currency,type,icon,color,opening_date\n'

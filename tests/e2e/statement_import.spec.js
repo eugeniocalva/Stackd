@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// 1.1.0 (IE-5): the restore input lives on #backup, one tap from Settings.
+const toBackup = async (page) => {
+  if (await page.locator('#import-csv-file').count()) return;
+  await page.click('#btn-open-backup');
+  await page.waitForSelector('#btn-import-csv');
+};
 
 // v1.00 structured statement import (docs/bank-import-plan.md §4): an MT940
 // (or camt.053) file skips column mapping — #import-map renders as a
@@ -44,11 +50,12 @@ test.describe('MT940 statement import E2E flow', () => {
 
   const goToSettings = async (page) => {
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
   };
 
   const uploadStatement = async (page) => {
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'statement.sta', // deliberately unhelpful extension: content sniff decides
       mimeType: 'text/plain',
@@ -92,7 +99,7 @@ test.describe('MT940 statement import E2E flow', () => {
     await expect(page.locator('#iprev-selected-text')).toHaveText('2 transactions selected');
 
     await page.click('#btn-iprev-confirm');
-    await page.waitForSelector('#btn-import-csv'); // back on Settings
+    await page.waitForSelector('#btn-open-backup'); // back on Settings
 
     // v1.06 U2: success sheet with the reconciliation verdict as a visual state.
     await page.waitForSelector('#import-success-modal.open');

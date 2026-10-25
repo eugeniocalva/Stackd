@@ -157,7 +157,7 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
   // shipped default in a real browser.
   test('Bank Connect leaves no trace in the shipped build', async ({ page }) => {
     await page.goto('/#settings');
-    await expect(page.locator('#btn-import-csv')).toBeVisible();      // import stays, it is free
+    await expect(page.locator('#btn-open-import-export')).toBeVisible();      // import stays, it is free
     await expect(page.locator('#btn-open-bank-connect')).toHaveCount(0);
 
     // One product, so no tab bar and no subscription card.
@@ -169,7 +169,7 @@ test.describe("Stack'd Pro paywall (v1.13)", () => {
     // A stale deep link must not land on a screen that cannot work.
     await page.goto('/#bank-connect');
     await expect(page.locator('#bank-connect')).toHaveCount(0);
-    await expect(page.locator('#btn-import-csv')).toBeVisible();      // bounced to Settings
+    await expect(page.locator('#btn-open-import-export')).toBeVisible();      // bounced to Settings
   });
 
   // v1.14: both stores expect the Terms of Use AND the Privacy Policy to be

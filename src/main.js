@@ -492,6 +492,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'import-preview': // v0.99: bank-statement import review
         viewModule = window.Views.ImportPreviewView;
         break;
+      case 'backup': // 1.1.0 (IE-5)
+        viewModule = window.Views.BackupView;
+        break;
+      case 'import': // 1.1.0 (IE-6)
+        viewModule = window.Views.ImportView;
+        break;
+      case 'import-review': // 1.1.0 (IE-6)
+        viewModule = window.Views.ImportReviewView;
+        break;
+      case 'export': // 1.1.0 (IE-7)
+        viewModule = window.Views.ExportView;
+        break;
       // v1.15 (A-04): the three Bank Connect screens exist only in a build
       // that ships the feature; otherwise anything pointing at them lands on
       // Settings instead of a screen that cannot work.

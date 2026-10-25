@@ -316,6 +316,43 @@ QUANTO CUSTA
 Gratuito com até duas carteiras e as categorias que a app traz. O Stack'd Pro é uma compra única que elimina para sempre os dois limites, sem subscrição. O que já registou continua sempre visível e editável.
 ```
 
+## 1c. What's new — 1.1.0 (Import and export) · paste into both stores
+
+Under 500 characters each (Play's limit; Apple's is 4,000).
+
+- **en:** New Import and export. Bring your data from MoneyStats or any app
+  that exports CSV or QIF: paste the text or pick a file, check a review of
+  accounts, balances, transfers and categories, then import. Export your
+  transactions as one CSV or TXT file for Excel, Numbers, Google Sheets or
+  MoneyStats, with your own period and format. Backups now have their own
+  screen in Others & Settings.
+- **fr:** Nouveau : Importer et exporter. Récupérez vos données de MoneyStats
+  ou de toute app qui exporte en CSV ou QIF : collez le texte ou choisissez un
+  fichier, vérifiez le récapitulatif des comptes, soldes, virements et
+  catégories, puis importez. Exportez vos transactions dans un fichier CSV ou
+  TXT pour Excel, Numbers, Google Sheets ou MoneyStats, avec la période et le
+  format de votre choix. Les sauvegardes ont désormais leur propre écran dans
+  Autres & Réglages.
+- **it:** Nuova Importazione e esportazione. Porta i tuoi dati da MoneyStats o
+  da qualsiasi app che esporta in CSV o QIF: incolla il testo o scegli un file,
+  controlla il riepilogo di conti, saldi, trasferimenti e categorie, poi
+  importa. Esporta le tue transazioni in un file CSV o TXT per Excel, Numbers,
+  Google Sheets o MoneyStats, con il periodo e il formato che preferisci. I
+  backup hanno ora una schermata dedicata in Altro & Impostazioni.
+- **es:** Nuevo Importar y exportar. Trae tus datos de MoneyStats o de
+  cualquier app que exporte en CSV o QIF: pega el texto o elige un archivo,
+  revisa el resumen de cuentas, saldos, transferencias y categorías, e
+  importa. Exporta tus transacciones en un archivo CSV o TXT para Excel,
+  Numbers, Google Sheets o MoneyStats, con el periodo y el formato que
+  quieras. Las copias de seguridad tienen ahora su propia pantalla en Otros y
+  ajustes.
+- **pt:** Novo Importar e exportar. Traga os seus dados do MoneyStats ou de
+  qualquer app que exporte em CSV ou QIF: cole o texto ou escolha um ficheiro,
+  reveja o resumo de contas, saldos, transferências e categorias e importe.
+  Exporte as suas transações num ficheiro CSV ou TXT para o Excel, Numbers,
+  Google Sheets ou MoneyStats, com o período e o formato que quiser. As cópias
+  de segurança têm agora o seu próprio ecrã em Outros e definições.
+
 ## 2a. Apple — App Privacy for THIS release · answers ready, you enter them
 
 With the feature switched off at build time the app makes no network calls of

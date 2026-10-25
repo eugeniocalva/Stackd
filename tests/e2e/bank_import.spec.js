@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// 1.1.0 (IE-5): the restore input lives on #backup, one tap from Settings.
+const toBackup = async (page) => {
+  if (await page.locator('#import-csv-file').count()) return;
+  await page.click('#btn-open-backup');
+  await page.waitForSelector('#btn-import-csv');
+};
 
 // v0.99 bank-statement CSV import (docs/bank-import-plan.md §3): the Others
 // "Import CSV" button routes an arbitrary bank CSV to a column-mapping view
@@ -36,13 +42,14 @@ test.describe('Bank statement import E2E flow', () => {
 
   const goToSettings = async (page) => {
     await page.click('#nav-fab-toggle');
-    await page.click('a[href="#settings"]');
-    await page.waitForSelector('#btn-import-csv');
+    await page.click('a.menu-action-item[href="#settings"]');
+    await page.waitForSelector('#btn-open-backup');
   };
 
   // The hidden file input is the real entry point — no button click needed;
   // setInputFiles fires the change handler that routes bank CSVs to #import-map.
   const uploadBankCsv = async (page) => {
+    await toBackup(page);
     await page.setInputFiles('#import-csv-file', {
       name: 'bank.csv',
       mimeType: 'text/csv',
@@ -96,7 +103,7 @@ test.describe('Bank statement import E2E flow', () => {
 
     // ── First pass: confirm ────────────────────────────────────────────────
     await page.click('#btn-iprev-confirm');
-    await page.waitForSelector('#btn-import-csv'); // back on Settings
+    await page.waitForSelector('#btn-open-backup'); // back on Settings
     // v1.06 U2: the success sheet replaces the alert() — no verdict block for
     // a mapped CSV (nothing to reconcile against).
     await page.waitForSelector('#import-success-modal.open');

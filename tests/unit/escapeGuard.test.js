@@ -242,7 +242,7 @@ const clearSheets = () => {
 const VIEWS = (c) => [
   ['dashboard', 'DashboardView'], ['transactions', 'TransactionsView'], ['add', 'AddTransactionView'],
   ['categories', 'CategoriesView'], ['budget', 'BudgetView'], ['analytics', 'AnalyticsView'],
-  ['settings', 'OthersView'], ['tags', 'TagsView'], ['debt', 'DebtHubView'], ['purchases', 'PurchasesView'],
+  ['settings', 'OthersView'], ['backup', 'BackupView'], ['import', 'ImportView'], ['import-review', 'ImportReviewView'], ['export', 'ExportView'], ['tags', 'TagsView'], ['debt', 'DebtHubView'], ['purchases', 'PurchasesView'],
   ['bank-connect', 'BankConnectHubView'], ['bank-connect-add', 'BankPickerView'],
   ['bank-connect-map', 'BankMapView', { ref: 'r1' }],
   ['edit', 'AddTransactionView', { id: c.expense.id }],
@@ -448,7 +448,7 @@ describe('Escape guard: the sink crawl (1.0.2 BUG-24)', () => {
     // the import flow's result lines (duplicates, ambiguous same-named accounts)
     clearSheets(); restore();
     await tryStep('settings:import result', async () => {
-      renderView('settings', 'OthersView');
+      renderView('backup', 'BackupView'); // 1.1.0 (IE-5): the restore moved to Backup
       const input = document.getElementById('import-csv-file');
       const amb = 'Date,Type,Amount,Account,Category,Note' + NL + ['2026-10-01', 'expense', '1', P('ambacc'), 'Rent', 'x'].map(csvCell).join(',') + NL;
       S().dispatch('ADD_ACCOUNT', { name: P('ambacc'), openingBalance: 0, openingDate: '2026-01-01' });
