@@ -234,6 +234,14 @@ git tag v<version> && git push origin --tags
 Upload the `.aab` to Play (internal → closed → production) and the archive to
 TestFlight, then submit.
 
+- **The app itself is Free on both stores.** App Store Connect → Pricing and
+  Availability → Price Schedule must read €0.00 (Free); Play Console → the
+  app is Free. €4.99 belongs only on the `stackd_pro` in-app purchase. The
+  first iOS release went live as a paid €4.99 app (seen 2026-10-27): the app price had been
+  set to the Pro price, so a buyer would have paid twice. After release,
+  open the store page on a phone and check the button says *Get* / *Obter*,
+  not a price.
+
 - **NOT FOR THIS RELEASE** — the "What's new" entry in all five listing
   languages. A first submission has no previous version to describe, and both
   stores treat release notes as optional on it. From the second release
