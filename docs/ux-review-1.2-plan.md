@@ -692,6 +692,13 @@ container), so Decision 11 became "draw our own caret": `Components.AmountCaret`
 `#tx-amount` and `#dsim-principal` (system caret hidden, a blinking bar in an invisible copy of
 the text, split at the selection). Confirmed on the owner's iPhone in Safari.
 
+**UX-11 iCloud (2026-11-05).** iCloud container `iCloud.com.stackd.finance` registered (its
+description is "Stackd Finance": the portal refuses an apostrophe) and the iCloud capability
+enabled on the App ID `com.stackd.finance`. No Mac needed: the GitHub Actions workflow built,
+signed and uploaded 1.2.0 (10200) from main 6a7054d. On the owner's iPhone, Back up now
+created Files › iCloud Drive › Stack'd › Stackd Backups with the `.json` backup. Afterwards
+the workflow's .ipa check also requires the iCloud container entitlement.
+
 Verified: lint clean; 169 unit files / 2,203 tests; e2e 121/121 (the one failure was the
 spec timing above); `version:check`; browser preview (mobile, dark): pager both panes, chips,
 account balances widget, glossy rings (Home + Goals), tag picker create/apply, attachment

@@ -196,8 +196,10 @@ open ios/App/App.xcworkspace
 - ~~First time only: add `ios/App/App/PrivacyInfo.xcprivacy` to the App
   target~~ **DONE, ONE TIME (2026-09-27)** — wired into `project.pbxproj`
   directly, and the CI workflow fails if it is missing from the archive.
-- Signing: automatic, with the team selected; capabilities Associated Domains
-  and In-App Purchase enabled on the App ID.
+- Signing: automatic, with the team selected; capabilities Associated Domains,
+  In-App Purchase and (since 1.2.0) iCloud — iCloud Documents with the container
+  `iCloud.com.stackd.finance` — enabled on the App ID. The CI path needs the same
+  App ID setup; its .ipa check fails if the iCloud entitlement is missing.
 - Product → Archive → Distribute → App Store Connect.
 
 ## 8. Smoke the build on a device

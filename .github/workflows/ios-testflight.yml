@@ -197,6 +197,10 @@ jobs:
           # Universal Links for the bank return (ios/App/App/App.entitlements).
           grep -q 'applinks:api.stackdplatform.com' "$ENTS" \
             || { echo "::error::associated-domains entitlement missing from the signed app"; exit 1; }
+          # 1.2.0 (UX-11): backups in iCloud Drive. Needs the iCloud capability
+          # with the iCloud.com.stackd.finance container on the App ID.
+          grep -q 'iCloud.com.stackd.finance' "$ENTS" \
+            || { echo "::error::iCloud container entitlement missing from the signed app - enable iCloud (container iCloud.com.stackd.finance) on the App ID"; exit 1; }
           # A store build must not be debuggable.
           gta="$(plutil -extract get-task-allow raw -o - "$ENTS" 2>/dev/null || echo absent)"
           echo "get-task-allow: $gta"

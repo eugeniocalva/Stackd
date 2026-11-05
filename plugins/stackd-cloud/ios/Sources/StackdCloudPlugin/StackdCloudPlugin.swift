@@ -72,10 +72,8 @@ public class StackdCloudPlugin: CAPPlugin, CAPBridgedPlugin {
                     writeError = error
                 }
             }
-            if let error = coordError ?? (writeError as NSError?) {
-                call.reject("write failed", nil, error)
-                return
-            }
+            if let error = coordError { call.reject("write failed", nil, error); return }
+            if let error = writeError { call.reject("write failed", nil, error); return }
             call.resolve(["uri": url.absoluteString])
         }
     }
@@ -114,10 +112,8 @@ public class StackdCloudPlugin: CAPPlugin, CAPBridgedPlugin {
                     readError = error
                 }
             }
-            if let error = coordError ?? (readError as NSError?) {
-                call.reject("not found", nil, error)
-                return
-            }
+            if let error = coordError { call.reject("not found", nil, error); return }
+            if let error = readError { call.reject("not found", nil, error); return }
             guard let data = text else { call.reject("not UTF-8 text"); return }
             call.resolve(["data": data])
         }
@@ -127,7 +123,7 @@ public class StackdCloudPlugin: CAPPlugin, CAPBridgedPlugin {
     // as ".<name>.icloud" on older iOS versions: it is listed by its real name.
     @objc func list(_ call: CAPPluginCall) {
         queue.async {
-            guard let folder = self.folderURL() else { call.resolve(["files": []]); return }
+            guard let folder = self.folderURL() else { call.resolve(["files": [[String: Any]]()]); return }
             let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey]
             let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [])) ?? []
             var files: [[String: Any]] = []
@@ -162,10 +158,8 @@ public class StackdCloudPlugin: CAPPlugin, CAPBridgedPlugin {
                     removeError = error
                 }
             }
-            if let error = coordError ?? (removeError as NSError?) {
-                call.reject("remove failed", nil, error)
-                return
-            }
+            if let error = coordError { call.reject("remove failed", nil, error); return }
+            if let error = removeError { call.reject("remove failed", nil, error); return }
             call.resolve()
         }
     }
