@@ -351,6 +351,28 @@ describe('Android Back (BUG-03)', () => {
       expect(R()._isFormDirty()).toBe(true);
     });
 
+    // 1.2.0 (UX-10): the attachment list lives in a hidden input, so adding
+    // or removing a receipt is an edit; the file inputs are always reset.
+    it('an attachment added to or removed from the form counts as an edit', () => {
+      state.activeView = 'add';
+      document.getElementById('router-view').innerHTML =
+        '<input type="hidden" id="tx-attachments-data" value="[]"><input type="file" id="tx-att-library">';
+      R()._armFormBaseline();
+      expect(R()._isFormDirty()).toBe(false);
+      document.getElementById('tx-attachments-data').value = '[{"id":"a1"}]';
+      expect(R()._isFormDirty()).toBe(true);
+      document.getElementById('tx-attachments-data').value = '[]';
+      expect(R()._isFormDirty()).toBe(false);
+    });
+
+    it('the attachment sheet closes on Back without a choice', () => {
+      const onCamera = vi.fn();
+      C().AttachmentSheet.show({ onCamera });
+      openAll();
+      expect(R().handleBack({ canGoBack: true })).toBe('sheet');
+      expect(openSheets()).toEqual([]);
+      expect(onCamera).not.toHaveBeenCalled();
+    });
     it('non-form views never ask', () => {
       state.activeView = 'debt-sim';
       document.getElementById('router-view').innerHTML = '<input id="x" value="">';

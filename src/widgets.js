@@ -49,6 +49,10 @@ window.Widgets = {
 
   destroyCharts() {
     Object.keys(this._charts).forEach(id => this._destroyChart(id));
+    // 1.2.0 (UX-5): every caller is a section teardown (attachSection before
+    // a remount, DashboardView.destroy on leaving Home), which is exactly when
+    // the drag controller's document listeners and ghost must go too.
+    this._endDrag();
   },
 
   // Set by attachSection for the duration of a same-view remount: charts play
@@ -57,14 +61,23 @@ window.Widgets = {
   // with view transitions on top it would read as double motion (v0.73 Phase 4).
   _suppressChartAnimation: false, // v0.93: obsolete — mounts are always animation-free now
 
-  _mountChart(id, canvas, config) {
+  // 1.2.0 (UX-7): true only for the attach loop of an ENTRY render of the
+  // dashboard (main.js passes isEntry; DashboardView forwards it). The ring
+  // widgets read it to play their one entry sweep; a same-view re-render (any
+  // dispatch while Home is open) and the add-widget preview never animate.
+  _entryPass: false,
+
+  // 1.2.0 (UX-7): mountOpts.animate lets a ring chart keep the animation
+  // object Components.RingChart.config built (entry sweep). Everything else
+  // stays animation-free (v0.93).
+  _mountChart(id, canvas, config, mountOpts) {
     if (!canvas || !window.Chart) return null;
     this._destroyChart(id);
     // v0.93: widget charts never animate. The 600ms entry animations used to
     // play inside the navigation render pass — i.e. inside the view-transition
     // freeze — stacking motion cost on an already heavy mount.
     if (!config.options) config.options = {};
-    config.options.animation = false;
+    if (!(mountOpts && mountOpts.animate)) config.options.animation = false;
     const mount = () => {
       this._destroyChart(id); // a newer mount for this id may have raced in
       // Belt and braces: if this exact canvas is somehow still registered, clear it.
@@ -93,8 +106,16 @@ window.Widgets = {
     return this._charts[id];
   },
 
+  // 1.2.0 (UX-6): ids are made selector-safe — the size rail's second
+  // preview is '__preview__:large', and `#widget-canvas-__preview__:large`
+  // would parse as a pseudo-class.
   _canvasId(instance) {
-    return `widget-canvas-${instance.id}`;
+    return `widget-canvas-${String(instance.id).replace(/[^A-Za-z0-9_-]/g, '-')}`;
+  },
+
+  // 1.2.0 (UX-2): the one size a single-size type offers ('' otherwise).
+  _onlySize(def) {
+    return (def && Array.isArray(def.sizes) && def.sizes.length === 1) ? def.sizes[0] : '';
   },
 
   // ── data helpers ────────────────────────────────────────────────────────
@@ -293,6 +314,135 @@ window.Widgets = {
           if (row) sessionStorage.setItem('scrollToTx', row.dataset.txId);
           window.Router.navigate('#transactions');
         });
+      }
+    },
+
+    // 1.2.0 (UX-2): every account with its balance today, grouped by type —
+    // the MoneyStats account table. Large-only and the one AUTO-HEIGHT card
+    // (def.autoHeight → .widget-card--auto): a fixed box would clip the list,
+    // and a small auto-height card would stretch its row partner.
+    accountBalances: {
+      get title() { return window.I18n.t('widget.balances.title'); },
+      get description() { return window.I18n.t('widget.balances.desc'); },
+      icon: 'landmark',
+      sizes: ['large'],
+      hasConfig: true,
+      defaultConfig: { accountIds: [] },
+      autoHeight: true,
+
+      caption() {
+        return window.I18n.t('widget.balances.caption');
+      },
+
+      // Totals follow the aggregate rule (exclude, never convert): the Total
+      // and every subtotal sum only the accounts aggregatePredicate keeps, in
+      // aggregateSelection's currency; every other account is still LISTED,
+      // in its own currency, and the note says how many were left out.
+      _data(instance, state) {
+        const W = window.Widgets;
+        return W._memoized(instance, 'balances', () => {
+          const S = window.Store;
+          const cfg = W._cfg(instance);
+          const ids = Array.isArray(cfg.accountIds) ? cfg.accountIds : [];
+          const pick = ids.length ? new Set(ids) : null;
+          const inScope = S.aggregatePredicate(ids);
+          const sel = S.aggregateSelection(ids);
+          const rows = (state.accounts || [])
+            .filter(acc => !pick || pick.has(acc.id))
+            .map(acc => ({ acc, balance: S.getAccountBalance(acc.id), inScope: !!inScope(acc.id) }));
+
+          // Store.ACCOUNT_TYPES order; unknown (older/imported) types appended
+          // alphabetically; accounts keep state order (alphabetical, _sortData).
+          const order = S.ACCOUNT_TYPES || [];
+          const byType = new Map();
+          rows.forEach(r => {
+            const type = r.acc.type || 'Account';
+            if (!byType.has(type)) byType.set(type, { type, rows: [], subtotal: 0, inScope: 0 });
+            const g = byType.get(type);
+            g.rows.push(r);
+            if (r.inScope) { g.subtotal += r.balance; g.inScope++; }
+          });
+          const rank = (t) => { const i = order.indexOf(t); return i === -1 ? order.length : i; };
+          const groups = [...byType.values()].sort((a, b) =>
+            (rank(a.type) - rank(b.type)) || String(a.type).localeCompare(String(b.type)));
+
+          return {
+            groups,
+            count: rows.length,
+            total: rows.reduce((s, r) => s + (r.inScope ? r.balance : 0), 0),
+            excluded: rows.filter(r => !r.inScope).length,
+            currency: sel.currency
+          };
+        });
+      },
+
+      render(instance, state) {
+        const W = window.Widgets;
+        const S = window.Store;
+        const data = this._data(instance, state);
+        if (data.count === 0) return W._emptyState(window.I18n.t('widget.balances.empty'));
+
+        const signClass = (v) => (v > 0 ? 'text-income' : (v < 0 ? 'text-expense' : ''));
+        const money = (v, ccy) => W._esc(S.formatCurrency(v, ccy));
+
+        const groupsHtml = data.groups.map(g => {
+          // accountTypeLabel falls through to the RAW stored string for an
+          // unknown type (views.js wallets rail does the same) — escape it.
+          const label = W._esc(S.accountTypeLabel(g.type));
+          const sub = g.inScope > 0 ? money(g.subtotal, data.currency) : '—';
+          const rows = g.rows.map(({ acc, balance }) => `
+              <div class="widget-balances-row" data-account-id="${W._esc(acc.id)}" role="button" tabindex="0">
+                <span class="widget-balances-icon"${acc.color ? ` style="background: ${W._esc(acc.color)}; color: #ffffff;"` : ''}><i data-lucide="${W._esc(acc.icon || 'wallet')}"></i></span>
+                <span class="widget-balances-name">${W._esc(acc.name)}</span>
+                <span class="widget-balances-value ${signClass(balance)}">${money(balance, acc.currency)}</span>
+              </div>`).join('');
+          return `
+            <div class="widget-balances-group">
+              <div class="widget-balances-group-head">
+                <span class="widget-balances-group-label">${label}</span>
+                <span class="widget-balances-group-sub ${g.inScope > 0 ? signClass(g.subtotal) : ''}">${sub}</span>
+              </div>
+              ${rows}
+            </div>`;
+        }).join('');
+
+        const note = data.excluded > 0
+          ? `<p class="widget-balances-note">${W._esc(window.I18n.t('common.otherCurrencyExcluded', { count: data.excluded }))}</p>`
+          : '';
+
+        return `
+          <div class="widget-balances">
+            <div class="widget-balances-total">
+              <span class="widget-balances-total-label">${W._esc(window.I18n.t('widget.balances.total'))}</span>
+              <span class="widget-balances-total-value ${signClass(data.total)}">${money(data.total, data.currency)}</span>
+            </div>
+            ${groupsHtml}
+            ${note}
+          </div>`;
+      },
+
+      attach(instance, card) {
+        // A row opens that account in History (the wallets rail's tap).
+        const open = (e) => {
+          if (window.Store.getState().widgetEditMode) return false;
+          const row = e.target && e.target.closest ? e.target.closest('.widget-balances-row[data-account-id]') : null;
+          if (!row) return false;
+          window.Router.navigate(`#transactions?account=${encodeURIComponent(row.dataset.accountId)}`);
+          return true;
+        };
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && open(e)) e.preventDefault();
+        });
+      },
+
+      renderConfig(config, state) {
+        const W = window.Widgets;
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
+      },
+
+      attachConfig(root, ctx) {
+        window.Widgets.attachSharedConfig(root, ctx);
       }
     },
 
@@ -529,7 +679,10 @@ window.Widgets = {
         const theme = window.Components.NetFlowChart._themeColors();
         const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
-        W._mountChart(instance.id, canvas, {
+        // 1.2.0 (UX-7): the shared ring look; the sweep only on a Home entry
+        // render (W._entryPass), badges only in the large size (RingChart
+        // draws them only on a ring wide enough to hold them).
+        const config = window.Components.RingChart.config({
           type: 'doughnut',
           data: {
             labels: data.map(d => d.name),
@@ -537,17 +690,12 @@ window.Widgets = {
               data: data.map(d => d.amount),
               backgroundColor: data.map(d => d._color),
               hoverBackgroundColor: data.map(d => d._hoverColor),
-              borderWidth: 2,
-              borderColor: 'transparent',
-              borderRadius: 4,
               hoverOffset: 6
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '72%',
-            animation: { duration: 600, easing: 'easeOutQuart' },
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -568,7 +716,12 @@ window.Widgets = {
               }
             }
           }
+        }, {
+          animate: W._entryPass,
+          delay: 250, // past the view-transition snapshot
+          badges: instance.size === 'large' ? data.map(d => ({ icon: d.icon })) : null
         });
+        W._mountChart(instance.id, canvas, config, { animate: !!config.options.animation });
       },
 
       renderConfig(config, state) {
@@ -1174,25 +1327,23 @@ window.Widgets = {
           : (theme.isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']);
         const data = overspent || (limit === 0 && spent === 0) ? [1, 0] : [spent, Math.max(limit - spent, 0)];
 
-        W._mountChart(instance.id, canvas, {
+        // 1.2.0 (UX-7): the shared ring look (no badges on a small card);
+        // index 1 is the track and stays flat.
+        const config = window.Components.RingChart.config({
           type: 'doughnut',
           data: {
             datasets: [{
               data,
-              backgroundColor: colors,
-              borderWidth: 2,
-              borderColor: 'transparent',
-              borderRadius: 4
+              backgroundColor: colors
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '72%',
-            animation: { duration: 600, easing: 'easeOutQuart' },
             plugins: { legend: { display: false }, tooltip: { enabled: false } }
           }
-        });
+        }, { animate: W._entryPass, delay: 250, track: [1] });
+        W._mountChart(instance.id, canvas, config, { animate: !!config.options.animation });
       },
 
       renderConfig(config, state) {
@@ -1421,9 +1572,14 @@ window.Widgets = {
 
   _renderCard(instance, state, editMode, index, total) {
     const def = this.registry[instance.type];
-    const isLarge = instance.size === 'large';
+    // 1.2.0 (UX-2): a single-size type always lays out in its one size (a
+    // stored 'small' on a large-only type is drawn wide, as it renders).
+    const isLarge = instance.size === 'large' || this._onlySize(def) === 'large';
     const classes = ['widget-card', 'card', 'card-elevated'];
     if (isLarge) classes.push('widget-card--large');
+    // 1.2.0 (UX-2): the one opt-in exception to the fixed card heights
+    // (v0.73): the box grows with its content (accountBalances).
+    if (def && def.autoHeight) classes.push('widget-card--auto');
     if (editMode) classes.push('is-editing');
 
     // Unknown type: keep the slot visible and removable rather than throwing.
@@ -1475,22 +1631,30 @@ window.Widgets = {
                 aria-label="${window.I18n.t('widget.configureAria')}">
           <i data-lucide="settings" style="width: 15px; height: 15px;"></i>
         </button>` : '';
+    // 1.2.0 (UX-2): a single-size type has no other size to flip to.
+    const sizePill = this._onlySize(def) ? '' : `
+        <button type="button" class="widget-size-pill" data-widget-action="toggle-size" data-widget-id="${id}"
+                aria-label="${window.I18n.t('widget.toggleSizeAria')}">${window.I18n.t(isLarge ? 'widget.sizeWide' : 'widget.sizeSmall')}</button>`;
+    // 1.2.0 (UX-5): the remove control is the iOS x badge (top-right, it asks
+    // first — see attachSection). Reordering is a long-press drag; the
+    // move-up/move-down buttons stay as the keyboard / assistive path,
+    // visually hidden until they take keyboard focus.
     return `
       <button type="button" class="widget-remove-btn" data-widget-action="remove" data-widget-id="${id}" aria-label="${window.I18n.t('widget.removeAria')}">
-        <i data-lucide="minus" style="width: 16px; height: 16px;"></i>
+        <i data-lucide="x" style="width: 14px; height: 14px;"></i>
       </button>
+      <span class="visually-hidden">${window.I18n.t('widget.dragAria')}</span>
       <div class="widget-edit-bar">
-        <button type="button" class="widget-chrome-btn" data-widget-action="move-up" data-widget-id="${id}"
+        <button type="button" class="widget-chrome-btn widget-move-btn" data-widget-action="move-up" data-widget-id="${id}"
                 ${index === 0 ? 'disabled' : ''} aria-label="${window.I18n.t('widget.moveUpAria')}">
           <i data-lucide="chevron-up" style="width: 16px; height: 16px;"></i>
         </button>
-        <button type="button" class="widget-chrome-btn" data-widget-action="move-down" data-widget-id="${id}"
+        <button type="button" class="widget-chrome-btn widget-move-btn" data-widget-action="move-down" data-widget-id="${id}"
                 ${index === total - 1 ? 'disabled' : ''} aria-label="${window.I18n.t('widget.moveDownAria')}">
           <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
         </button>
         ${gearBtn}
-        <button type="button" class="widget-size-pill" data-widget-action="toggle-size" data-widget-id="${id}"
-                aria-label="${window.I18n.t('widget.toggleSizeAria')}">${window.I18n.t(isLarge ? 'widget.sizeWide' : 'widget.sizeSmall')}</button>
+        ${sizePill}
       </div>`;
   },
 
@@ -1501,17 +1665,29 @@ window.Widgets = {
   // columns, as it will on the dashboard.
   PREVIEW_ID: '__preview__',
 
+  // 1.2.0 (UX-6): the size rail renders every size at once, so each preview
+  // card (and its chart slot in _charts) needs its own id. The type's first
+  // size keeps the historical '__preview__'; the others get ':<size>'.
+  _previewId(size, type) {
+    const def = type ? this.registry[type] : null;
+    const first = (def && Array.isArray(def.sizes) && def.sizes[0]) || 'small';
+    return size === first ? this.PREVIEW_ID : `${this.PREVIEW_ID}:${size}`;
+  },
+
   _previewInstance(type, size, config) {
-    return { id: this.PREVIEW_ID, type, size, config: config || {}, createdAt: '' };
+    return { id: this._previewId(size, type), type, size, config: config || {}, createdAt: '' };
   },
 
   renderPreview(type, size, config, state) {
-    if (!this.registry[type]) return '';
+    const def = this.registry[type];
+    if (!def) return '';
     this._passMemo = {}; // v0.93: preview render = its own pass (config/size may differ)
     const instance = this._previewInstance(type, size, config);
+    // 1.2.0 (UX-6): a small card is centred on its slide (one half-width column).
+    const isSmall = size !== 'large' && this._onlySize(def) !== 'large';
     return `
       <div class="widget-preview-stage">
-        <div class="widgets-grid widgets-grid--preview">
+        <div class="widgets-grid widgets-grid--preview${isSmall ? ' is-small' : ''}">
           ${this._renderCard(instance, state, false, 0, 1)}
         </div>
       </div>`;
@@ -1520,7 +1696,7 @@ window.Widgets = {
   attachPreview(root, type, size, config, state) {
     const def = this.registry[type];
     if (!def || !def.attach) return;
-    const card = root.querySelector(`.widget-card[data-widget-id="${this.PREVIEW_ID}"]`);
+    const card = root.querySelector(`.widget-card[data-widget-id="${this._previewId(size, type)}"]`);
     if (!card) return;
     try {
       def.attach(this._previewInstance(type, size, config), card, state);
@@ -1529,15 +1705,24 @@ window.Widgets = {
     }
   },
 
+  // 1.2.0 (UX-6): releases every preview slot ('__preview__' and '__preview__:<size>').
   destroyPreview() {
-    this._destroyChart(this.PREVIEW_ID);
+    Object.keys(this._charts)
+      .filter(id => id === this.PREVIEW_ID || id.indexOf(`${this.PREVIEW_ID}:`) === 0)
+      .forEach(id => this._destroyChart(id));
   },
 
   // ── section events ──────────────────────────────────────────────────────
-  attachSection(root, state) {
+  // 1.2.0 (UX-7): opts.isEntry (DashboardView forwards main.js' flag) marks
+  // the first render of a Home visit — the ring widgets play their one sweep
+  // on that pass only. Optional: older callers pass (root, state).
+  attachSection(root, state, opts) {
     // The section just re-rendered, so every tracked chart now points at a
     // detached canvas. Drop them all before remounting. (v0.93: the old
     // isRemount animation-suppression is gone — _mountChart never animates.)
+    // 1.2.0 (UX-5): this also ends the previous grid's drag controller (its
+    // document listeners, a ghost left by an interrupted gesture) and the
+    // previous tap-outside listener on root, which outlives the innerHTML swap.
     this.destroyCharts();
 
     const section = root.querySelector('#widgets-section');
@@ -1574,7 +1759,7 @@ window.Widgets = {
 
       switch (btn.dataset.widgetAction) {
         case 'remove':
-          window.Store.dispatch('REMOVE_HOME_WIDGET', { id });
+          this._confirmRemove(id);
           break;
         case 'move-up':
         case 'move-down': {
@@ -1600,16 +1785,406 @@ window.Widgets = {
     });
 
     // Per-instance attach (chart mounts, navigation) — errors stay contained.
-    (state.homeWidgets || []).forEach(instance => {
-      const def = this.registry[instance.type];
-      if (!def || !def.attach) return;
-      const card = grid.querySelector(`.widget-card[data-widget-id="${instance.id}"]`);
-      if (!card) return;
-      try {
-        def.attach(instance, card, state);
-      } catch (err) {
-        console.error(`[widgets] attach failed for "${instance.type}"`, err);
-      }
+    // 1.2.0 (UX-7): _entryPass is read by the ring widgets' attach, for this
+    // loop only (the add-widget preview mounts later and never animates).
+    this._entryPass = !!(opts && opts.isEntry);
+    try {
+      (state.homeWidgets || []).forEach(instance => {
+        const def = this.registry[instance.type];
+        if (!def || !def.attach) return;
+        const card = grid.querySelector(`.widget-card[data-widget-id="${instance.id}"]`);
+        if (!card) return;
+        try {
+          def.attach(instance, card, state);
+        } catch (err) {
+          console.error(`[widgets] attach failed for "${instance.type}"`, err);
+        }
+      });
+    } finally {
+      this._entryPass = false;
+    }
+
+    // 1.2.0 (UX-5): long-press → wiggle, press-and-drag → reorder, and a tap
+    // anywhere else on the screen leaves edit mode.
+    const offs = [];
+    try {
+      offs.push(this._attachDrag(grid, root));
+    } catch (err) {
+      console.error('[widgets] drag controller failed', err);
+    }
+    const editMode = !!state.widgetEditMode && (state.homeWidgets || []).length > 0;
+    if (editMode && typeof root.addEventListener === 'function') {
+      const onOutside = (e) => {
+        const t = e.target;
+        if (!t || typeof t.closest !== 'function') return;
+        if (t.closest('#widgets-section') || t.closest('#modal-container')) return;
+        if (!window.Store.getState().widgetEditMode) return;
+        // The tap only leaves edit mode (as on a phone's home screen): the
+        // control under it does not also fire.
+        e.preventDefault();
+        e.stopPropagation();
+        window.Store.dispatch('TOGGLE_WIDGET_EDIT_MODE', false);
+      };
+      // A click, not pointerdown: a scroll that starts outside the widgets
+      // never fires one, so scrolling the page keeps edit mode.
+      root.addEventListener('click', onOutside, true);
+      offs.push(() => root.removeEventListener('click', onOutside, true));
+    }
+    this._sectionTeardown = () => offs.forEach(off => { if (typeof off === 'function') off(); });
+  },
+
+  // 1.2.0 (UX-5): the x badge asks first — REMOVE_HOME_WIDGET has no undo.
+  // A delete-style sheet: Cancel is the safe button, backdrop tap / Back close it.
+  _confirmRemove(id) {
+    const remove = () => window.Store.dispatch('REMOVE_HOME_WIDGET', { id });
+    const Modal = window.Components && window.Components.Modal;
+    if (!Modal || typeof Modal.show !== 'function') { remove(); return; }
+    Modal.show({
+      title: window.I18n.t('widget.removeTitle'),
+      content: `<p style="color: var(--text-secondary); margin-bottom: 8px;">${window.I18n.t('widget.removeBody')}</p>`,
+      showDelete: true,
+      deleteText: window.I18n.t('widget.removeConfirm'),
+      saveText: window.I18n.t('common.cancel'),
+      onSave: (close) => close(),
+      onDelete: (close) => { close(); remove(); }
     });
+  },
+
+  // ── 1.2.0 (UX-5) long-press + drag reorder ──────────────────────────────
+  // DOM-only until release: the dashboard re-renders wholesale on every
+  // dispatch, which would replace the pressed card mid-gesture. So a long
+  // press outside edit mode builds the edit chrome into the live DOM itself
+  // ("pseudo edit"), a drag moves the real card nodes (FLIP), and the release
+  // dispatches once: REORDER_HOME_WIDGETS when the order changed, then
+  // TOGGLE_WIDGET_EDIT_MODE true after a pseudo edit — the coalesced re-render
+  // reproduces the DOM that was built, so nothing jumps.
+  _DRAG_HOLD_ENTER: 450, // ms, outside edit mode (long press)
+  _DRAG_HOLD_EDIT: 150,  // ms, in edit mode (a move before it is a scroll)
+  _DRAG_SLOP: 8,         // px a press may wander before it counts as a scroll
+  _DRAG_EDGE: 56,        // px from the viewport top/bottom that auto-scrolls
+
+  _sectionTeardown: null,
+
+  // Ends the live controller (document listeners, timer, auto-scroll) and
+  // removes any ghost — idempotent, and also run defensively on every
+  // attachSection / DashboardView.destroy (through destroyCharts).
+  _endDrag() {
+    const off = this._sectionTeardown;
+    this._sectionTeardown = null;
+    if (off) {
+      try { off(); } catch (err) { /* already gone */ }
+    }
+    if (typeof document !== 'undefined' && document && typeof document.querySelectorAll === 'function') {
+      document.querySelectorAll('.widget-drag-ghost').forEach(el => el.remove());
+    }
+  },
+
+  _reducedMotion() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (err) {
+      return false;
+    }
+  },
+
+  // Pure hit test. rects = every card's layout box in DOM order
+  // ({left, top, width, height, large}), the dragged one at fromIdx.
+  // Returns the index the dragged card should take. The OTHER card under
+  // the pointer decides — or, over a gap or the card's own slot, the nearest
+  // one by centre distance (a wide card's centre alone would lose to a small
+  // neighbour while the pointer is inside it). The pointer goes before/after
+  // that card by the axis the two share: x for a small card in the pointer's
+  // row, y for a large card (it spans the row) or a card in another row.
+  _dropIndexFor(rects, x, y, fromIdx) {
+    if (!Array.isArray(rects) || rects.length < 2) return fromIdx;
+    let best = -1;
+    let bestD = Infinity;
+    rects.forEach((r, i) => {
+      if (i === fromIdx || !r) return;
+      const inside = x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const d = inside ? -1 : (x - cx) * (x - cx) + (y - cy) * (y - cy);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    if (best === -1) return fromIdx;
+    const r = rects[best];
+    const inRow = !r.large && y >= r.top && y <= r.top + r.height;
+    const after = inRow ? x > r.left + r.width / 2 : y > r.top + r.height / 2;
+    const pos = best < fromIdx ? best : best - 1; // its index among the others
+    return Math.max(0, Math.min(rects.length - 1, pos + (after ? 1 : 0)));
+  },
+
+  // Moves `card` to index `to` among the grid's cards, animating every card
+  // that changed place from where it WAS on screen (First → Last → Invert →
+  // Play). translate is the individual property, so it never fights the
+  // wiggle's rotate.
+  _flipMove(grid, card, to) {
+    const cards = [...grid.querySelectorAll('.widget-card[data-widget-id]')];
+    const animate = !this._reducedMotion();
+    const first = animate ? new Map(cards.map(c => [c, c.getBoundingClientRect()])) : null;
+    if (animate) cards.forEach(c => { c.style.transition = 'none'; c.style.translate = ''; });
+    const others = cards.filter(c => c !== card);
+    grid.insertBefore(card, others[to] || null);
+    if (!animate) return;
+    const moved = [];
+    cards.forEach(c => {
+      const a = first.get(c);
+      const b = c.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) { c.style.transition = ''; return; }
+      c.style.translate = `${dx}px ${dy}px`;
+      moved.push(c);
+    });
+    void grid.offsetWidth; // commit the inverted positions before playing
+    moved.forEach(c => {
+      c.style.transition = 'translate var(--dur-view) var(--ease-spring)';
+      c.style.translate = '0px 0px';
+      const done = (ev) => {
+        if (ev && ev.propertyName && ev.propertyName !== 'translate') return;
+        c.removeEventListener('transitionend', done);
+        c.style.transition = '';
+        c.style.translate = '';
+      };
+      c.addEventListener('transitionend', done);
+    });
+  },
+
+  // Injects the edit chrome into the live grid without a dispatch (see above).
+  _enterPseudoEdit(grid) {
+    const widgets = window.Store.getState().homeWidgets || [];
+    const cards = [...grid.querySelectorAll('.widget-card[data-widget-id]')];
+    grid.classList.add('is-editing');
+    cards.forEach((card, i) => {
+      if (card.classList.contains('is-editing')) return;
+      const id = card.dataset.widgetId;
+      const isLarge = card.classList.contains('widget-card--large');
+      const inst = widgets.find(w => w.id === id) ||
+        { id, type: card.dataset.widgetType, size: isLarge ? 'large' : 'small' };
+      card.classList.add('is-editing');
+      card.insertAdjacentHTML('afterbegin', this._renderEditChrome(inst, i, cards.length, isLarge));
+    });
+    if (window.StackdHydrateIcons) window.StackdHydrateIcons(grid);
+  },
+
+  // A fixed-position copy of the pressed card that follows the pointer. It
+  // carries no ids or actions (it is a picture), and canvases are copied
+  // pixel for pixel when the platform can.
+  _makeGhost(card, doc) {
+    const rect = card.getBoundingClientRect();
+    const ghost = card.cloneNode(true);
+    ghost.classList.add('widget-drag-ghost');
+    ghost.classList.remove('is-dragging');
+    ghost.removeAttribute('data-widget-id');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    ghost.querySelectorAll('[data-widget-action], [data-widget-id]').forEach(el => {
+      el.removeAttribute('data-widget-action');
+      el.removeAttribute('data-widget-id');
+    });
+    if (window.Chart) {
+      const src = card.querySelectorAll('canvas');
+      ghost.querySelectorAll('canvas').forEach((c, i) => {
+        try {
+          c.width = src[i].width;
+          c.height = src[i].height;
+          const ctx = c.getContext('2d');
+          if (ctx) ctx.drawImage(src[i], 0, 0);
+        } catch (err) { /* a blank canvas is fine */ }
+      });
+    }
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    (doc.getElementById('app') || doc.body).appendChild(ghost);
+    return ghost;
+  },
+
+  // Returns the controller's teardown. One controller per grid: every
+  // re-render replaces the grid, and attachSection tears the old one down.
+  _attachDrag(grid, root) {
+    const W = this;
+    const S = window.Store;
+    const doc = grid.ownerDocument || document;
+    const win = doc.defaultView || window;
+    const raf = (fn) => (typeof win.requestAnimationFrame === 'function'
+      ? win.requestAnimationFrame(fn) : setTimeout(fn, 16));
+    let g = null;          // the gesture in progress
+    let lastTouchAt = 0;   // compat mouse events after a touch are ignored
+
+    const idsInDom = () => [...grid.querySelectorAll('.widget-card[data-widget-id]')].map(c => c.dataset.widgetId);
+    const pointOf = (e) => {
+      const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+      return t ? { x: t.clientX, y: t.clientY } : { x: e.clientX, y: e.clientY };
+    };
+
+    const stopGesture = () => {
+      const was = g;
+      g = null;
+      if (!was) return null;
+      clearTimeout(was.timer);
+      doc.removeEventListener('mousemove', onMouseMove);
+      doc.removeEventListener('mouseup', onMouseUp);
+      doc.removeEventListener('keydown', onKey);
+      if (was.ghost) was.ghost.remove();
+      was.card.classList.remove('is-dragging');
+      return was;
+    };
+
+    const reflow = () => {
+      if (!g || !g.ghost) return;
+      const cards = [...grid.querySelectorAll('.widget-card[data-widget-id]')];
+      const from = cards.indexOf(g.card);
+      if (from < 0) return;
+      const gr = grid.getBoundingClientRect();
+      // Layout boxes (offset*), not the on-screen ones: a card mid-FLIP is
+      // translated, and hit-testing its moving box would make it oscillate.
+      const rects = cards.map(c => ({
+        left: gr.left + c.offsetLeft, top: gr.top + c.offsetTop,
+        width: c.offsetWidth, height: c.offsetHeight,
+        large: c.classList.contains('widget-card--large')
+      }));
+      const to = W._dropIndexFor(rects, g.x, g.y, from);
+      if (to !== from) W._flipMove(grid, g.card, to);
+    };
+
+    const autoScroll = (mine) => {
+      if (g !== mine || !g.ghost) return;
+      const vh = win.innerHeight || (doc.documentElement && doc.documentElement.clientHeight) || 0;
+      let dy = 0;
+      if (g.y < W._DRAG_EDGE) dy = -Math.ceil((W._DRAG_EDGE - g.y) / 4);
+      else if (vh && g.y > vh - W._DRAG_EDGE) dy = Math.ceil((g.y - (vh - W._DRAG_EDGE)) / 4);
+      if (dy && root) {
+        const before = root.scrollTop;
+        root.scrollTop = before + dy;
+        if (root.scrollTop !== before) reflow();
+      }
+      raf(() => autoScroll(mine));
+    };
+
+    const hold = () => {
+      if (!g) return;
+      if (!g.card.isConnected) { stopGesture(); return; }
+      g.held = true;
+      try {
+        if (win.navigator && typeof win.navigator.vibrate === 'function') win.navigator.vibrate(40);
+      } catch (err) { /* no haptics */ }
+      if (!g.editing) {
+        W._enterPseudoEdit(grid);
+        g.pseudo = true;
+      }
+      g.ghost = W._makeGhost(g.card, doc);
+      g.card.classList.add('is-dragging');
+      const mine = g;
+      raf(() => autoScroll(mine));
+    };
+
+    const press = (e, kind) => {
+      if (g) return;
+      const target = e.target;
+      if (!target || typeof target.closest !== 'function') return;
+      if (target.closest('[data-widget-action]')) return; // chrome buttons are taps
+      const card = target.closest('.widget-card[data-widget-id]');
+      if (!card || card.parentNode !== grid) return;
+      const p = pointOf(e);
+      const editing = !!S.getState().widgetEditMode;
+      g = {
+        kind, card, editing, x0: p.x, y0: p.y, x: p.x, y: p.y,
+        held: false, pseudo: false, ghost: null, order0: idsInDom(), timer: null
+      };
+      g.timer = setTimeout(hold, editing ? W._DRAG_HOLD_EDIT : W._DRAG_HOLD_ENTER);
+      if (kind === 'mouse') {
+        doc.addEventListener('mousemove', onMouseMove);
+        doc.addEventListener('mouseup', onMouseUp);
+      }
+      doc.addEventListener('keydown', onKey);
+    };
+
+    // true = the gesture owns this move (the caller cancels the default).
+    const move = (p) => {
+      if (!g) return false;
+      g.x = p.x;
+      g.y = p.y;
+      if (!g.held) {
+        if (Math.abs(p.x - g.x0) > W._DRAG_SLOP || Math.abs(p.y - g.y0) > W._DRAG_SLOP) stopGesture(); // a scroll
+        return false;
+      }
+      if (g.ghost) g.ghost.style.translate = `${p.x - g.x0}px ${p.y - g.y0}px`;
+      reflow();
+      return true;
+    };
+
+    // true = the press was a long press / drag (the caller swallows the click).
+    const end = () => {
+      const was = stopGesture();
+      if (!was || !was.held) return false;
+      if (!grid.isConnected) return true; // the view went away mid-gesture
+      const order = idsInDom();
+      if (order.join('\n') !== was.order0.join('\n')) {
+        S.dispatch('REORDER_HOME_WIDGETS', { orderedIds: order });
+        const saved = (S.getState().homeWidgets || []).map(w => w.id);
+        // Refused (not a permutation of the stored list) or rolled back: the
+        // DOM was moved by hand, so redraw it from the state.
+        if (saved.join('\n') !== order.join('\n') && !was.pseudo) S.emit();
+      }
+      if (was.pseudo) S.dispatch('TOGGLE_WIDGET_EDIT_MODE', true);
+      return true;
+    };
+
+    // touchcancel / Escape: drop the gesture and redraw from the state — the
+    // original order, and no pseudo-edit chrome.
+    const cancel = () => {
+      const was = stopGesture();
+      if (was && was.held && grid.isConnected) S.emit();
+    };
+
+    const onTouchStart = (e) => {
+      lastTouchAt = Date.now();
+      if (e.touches && e.touches.length > 1) { if (g) cancel(); return; }
+      press(e, 'touch');
+    };
+    const onTouchMove = (e) => {
+      if (!g || g.kind !== 'touch') return;
+      if (move(pointOf(e)) && e.cancelable) e.preventDefault();
+    };
+    const onTouchEnd = (e) => {
+      if (!g || g.kind !== 'touch') return;
+      if (end() && e.cancelable) e.preventDefault(); // no click after a long press
+    };
+    const onTouchCancel = () => { if (g && g.kind === 'touch') cancel(); };
+    const onMouseDown = (e) => {
+      if (e.button !== 0 || Date.now() - lastTouchAt < 800) return;
+      press(e, 'mouse');
+    };
+    function onMouseMove(e) {
+      if (!g || g.kind !== 'mouse') return;
+      if (move(pointOf(e))) e.preventDefault();
+    }
+    function onMouseUp() {
+      if (g && g.kind === 'mouse') end();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape' && g) cancel();
+    }
+    const onContextMenu = (e) => { if (g) e.preventDefault(); };
+
+    grid.addEventListener('touchstart', onTouchStart, { passive: true });
+    grid.addEventListener('touchmove', onTouchMove, { passive: false });
+    grid.addEventListener('touchend', onTouchEnd);
+    grid.addEventListener('touchcancel', onTouchCancel);
+    grid.addEventListener('mousedown', onMouseDown);
+    grid.addEventListener('contextmenu', onContextMenu);
+
+    return () => {
+      stopGesture();
+      grid.removeEventListener('touchstart', onTouchStart);
+      grid.removeEventListener('touchmove', onTouchMove);
+      grid.removeEventListener('touchend', onTouchEnd);
+      grid.removeEventListener('touchcancel', onTouchCancel);
+      grid.removeEventListener('mousedown', onMouseDown);
+      grid.removeEventListener('contextmenu', onContextMenu);
+    };
   }
 };

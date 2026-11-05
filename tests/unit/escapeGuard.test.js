@@ -78,8 +78,8 @@ const scan = () => {
 const REACHED = ['accname', 'acctype', 'ambacc', 'bankaccname', 'bankaccname2', 'bankquery', 'catname', 'csvacc', 'csvcat',
   'csvdesc', 'csvdesc2', 'csvextra', 'csvloan', 'csvrule', 'csvrulecat', 'csvtype', 'extraname', 'filename', 'iban', 'instname',
   'instpick', 'loanname', 'note', 'noticebody', 'noticetitle', 'oldacc', 'oldcat', 'oldextra', 'oldloan', 'oldnote', 'oldrule',
-  'oldseries', 'oldtag', 'oldtype', 'pricem', 'pricepm', 'pricey', 'rulematch', 'seriesnote', 'simname', 'stmtccy', 'stmtdate',
-  'stmtdate2', 'stmtdesc', 'stmtdesc2', 'stmtfile', 'successacc', 'tag', 'trnote', 'trtag', 'txacc', 'txcat', 'txnote', 'txtag',
+  'oldseries', 'oldtag', 'oldtype', 'pickertag', 'pricem', 'pricepm', 'pricey', 'rulematch', 'seriesnote', 'simname', 'stmtccy', 'stmtdate',
+  'stmtdate2', 'stmtdesc', 'stmtdesc2', 'stmtfile', 'successacc', 'attname', 'attpdf', 'attview', 'tag', 'trnote', 'trtag', 'txacc', 'txcat', 'txnote', 'txtag',
   'usdacc', 'waitbank', 'xccynote'];
 // Fields that reached markup escaped: proves the crawl rendered them at all.
 const seen = () => { const out = new Set(); recorded.forEach(r => { const re = /&lt;x-([a-z0-9]+)&gt;/g; let m; while ((m = re.exec(r.html))) out.add(m[1]); }); return out; };
@@ -138,7 +138,7 @@ const boot = () => {
     catDebtSeeded: true
   };
   Object.keys(ls).forEach(k => w.localStorage.setItem('stackd_v1_' + k, JSON.stringify(ls[k])));
-  for (const f of ['db.js', 'i18n.js', 'i18n/en.js', 'utils/scroll.js', 'utils/keyboard.js', 'loan-engine.js', 'store.js',
+  for (const f of ['db.js', 'i18n.js', 'i18n/en.js', 'utils/scroll.js', 'utils/keyboard.js', 'attachments.js', 'loan-engine.js', 'store.js',
     'components.js', 'widgets.js', 'insights.js', 'views.js', 'export.js', 'import.js', 'bank-connect.js', 'pro.js']) executeFile(f);
   w.StackdExport._download = () => {};
   S().init();
@@ -150,7 +150,9 @@ const boot = () => {
   S().dispatch('ADD_ACCOUNT', { id: 'acc3', name: P('usdacc'), currency: 'USD', openingBalance: 70, openingDate: '2026-01-01' });
   S().dispatch('ADD_CATEGORY', { name: P('catname'), icon: P('caticon'), typeHint: 'both' });
   const cat = S().getState().categories.find(c => c.name === P('catname'));
-  S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 12.5, accountId: 'acc1', categoryId: cat.id, date: '2026-10-02', comment: P('note'), tags: [P('tag')] });
+  S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 12.5, accountId: 'acc1', categoryId: cat.id, date: '2026-10-02', comment: P('note'), tags: [P('tag')],
+    // 1.2.0 (UX-10): attachment names are free text (a file name, a restored meta)
+    attachments: [{ id: 'att1', kind: 'image', name: P('attname'), ext: 'jpg', mime: 'image/jpeg', size: 1, addedAt: '' }, { id: 'att2', kind: 'pdf', name: P('attpdf'), ext: 'pdf', mime: 'application/pdf', size: 1, addedAt: '' }] });
   S().dispatch('ADD_TRANSACTION', { type: 'income', amount: 99, accountId: 'acc1', categoryId: cat.id, date: '2026-10-03', comment: 'n', tags: ['ok'] });
   S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 3, accountId: 'acc3', categoryId: cat.id, date: '2026-10-01', comment: P('usdnote') });
   S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 7, accountId: 'acc1', categoryId: cat.id, date: '2026-10-20', comment: P('seriesnote'), isPaid: false,
@@ -399,7 +401,12 @@ describe('Escape guard: the sink crawl (1.0.2 BUG-24)', () => {
       CustomRangeModal: () => C.CustomRangeModal.show('transactions'),
       CategorySelectionModal: () => C.CategorySelectionModal.show({ type: 'expense', selectedId: c.cat.id, onSelect() {} }),
       ExpandedGraphModal: () => { C.ExpandedGraphModal.show(S().getState()); const b = document.getElementById('egm-filter'); if (b) b.click(); },
-      TagsModal: () => C.TagsModal.show({ selectedTags: [P('tag')], onSave() {} }),
+      TagPickerSheet: () => C.TagPickerSheet.show({ selectedTags: [P('tag')], categoryId: c.cat.id, onApply() {} }), // 1.2.0 (UX-9): replaced TagsModal
+      'TagPickerSheet:typed': () => { // 1.2.0 (UX-9): a tag typed into the sheet's search and created with +
+        C.TagPickerSheet.show({ selectedTags: [], categoryId: c.cat.id, onApply() {} });
+        const q = document.getElementById('tps-search'); q.value = P('pickertag'); q.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('tps-add').click(); document.getElementById('tps-apply').click();
+      },
       ImportRulesModal: () => C.ImportRulesModal.show(),
       ListPicker: () => C.ListPicker.show({ title: 't', items: S().getState().accounts.map(a => ({ id: a.id, name: a.name })), selectedId: 'acc1', onSelect() {} }),
       AddWidgetModal: () => C.AddWidgetModal.show({}),
@@ -424,6 +431,8 @@ describe('Escape guard: the sink crawl (1.0.2 BUG-24)', () => {
       CurrencySwitchConfirm: () => C.CurrencySwitchConfirm.show({ prev: 'EUR', next: 'USD', onConfirm() {}, onCancel() {} }),
       ImportSuccessModal: () => C.ImportSuccessModal.show({ imported: 2, accountName: P('successacc'), linked: 1, paired: 1, verdict: { ok: false, bank: '1', app: '2', date: '2026-10-01' } }),
       NoticeSheet: () => C.NoticeSheet.show({ title: P('noticetitle'), body: P('noticebody') }),
+      AttachmentSheet: () => C.AttachmentSheet.show({}), // 1.2.0 (UX-10)
+      AttachmentViewer: () => C.AttachmentViewer.show({ meta: { id: 'att9', kind: 'image', name: P('attview'), ext: 'jpg' }, onDelete() {} }),
       FaqModal: () => C.FaqModal.show(),
       ManualModal: () => C.ManualModal.show(),
       TermsModal: () => C.TermsModal.show({}),

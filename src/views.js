@@ -140,6 +140,13 @@ function captureDraftTxFormState(container) {
   const seriesIdInput = root.querySelector('#tx-recurrence-series-id');
   const tagChips = Array.from(root.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
   const receivedInput = root.querySelector('#tx-received-amount'); // 1.0.2 (BUG-35)
+  // 1.2.0 (UX-10): the attachment metas the form holds (files already stored)
+  const attachmentsInput = root.querySelector('#tx-attachments-data');
+  let attachments;
+  if (attachmentsInput) {
+    try { attachments = JSON.parse(attachmentsInput.value || '[]'); } catch (e) { attachments = undefined; }
+    if (!Array.isArray(attachments)) attachments = undefined;
+  }
 
   if (typeInput || amountInput) {
     window._draftTxFormState = {
@@ -162,7 +169,8 @@ function captureDraftTxFormState(container) {
       // own currency through the round trip instead of taking the draft To's
       // (D-U8-12).
       receivedAmount: receivedInput ? receivedInput.value : undefined,
-      receivedCcy: receivedInput ? (receivedInput.dataset.ccy || '') : ''
+      receivedCcy: receivedInput ? (receivedInput.dataset.ccy || '') : '',
+      attachments // 1.2.0 (UX-10)
     };
   }
 }
@@ -375,7 +383,9 @@ window.Views = {
         </div>
       `;
     },
-    attachEvents(container, state) {
+    // 1.2.0 (UX-7): isEntry (main.js render loop) = the first render of an
+    // Analytics visit — the one render whose donut sweeps in.
+    attachEvents(container, state, isEntry) {
       window.Components.AdvancedFilterBar.attachEvents(container, 'analytics');
 
       // v0.64 - Use the same today/period-end basis as render() so chart interactions match.
@@ -392,7 +402,7 @@ window.Views = {
         window.Components.NetFlowChart.attachEvents(container, chartData, filters, currency);
       }
 
-      window.Components.CategoryDonutChart.attachEvents(container, ctx.effectiveFilters, currency);
+      window.Components.CategoryDonutChart.attachEvents(container, ctx.effectiveFilters, currency, { animate: !!isEntry });
 
       // v0.64 - Today / period-end balance mode toggle
       container.querySelectorAll('#balance-mode-toggle .chart-toggle-btn').forEach(btn => {
@@ -427,32 +437,62 @@ window.Views = {
   // DASHBOARD VIEW (Phase 6)
   // -------------------------
   DashboardView: {
-    hiddenChartAccounts: [], // Track which account IDs are excluded from the chart
-    
-    render(state) {
+    // 1.2.0 (UX-1/UX-3): session-only view state. `_range` = the Home curve's
+    // range chip (default 1Y; survives re-renders and navigation, reset only
+    // by an app restart — the saved expandedGraphFilters.interval drives the
+    // expanded sheet only, Decision 3). `_pane` = the pager's visible pane
+    // (0 curve, 1 monthly net), kept across same-view re-renders and reset
+    // when Home is left (destroy).
+    RANGES: ['1w', '1m', '6m', 'ytd', '1y', 'max'],
+    _range: '1y',
+    _pane: 0,
+
+    // 1.2.0 (UX-1): the graph inputs every pass shares. The curve sums the
+    // explicit base-account list ([] saved = the primary-currency accounts);
+    // pane 2 gets the SAVED list, where [] keeps its "every base account"
+    // meaning for computeNetFlowData (BUG-36).
+    _graphInputs(state) {
       const savedFilters = state.expandedGraphFilters || { interval: 'monthly', accounts: [], categories: [] };
-      const selectedInterval = savedFilters.interval || 'monthly';
-      const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
-        ? savedFilters.accounts
+      const savedAccounts = savedFilters.accounts || [];
+      const selectedAccountIds = savedAccounts.length > 0
+        ? savedAccounts
         : window.Store.primaryAccountIds(); // v1.02: default aggregate = primary-currency accounts only
       const selectedCategoryIds = savedFilters.categories || [];
+      const range = this.RANGES.includes(this._range) ? this._range : '1y';
+      return {
+        savedFilters, savedAccounts, selectedAccountIds, selectedCategoryIds, range,
+        key: `${range}|${selectedAccountIds.join(',')}|${selectedCategoryIds.join(',')}|${savedAccounts.join(',')}`
+      };
+    },
+
+    _netBuckets(inp) {
+      return window.Store.computeNetFlowData({
+        period: { type: 'month', value: window.Store._todayYMD(), start: '', end: '' },
+        types: [],
+        accounts: inp.savedAccounts,
+        categories: inp.selectedCategoryIds,
+        sortOrder: 'desc'
+      }) || []; // EOM buckets (no clampEnd) — Decision 4, 'End of month' caption
+    },
+
+    render(state) {
+      const inp = this._graphInputs(state);
+      const { savedAccounts, selectedAccountIds, selectedCategoryIds, range } = inp;
       // 1.0.2 (BUG-36): what the header total sums and its currency. A saved
       // list equal to the base accounts reads as the default view (caption).
-      const savedAccounts = savedFilters.accounts || [];
       const aggSel = window.Store.aggregateSelection(window.Store.isPrimarySelection(savedAccounts) ? [] : savedAccounts);
 
-      const mainResult = window.Store.computeGraphBalances({
-        interval: selectedInterval,
+      // v0.93 / 1.2.0 (UX-1/UX-3): attachEvents needs these exact series for
+      // both charts and runs in the same synchronous pass — stash them.
+      const series = window.Store.computeBalanceSeries({
+        range,
         accountIds: selectedAccountIds,
         categoryIds: selectedCategoryIds
       });
-      // v0.93: attachEvents needs this exact series for the chart datasets and
-      // runs in the same synchronous pass — stash it instead of re-aggregating.
-      this._passGraph = {
-        key: `${selectedInterval}|${selectedAccountIds.join(',')}|${selectedCategoryIds.join(',')}`,
-        result: mainResult
-      };
-      const points = (mainResult && mainResult.points) ? mainResult.points : [];
+      const netBuckets = this._netBuckets(inp);
+      this._passGraph = { key: inp.key, series, netBuckets };
+      const points = (series && series.points) ? series.points : [];
+      // every range ends on today, so the total is today's balance
       const globalBalance = points.length > 0 ? points[points.length - 1].balance : 0;
       const formattedBalance = window.Store.formatCurrency(globalBalance, aggSel.currency); // 1.0.2 (BUG-36)
 
@@ -532,10 +572,18 @@ window.Views = {
       // v0.72 Phase 5: the Recent Activities section moved into the widget area
       // (the 'latest' widget, seeded on upgrade for never-configured users).
 
-      const hasCustomFilters = selectedInterval !== 'monthly' ||
-        (savedFilters.accounts && savedFilters.accounts.length > 0 && savedFilters.accounts.length < state.accounts.length) ||
-        (savedFilters.categories && savedFilters.categories.length > 0);
-      const intervalLabel = window.I18n.t('dash.interval.' + selectedInterval);
+      // 1.2.0 (UX-1): only an account/category subset is a "filtered view" on
+      // Home now — the saved interval is the expanded sheet's business, and
+      // the label names the range chip on screen.
+      const hasCustomFilters =
+        (savedAccounts.length > 0 && savedAccounts.length < state.accounts.length) ||
+        selectedCategoryIds.length > 0;
+      const intervalLabel = window.I18n.t('dash.range.' + range);
+      const pane = this._pane === 1 ? 1 : 0;
+      const rangeChips = this.RANGES.map(r => `
+                <button type="button" class="chart-toggle-btn hit-target${r === range ? ' active' : ''}" data-range="${r}" aria-pressed="${r === range ? 'true' : 'false'}">${window.I18n.t('dash.range.' + r)}</button>`).join('');
+      const pagerDot = (i, labelKey) =>
+        `<button type="button" class="home-pager-dot${pane === i ? ' is-active' : ''}" data-pane="${i}" aria-pressed="${pane === i ? 'true' : 'false'}" aria-label="${window.I18n.t(labelKey)}"></button>`;
 
       return `
         <div class="container" style="padding-top: var(--space-8); padding-bottom: 100px;">
@@ -562,7 +610,7 @@ window.Views = {
           
           ${hasCustomFilters ? `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
-              <span style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">
+              <span id="dash-filtered-label" style="font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">
                 ${window.I18n.t('dash.filteredView', { interval: intervalLabel })}
               </span>
               <button id="btn-reset-graph-filters" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: var(--color-expense, #ef4444); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px;" aria-label="${window.I18n.t('dash.resetViewAria')}">
@@ -572,8 +620,29 @@ window.Views = {
             </div>
           ` : ''}
 
-          <div id="chart-card-container" style="height: 160px; margin-bottom: var(--space-6); position: relative; margin-left: calc(-1 * var(--container-pad-left, var(--space-4))); margin-right: calc(-1 * var(--container-pad-right, var(--space-4))); cursor: pointer;" title="${window.I18n.t('dash.expandGraphTitle')}" role="button" aria-label="${window.I18n.t('dash.expandGraphAria')}">
-            <canvas id="balanceChart"></canvas>
+          <!-- 1.2.0 (UX-1/UX-3): two-pane pager — the balance curve with its
+               range chips, then the monthly net bars (End of month). -->
+          <div class="home-pager" id="home-pager" data-horizontal-scroll>
+            <section class="home-pane" data-pane="0">
+              <div class="home-range-chips chart-toggle-group" role="group" aria-label="${window.I18n.t('dash.rangeAria')}">${rangeChips}
+              </div>
+              <div id="chart-card-container" style="height: 160px; position: relative; cursor: pointer;" title="${window.I18n.t('dash.expandGraphTitle')}" role="button" aria-label="${window.I18n.t('dash.expandGraphAria')}">
+                <canvas id="balanceChart"></canvas>
+              </div>
+            </section>
+            <section class="home-pane" data-pane="1" id="netflow-pane" role="button" aria-label="${window.I18n.t('dash.paneNetAria')}">
+              <div class="home-pane-head">
+                <span class="section-title">${window.I18n.t('dash.monthlyNet')}</span>
+                <span class="widget-card-caption">${window.I18n.t('widget.eomCaption')}</span>
+              </div>
+              <div class="home-netflow-wrap" style="height: 160px; position: relative;">
+                <canvas id="netflowChart"></canvas>
+              </div>
+            </section>
+          </div>
+          <div class="home-pager-dots" role="group" aria-label="${window.I18n.t('dash.pagerAria')}">
+            ${pagerDot(0, 'dash.paneBalanceAria')}
+            ${pagerDot(1, 'dash.paneNetAria')}
           </div>
           
           <div style="margin-top: var(--space-8);">
@@ -589,14 +658,16 @@ window.Views = {
         </div>
       `;
     },
-    attachEvents(container, state) {
+    attachEvents(container, state, isEntry) {
       window.StackdHydrateIcons();
 
       // v0.84: smart insights section (between the Wallets rail and widgets)
       if (window.Insights) window.Insights.attachSection(container, state);
 
       // v0.72: home widget area (replaced the static Financial Milestone card)
-      if (window.Widgets) window.Widgets.attachSection(container, state);
+      // 1.2.0 (UX-7): isEntry (main.js render loop) tells the widgets this is
+      // the first pass after navigation, so ring charts may play their sweep.
+      if (window.Widgets) window.Widgets.attachSection(container, state, { isEntry: !!isEntry });
 
       // Wallet Card Interactions
       container.querySelectorAll('.wallet-card').forEach(card => {
@@ -647,181 +718,367 @@ window.Views = {
         });
       }
 
-      // 12-Month Aggregated Balance Chart
-      const ctx = document.getElementById('balanceChart');
-      if (ctx) {
-        if (!window.Chart) {
-          console.error('DashboardView: window.Chart is NOT available.');
-          return;
-        }
-
-        try {
-          const savedFilters = state.expandedGraphFilters || { interval: 'monthly', accounts: [], categories: [] };
-          const selectedInterval = savedFilters.interval || 'monthly';
-          const selectedAccountIds = (savedFilters.accounts && savedFilters.accounts.length > 0)
-            ? savedFilters.accounts
-            : window.Store.primaryAccountIds(); // v1.02
-          const selectedCategoryIds = savedFilters.categories || [];
-
-          // v0.93: render() computed this exact series moments ago in the same
-          // synchronous pass — reuse it (key guards against filter drift).
-          const graphKey = `${selectedInterval}|${selectedAccountIds.join(',')}|${selectedCategoryIds.join(',')}`;
-          const graphResult = (this._passGraph && this._passGraph.key === graphKey)
-            ? this._passGraph.result
-            : window.Store.computeGraphBalances({
-                interval: selectedInterval,
-                accountIds: selectedAccountIds,
-                categoryIds: selectedCategoryIds
-              });
-
-          const mainPoints = (graphResult && graphResult.points) ? graphResult.points : [];
-          const monthLabels = (graphResult && graphResult.monthLabels) ? graphResult.monthLabels : [];
-          const isQuarter = selectedInterval === 'quarter';
-
-          // Theme-aware chart colors (dark mode contrast fix)
-          const isDark = state.activeTheme === 'dark';
-          const mainLineColor = isDark ? '#38bdf8' : '#5f5e5e';
-          const mainFillColor = isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(95, 94, 94, 0.05)';
-
-          // 1.0.2 (BUG-36): the total's currency (as in render), and only the
-          // accounts the total sums get a dashed line (D-U8-9).
-          const savedAccounts = savedFilters.accounts || [];
-          const totalCurrency = window.Store.aggregateSelection(
-            window.Store.isPrimarySelection(savedAccounts) ? [] : savedAccounts).currency;
-          const inAgg = window.Store.aggregatePredicate(selectedAccountIds);
-
-          const datasets = [{
-            label: window.I18n.t('dash.totalBalance'),
-            data: mainPoints,
-            currency: totalCurrency,
-            borderColor: mainLineColor,
-            backgroundColor: mainFillColor,
-            borderWidth: 3,
-            fill: true,
-            tension: 0,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            pointBackgroundColor: isDark ? '#161e2e' : '#fff',
-            pointBorderWidth: 4,
-            pointBorderColor: mainLineColor
-          }];
-
-          const visibleAccounts = state.accounts.filter(a => selectedAccountIds.includes(a.id) && inAgg(a.id));
-          visibleAccounts.forEach(acc => {
-            const accResult = window.Store.computeGraphBalances({
-              interval: selectedInterval,
-              accountIds: [acc.id],
-              categoryIds: selectedCategoryIds
-            });
-
-            datasets.push({
-              label: acc.name,
-              data: (accResult && accResult.points) ? accResult.points : [],
-              currency: acc.currency, // 1.0.2 (BUG-36)
-              borderColor: acc.color,
-              borderWidth: 1.5,
-              borderDash: [5, 5],
-              fill: false,
-              tension: 0,
-              pointRadius: 0
-            });
+      // 1.2.0 (UX-1): range chips. A tap rebuilds ONLY the balance chart —
+      // no dispatch (a dispatch would re-render the whole dashboard).
+      container.querySelectorAll('.home-range-chips [data-range]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const r = btn.dataset.range;
+          if (!this.RANGES.includes(r) || r === this._range) return;
+          this._range = r;
+          container.querySelectorAll('.home-range-chips [data-range]').forEach(b => {
+            const on = b.dataset.range === r;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
           });
+          const label = container.querySelector('#dash-filtered-label');
+          if (label) label.textContent = window.I18n.t('dash.filteredView', { interval: window.I18n.t('dash.range.' + r) });
+          this._mountBalanceChart(container, state);
+        });
+      });
 
-          // v0.80: destroy the previous instance first. Every dispatch re-renders
-          // the view and replaces this canvas; a bare `new Chart` leaked one
-          // instance (pinned to its detached canvas) into Chart.instances per
-          // dispatch, which exhausted the Android WebView canvas memory budget
-          // and made freshly-mounted widget canvases paint blank.
-          if (this._balanceChart) {
-            try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
-            this._balanceChart = null;
+      // 1.2.0 (UX-3): pane 2 opens Analytics
+      const netflowPane = container.querySelector('#netflow-pane');
+      if (netflowPane) {
+        netflowPane.addEventListener('click', () => window.Router.navigate('#analytics'));
+      }
+
+      // 1.2.0 (UX-3): the pager. Every dispatch replaces this DOM, so the
+      // visible pane is restored synchronously (no smooth scroll) BEFORE the
+      // charts mount; a pane change is view state only, never a dispatch.
+      this._wirePager(container);
+
+      if (!container.querySelector('#balanceChart')) return;
+      if (!window.Chart) {
+        console.error('DashboardView: window.Chart is NOT available.');
+        return;
+      }
+      this._mountBalanceChart(container, state);
+      this._mountNetflowChart(container, state);
+    },
+
+    _wirePager(container) {
+      if (this._paneTimer) { clearTimeout(this._paneTimer); this._paneTimer = null; }
+      const pager = container.querySelector('#home-pager');
+      if (!pager) return;
+      const dots = container.querySelectorAll('.home-pager-dot');
+      const sync = (idx) => {
+        this._pane = idx;
+        dots.forEach(d => {
+          const on = Number(d.dataset.pane) === idx;
+          d.classList.toggle('is-active', on);
+          d.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+      };
+      if (this._pane) pager.scrollLeft = this._pane * pager.clientWidth;
+      sync(this._pane === 1 ? 1 : 0);
+
+      pager.addEventListener('scroll', () => {
+        if (this._paneTimer) clearTimeout(this._paneTimer);
+        this._paneTimer = setTimeout(() => {
+          this._paneTimer = null;
+          // a re-render inside the debounce detached this pager: its
+          // scrollLeft no longer means anything
+          if (pager.isConnected === false) return;
+          const w = pager.clientWidth;
+          if (!w) return;
+          sync(Math.max(0, Math.min(1, Math.round(pager.scrollLeft / w))));
+        }, 80);
+      }, { passive: true });
+
+      dots.forEach(dot => {
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = Number(dot.dataset.pane) === 1 ? 1 : 0;
+          const reduce = typeof window.matchMedia === 'function' &&
+            !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          const left = idx * pager.clientWidth;
+          if (typeof pager.scrollTo === 'function') {
+            pager.scrollTo({ left, behavior: reduce ? 'auto' : 'smooth' });
+          } else {
+            pager.scrollLeft = left;
           }
-          this._balanceChart = new window.Chart(ctx, {
-            type: 'line',
-            data: { datasets },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              animation: { duration: 0 },
-              // v1.15: without this the plot area runs flush to the canvas on
-              // the top and right, so the balance line is drawn ON the edge
-              // and half of its stroke is clipped — it reads as a chart that
-              // runs off the screen. Chart.js only reserved room at some
-              // widths (a 390pt viewport got 10px, a 430pt one none), so the
-              // largest iPhones showed it worst. Found while capturing the
-              // store screenshots at 430pt.
-              layout: { padding: { top: 6, right: 8 } },
-              interaction: { mode: 'index', intersect: false },
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  backgroundColor: isDark ? '#161e2e' : '#ffffff',
-                  titleColor: isDark ? '#94a3b8' : '#596065',
-                  bodyColor: isDark ? '#f8fafc' : '#2d3338',
-                  bodyFont: { family: 'Manrope', size: 13, weight: 'bold' },
-                  displayColors: true,
-                  boxPadding: 4,
-                  borderColor: isDark ? 'rgba(51, 65, 85, 0.8)' : '#e4e9ee',
-                  borderWidth: 1,
-                  padding: 10,
-                  itemSort: (a, b) => b.parsed.y - a.parsed.y,
-                  callbacks: {
-                    title: (items) => items[0]?.raw?.fullLabel || items[0]?.raw?.label || '',
-                    // 1.0.2 (BUG-36): each line in its own currency
-                    label: (ctx) => ` ${ctx.dataset.label}: ${window.Store.formatCurrency(ctx.parsed.y, ctx.dataset.currency)}`
+          sync(idx);
+        });
+      });
+    },
+
+    // 1.2.0 (UX-1): the Trade Republic-style curve — one trend-coloured
+    // smooth line (green when the range ends at or above where it started,
+    // red below), a fading gradient fill, a dotted baseline at the range's
+    // starting value and a dot on today. No per-account lines on Home
+    // (Decision 2: the expanded sheet keeps them).
+    _mountBalanceChart(container, state) {
+      const canvas = container.querySelector('#balanceChart');
+      if (!canvas || !window.Chart) return;
+      try {
+        const inp = this._graphInputs(state);
+        // v0.93: render() computed this exact series moments ago in the same
+        // synchronous pass — reuse it (the key guards against range/filter drift).
+        const series = (this._passGraph && this._passGraph.key === inp.key && this._passGraph.series)
+          ? this._passGraph.series
+          : window.Store.computeBalanceSeries({
+              range: inp.range,
+              accountIds: inp.selectedAccountIds,
+              categoryIds: inp.selectedCategoryIds
+            });
+        if (this._passGraph && this._passGraph.key !== inp.key) {
+          this._passGraph = { key: inp.key, series, netBuckets: this._passGraph.netBuckets };
+        }
+        const points = (series && series.points) ? series.points : [];
+        const tickLabels = (series && series.tickLabels) ? series.tickLabels : [];
+        const last = Math.max(0, points.length - 1);
+        const baseline = series ? series.baseline : 0;
+        const tickIdx = tickLabels.map((l, i) => (l ? i : -1)).filter(i => i >= 0);
+
+        const pal = window.Components.NetFlowChart._themeColors();
+        const up = points.length === 0 || points[last].balance >= baseline;
+        const trend = up ? pal.trendUp : pal.trendDown;
+        const rgb = up ? pal.trendUpRgb : pal.trendDownRgb;
+        const flatFill = 'rgba(' + rgb + ',0.12)';
+
+        // 1.0.2 (BUG-36): the total's currency (as in render)
+        const totalCurrency = window.Store.aggregateSelection(
+          window.Store.isPrimarySelection(inp.savedAccounts) ? [] : inp.savedAccounts).currency;
+
+        const datasets = [{
+          label: window.I18n.t('dash.totalBalance'),
+          data: points,
+          currency: totalCurrency,
+          borderColor: trend,
+          borderWidth: 2.5,
+          cubicInterpolationMode: 'monotone',
+          fill: 'start',
+          // The gradient needs the laid-out chart area: the first option
+          // resolution (and the unit-test mocks) get a flat fill. Cached on
+          // the chart by area geometry so hovering never allocates one.
+          backgroundColor: (c) => {
+            const chart = c && c.chart;
+            const area = chart && chart.chartArea;
+            const g2d = chart && chart.ctx;
+            if (!area || !g2d || typeof g2d.createLinearGradient !== 'function') return flatFill;
+            const memo = chart.$stackdFill;
+            if (memo && memo.top === area.top && memo.bottom === area.bottom && memo.rgb === rgb) return memo.g;
+            const g = g2d.createLinearGradient(0, area.top, 0, area.bottom);
+            g.addColorStop(0, 'rgba(' + rgb + ',0.28)');
+            g.addColorStop(1, 'rgba(' + rgb + ',0)');
+            chart.$stackdFill = { top: area.top, bottom: area.bottom, rgb, g };
+            return g;
+          },
+          pointRadius: (c) => (c && c.dataIndex === last ? 4 : 0),
+          pointHoverRadius: 6,
+          pointBackgroundColor: trend,
+          pointBorderColor: pal.surface,
+          pointBorderWidth: 2.5,
+          order: 0
+        }, {
+          // the dotted baseline: the range's starting value, end to end
+          label: '',
+          // one point per curve point, so 'index' tooltips line up
+          data: points.map(p => ({ x: p.x, y: baseline })),
+          borderColor: pal.baseline,
+          borderWidth: 1,
+          borderDash: [2, 4],
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          fill: false,
+          order: 1,
+          _baseline: true
+        }];
+
+        // v0.80: destroy the previous instance first. Every dispatch re-renders
+        // the view and replaces this canvas; a bare `new Chart` leaked one
+        // instance (pinned to its detached canvas) into Chart.instances per
+        // dispatch, which exhausted the Android WebView canvas memory budget
+        // and made freshly-mounted widget canvases paint blank.
+        if (this._balanceChart) {
+          try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
+          this._balanceChart = null;
+        }
+        this._balanceChart = new window.Chart(canvas, {
+          type: 'line',
+          data: { datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 },
+            // v1.15: without padding the plot runs flush to the canvas and
+            // half of the stroke is clipped on the largest iPhones. 1.2.0
+            // (UX-1): a little more on the right for today's end dot.
+            layout: { padding: { top: 8, right: 10, left: 2 } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                filter: (item) => !item.dataset._baseline,
+                backgroundColor: pal.tooltipBg,
+                titleColor: pal.tooltipTitle,
+                bodyColor: pal.tooltipBody,
+                bodyFont: { family: "Manrope, system-ui, -apple-system, sans-serif", size: 13, weight: 'bold' },
+                displayColors: false,
+                borderColor: pal.tooltipBorder,
+                borderWidth: 1,
+                padding: 10,
+                callbacks: {
+                  title: (items) => items[0]?.raw?.fullLabel || items[0]?.raw?.label || '',
+                  // 1.0.2 (BUG-36): in the total's currency
+                  label: (ctx) => ` ${window.Store.formatCurrency(ctx.parsed.y, ctx.dataset.currency)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear',
+                min: 0,
+                max: last,
+                grid: { display: false },
+                border: { display: false },
+                // only the labelled indexes become ticks (1M: one a week, 6M/YTD:
+                // one a month, Max: at most 12), then autoSkip thins further
+                afterBuildTicks: (axis) => { axis.ticks = tickIdx.map(v => ({ value: v })); },
+                ticks: {
+                  stepSize: 1,
+                  autoSkip: true,
+                  autoSkipPadding: 6,
+                  maxRotation: 45,
+                  minRotation: 0,
+                  font: (context) => {
+                    const width = context.chart ? context.chart.width : 360;
+                    return {
+                      size: width < 360 ? 9 : 10,
+                      family: "Manrope, system-ui, -apple-system, sans-serif",
+                      weight: '600'
+                    };
+                  },
+                  color: pal.tickColor,
+                  callback: (val) => {
+                    const idx = Math.round(val);
+                    if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < tickLabels.length) {
+                      return tickLabels[idx] || '';
+                    }
+                    return '';
                   }
                 }
               },
-              scales: {
-                x: {
-                  type: 'linear',
-                  min: 0,
-                  max: isQuarter ? 3 : (selectedInterval === 'weekly' ? 51 : 11),
-                  grid: { display: false },
-                  ticks: {
-                    stepSize: isQuarter ? 1 : (selectedInterval === 'weekly' ? 4 : 1),
-                    autoSkip: true,
-                    autoSkipPadding: 6,
-                    maxRotation: 45,
-                    minRotation: 0,
-                    font: (context) => {
-                      const width = context.chart ? context.chart.width : 360;
-                      return {
-                        size: width < 360 ? 9 : 10,
-                        family: 'Manrope',
-                        weight: '600'
-                      };
-                    },
-                    color: isDark ? '#94a3b8' : '#64748b',
-                    callback: (val) => {
-                      const idx = Math.round(val);
-                      if (Math.abs(val - idx) < 0.001 && idx >= 0 && idx < monthLabels.length) {
-                        return monthLabels[idx];
-                      }
-                      return '';
-                    }
-                  }
-                },
-                y: { display: false, beginAtZero: false }
+              y: { display: false, beginAtZero: false }
+            }
+          }
+        });
+      } catch (err) {
+        console.error('DashboardView: FAILED to initialize Chart:', err);
+      }
+    },
+
+    // 1.2.0 (UX-3): pane 2 — the last 12 months' net (income − expense, no
+    // transfer legs or opening balances) as bars, End of month like the
+    // header's "projected EOM"; the current month at full strength.
+    _mountNetflowChart(container, state) {
+      const canvas = container.querySelector('#netflowChart');
+      if (!canvas || !window.Chart) return;
+      try {
+        const inp = this._graphInputs(state);
+        const buckets = (this._passGraph && this._passGraph.key === inp.key && this._passGraph.netBuckets)
+          ? this._passGraph.netBuckets
+          : this._netBuckets(inp);
+        const pal = window.Components.NetFlowChart._themeColors();
+        const nets = buckets.map(b => Math.round((Number(b.net) || 0) * 100) / 100);
+        const lastIdx = nets.length - 1;
+        const colors = nets.map((n, i) =>
+          'rgba(' + (n >= 0 ? pal.trendUpRgb : pal.trendDownRgb) + ',' + (i === lastIdx ? '0.9' : '0.55') + ')');
+        const currency = window.Store.aggregateSelection(
+          window.Store.isPrimarySelection(inp.savedAccounts) ? [] : inp.savedAccounts).currency;
+
+        if (this._netflowChart) {
+          try { this._netflowChart.destroy(); } catch (e) { /* already gone */ }
+          this._netflowChart = null;
+        }
+        this._netflowChart = new window.Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels: buckets.map(b => b.label),
+            datasets: [{
+              label: window.I18n.t('dash.monthlyNet'),
+              data: nets,
+              currency,
+              backgroundColor: colors,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.72,
+              categoryPercentage: 0.8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 },
+            layout: { padding: { top: 8, right: 4, left: 2 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: pal.tooltipBg,
+                titleColor: pal.tooltipTitle,
+                bodyColor: pal.tooltipBody,
+                bodyFont: { family: "Manrope, system-ui, -apple-system, sans-serif", size: 13, weight: 'bold' },
+                displayColors: false,
+                borderColor: pal.tooltipBorder,
+                borderWidth: 1,
+                padding: 10,
+                callbacks: {
+                  label: (ctx) => ` ${window.Store.formatCurrency(ctx.parsed.y, ctx.dataset.currency)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { display: false },
+                ticks: {
+                  autoSkip: true,
+                  autoSkipPadding: 6,
+                  maxRotation: 45,
+                  minRotation: 0,
+                  font: (context) => {
+                    const width = context.chart ? context.chart.width : 360;
+                    return { size: width < 360 ? 9 : 10, family: "Manrope, system-ui, -apple-system, sans-serif", weight: '600' };
+                  },
+                  color: pal.tickColor
+                }
+              },
+              y: {
+                display: true,
+                ticks: { display: false },
+                border: { display: false },
+                // only the zero line is drawn
+                grid: {
+                  color: (c) => (c && c.tick && c.tick.value === 0 ? pal.baseline : 'transparent'),
+                  drawTicks: false
+                }
               }
             }
-          });
-        } catch (err) {
-          console.error('DashboardView: FAILED to initialize Chart:', err);
-        }
+          }
+        });
+      } catch (err) {
+        console.error('DashboardView: FAILED to initialize the net-flow chart:', err);
       }
     },
 
     // v0.72: main.js calls this on transition to another view. Widget charts are
     // tracked by widget id (not by canvas), so they must be released explicitly
     // or they keep detached canvases alive for the rest of the session.
-    // v0.80: the balance line chart rides the same rule.
+    // v0.80: the balance line chart rides the same rule; 1.2.0 (UX-3): so does
+    // the net-flow pane. The range chip survives; the pane resets.
     destroy() {
       if (window.Widgets) window.Widgets.destroyCharts();
       if (this._balanceChart) {
         try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
         this._balanceChart = null;
       }
+      if (this._netflowChart) {
+        try { this._netflowChart.destroy(); } catch (e) { /* already gone */ }
+        this._netflowChart = null;
+      }
+      if (this._paneTimer) { clearTimeout(this._paneTimer); this._paneTimer = null; }
+      this._pane = 0;
     }
   },
 
@@ -1523,6 +1780,23 @@ window.Views = {
   // ADD TRANSACTION VIEW (Phase 4)
   // -------------------------
   AddTransactionView: {
+    // 1.2.0 (UX-10): one attachment tile of the form's strip. An image gets
+    // its thumbnail src in attachEvents (Attachments.displayUrl is async).
+    _attachmentTileHtml(meta) {
+      const name = String(meta.name || '');
+      const id = String(meta.id || '');
+      const thumb = meta.kind === 'pdf'
+        ? '<span class="tx-attachment-pdf"><i data-lucide="file-text" aria-hidden="true"></i></span>'
+        : `<img class="tx-attachment-img" alt="" data-att-img="${escapeAttr(id)}">`;
+      return `<div class="tx-attachment" data-attachment="${escapeAttr(id)}">`
+        + `<button type="button" class="tx-attachment-open" data-attachment-open="${escapeAttr(id)}" aria-label="${escapeAttr(window.I18n.t('attach.open', { name }))}">${thumb}<span class="tx-attachment-name">${esc(name)}</span></button>`
+        + `<button type="button" class="tx-attachment-remove" data-attachment-remove="${escapeAttr(id)}" aria-label="${escapeAttr(window.I18n.t('attach.remove', { name }))}"><i data-lucide="x" aria-hidden="true"></i></button>`
+        + '</div>';
+    },
+    _attAdded: null, // Map id → meta: files stored by this visit, not saved yet
+    _attUrls: null, // thumbnail URLs handed out by Attachments.displayUrl
+    _attFormKey: null,
+
     // 1.0.2 (BUG-25): an opening balance is owned by its account (UPDATE_ACCOUNT).
     // The form has no opening-balance mode: it showed a -€450 card opening as
     // "Income 450" and an untouched Update stored income +450. This read-only
@@ -1662,9 +1936,20 @@ window.Views = {
         }
       }
 
+      // 1.2.0 (UX-10): the row's attachments (a transfer's live on its
+      // expense leg; a leg restored from elsewhere is read as a fallback)
+      let initialAttachments = [];
+      if (txToEdit) {
+        const legs = txToEdit.transferRef ? state.transactions.filter(t => t.transferRef === txToEdit.transferRef) : [txToEdit];
+        const has = (t) => Array.isArray(t.attachments) && t.attachments.length > 0;
+        const holder = legs.find(t => t.type === 'expense' && has(t)) || legs.find(has);
+        if (holder) initialAttachments = holder.attachments.slice();
+      }
+
       // Apply temporary draft form state if available (e.g. while adding a new category)
       if (window._draftTxFormState) {
         const draft = window._draftTxFormState;
+        if (Array.isArray(draft.attachments)) initialAttachments = draft.attachments; // 1.2.0 (UX-10)
         if (draft.type) initialType = draft.type;
         if (draft.amount !== undefined) initialAmount = draft.amount;
         if (draft.date) initialDate = draft.date;
@@ -1779,9 +2064,9 @@ window.Views = {
               <label class="form-label" for="tx-tags-input">${window.I18n.t('form.tags')}</label>
               <div id="tx-tags-container" class="form-control" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; min-height: 44px; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-md); width: 100%; max-width: 100%; box-sizing: border-box;">
                 ${initialTags.map(tagChipHtml).join('')}
-                <input type="text" id="tx-tags-input" placeholder="${window.I18n.t('form.addTagPlaceholder')}" autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
+                <input type="text" id="tx-tags-input" readonly inputmode="none" aria-haspopup="dialog" placeholder="${window.I18n.t('form.addTagPlaceholder')}" autocomplete="off" style="border: none; background: transparent; outline: none; flex: 1; min-width: 100px; font-family: inherit; font-size: inherit; color: var(--text-primary);">
+                <span class="tx-tags-chevron" aria-hidden="true">›</span>
               </div>
-              <div id="tx-tags-autocomplete" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" role="listbox"></div>
             </div>
 
             <div class="form-group" style="margin-bottom: 0; position: relative;">
@@ -1821,6 +2106,24 @@ window.Views = {
               <input type="hidden" id="tx-recurrence-interval" value="${initialRecurrenceInterval}">
               <input type="hidden" id="tx-recurrence-freq" value="${initialRecurrenceFreq}">
               <input type="hidden" id="tx-recurrence-series-id" value="${escapeAttr(initialRecurrenceSeriesId)}">
+            </div>
+
+            <!-- 1.2.0 (UX-10): receipts (photos / PDFs). The row opens the
+                 attachment sheet; the three hidden inputs are what it clicks;
+                 #tx-attachments-data mirrors the metas (draft + dirty check). -->
+            <div class="card card-elevated" style="padding: var(--space-3); margin-top: var(--space-4); display: flex; flex-direction: column; gap: 12px; background: transparent; border: 1px solid var(--color-border); box-shadow: none;" id="group-attachments">
+              <div id="tx-attachments-row" class="touch-target" role="button" tabindex="0" aria-label="${escapeAttr(window.I18n.t('attach.title'))}" style="display: flex; align-items: center; justify-content: space-between; width: 100%; cursor: pointer;">
+                <div style="flex: 1; min-width: 0;">
+                  <strong style="display: block; font-family: var(--font-family-body); font-size: 1rem; color: var(--text-primary); margin-bottom: 2px;">${window.I18n.t('form.attachments')}</strong>
+                  <span id="tx-attachments-text" style="font-size: var(--text-sm); color: var(--text-secondary);">${window.I18n.t('form.attachments.count', { count: initialAttachments.length })}</span>
+                </div>
+                <i data-lucide="paperclip" aria-hidden="true" style="width: 20px; height: 20px; color: var(--text-tertiary); flex-shrink: 0;"></i>
+              </div>
+              <div id="tx-attachments-strip" class="tx-attachments-strip"${initialAttachments.length ? '' : ' hidden'}>${initialAttachments.map(m => window.Views.AddTransactionView._attachmentTileHtml(m)).join('')}</div>
+              <input type="hidden" id="tx-attachments-data" value="${escapeAttr(JSON.stringify(initialAttachments))}">
+              <input type="file" id="tx-att-camera" accept="image/*" capture="environment" hidden tabindex="-1" aria-hidden="true">
+              <input type="file" id="tx-att-library" accept="image/*" hidden tabindex="-1" aria-hidden="true">
+              <input type="file" id="tx-att-pdf" accept="application/pdf,.pdf" hidden tabindex="-1" aria-hidden="true">
             </div>
           </div>
           
@@ -2028,7 +2331,9 @@ window.Views = {
       
       // Focus amount on load if not edit
       if (!document.getElementById('tx-edit-id')) {
-        setTimeout(() => amountInput.focus(), 100);
+        // 1.2.0 (UX-8): after the view transition (--dur-view 250ms), so
+        // WebKit does not paint the caret at the pre-animation rect.
+        setTimeout(() => amountInput.focus(), 320);
       }
       
       // Recurrent Logic Display Setup
@@ -2327,10 +2632,12 @@ window.Views = {
       btnAddCategory.addEventListener('click', () => showNewCategoryModal());
       
       // Tagging Logic
+      // 1.2.0 (UX-9): the field is a readonly trigger for
+      // Components.TagPickerSheet (no typing in the form, so no space/comma
+      // commit and no inline autocomplete). The chips stay removable inline.
       let currentTags = Array.from(container.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
       const tagsInput = document.getElementById('tx-tags-input');
       const tagsContainer = document.getElementById('tx-tags-container');
-      const autocompleteBox = document.getElementById('tx-tags-autocomplete');
 
       const renderTags = () => {
         const chipsHtml = currentTags.map(tagChipHtml).join(''); // 1.0.2 (live-U1-N3)
@@ -2339,6 +2646,7 @@ window.Views = {
         
         container.querySelectorAll('.remove-tag').forEach(btn => {
            btn.addEventListener('click', (e) => {
+              e.stopPropagation(); // removing a chip does not open the picker
               const tag = btn.closest('.tag-chip').dataset.tag;
               currentTags = currentTags.filter(t => t !== tag);
               renderTags();
@@ -2347,59 +2655,34 @@ window.Views = {
       };
       renderTags();
 
-      const addTag = (val) => {
-         const t = val.trim().toLowerCase().replace(/[^a-z0-9\-_]/g, '');
-         if (t && !currentTags.includes(t)) {
-            currentTags.push(t);
+      const openTagPicker = () => {
+        const isTransfer = typeInput.value === 'transfer';
+        window.Components.TagPickerSheet.show({
+          selectedTags: currentTags.slice(),
+          categoryId: isTransfer ? '' : categorySelect.value,
+          typeHint: typeInput.value,
+          onApply: (tags) => {
+            currentTags = tags.slice();
             renderTags();
-         }
-         tagsInput.value = '';
-         autocompleteBox.style.display = 'none';
+          }
+        });
       };
 
-      tagsContainer.addEventListener('click', () => tagsInput.focus());
-
+      tagsInput.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); // no focus, no keyboard: the sheet is the editor
+        tagsInput.blur();
+      });
+      tagsContainer.addEventListener('click', (e) => {
+        if (e.target.closest('.remove-tag')) return;
+        e.preventDefault();
+        tagsInput.blur();
+        openTagPicker();
+      });
       tagsInput.addEventListener('keydown', (e) => {
-         if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-            e.preventDefault();
-            addTag(tagsInput.value);
-         } else if (e.key === 'Backspace' && tagsInput.value === '' && currentTags.length > 0) {
-            currentTags.pop();
-            renderTags();
-         }
-      });
-
-      let debounceTimer = null;
-      tagsInput.addEventListener('input', (e) => {
-         const val = e.target.value.trim().toLowerCase();
-         clearTimeout(debounceTimer);
-         
-         if (!val) {
-            autocompleteBox.style.display = 'none';
-            return;
-         }
-
-         debounceTimer = setTimeout(() => {
-            const matches = window.Store.getAllUniqueTags(val).filter(t => !currentTags.includes(t));
-            if (matches.length > 0) {
-               autocompleteBox.innerHTML = matches.map(t => `<div class="tag-suggestion touch-target" data-tag="${escapeAttr(t)}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color);">#${esc(t)}</div>`).join('');
-               autocompleteBox.style.display = 'block';
-               
-               container.querySelectorAll('.tag-suggestion').forEach(item => {
-                  item.addEventListener('click', () => {
-                     addTag(item.dataset.tag);
-                  });
-               });
-            } else {
-               autocompleteBox.style.display = 'none';
-            }
-         }, 300);
-      });
-
-      document.addEventListener('click', (e) => {
-         if (!tagsContainer.contains(e.target) && !autocompleteBox.contains(e.target)) {
-            autocompleteBox.style.display = 'none';
-         }
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openTagPicker();
+        }
       });
 
       // Note Autocomplete Logic
@@ -2455,15 +2738,130 @@ window.Views = {
          }
       });
 
+      // 1.2.0 (UX-10): attachments. A picked file is stored at once (so its
+      // thumbnail can show); currentAttachments (metas) mirrors currentTags
+      // and rides on the save. Files added by THIS visit and removed again,
+      // or left behind by a visit that ends without saving, are deleted here
+      // / in destroy(); a stored receipt removed in the form goes when the
+      // save lands (Store._dropDetachedAttachments).
+      const attView = window.Views.AddTransactionView;
+      const Att = window.Attachments;
+      const attRow = document.getElementById('tx-attachments-row');
+      const attStrip = document.getElementById('tx-attachments-strip');
+      const attData = document.getElementById('tx-attachments-data');
+      const attText = document.getElementById('tx-attachments-text');
+      const attInputs = {
+        camera: document.getElementById('tx-att-camera'),
+        library: document.getElementById('tx-att-library'),
+        pdf: document.getElementById('tx-att-pdf')
+      };
+      const attKey = (editIdEl && editIdEl.value) || 'new';
+      if (attView._attFormKey !== attKey || !attView._attAdded) {
+        if (attView._attAdded && attView._attAdded.size && Att) Att.removeAll(Array.from(attView._attAdded.values()));
+        attView._attAdded = new Map();
+        attView._attUrls = [];
+        attView._attFormKey = attKey;
+      }
+      let currentAttachments = [];
+      try { currentAttachments = JSON.parse((attData && attData.value) || '[]'); } catch (e) { currentAttachments = []; }
+      if (!Array.isArray(currentAttachments)) currentAttachments = [];
+      const attMax = (Att && Att.MAX_PER_TX) || 8;
+      const attNotice = (key, params) => window.Components.NoticeSheet.show({
+        id: 'attachment-notice', tone: 'error', title: window.I18n.t('form.attachments'), body: window.I18n.t(key, params)
+      });
+      const loadThumbs = () => {
+        if (!Att || !attStrip) return;
+        attStrip.querySelectorAll('img[data-att-img]').forEach(img => {
+          const meta = currentAttachments.find(m => String(m.id) === img.getAttribute('data-att-img'));
+          if (!meta) return;
+          Promise.resolve(Att.displayUrl(meta)).then((url) => {
+            if (!url) return;
+            if (!attView._attUrls || !img.isConnected) { if (!attView._attUrls) Att.revoke(url); return; } // the form went away meanwhile
+            attView._attUrls.push(url);
+            img.src = url;
+          });
+        });
+      };
+      const renderAttachments = () => {
+        if (!attStrip) return;
+        attStrip.innerHTML = currentAttachments.map(m => attView._attachmentTileHtml(m)).join('');
+        attStrip.hidden = currentAttachments.length === 0;
+        if (attData) attData.value = JSON.stringify(currentAttachments);
+        if (attText) attText.textContent = window.I18n.t('form.attachments.count', { count: currentAttachments.length });
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(attStrip);
+        loadThumbs();
+      };
+      const removeAttachment = (id) => {
+        const meta = currentAttachments.find(m => String(m.id) === String(id));
+        if (!meta) return;
+        currentAttachments = currentAttachments.filter(m => m !== meta);
+        if (attView._attAdded.has(meta.id)) { // never saved: its file goes now
+          attView._attAdded.delete(meta.id);
+          if (Att) Att.remove(meta);
+        }
+        renderAttachments();
+      };
+      const addFiles = async (files) => {
+        if (!Att) { attNotice('attach.failed'); return; }
+        for (const file of files) {
+          if (currentAttachments.length >= attMax) { attNotice('attach.tooMany', { max: attMax }); return; }
+          const prepared = await Att.prepare(file);
+          if (!prepared || prepared.error) {
+            const err = prepared && prepared.error;
+            attNotice(err === 'tooLarge' ? 'attach.tooLarge' : err === 'unsupported' ? 'attach.unsupported' : err === 'unreadable' ? 'attach.unreadable' : 'attach.failed');
+            continue;
+          }
+          const meta = await Att.add(editIdEl ? editIdEl.value : '', prepared);
+          if (!meta) { attNotice('attach.failed'); continue; }
+          if (!attStrip || !attStrip.isConnected) { Att.remove(meta); return; } // the form went away meanwhile
+          attView._attAdded.set(meta.id, meta);
+          currentAttachments.push(meta);
+          renderAttachments();
+        }
+      };
+      Object.keys(attInputs).forEach(k => {
+        const input = attInputs[k];
+        if (!input) return;
+        input.addEventListener('change', () => {
+          const files = Array.from(input.files || []);
+          input.value = ''; // the same file can be picked again; the dirty check never sees a path
+          if (files.length) addFiles(files);
+        });
+      });
+      const openAttachmentSheet = () => {
+        if (currentAttachments.length >= attMax) { attNotice('attach.tooMany', { max: attMax }); return; }
+        window.Components.AttachmentSheet.show({
+          onCamera: () => attInputs.camera && attInputs.camera.click(),
+          onLibrary: () => attInputs.library && attInputs.library.click(),
+          onPdf: () => attInputs.pdf && attInputs.pdf.click()
+        });
+      };
+      if (attRow) {
+        attRow.addEventListener('click', openAttachmentSheet);
+        attRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAttachmentSheet(); } });
+      }
+      if (attStrip) {
+        attStrip.addEventListener('click', (e) => {
+          const rm = e.target.closest('[data-attachment-remove]');
+          if (rm) { removeAttachment(rm.getAttribute('data-attachment-remove')); return; }
+          const open = e.target.closest('[data-attachment-open]');
+          if (!open) return;
+          const meta = currentAttachments.find(m => String(m.id) === open.getAttribute('data-attachment-open'));
+          if (meta) window.Components.AttachmentViewer.show({ meta, txId: editIdEl ? editIdEl.value : '', onDelete: (m) => removeAttachment(m.id) });
+        });
+        loadThumbs();
+      }
+      // what the save sends (no key on a new row without any, nor on an edit
+      // of a row that never had one, so no empty arrays pile up)
+      const hadAttachments = currentAttachments.length > 0;
+      const attachmentsPayload = () => ((currentAttachments.length || hadAttachments) ? { attachments: currentAttachments.slice() } : {});
+      // a save that landed owns this visit's files: destroy() keeps them
+      const attLanded = (ok) => { if (ok !== false) attView._attAdded = new Map(); return ok; };
+
       // Save Transaction
       // 1.0.3 (BUG-41): a named handler, so the opening-date sheet can re-run
       // the save with the user's choice (opts.openingChoice: 'move' | 'anyway').
       const onSave = (opts = {}) => {
-        // Auto-add any pending tag text before saving
-        if (tagsInput && tagsInput.value.trim()) {
-           addTag(tagsInput.value);
-        }
-
         // 1.0.1 (BUG-08/BUG-18): validate every required field in one pass —
         // inline messages under each field, focus (and scroll to) the first.
         // UI-only: the store stays ungated, imports legitimately insert ''
@@ -2662,7 +3060,7 @@ window.Views = {
         };
 
         // Build the actual dispatch logic as a callable function
-        const doDispatch = (scope) => window.Store.batch(() => { if (opts.openingChoice === 'move') openingConflicts.forEach(c => window.Store.dispatch('UPDATE_ACCOUNT', { id: c.accountId, openingDate: date })); applyChange(scope); }); // 1.0.2 (BUG-34): a type conversion lands whole or not at all; 1.0.3 (BUG-41): with the opening-date move
+        const doDispatch = (scope) => attLanded(window.Store.batch(() => { if (opts.openingChoice === 'move') openingConflicts.forEach(c => window.Store.dispatch('UPDATE_ACCOUNT', { id: c.accountId, openingDate: date })); applyChange(scope); })); // 1.2.0 (UX-10): attLanded; 1.0.2 (BUG-34): a type conversion lands whole or not at all; 1.0.3 (BUG-41): with the opening-date move
         const applyChange = (scope) => {
           // scope: 'only' | 'future' | 'all'
           if (type === 'transfer') {
@@ -2681,6 +3079,7 @@ window.Views = {
                   note: comment,
                   recurrence: seriesRec(scope),
                   tags: currentTags,
+                  ...attachmentsPayload(), // 1.2.0 (UX-10)
                   ...(isPaidFlip !== undefined ? { isPaid: isPaidFlip } : {}),
                   updateFuture: scope === 'future',
                   updateAll: scope === 'all'
@@ -2725,6 +3124,7 @@ window.Views = {
                   note: comment,
                   recurrence: transferRecurrence,
                   tags: currentTags,
+                  ...attachmentsPayload(), // 1.2.0 (UX-10)
                   ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
                 });
               }
@@ -2739,6 +3139,7 @@ window.Views = {
                 note: comment,
                 recurrence: recurrenceData,
                 tags: currentTags,
+                ...attachmentsPayload(), // 1.2.0 (UX-10)
                 ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
               });
             }
@@ -2759,6 +3160,7 @@ window.Views = {
               comment: comment,
               recurrence: seriesRec(scope),
               tags: currentTags,
+              ...attachmentsPayload(), // 1.2.0 (UX-10)
               // 1.0.2 (BUG-27): no key = leave the record's paid state alone
               ...(isPaidFlip !== undefined ? { isPaid: isPaidFlip } : {}),
               updateFuture: scope === 'future',
@@ -2775,6 +3177,7 @@ window.Views = {
               comment: comment,
               recurrence: recurrenceData,
               tags: currentTags,
+              ...attachmentsPayload(), // 1.2.0 (UX-10)
               ...(isPaidNew !== undefined ? { isPaid: isPaidNew } : {})
             });
           }
@@ -2888,6 +3291,14 @@ window.Views = {
       // means it was abandoned — drop it so it can't repopulate a later visit
       // with stale values, including a live recurrence seriesId.
       delete window._draftTxFormState;
+      // 1.2.0 (UX-10): files this visit stored and never saved (Cancel, ✕,
+      // Back/Discard, a save that did not land) go; thumbnail URLs are freed.
+      const A = window.Attachments;
+      if (A && this._attAdded && this._attAdded.size) A.removeAll(Array.from(this._attAdded.values()));
+      if (A && this._attUrls) this._attUrls.forEach(u => A.revoke(u));
+      this._attAdded = null;
+      this._attUrls = null;
+      this._attFormKey = null;
     }
   }
 };// Extend Views with v0.3 screens
@@ -3213,6 +3624,8 @@ Object.assign(window.Views, {
 
       let totalAllocated = 0;
       let totalSpent = 0;
+      // 1.2.0 (UX-7): the summary ring is split per budgeted category.
+      const segments = [];
 
       let displayedCategories = state.categories.filter(c => c.typeHint === this.currentBudgetFilter || c.typeHint === 'both');
 
@@ -3235,6 +3648,7 @@ Object.assign(window.Views, {
         if (hasBudget) {
           totalAllocated += bdg.finalLimit;
           totalSpent += bdg.spent;
+          segments.push({ cat, spent: bdg.spent });
         }
 
         // 1.0.1 (BUG-13): the 100 cap is for the BAR only — the label shows the
@@ -3280,7 +3694,10 @@ Object.assign(window.Views, {
                     <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span>${overByHtml}</div>
                   </div>
                 </div>
-                <div class="budget-used-pct" style="font-size: 0.8rem; font-weight: 700; color: ${pctColor};">${window.Store.formatPercent(usedPct)}</div>
+                <div class="budget-row-ring-wrap">
+                  ${this._rowRing(pct, barColor)}
+                  <div class="budget-used-pct" style="font-size: 0.66rem; font-weight: 700; color: ${pctColor};">${window.Store.formatPercent(usedPct)}</div>
+                </div>
               </div>
               <div style="width: 100%; height: 8px; background: var(--bg-surface-sunken); border-radius: 4px; overflow: hidden; margin-top: 4px;">
                 <div style="height: 100%; width: ${pct}%; background: ${barColor}; border-radius: 4px; transition: width 0.4s ease;"></div>
@@ -3315,7 +3732,7 @@ Object.assign(window.Views, {
       const overC = Math.round((totalSpent - totalAllocated) * 100);
       const overspent = overC > 0;
       const remC = -overC;
-      this._passTotals = { totalAllocated, totalSpent, overspent };
+      this._passTotals = { totalAllocated, totalSpent, overspent, segments };
 
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -3370,7 +3787,7 @@ Object.assign(window.Views, {
           </div>
 
           <!-- Category List -->
-          <div class="list-group">
+          <div class="list-group budget-list">
             ${categoryCards.length > 0 ? categoryCards : `<p class="text-secondary text-center" style="padding: 20px;">${window.I18n.t('budget.noCategories')}</p>`}
           </div>
         </div>
@@ -3472,7 +3889,9 @@ Object.assign(window.Views, {
       `;
     },
 
-    attachEvents(container, state) {
+    // 1.2.0 (UX-7): isEntry (main.js render loop) = the first render of a
+    // Goals visit — the one render whose rings sweep in.
+    attachEvents(container, state, isEntry) {
       window.StackdHydrateIcons();
       if (this.editCategoryId) {
         // Edit Mode Events — use container.querySelector for reliable binding
@@ -3654,17 +4073,33 @@ Object.assign(window.Views, {
         if (ctx) {
           // 1.0.3 (BUG-160) the summary's own totals (renderList, same pass):
           // the budgeted rows of this tab only, over decided in cents.
-          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false };
+          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false, segments: [] };
           const { totalAllocated, totalSpent, overspent } = totals;
-
-          // Prevent 0/0 empty chart; an over ring is drawn full
-          const chartData = (overspent || (totalAllocated === 0 && totalSpent === 0))
-            ? [1, 0] // dummy background slice
-            : [totalSpent, Math.max(totalAllocated - totalSpent, 0)];
-
-          // Match analytics chart style: transparent-border gaps, borderRadius, slate palette
-          const GAP = 3;
           const isDark = state.activeTheme === 'dark';
+          const trackColor = isDark ? '#1f293d' : '#e2e8f0';
+
+          // 1.2.0 (UX-7): one arc per budgeted category that has spending (in
+          // its category colour, the Analytics/Home assignment), then the
+          // remaining budget as the track. An over ring is drawn full red;
+          // nothing budgeted is an empty track.
+          let chartData;
+          let colors;
+          let badges = null;
+          if (overspent) {
+            chartData = [1, 0];
+            colors = isDark ? ['#f87171', trackColor] : ['#ef4444', trackColor];
+          } else if (totalAllocated === 0 && totalSpent === 0) {
+            chartData = [1];
+            colors = [trackColor];
+          } else {
+            const spentSegs = (totals.segments || []).filter(sg => Math.round(sg.spent * 100) > 0);
+            const painted = window.Components.CategoryDonutChart._assignColors(spentSegs.map(sg => ({
+              id: sg.cat.id, name: sg.cat.name, color: sg.cat.color, icon: sg.cat.icon, amount: sg.spent
+            })));
+            chartData = spentSegs.map(sg => sg.spent).concat([Math.max(totalAllocated - totalSpent, 0)]);
+            colors = painted.map(p => p._color).concat([trackColor]);
+            badges = painted.map(p => ({ icon: p.icon })).concat([null]);
+          }
           // v0.80: tracked + destroy-before-create — a bare `new Chart` here
           // leaked one instance per dispatch while on #budget (see the
           // dashboard balance chart note for the failure mode).
@@ -3672,32 +4107,29 @@ Object.assign(window.Views, {
             try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
             this._budgetChart = null;
           }
-          this._budgetChart = new window.Chart(ctx, {
+          // The sweep plays on the Goals entry render only; every other
+          // mount stays animation-free (v0.93).
+          this._budgetChart = new window.Chart(ctx, window.Components.RingChart.config({
             type: 'doughnut',
             data: {
-              labels: ['Spent', 'Remaining'],
               datasets: [{
                 data: chartData,
-                backgroundColor: overspent
-                  ? (isDark ? ['#f87171', '#1f293d'] : ['#ef4444', '#f1f5f9'])   // red + surface for overspent
-                  : (isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']),  // slate + track (matches analytics)
-                borderWidth: GAP,
-                borderColor: 'transparent',
-                hoverBorderColor: 'transparent',
-                hoverBorderWidth: GAP,
-                borderRadius: 6,
+                backgroundColor: colors,
                 hoverOffset: 6
               }]
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              cutout: '74%',
-              animation: false, // v0.93: no entry animation (see NetFlowChart note)
               plugins: { tooltip: { enabled: false }, legend: { display: false } }
             }
-          });
+          }, { animate: !!isEntry, delay: 250, badges, track: [chartData.length - 1] }));
         }
+
+        // 1.2.0 (UX-7): the row rings sweep in with the summary ring (CSS,
+        // same entry-only rule).
+        const list = container.querySelector('.budget-list');
+        if (list && isEntry) list.classList.add('is-entering');
 
         container.querySelectorAll('.budget-cat-row').forEach(row => {
           row.addEventListener('click', () => {
@@ -3729,6 +4161,16 @@ Object.assign(window.Views, {
       this.editCategoryId = null;
       this._editBaseline = null;
       window.Store.emit();
+    },
+
+    // 1.2.0 (UX-7): a row's usage ring (36x36 viewBox, starts at 12 o'clock
+    // through the CSS rotation). pct is the bar's capped 0-100 width.
+    _rowRing(pct, color) {
+      const r = 15.5;
+      const c = Math.round(2 * Math.PI * r * 100) / 100;
+      const p = Math.max(0, Math.min(100, Number(pct) || 0));
+      const offset = Math.round(c * (1 - p / 100) * 100) / 100;
+      return `<svg class="budget-row-ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false"><circle class="budget-row-ring-track" cx="18" cy="18" r="${r}"></circle><circle class="budget-row-ring-fill" cx="18" cy="18" r="${r}" style="stroke: ${color}; stroke-dasharray: ${c}; stroke-dashoffset: ${offset}; --ring-c: ${c};${p === 0 ? ' stroke-opacity: 0;' : ''}"></circle></svg>`;
     },
 
     // 1.0.3 (BUG-140/58) the month viewed in Goals ('YYYY-MM')
@@ -3772,22 +4214,36 @@ Object.assign(window.Views, {
       // v0.85: tags now open History filtered by that tag (all time), the same
       // destination the analytics category→tag drilldown uses — one way to
       // read a tag's transactions instead of a second, weaker list view.
-      const counts = {};
+      // 1.2.0 (UX-9): no prototype, so a tag named 'constructor' counts from 0
+      const counts = Object.create(null);
       state.transactions.forEach(tx => {
         (Array.isArray(tx.tags) ? tx.tags : []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
       });
-      let listHtml = tags.map(t => `
+      // 1.2.0 (UX-9): each row names the categories the tag is linked to
+      // (explicit ∪ derived), and a tag created in the picker that no
+      // transaction carries yet can be removed here (DELETE_TAG).
+      const catName = {};
+      state.categories.forEach(c => { catName[c.id] = c.name; });
+      const explicit = state.tagLinks || {};
+      let listHtml = tags.map(t => {
+        const linkedNames = window.Store.getTagLinks(t).map(id => catName[id]).filter(Boolean);
+        const removable = !counts[t] && Object.prototype.hasOwnProperty.call(explicit, t);
+        return `
         <div class="list-item touch-target" data-tag-open="${escapeAttr(t)}" role="button" tabindex="0" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-          <div style="display: flex; align-items: center; gap: var(--space-3);">
+          <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
             <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;"><i data-lucide="hash"></i></div>
-            <div>
+            <div style="min-width: 0;">
               <div class="list-item-title">#${escapeAttr(t)}</div>
               <div class="list-item-subtitle">${window.I18n.t('cat.txCount', { count: counts[t] || 0 })}</div>
+              ${linkedNames.length ? `<div class="list-item-subtitle tags-linked-cats" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${linkedNames.map(n => esc(n)).join(', ')}</div>` : ''}
             </div>
           </div>
-          <div style="color: var(--text-tertiary);">›</div>
+          ${removable
+            ? `<button type="button" class="tags-remove-btn touch-target" data-tag-remove="${escapeAttr(t)}" aria-label="${window.I18n.t('form.removeTag', { tag: escapeAttr(t) })}" style="border: none; background: transparent; color: var(--text-tertiary); font-size: 1rem; padding: 8px; cursor: pointer;">✕</button>`
+            : '<div style="color: var(--text-tertiary);">›</div>'}
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       if (tags.length === 0) {
         listHtml = `
@@ -3814,6 +4270,12 @@ Object.assign(window.Views, {
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons();
+      container.querySelectorAll('[data-tag-remove]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation(); // not the row's History drill-down
+          window.Store.dispatch('DELETE_TAG', { tag: btn.dataset.tagRemove });
+        });
+      });
       container.querySelectorAll('[data-tag-open]').forEach(row => {
         row.addEventListener('click', () => {
           const tag = row.dataset.tagOpen;
@@ -4353,16 +4815,34 @@ Object.assign(window.Views, {
 });
 
 // -------------------------
-// BACKUP VIEW (1.1.0 IE-5)
+// BACKUP VIEW (1.1.0 IE-5, 1.2.0 UX-11)
 // -------------------------
 // docs/import-export-plan.md §3b: the six Stack'd backup files (ids kept
 // from Settings) and their one-tap restore, wired exactly as Settings did.
 // A ledger or QIF file picked here is never written unreviewed (§6a).
+// 1.2.0 (UX-11, docs/ux-review-1.2-plan.md §E.3): the page now opens with
+// the one-file backup — the automatic-backup toggle (native only: the web
+// build can only download) and "Back up now" — then the log of recent
+// backups and restores (native rows restore or share the file in the
+// device's backup folder), the restore card (bundles and the six CSVs
+// alike) and the six individual exports. StackdBackup is reached at event
+// time only and the page renders without it (unit chains that skip it).
 Object.assign(window.Views, {
   BackupView: {
     render(state) {
-      const t = (k) => window.I18n.t(k);
+      const t = (k, p) => window.I18n.t(k, p);
+      const V = window.Views;
+      const S = window.Store;
+      const B = window.StackdBackup;
+      const native = !!(B && typeof B.isNative === 'function' && B.isNative());
+      const prefs = S.getBackupPrefs();
+      const target = B && typeof B.target === 'function' ? B.target() : 'download';
+      const last = prefs.lastAutoAt
+        ? t('backup.lastAt', { when: esc(V._fmtBackupTime(prefs.lastAutoAt)) })
+        : t('backup.never');
       const btn = (id, key) => `<button class="btn btn-secondary" id="${id}">${t(key)}</button>`;
+      const log = Array.isArray(state.backupLog) ? state.backupLog : [];
+      const rows = log.map(raw => V._backupLogRow(S.normalizeBackupLogEntry(raw))).join('');
       return `
         <div class="container" style="padding-bottom: 100px;" id="backup-view">
           <a href="#settings" data-router-leave class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${escapeAttr(t('others.title'))}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${t('others.title')}</a>
@@ -4370,7 +4850,43 @@ Object.assign(window.Views, {
 
           <div class="section-title">${t('backup.createTitle')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
-            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.createDesc')}</p>
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.autoDesc')}</p>
+            ${native ? `
+            <div id="backup-auto-row" style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" id="backup-target-icon" data-target="${target}" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="${V._backupTargetIcon(target)}"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title" id="label-backup-daily">${t('backup.auto')}</div>
+                  <div class="list-item-subtitle" id="backup-auto-subtitle" style="white-space: normal; line-height: 1.4;"><span id="backup-target-label">${t('backup.target.' + target)}</span> · ${last}</div>
+                </div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink: 0;">
+                <input type="checkbox" id="toggle-backup-daily" ${prefs.daily ? 'checked' : ''} aria-labelledby="label-backup-daily">
+                <span class="slider"></span>
+              </label>
+            </div>` : ''}
+            <button class="btn btn-primary" id="btn-backup-now" style="width: 100%;">${t('backup.now')}</button>
+          </div>
+
+          <div class="section-title">${t('backup.logTitle')}</div>
+          <div class="card card-elevated" id="backup-log" style="margin-bottom: var(--space-6); padding: var(--space-2) var(--space-5);">
+            ${rows || `<p class="list-item-subtitle" id="backup-log-empty" style="white-space: normal; line-height: 1.5; padding: var(--space-3) 0;">${t('backup.logEmpty')}</p>`}
+          </div>
+${native ? `
+          <div class="section-title">${t('backup.savedTitle')}</div>
+          <div class="card card-elevated" id="backup-files" style="margin-bottom: var(--space-6); padding: var(--space-2) var(--space-5);">${V._backupFilesHtml(B._files)}</div>
+` : ''}
+
+          <div class="section-title">${t('backup.restoreTitle')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.restoreDesc')}</p>
+            <input type="file" id="import-csv-file" accept=".json,application/json,.csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
+            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${t('backup.restoreBtn')}</button>
+          </div>
+
+          <div class="section-title">${t('backup.filesTitle')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.filesDesc')}</p>
             <div style="display: flex; flex-direction: column; gap: var(--space-3);">
               ${btn('btn-export-accounts', 'others.exportAccounts')}
               ${btn('btn-export-categories', 'others.exportCategories')}
@@ -4380,131 +4896,288 @@ Object.assign(window.Views, {
               ${btn('btn-export-rules', 'bankImport.exportRules')}
             </div>
           </div>
-
-          <div class="section-title">${t('backup.restoreTitle')}</div>
-          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-5);">
-            <p style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); line-height: 1.6;">${t('backup.restoreDesc')}</p>
-            <input type="file" id="import-csv-file" accept=".csv,.xml,.940,.mt940,.sta,.txt" style="display: none;">
-            <button class="btn btn-primary" id="btn-import-csv" style="width: 100%;">${t('backup.restoreBtn')}</button>
-          </div>
         </div>`;
     },
     attachEvents(container, state) {
       window.StackdHydrateIcons(container);
       const E = window.StackdExport;
+      const V = window.Views;
+      const B = window.StackdBackup;
       [['btn-export-accounts', 'exportAccounts'], ['btn-export-categories', 'exportCategories'],
         ['btn-export-transactions', 'exportTransactions'], ['btn-export-loans', 'exportLoans'],
         ['btn-export-budgets', 'exportBudgets'], ['btn-export-rules', 'exportImportRules']].forEach(([id, fn]) => {
         const b = document.getElementById(id);
         if (b) b.addEventListener('click', () => E[fn](state));
       });
-      window.Views._bindRestoreFile(state);
+      V._bindRestoreFile(state);
+      // 1.2.0 (UX-11)
+      const toggle = container.querySelector('#toggle-backup-daily');
+      if (toggle) {
+        toggle.addEventListener('change', () => {
+          const on = toggle.checked;
+          window.Store.dispatch('SET_BACKUP_PREFS', { daily: on });
+          // switched on with no backup today: take one now (the guards apply)
+          if (on && B && typeof B.maybeDaily === 'function') B.maybeDaily();
+        });
+      }
+      const now = container.querySelector('#btn-backup-now');
+      if (now) now.addEventListener('click', () => V._backupNow(now));
+      // The destination the page rendered is the best sync guess; the plugin
+      // answers whether iCloud Drive is really there (not signed in → device).
+      // Review fix (UX-11): the icon follows the label, and the saved files
+      // are the folder's own listing (listAll) once the target is known.
+      if (B && typeof B.probe === 'function' && B.isNative()) {
+        B.probe().then((target) => {
+          V._paintBackupTarget(container, target);
+          return typeof B.listAll === 'function' ? B.listAll() : null;
+        }).then((files) => {
+          if (files) V._paintBackupFiles(container, files);
+        }).catch(() => {});
+      }
+      // Delegated: the rows are repainted when the listing answers.
+      const filesCard = container.querySelector('#backup-files');
+      if (filesCard) {
+        filesCard.addEventListener('click', (ev) => {
+          const r = ev.target.closest('[data-backup-restore]');
+          if (r) { V._confirmRestoreFrom(r.getAttribute('data-backup-restore'), r.getAttribute('data-backup-target'), state); return; }
+          const sh = ev.target.closest('[data-backup-share]');
+          if (sh) V._shareBackup(sh.getAttribute('data-backup-share'), sh.getAttribute('data-backup-target'));
+        });
+      }
     }
   },
 
-  // The restore button (moved from Settings in IE-5, unchanged): importCSV,
-  // a bank CSV or statement to #import-map, every result in a sheet.
+  // ── 1.2.0 (UX-11) Backup page helpers ────────────────────────────────────
+  _BACKUP_FILE_KEYS: [['accounts', 'backup.file.accounts'], ['categories', 'backup.file.categories'],
+    ['transactions', 'backup.file.transactions'], ['loans', 'backup.file.loans'],
+    ['budgets', 'backup.file.budgets'], ['importRules', 'backup.file.rules']],
+
+  // "5 Nov 2026, 09:12" in the app locale from an ISO time; '' when invalid.
+  _fmtBackupTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat(window.Store.getLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+    } catch (e) { return d.toLocaleString(); }
+  },
+
+  _fmtKb(bytes) {
+    const kb = Math.max(1, Math.round((Number(bytes) || 0) / 1024));
+    try { return new Intl.NumberFormat(window.Store.getLocale()).format(kb); } catch (e) { return String(kb); }
+  },
+
+  _fmtCount(n) {
+    const v = Number(n) || 0;
+    try { return new Intl.NumberFormat(window.Store.getLocale()).format(v); } catch (e) { return String(v); }
+  },
+
+  // One "Recent backups" row from a NORMALIZED log entry (kind and target are
+  // then known values, so they can pick a key; name and error are stored
+  // text, escaped). Review fix (UX-11): history only — Restore and Share sit
+  // on the folder listing (_backupFileRow), so a pruned or deleted file is
+  // never offered and a file whose row left the log is still reachable.
+  _backupLogRow(e) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const V = window.Views;
+    const when = V._fmtBackupTime(e.at);
+    const where = e.target ? t('backup.target.' + e.target) : '';
+    const size = e.bytes ? t('backup.sizeKb', { n: esc(V._fmtKb(e.bytes)) }) : '';
+    const meta = [esc(e.name), size, where].filter(Boolean).join(' · ');
+    return `
+      <div class="backup-log-row" data-backup-id="${escapeAttr(e.id)}">
+        <div class="backup-log-head">
+          <span class="list-item-title">${esc(when)} · ${t('backup.kind.' + e.kind)}</span>
+          <span class="backup-log-status ${e.ok ? 'is-ok' : 'is-failed'}">${t(e.ok ? 'backup.statusOk' : 'backup.statusFailed')}</span>
+        </div>
+        <div class="list-item-subtitle backup-log-meta">${meta}${e.error ? ' — ' + esc(e.error) : ''}</div>
+      </div>`;
+  },
+
+  _backupTargetIcon(target) {
+    return target === 'icloud' ? 'cloud-upload' : 'folder-open';
+  },
+
+  // probe() may change the destination after the render: label and icon.
+  _paintBackupTarget(container, target) {
+    const label = container.querySelector('#backup-target-label');
+    if (label) label.textContent = window.I18n.t('backup.target.' + target);
+    const icon = container.querySelector('#backup-target-icon');
+    if (icon && icon.getAttribute('data-target') !== target) {
+      icon.setAttribute('data-target', target);
+      icon.innerHTML = `<i data-lucide="${window.Views._backupTargetIcon(target)}"></i>`;
+      window.StackdHydrateIcons(icon);
+    }
+  },
+
+  // One saved file of the backup folder (a StackdBackup.listAll entry): when,
+  // kind (by its name), name, size, where; Restore and Share. The name is
+  // folder text, escaped; the target is one of two known values.
+  _backupFileRow(f) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const V = window.Views;
+    const B = window.StackdBackup;
+    const target = f.target === 'icloud' ? 'icloud' : 'documents';
+    const when = f.mtime ? V._fmtBackupTime(new Date(f.mtime).toISOString()) : '';
+    const kind = B && typeof B.isAutoFile === 'function' && B.isAutoFile(f.name) ? 'auto' : 'manual';
+    const size = f.bytes ? t('backup.sizeKb', { n: esc(V._fmtKb(f.bytes)) }) : '';
+    const meta = [esc(f.name), size, t('backup.target.' + target)].filter(Boolean).join(' · ');
+    return `
+      <div class="backup-log-row backup-file-row">
+        <div class="backup-log-head">
+          <span class="list-item-title">${[esc(when), t('backup.kind.' + kind)].filter(Boolean).join(' · ')}</span>
+        </div>
+        <div class="list-item-subtitle backup-log-meta">${meta}</div>
+        <div class="backup-log-actions">
+          <button type="button" class="btn btn-secondary backup-log-btn" data-backup-restore="${escapeAttr(f.name)}" data-backup-target="${target}">${t('backup.restoreThis')}</button>
+          <button type="button" class="btn btn-secondary backup-log-btn" data-backup-share="${escapeAttr(f.name)}" data-backup-target="${target}">${t('backup.shareThis')}</button>
+        </div>
+      </div>`;
+  },
+
+  _backupFilesHtml(files) {
+    const list = Array.isArray(files) ? files : [];
+    return list.length
+      ? list.map(f => window.Views._backupFileRow(f)).join('')
+      : `<p class="list-item-subtitle" id="backup-files-empty" style="white-space: normal; line-height: 1.5; padding: var(--space-3) 0;">${window.I18n.t('backup.savedEmpty')}</p>`;
+  },
+
+  _paintBackupFiles(container, files) {
+    const card = container.querySelector('#backup-files');
+    if (card && card.isConnected) card.innerHTML = window.Views._backupFilesHtml(files);
+  },
+
+  // A Components.Modal closed just before (the restore confirm) clears all
+  // of #modal-container 300 ms later: run `fn` once that teardown is done,
+  // or the sheet it opens is wiped (the wait Store._announceSaveFailure uses).
+  _afterModalTeardown(fn) {
+    let waits = 0;
+    const run = () => {
+      if (waits < 4 && document.querySelector('#active-modal:not(.open)')) {
+        waits += 1;
+        setTimeout(run, 350);
+        return;
+      }
+      fn();
+    };
+    run();
+  },
+
+  // "Back up now": one sheet everywhere (nothing is shared, so the share
+  // sheet is not the feedback here; on the web the file is a download).
+  _backupNow(btn) {
+    const B = window.StackdBackup;
+    const t = (k, p) => window.I18n.t(k, p);
+    if (!B || typeof B.backupNow !== 'function') return;
+    if (btn) btn.disabled = true;
+    B.backupNow({ kind: 'manual' }).then((entry) => {
+      if (btn && btn.isConnected) btn.disabled = false;
+      if (!entry || entry.error === 'busy') return;
+      const C = window.Components;
+      if (!C || !C.NoticeSheet) return;
+      if (!entry.ok) {
+        C.NoticeSheet.show({ id: 'backup-result-modal', tone: 'error', title: t('backup.failedTitle'),
+          body: t('backup.failedBody') }); // the raw reason stays on the log row
+        return;
+      }
+      C.NoticeSheet.show({ id: 'backup-result-modal', tone: 'success', title: t('backup.doneTitle'),
+        body: t('backup.doneBody', { name: entry.name, target: t('backup.target.' + entry.target) }) });
+    }).catch(() => { if (btn && btn.isConnected) btn.disabled = false; });
+  },
+
+  // A log row's Restore: confirm, then the file goes through the one
+  // restore route with the same result sheets as a picked file.
+  _confirmRestoreFrom(name, target, state) {
+    const t = (k, p) => window.I18n.t(k, p);
+    if (!name) return;
+    window.Components.Modal.show({
+      title: t('backup.restoreConfirmTitle'),
+      content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0;">${t('backup.restoreConfirmBody', { name: esc(name) })}</p>`,
+      saveText: t('backup.restoreThis'),
+      onSave: (close) => {
+        close();
+        // Review fix (UX-11): the result sheet must outlive the teardown.
+        window.Views._afterModalTeardown(() => window.Views._restoreFrom(name, target, state));
+      }
+    });
+  },
+
+  _restoreFrom(name, target, state) {
+    const B = window.StackdBackup;
+    if (!B || typeof B.restoreFrom !== 'function') return;
+    const h = window.Views._restoreHandlers(state, name, target, null);
+    B.restoreFrom(name, target, h.onResult, h.onError);
+  },
+
+  // A log row's Share: a copy of the file through the system share sheet
+  // (the iOS folder is private; this is how the file leaves the phone).
+  _shareBackup(name, target) {
+    const B = window.StackdBackup;
+    const E = window.StackdExport;
+    const t = (k, p) => window.I18n.t(k, p);
+    if (!B || !E || typeof E._shareNative !== 'function') return;
+    B.read(name, target).then((text) => E._shareNative(name, text)).catch(() => {
+      window.Components.NoticeSheet.show({ id: 'backup-result-modal', tone: 'error', title: t('backup.failedTitle'), body: t('backup.notFound') });
+    });
+  },
+
+  // The combined result of a bundle restore: a count per file, then the
+  // created/skipped/duplicate/ambiguous lines the single-file results show.
+  _backupRestoredMessage(result) {
+    const t = (k, p) => window.I18n.t(k, p);
+    const V = window.Views;
+    const files = (result && result.files) || {};
+    const counts = V._BACKUP_FILE_KEYS
+      .filter(([k]) => files[k])
+      .map(([k, key]) => t('backup.fileCount', { label: t(key), n: V._fmtCount(files[k].importedCount) }))
+      .join('\n');
+    let message = t('backup.restoredBody', { counts });
+    if (result.newAccounts > 0) message += '\n' + t('others.importCreatedAccounts', { count: result.newAccounts });
+    if (result.newCategories > 0) message += '\n' + t('others.importCreatedCategories', { count: result.newCategories });
+    if (result.skippedCount) {
+      const skipped = {};
+      Object.keys(files).forEach((k) => {
+        Object.keys(files[k].skipped || {}).forEach((r) => { skipped[r] = (skipped[r] || 0) + files[k].skipped[r]; });
+      });
+      const reasons = Object.keys(skipped).map(r => `• ${skipped[r]} — ${r}`).join('\n');
+      message += '\n\n' + t('others.importSkipped', { count: result.skippedCount, reasons });
+    }
+    if (result.duplicateCount) message += '\n\n' + t('others.importDuplicates', { count: result.duplicateCount });
+    if (result.ambiguousRows) {
+      message += '\n\n' + t('others.importAmbiguousAccounts', { count: result.ambiguousRows, names: (result.ambiguousAccounts || []).join(', ') });
+    }
+    return message;
+  },
+
+  // The restore button (moved from Settings in IE-5): importCSV, a bank CSV
+  // or statement to #import-map, every result in a sheet. 1.2.0 (UX-11): the
+  // result and error handlers are shared with a log row's Restore
+  // (_restoreHandlers); a bundle shows the combined sheet.
   _bindRestoreFile(state) {
     const fileInput = document.getElementById('import-csv-file');
     const btnImport = document.getElementById('btn-import-csv');
-    
+
     if (btnImport && fileInput) {
       btnImport.addEventListener('click', () => {
         fileInput.click();
       });
-      
+
       fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
+
         btnImport.textContent = window.I18n.t('others.importing');
         btnImport.disabled = true;
-        
+        const done = () => {
+          btnImport.textContent = window.I18n.t('backup.restoreBtn');
+          btnImport.disabled = false;
+          fileInput.value = ''; // reset
+        };
+
         if (window.StackdImport) {
           // v0.71: importCSV routes on the file's shape, so the same button
           // accepts a transactions export or a loans export.
-          window.StackdImport.importCSV(file, state, (result) => {
-            // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
-            // export) routes to the column-mapping flow instead of the direct
-            // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
-            // and MT940 statements route to the statement-details step of the
-            // same flow (plan §4).
-            // 1.1.0 (IE-2): a ledger file (MoneyStats) comes back unwritten as
-            // kind 'ledger'. Until the Review screen exists (IE-6) it opens the
-            // column-mapping flow, as it always has.
-            if (result.kind === 'bank' || result.kind === 'statement' || result.kind === 'ledger') {
-              if (!state.accounts || state.accounts.length === 0) {
-                // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
-                window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });
-              } else if (result.kind === 'statement') {
-                window.Views._ImportShared.startStatement(result.statement, file.name, state);
-                window.Router.navigate('#import-map');
-              } else {
-                window.Views._ImportShared.start(result.csvText, file.name, state);
-                window.Router.navigate('#import-map');
-              }
-              btnImport.textContent = window.I18n.t('backup.restoreBtn');
-              btnImport.disabled = false;
-              fileInput.value = ''; // reset
-              return;
-            }
-            // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
-            // rows) used to vanish silently — report them.
-            let message = result.kind === 'loans'
-              ? window.I18n.t('others.importedLoans', { count: result.importedCount })
-              : result.kind === 'rules' // v1.01: restored import rules
-              ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
-              : result.kind === 'budgets' // v1.19: restored budgets
-              ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
-              : result.kind === 'accounts' // v1.19 (A-17)
-              ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
-              : result.kind === 'categories' // v1.19 (A-17)
-              ? window.I18n.t('others.importedCategories', { count: result.importedCount })
-              // 1.0.2 (live-U6-N2): whole-sentence plurals; a 'Created 0 …' line is left out
-              : [window.I18n.t('others.importedTx', { count: result.importedCount })]
-                  .concat(result.newAccounts > 0 ? [window.I18n.t('others.importCreatedAccounts', { count: result.newAccounts })] : [])
-                  .concat(result.newCategories > 0 ? [window.I18n.t('others.importCreatedCategories', { count: result.newCategories })] : [])
-                  .join('\n');
-            if (result.skippedCount) {
-              const reasons = Object.keys(result.skipped)
-                .map(r => `• ${result.skipped[r]} — ${r}`)
-                .join('\n');
-              message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
-            }
-            // 1.0.2 (BUG-78): rows (or loans) already in Stack'd were skipped.
-            if (result.duplicateCount) {
-              message += '\n\n' + window.I18n.t('others.importDuplicates', { count: result.duplicateCount });
-            }
-            // 1.0.2 (BUG-30): a backup from before 1.0.2 cannot tell two
-            // same-named accounts apart. Raw names: the sheet escapes its body.
-            if (result.ambiguousRows) {
-              message += '\n\n' + window.I18n.t('others.importAmbiguousAccounts', {
-                count: result.ambiguousRows,
-                names: (result.ambiguousAccounts || []).join(', ')
-              });
-            }
-            window.Components.NoticeSheet.show({
-              id: 'import-result-modal',
-              tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
-              title: window.I18n.t('bankImport.successTitle'),
-              body: message
-            });
-            btnImport.textContent = window.I18n.t('backup.restoreBtn');
-            btnImport.disabled = false;
-            fileInput.value = ''; // reset
-          }, (err) => {
-            window.Components.NoticeSheet.show({
-              id: 'import-result-modal',
-              tone: 'error',
-              title: window.I18n.t('others.importFailedTitle'),
-              // 1.0.1 (BUG-21): the title already says "Import failed" — the
-              // body carries only the reason (localized fallback when none).
-              body: (err && err.message) || window.I18n.t('others.importFailedBody')
-            });
-            btnImport.textContent = window.I18n.t('backup.restoreBtn');
-            btnImport.disabled = false;
-            fileInput.value = ''; // reset
-          });
+          const h = window.Views._restoreHandlers(state, file.name, '', done);
+          window.StackdImport.importCSV(file, state, h.onResult, h.onError);
         } else {
           window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', body: window.I18n.t('others.importModuleMissing') });
           btnImport.textContent = window.I18n.t('backup.restoreBtn');
@@ -4512,6 +5185,103 @@ Object.assign(window.Views, {
         }
       });
     }
+  },
+
+  // { onResult, onError } for a restore of `fileName` — a picked file
+  // (source '') or a file of the device's backup folder (source = its
+  // target). `done` runs last on either path (the picked-file button reset).
+  _restoreHandlers(state, fileName, source, done) {
+    const finish = () => { if (typeof done === 'function') done(); };
+    const onResult = (result) => {
+      // v0.99: an arbitrary bank CSV (not a Stack'd backup, not a loans
+      // export) routes to the column-mapping flow instead of the direct
+      // restore path (docs/bank-import-plan.md §3). v1.00: camt.053/052
+      // and MT940 statements route to the statement-details step of the
+      // same flow (plan §4).
+      // 1.1.0 (IE-2): a ledger file (MoneyStats) comes back unwritten as
+      // kind 'ledger'. Until the Review screen exists (IE-6) it opens the
+      // column-mapping flow, as it always has.
+      if (result.kind === 'bank' || result.kind === 'statement' || result.kind === 'ledger') {
+        if (!state.accounts || state.accounts.length === 0) {
+          // 1.0.1 (BUG-21): in-app sheets instead of window.alert()
+          window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'info', body: window.I18n.t('bankImport.noAccounts') });
+        } else if (result.kind === 'statement') {
+          window.Views._ImportShared.startStatement(result.statement, fileName, state);
+          window.Router.navigate('#import-map');
+        } else {
+          window.Views._ImportShared.start(result.csvText, fileName, state);
+          window.Router.navigate('#import-map');
+        }
+        finish();
+        return;
+      }
+      let message;
+      let title = window.I18n.t('bankImport.successTitle');
+      if (result.kind === 'bundle') {
+        // 1.2.0 (UX-11): the one-file backup — a count per file, logged.
+        message = window.Views._backupRestoredMessage(result);
+        title = window.I18n.t('backup.restoredTitle');
+        window.Store.dispatch('APPEND_BACKUP_LOG', { kind: 'restore', target: source || '', name: fileName || '', ok: true });
+      } else {
+        // v0.68: rows the importer refuses (bad dates, one-sided 'transfer'
+        // rows) used to vanish silently — report them.
+        message = result.kind === 'loans'
+          ? window.I18n.t('others.importedLoans', { count: result.importedCount })
+          : result.kind === 'rules' // v1.01: restored import rules
+          ? window.I18n.t('bankImport.importedRules', { count: result.importedCount })
+          : result.kind === 'budgets' // v1.19: restored budgets
+          ? window.I18n.t('others.importedBudgets', { count: result.importedCount })
+          : result.kind === 'accounts' // v1.19 (A-17)
+          ? window.I18n.t('others.importedAccounts', { count: result.importedCount })
+          : result.kind === 'categories' // v1.19 (A-17)
+          ? window.I18n.t('others.importedCategories', { count: result.importedCount })
+          // 1.0.2 (live-U6-N2): whole-sentence plurals; a 'Created 0 …' line is left out
+          : [window.I18n.t('others.importedTx', { count: result.importedCount })]
+              .concat(result.newAccounts > 0 ? [window.I18n.t('others.importCreatedAccounts', { count: result.newAccounts })] : [])
+              .concat(result.newCategories > 0 ? [window.I18n.t('others.importCreatedCategories', { count: result.newCategories })] : [])
+              .join('\n');
+        if (result.skippedCount) {
+          const reasons = Object.keys(result.skipped)
+            .map(r => `• ${result.skipped[r]} — ${r}`)
+            .join('\n');
+          message += '\n\n' + window.I18n.t('others.importSkipped', { count: result.skippedCount, reasons });
+        }
+        // 1.0.2 (BUG-78): rows (or loans) already in Stack'd were skipped.
+        if (result.duplicateCount) {
+          message += '\n\n' + window.I18n.t('others.importDuplicates', { count: result.duplicateCount });
+        }
+        // 1.0.2 (BUG-30): a backup from before 1.0.2 cannot tell two
+        // same-named accounts apart. Raw names: the sheet escapes its body.
+        if (result.ambiguousRows) {
+          message += '\n\n' + window.I18n.t('others.importAmbiguousAccounts', {
+            count: result.ambiguousRows,
+            names: (result.ambiguousAccounts || []).join(', ')
+          });
+        }
+      }
+      window.Components.NoticeSheet.show({
+        id: 'import-result-modal',
+        tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
+        title,
+        body: message
+      });
+      finish();
+    };
+    const onError = (err) => {
+      if (source) { // a folder file that did not restore is worth a log line
+        window.Store.dispatch('APPEND_BACKUP_LOG', { kind: 'restore', target: source, name: fileName || '', ok: false, error: (err && err.message) || '' });
+      }
+      window.Components.NoticeSheet.show({
+        id: 'import-result-modal',
+        tone: 'error',
+        title: window.I18n.t('others.importFailedTitle'),
+        // 1.0.1 (BUG-21): the title already says "Import failed" — the
+        // body carries only the reason (localized fallback when none).
+        body: (err && err.message) || window.I18n.t('others.importFailedBody')
+      });
+      finish();
+    };
+    return { onResult, onError };
   }
 });
 
@@ -4594,8 +5364,8 @@ Object.assign(window.Views, {
           window.Router.navigate('#import-review');
           return;
         }
-        if (a.kind === 'backup') {
-          d.check = { kind: 'backup', backupKind: a.backupKind, rowCount: a.rowCount };
+        if (a.kind === 'backup' || a.kind === 'bundle') { // 1.2.0 (UX-11): the one-file backup restores like the six
+          d.check = { kind: 'backup', backupKind: a.kind === 'bundle' ? 'bundle' : a.backupKind, rowCount: a.rowCount };
           window.Router.navigate('#import-review');
           return;
         }
@@ -4913,6 +5683,15 @@ Object.assign(window.Views, {
   _showImportResult(res) {
     const t = (k, p) => window.I18n.t(k, p);
     const S = window.Store;
+    if (res && res.kind === 'bundle') { // 1.2.0 (UX-11): the one-file backup's combined counts
+      window.Components.NoticeSheet.show({
+        id: 'import-result-modal',
+        tone: res.skippedCount || res.duplicateCount || res.ambiguousRows ? 'info' : 'success',
+        title: t('backup.restoredTitle'),
+        body: window.Views._backupRestoredMessage(res)
+      });
+      return;
+    }
     const kindKey = { loans: 'others.importedLoans', rules: 'bankImport.importedRules', budgets: 'others.importedBudgets',
       accounts: 'others.importedAccounts', categories: 'others.importedCategories' }[res.kind] || 'others.importedTx';
     const lines = [t(kindKey, { count: res.importedCount || 0 })]
@@ -5034,6 +5813,8 @@ Object.assign(window.Views, {
             ${row('export-settings', 'settings', t('export.settings'), settings)}
             <div style="border-top: 1px solid var(--border-color);"></div>
             ${row('export-period', 'calendar', t('export.period'), window.Views._periodLabel(state))}
+            <div style="border-top: 1px solid var(--border-color);"></div>
+            ${row('export-receipts', 'paperclip', t('export.receipts'), t('export.receiptsCount', { count: window.StackdExport.receiptsCount(state, V._exportOpts()) }))}
           </div>
           <button class="btn btn-primary" id="btn-export-file" style="padding: var(--space-4); border-radius: var(--radius-lg);">${t('export.file')}</button>
         </div>`;
@@ -5084,6 +5865,16 @@ Object.assign(window.Views, {
       };
       $('btn-export-file').addEventListener('click', run);
       $('export-share').addEventListener('click', run);
+      // 1.2.0 (UX-10): every attachment of the period in one PDF
+      tap('export-receipts', () => {
+        const out = window.StackdExport.exportReceiptsPdf(window.Store.getState(), V._exportOpts());
+        const cap = window.Capacitor;
+        if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) return; // the share sheet is the feedback
+        Promise.resolve(out).then((sent) => {
+          if (!sent) return;
+          window.Components.NoticeSheet.show({ id: 'export-done-modal', tone: 'success', title: t('export.doneTitle'), body: t('export.receiptsDoneBody') });
+        });
+      });
     }
   }
 });

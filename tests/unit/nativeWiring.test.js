@@ -210,3 +210,88 @@ describe('Bank Connect B8 (v1.12) — native wiring', () => {
     });
   });
 });
+
+// 1.2.0 (UX-11, docs/ux-review-1.2-plan.md §E.4): the local stackd-cloud
+// plugin (iCloud Drive backups on iOS, a no-op on Android) and the iCloud
+// entitlements / plist keys it needs. `npx cap sync` derives the pod name
+// (StackdCloud) and the iOS class list (@objc name) from these files.
+describe('1.2.0 (UX-11) — stackd-cloud plugin wiring', () => {
+  const CONTAINER = 'iCloud.com.stackd.finance';
+  const plistArray = (xml, key) => {
+    const m = xml.match(new RegExp('<key>' + key.replace(/\./g, '\\.') + '</key>\\s*<array>([\\s\\S]*?)</array>'));
+    return m ? [...m[1].matchAll(/<string>([^<]*)<\/string>/g)].map(x => x[1]) : null;
+  };
+
+  it('is a local npm dependency with the Capacitor ios/android source layout', () => {
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.dependencies['stackd-cloud']).toBe('file:plugins/stackd-cloud');
+    const plugin = JSON.parse(read('plugins/stackd-cloud/package.json'));
+    expect(plugin.name).toBe('stackd-cloud');
+    expect(plugin.capacitor).toEqual({ ios: { src: 'ios' }, android: { src: 'android' } });
+  });
+
+  // `npm ci` (the TestFlight workflow) refuses a lock that disagrees with
+  // package.json; `npx cap sync android` resolves the file: link to its
+  // realpath (plugins/stackd-cloud) in the two generated gradle files.
+  it('the lock links the local package and the cap sync gradle outputs include it', () => {
+    const lock = JSON.parse(read('package-lock.json'));
+    expect(lock.packages[''].dependencies['stackd-cloud']).toBe('file:plugins/stackd-cloud');
+    expect(lock.packages['node_modules/stackd-cloud']).toEqual({ resolved: 'plugins/stackd-cloud', link: true });
+    expect(lock.packages['plugins/stackd-cloud']).toMatchObject({ version: '1.0.0' });
+    const settings = read('android/capacitor.settings.gradle');
+    expect(settings).toContain("include ':stackd-cloud'");
+    expect(settings).toContain("project(':stackd-cloud').projectDir = new File('../plugins/stackd-cloud/android')");
+    expect(read('android/app/capacitor.build.gradle')).toContain("implementation project(':stackd-cloud')");
+  });
+
+  it('the podspec is named after the package (StackdCloud) and the Podfile installs it', () => {
+    const spec = read('plugins/stackd-cloud/StackdCloud.podspec');
+    expect(spec).toMatch(/s\.name\s*=\s*'StackdCloud'/);
+    expect(spec).toContain("s.dependency 'Capacitor'");
+    expect(spec).toMatch(/s\.source_files\s*=\s*'ios\/Sources\//);
+    expect(read('ios/App/Podfile')).toContain("pod 'StackdCloud', :path => '../../plugins/stackd-cloud'");
+  });
+
+  it('the Swift plugin is a bridged CAPPlugin exposing available/write/read/list/remove on the ubiquity container', () => {
+    const swift = read('plugins/stackd-cloud/ios/Sources/StackdCloudPlugin/StackdCloudPlugin.swift');
+    expect(swift).toContain('@objc(StackdCloudPlugin)');
+    expect(swift).toMatch(/class StackdCloudPlugin:\s*CAPPlugin,\s*CAPBridgedPlugin/);
+    expect(swift).toContain('identifier = "StackdCloudPlugin"');
+    expect(swift).toContain('jsName = "StackdCloud"');
+    ['available', 'write', 'read', 'list', 'remove'].forEach((m) => {
+      expect(swift).toContain(`CAPPluginMethod(name: "${m}", returnType: CAPPluginReturnPromise)`);
+      expect(swift).toMatch(new RegExp(`@objc func ${m}\\(_ call: CAPPluginCall\\)`));
+    });
+    expect(swift).toContain('forUbiquityContainerIdentifier: nil');
+    expect(swift).toContain('appendingPathComponent("Documents"');
+    expect(swift).toContain('"Stackd Backups"');
+    expect(swift).toContain('startDownloadingUbiquitousItem');
+    expect(swift).toContain('NSFileCoordinator');
+  });
+
+  it('the Android plugin answers available:false and rejects the rest', () => {
+    const java = read('plugins/stackd-cloud/android/src/main/java/com/stackd/cloud/StackdCloudPlugin.java');
+    expect(java).toContain('@CapacitorPlugin(name = "StackdCloud")');
+    expect(java).toContain('ret.put("available", false)');
+    ['write', 'read', 'list', 'remove'].forEach((m) => {
+      expect(java).toMatch(new RegExp(`public void ${m}\\(PluginCall call\\) \\{\\s*call\\.reject\\(`));
+    });
+    expect(read('plugins/stackd-cloud/android/build.gradle')).toContain('namespace = "com.stackd.cloud"');
+    expect(read('plugins/stackd-cloud/android/src/main/AndroidManifest.xml')).toContain('<manifest');
+  });
+
+  it('App.entitlements holds the iCloud Documents service and the container, Info.plist publishes its folder', () => {
+    const ent = read('ios/App/App/App.entitlements');
+    expect(plistArray(ent, 'com.apple.developer.icloud-services')).toEqual(['CloudDocuments']);
+    expect(plistArray(ent, 'com.apple.developer.icloud-container-identifiers')).toEqual([CONTAINER]);
+    expect(plistArray(ent, 'com.apple.developer.ubiquity-container-identifiers')).toEqual([CONTAINER]);
+    expect(plistArray(ent, 'com.apple.developer.associated-domains')).toEqual(expect.arrayContaining(['applinks:api.stackdplatform.com']));
+    const plist = read('ios/App/App/Info.plist');
+    const m = plist.match(/<key>NSUbiquitousContainers<\/key>\s*<dict>\s*<key>([^<]+)<\/key>\s*<dict>([\s\S]*?)<\/dict>\s*<\/dict>/);
+    expect(m).not.toBeNull();
+    expect(m[1]).toBe(CONTAINER);
+    expect(m[2]).toMatch(/<key>NSUbiquitousContainerIsDocumentScopePublic<\/key>\s*<true\/>/);
+    expect(m[2]).toMatch(/<key>NSUbiquitousContainerName<\/key>\s*<string>Stack'd<\/string>/);
+    expect(m[2]).toMatch(/<key>NSUbiquitousContainerSupportedFolderLevels<\/key>\s*<string>Any<\/string>/);
+  });
+});

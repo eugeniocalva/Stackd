@@ -101,4 +101,25 @@ describe('Draft Transaction State Preservation', () => {
     expect(global.window._draftTxFormState).toBeUndefined();
     expect(global.window._pendingCategorySelection).toBeUndefined();
   });
+
+  // 1.2.0 (UX-10): the attachment metas survive the round trip (their files
+  // are already stored; the draft only carries the list the form holds).
+  it('restores the draft attachments into the Attachments card', () => {
+    global.window.Store.dispatch('ADD_ACCOUNT', { id: 'acc_1', name: 'Checking', type: 'checking', balance: 1000 });
+    const state = global.window.Store.getState();
+    const metas = [
+      { id: 'att_1', kind: 'image', name: 'Receipt.jpg', ext: 'jpg', mime: 'image/jpeg', size: 10, addedAt: '' },
+      { id: 'att_2', kind: 'pdf', name: 'Bill.pdf', ext: 'pdf', mime: 'application/pdf', size: 20, addedAt: '' }
+    ];
+    global.window._draftTxFormState = { type: 'expense', amount: '5', account: 'acc_1', date: '2026-07-25', note: '', tags: [], attachments: metas };
+
+    const html = global.window.Views.AddTransactionView.render(state);
+
+    expect(html).toContain('data-attachment="att_1"');
+    expect(html).toContain('data-attachment="att_2"');
+    expect(html).toContain('Receipt.jpg');
+    expect(html).toContain('2 attachments');
+    expect(html).toContain('id="tx-attachments-data" value="' + global.window.I18n.esc(JSON.stringify(metas)) + '"');
+    expect(global.window._draftTxFormState).toBeUndefined();
+  });
 });

@@ -1,6 +1,7 @@
 // export.js - CSV & PDF Export Utilities
 window.StackdExport = {
   _busy: false, // 1.0.2 (BUG-37): a native share sheet is open
+  _sink: null, // 1.2.0 (UX-11): (filename, content) => void — collects instead of delivering
 
   _download(filename, content, type = 'text/csv;charset=utf-8;', opts = {}) {
     // 1.0.2 (BUG-37): Android's WebView has no DownloadListener and iOS's no
@@ -9,6 +10,13 @@ window.StackdExport = {
     // Files / Drive / mail). Returns a Promise of whether the file went out.
     // 1.1.0 (IE-1): opts.bom === false leaves the UTF-8 BOM out (the ledger
     // export's "Add BOM for Excel" setting); every backup keeps it.
+    // 1.2.0 (UX-11): while a sink is set the file is handed to it instead
+    // (the raw text, no BOM) \u2014 the backup bundle collects the six backup
+    // exporters' texts through it without a download or a share sheet.
+    if (typeof this._sink === 'function') {
+      this._sink(filename, content, type);
+      return Promise.resolve(true);
+    }
     const text = (opts.bom === false ? '' : '\uFEFF') + content;
     const cap = window.Capacitor;
     if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
@@ -31,13 +39,21 @@ window.StackdExport = {
   // through the native plugin proxies (no JS wrapper is bundled, as in
   // db.js). A cancel is silent; any other failure, including a build that
   // lacks the Share plugin, shows a sheet instead of doing nothing.
+  // 1.2.0 (UX-10): `text` may also be { base64 } — a binary file (the
+  // receipts PDF), written WITHOUT an encoding (the plugin's binary contract).
   async _shareNative(filename, text) {
     if (this._busy) return false; // a second tap while the sheet is up
     this._busy = true;
     try {
       const P = (window.Capacitor && window.Capacitor.Plugins) || {};
       if (!P.Filesystem || !P.Share) throw new Error('export plugins unavailable');
-      const written = await P.Filesystem.writeFile({
+      const binary = !!text && typeof text === 'object' && typeof text.base64 === 'string';
+      const written = await P.Filesystem.writeFile(binary ? {
+        path: 'exports/' + filename,
+        data: text.base64,
+        directory: 'CACHE',
+        recursive: true
+      } : {
         path: 'exports/' + filename,
         data: text,
         directory: 'CACHE',
@@ -241,9 +257,17 @@ window.StackdExport = {
   },
 
   exportCategories(state) {
-    const headers = 'id,name,icon,type_hint';
+    // 1.2.0 (UX-9): a 5th column `tags` — the tags EXPLICITLY linked to the
+    // category (state.tagLinks), pipe-joined like the transactions file's
+    // Tags. Derived links re-derive from the restored transactions; a tag
+    // created with no category and no transaction is not carried (accepted
+    // limit). Columns are only ever appended, so an older file still imports.
+    const headers = 'id,name,icon,type_hint,tags';
+    const links = state.tagLinks || {};
+    const linkedTags = (catId) => Object.keys(links)
+      .filter(tag => Array.isArray(links[tag]) && links[tag].includes(catId)).join('|');
     const rows = state.categories.map(cat =>
-      this._toRow([cat.id, cat.name, cat.icon, cat.typeHint])
+      this._toRow([cat.id, cat.name, cat.icon, cat.typeHint, linkedTags(cat.id)])
     );
     this._download('stackd_categories.csv', [headers, ...rows].join('\n'));
   },
@@ -361,7 +385,11 @@ window.StackdExport = {
     // second import of the same backup duplicated every row). import.js keeps
     // both and trusts them only in a Stack'd export. Columns are only ever
     // appended.
-    'AccountId', 'Id'],
+    'AccountId', 'Id',
+    // 1.2.0 (UX-10): the row's attachment metas as a JSON array (never the
+    // bytes). A same-device restore keeps the ids and re-links the files; on
+    // another phone the viewer says the file is missing.
+    'Attachments'],
 
   exportTransactions(state, options = {}) {
     const delimiter = options.delimiter || ',';
@@ -415,7 +443,8 @@ window.StackdExport = {
         t.bankRef || '',
         acc ? (acc.currency || '') : '', // v1.19 (A-17)
         acc ? acc.id : '', // 1.0.2 (BUG-30)
-        t.id || '' // 1.0.2 (BUG-78)
+        t.id || '', // 1.0.2 (BUG-78)
+        Array.isArray(t.attachments) && t.attachments.length ? JSON.stringify(t.attachments) : '' // 1.2.0 (UX-10)
       ], delimiter);
     });
 
@@ -522,5 +551,177 @@ window.StackdExport = {
     });
 
     doc.save(`stackd_export_${window.Store._todayYMD()}.pdf`); // 1.0.2 (D-U4-7) local day, not the UTC day
+  },
+
+  // ── 1.2.0 (UX-10): Receipts PDF ─────────────────────────────────────────
+  // Every attachment of the rows in the Export period (the ledger's own
+  // filter: no opening balances, no rows of a deleted account, planned rows
+  // only when asked), oldest first, in ONE PDF built with the vendored
+  // pdf-lib (window.PDFLib): an A4 page per image with a caption line, a
+  // caption page before the pages of each attached PDF, a caption page
+  // saying "file missing" for a file this device does not hold (or "can't
+  // be shown" for one it holds but cannot embed).
+  receiptEntries(state, opts = {}) {
+    const today = window.Store._todayYMD();
+    const start = (opts.period && opts.period.start) || '';
+    const end = (opts.period && opts.period.end) || '';
+    const planned = opts.includePlanned !== false;
+    const accIds = new Set((state.accounts || []).map(a => a.id));
+    const ts = (t) => (t.date || '') + 'T' + (t.time || '') + '|' + (t.createdAt || '') + '|' + (t.id || '');
+    return (state.transactions || [])
+      .filter(t => t.type !== 'opening_balance' && accIds.has(t.accountId) && Array.isArray(t.attachments) && t.attachments.length &&
+        (!start || t.date >= start) && (!end || t.date <= end) && (planned || t.date <= today))
+      .sort((a, b) => (ts(a) < ts(b) ? -1 : ts(a) > ts(b) ? 1 : 0));
+  },
+
+  // The number of attachments the receipts PDF of this period would hold.
+  receiptsCount(state, opts = {}) {
+    return this.receiptEntries(state, opts).reduce((n, t) => n + t.attachments.length, 0);
+  },
+
+  // The standard Helvetica font encodes WinAnsi only: every other character
+  // is replaced (accents dropped first, then '?'), so a Polish or Greek note
+  // never makes drawText throw.
+  _WIN_ANSI_EXTRA: '\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178',
+  _winAnsi(text) {
+    const ok = (c) => { const n = c.charCodeAt(0); return (n >= 0x20 && n <= 0x7E) || (n >= 0xA0 && n <= 0xFF) || this._WIN_ANSI_EXTRA.indexOf(c) !== -1; };
+    return Array.from(String(text == null ? '' : text).replace(/[\r\n\t]+/g, ' ').replace(/[\u2000-\u200B\u202F\u205F\u3000]/g, ' ').replace(/\u2212/g, '-'))
+      .map(c => {
+        if (ok(c)) return c;
+        const base = c.normalize ? c.normalize('NFD').replace(/[\u0300-\u036F]/g, '') : '';
+        return base && Array.from(base).every(ok) ? base : '?';
+      }).join('');
+  },
+
+  // date · account · category · amount · note — the caption of a receipt.
+  _receiptCaption(t, state) {
+    const S = window.Store;
+    const I = window.I18n;
+    const acc = (state.accounts || []).find(a => a.id === t.accountId);
+    const cat = t.transferRef ? I.t('common.transfer') : (((state.categories || []).find(c => c.id === t.categoryId) || {}).name || '');
+    let day = t.date || '';
+    try { day = new Intl.DateTimeFormat(S.getLocale(), { dateStyle: 'medium' }).format(new Date(t.date + 'T12:00:00')); } catch (e) { /* undated row: the raw date */ }
+    const signed = t.type === 'expense' ? -Math.abs(Number(t.amount) || 0) : Math.abs(Number(t.amount) || 0);
+    const note = String(t.comment || t.note || '').trim();
+    return [day, acc ? acc.name : '', cat, S.formatCurrency(signed, acc && acc.currency), note].filter(Boolean).join(' · ');
+  },
+
+  // Shortened with '…' until it fits `width` points.
+  _fitText(font, text, size, width) {
+    let s = this._winAnsi(text);
+    if (!font || typeof font.widthOfTextAtSize !== 'function') return s;
+    if (font.widthOfTextAtSize(s, size) <= width) return s;
+    while (s.length > 1 && font.widthOfTextAtSize(s + '…', size) > width) s = s.slice(0, -1);
+    return s + '…';
+  },
+
+  // → Promise<Uint8Array|null> (null: nothing to export, or no pdf-lib).
+  async buildReceiptsPdf(state, opts = {}) {
+    const L = window.PDFLib;
+    const A = window.Attachments;
+    if (!L || !L.PDFDocument || !A) return null;
+    const entries = this.receiptEntries(state, opts);
+    if (!entries.length) return null;
+    const doc = await L.PDFDocument.create();
+    const font = await doc.embedFont(L.StandardFonts.Helvetica);
+    const W = 595.28;
+    const H = 841.89; // A4
+    const M = 36;
+    const ink = typeof L.rgb === 'function' ? L.rgb(0.2, 0.2, 0.22) : undefined;
+    const muted = typeof L.rgb === 'function' ? L.rgb(0.45, 0.45, 0.5) : undefined;
+    const captionPage = (caption, name, extra) => {
+      const page = doc.addPage([W, H]);
+      page.drawText(this._fitText(font, caption, 11, W - 2 * M), { x: M, y: H - M - 11, size: 11, font, color: ink });
+      page.drawText(this._fitText(font, name, 9, W - 2 * M), { x: M, y: H - M - 27, size: 9, font, color: muted });
+      if (extra) page.drawText(this._fitText(font, extra, 11, W - 2 * M), { x: M, y: H - M - 55, size: 11, font, color: ink });
+      return page;
+    };
+    const TOP = 40; // the two caption lines
+    for (const t of entries) {
+      const caption = this._receiptCaption(t, state);
+      for (const meta of t.attachments) {
+        const bytes = await A.read(meta);
+        const kind = bytes ? A.sniff(bytes) : null;
+        if (kind === 'jpg' || kind === 'png') {
+          let img = null;
+          try { img = kind === 'jpg' ? await doc.embedJpg(bytes) : await doc.embedPng(bytes); } catch (e) { img = null; }
+          if (img) {
+            const page = captionPage(caption, meta.name);
+            const aw = W - 2 * M;
+            const ah = H - 2 * M - TOP;
+            const scale = Math.min(1, aw / img.width, ah / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            page.drawImage(img, { x: M + (aw - w) / 2, y: M + (ah - h) / 2, width: w, height: h });
+            continue;
+          }
+        }
+        if (kind === 'pdf') {
+          let copied = null;
+          try {
+            const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true });
+            copied = await doc.copyPages(src, src.getPageIndices());
+          } catch (e) { copied = null; }
+          if (copied) {
+            captionPage(caption, meta.name);
+            copied.forEach(p => doc.addPage(p));
+            continue;
+          }
+        }
+        // bytes that are here but cannot be drawn (a format pdf-lib cannot
+        // embed) are not "missing"
+        captionPage(caption, meta.name, window.I18n.t(bytes ? 'attach.noPreview' : 'attach.missing'));
+      }
+    }
+    return doc.save();
+  },
+
+  _receiptsBusy: false,
+
+  // Builds the PDF and hands it out: the share sheet on native (a CACHE
+  // file, no encoding), a download on the web. Nothing in the period → an
+  // info sheet. → Promise<boolean> (whether the file went out).
+  async exportReceiptsPdf(state, opts = {}) {
+    const I = window.I18n;
+    const C = window.Components;
+    const notice = (o) => { if (C && C.NoticeSheet) C.NoticeSheet.show(o); };
+    if (!this.receiptEntries(state, opts).length) {
+      notice({ id: 'export-result-modal', tone: 'info', title: I.t('export.receipts'), body: I.t('export.receiptsNone') });
+      return false;
+    }
+    if (this._receiptsBusy) return false;
+    this._receiptsBusy = true;
+    try {
+      let bytes = null;
+      try { bytes = await this.buildReceiptsPdf(state, opts); } catch (error) { console.error('Receipts PDF failed:', error); }
+      if (!bytes) {
+        notice({ id: 'export-result-modal', tone: 'error', title: I.t('export.failedTitle'), body: I.t('export.failedBody') });
+        return false;
+      }
+      const now = opts.now instanceof Date ? opts.now : new Date();
+      const p2 = (n) => String(n).padStart(2, '0');
+      const name = 'Stackd_receipts_' + now.getFullYear() + p2(now.getMonth() + 1) + p2(now.getDate()) + p2(now.getHours()) + p2(now.getMinutes()) + p2(now.getSeconds()) + '.pdf';
+      const cap = window.Capacitor;
+      if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+        return this._shareNative(name, { base64: this._bytesToBase64(bytes) });
+      }
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
+    } finally {
+      this._receiptsBusy = false;
+    }
+  },
+
+  _bytesToBase64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+    return btoa(s);
   }
 };

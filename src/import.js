@@ -270,6 +270,19 @@ window.StackdImport = {
     return null;
   },
 
+  // 1.2.0 (UX-10): the Attachments column (a JSON array of metas) → a safe
+  // meta list; anything unreadable → [] (the row still restores).
+  _parseAttachments(raw) {
+    const text = String(raw == null ? '' : raw).trim();
+    const A = window.Attachments;
+    if (!text || text[0] !== '[' || !A || typeof A.sanitizeMetas !== 'function') return [];
+    try {
+      return A.sanitizeMetas(JSON.parse(text));
+    } catch (e) {
+      return [];
+    }
+  },
+
   _parseTags(raw) {
     if (!raw) return [];
     return String(raw).split(/[|,]/).map(t => t.trim().toLowerCase()).filter(Boolean);
@@ -614,6 +627,12 @@ window.StackdImport = {
       if (key) tx.importKey = key;
       const bankRef = String(row['bankref'] || '').trim();
       if (bankRef) tx.bankRef = bankRef;
+
+      // 1.2.0 (UX-10): the row's attachment metas — a Stack'd backup only,
+      // like Id/AccountId (D10); ids through Store.fileId, never trusted as
+      // file paths
+      const attachments = trusted ? this._parseAttachments(row['attachments']) : [];
+      if (attachments.length) tx.attachments = attachments;
 
       const recurrence = this._buildRecurrence(row, date);
       if (recurrence) tx.recurrence = recurrence;
@@ -2273,6 +2292,25 @@ window.StackdImport = {
       stats.importedCount++;
     });
 
+    // 1.2.0 (UX-9): the `tags` column (1.2.0+ backups) — each row's tags are
+    // linked to the category of that NAME as it now stands here (a skipped
+    // duplicate row's tags join the kept one). One silent SET_TAG_LINKS
+    // {merge}: links already here are kept. A 4-column file has no column.
+    const links = Object.create(null); // no inherited keys: a tag may be named 'constructor'
+    const catsNow = window.Store.getState().categories;
+    rows.forEach(row => {
+      const tags = this._parseTags(row['tags']);
+      if (!tags.length) return;
+      const key = nameKey(row['name']);
+      const cat = key && catsNow.find(c => nameKey(c.name) === key);
+      if (!cat) return;
+      tags.forEach(tag => {
+        if (!links[tag]) links[tag] = [];
+        if (!links[tag].includes(cat.id)) links[tag].push(cat.id);
+      });
+    });
+    if (Object.keys(links).length) window.Store.dispatch('SET_TAG_LINKS', { links, merge: true });
+
     return stats;
   },
 
@@ -3222,6 +3260,8 @@ window.StackdImport = {
   // 'unknown'. IE-2/IE-3 add 'ledger' and 'qif'. The text is read once with
   // the Auto reader; `decided` is what Auto chose, for the Review card.
   analyzeText(text, opts = {}) {
+    const bundle = this._parseBundle(text); // 1.2.0 (UX-11): one JSON file, six texts
+    if (bundle) return this._describeBundle(bundle);
     const fmt = this.sniffFormat(text);
     if (fmt === 'camt' || fmt === 'mt940') return { kind: 'statement', format: fmt };
     if (fmt === 'qif') { // 1.1.0 (IE-3)
@@ -3259,7 +3299,9 @@ window.StackdImport = {
   // opts are importText's (the Import settings and Review choices).
   checkText(text, opts = {}) {
     const a = this.analyzeText(text, opts);
-    if (a.kind !== 'ledger' && a.kind !== 'qif') return a;
+    // 1.2.0 (UX-11): a bundle's Check runs the real restore in the dry scope
+    // too, so its per-file counts are the restore's own.
+    if (a.kind !== 'ledger' && a.kind !== 'qif' && a.kind !== 'bundle') return a;
     let outcome = null;
     window.Store.dryRun(() => {
       this.importText(text, Object.assign({}, opts, { mode: 'commit' }),
@@ -3339,6 +3381,16 @@ window.StackdImport = {
     onError = (error) => { outcome = { error }; };
     const route = (csvText) => {
       try {
+        // 1.2.0 (UX-11): a backup bundle (one JSON file holding the six
+        // backup CSV texts) restores through the six routes below in
+        // dependency order, inside this one change — whichever mode asked,
+        // a bundle is always a restore. A file that fails part-way lands
+        // nothing (the batch below rolls the whole change back).
+        const bundle = this._parseBundle(csvText);
+        if (bundle) {
+          if (onComplete) onComplete(this._restoreBundle(bundle));
+          return;
+        }
         // v1.00: structured statements (camt.053/052 XML, MT940) are sniffed
         // by CONTENT before any CSV parsing — banks hand out .txt/.sta/.xml
         // interchangeably, so the extension proves nothing.
@@ -3507,5 +3559,109 @@ window.StackdImport = {
     }
     const f = window.Store.takeSaveFailure(); // this flow reports it itself
     if (fail) fail(thrown || new Error(window.I18n.t(f && f.quota ? 'others.importStorageFull' : 'storage.failedBody')));
+  },
+
+  // ── 1.2.0 (UX-11) the backup bundle (docs/ux-review-1.2-plan.md E.1) ──────
+  // { format: 'stackd-backup', version: 1, createdAt, app, language,
+  //   files: { accounts, categories, transactions, loans, budgets, importRules } }
+  // where every value is the exact text the matching backup exporter
+  // produces (StackdBackup.buildBundle collects them through
+  // StackdExport._sink). Nothing of the file is stored.
+  BUNDLE_FORMAT: 'stackd-backup',
+  // Restore order: accounts and categories first (rows name them), then the
+  // transactions, the loans (relinked to their series), budgets and rules.
+  BUNDLE_FILES: [['accounts', 'accounts'], ['categories', 'categories'], ['transactions', 'transactions'],
+    ['loans', 'loans'], ['budgets', 'budgets'], ['importRules', 'rules']],
+
+  // The parsed bundle, or null when the text is anything else. A leading BOM
+  // or whitespace is tolerated; a JSON text that is not a bundle (another
+  // app's export) falls through to the CSV routes.
+  _parseBundle(text) {
+    const s = String(text == null ? '' : text);
+    const i = s.search(/\S/);
+    if (i < 0 || s.charAt(i) !== '{') return null;
+    if (s.indexOf(this.BUNDLE_FORMAT) === -1) return null; // cheap gate before parsing a large file
+    let obj = null;
+    try { obj = JSON.parse(s.slice(i)); } catch (e) { return null; }
+    if (!obj || typeof obj !== 'object' || obj.format !== this.BUNDLE_FORMAT) return null;
+    if (!obj.files || typeof obj.files !== 'object' || Array.isArray(obj.files)) return null;
+    return obj;
+  },
+
+  // analyzeText's answer for a bundle: per-file data-row counts (header
+  // excluded), without touching the store.
+  _describeBundle(bundle) {
+    const files = {};
+    let rowCount = 0;
+    this.BUNDLE_FILES.forEach(([key]) => {
+      const text = bundle.files[key];
+      if (typeof text !== 'string') return;
+      let rows = 0;
+      if (text.trim()) {
+        try { rows = Math.max(0, this._readRecords(text).records.length - 1); } catch (e) { rows = 0; }
+      }
+      files[key] = { rowCount: rows };
+      rowCount += rows;
+    });
+    return {
+      kind: 'bundle',
+      version: Number(bundle.version) || 0,
+      createdAt: typeof bundle.createdAt === 'string' ? bundle.createdAt : '',
+      app: typeof bundle.app === 'string' ? bundle.app : '',
+      language: typeof bundle.language === 'string' ? bundle.language : '',
+      rowCount,
+      files
+    };
+  },
+
+  // Runs inside importText's one change. Each file goes through importText
+  // again (mode 'restore': the nested batch joins the outer one), so every
+  // dedup rule of the six routes applies unchanged. Returns the combined
+  // result { kind: 'bundle', files: { accounts: stats, … }, totals… }; a file
+  // that is not a Stack'd backup text throws, which rolls everything back.
+  _restoreBundle(bundle) {
+    const out = { kind: 'bundle', files: {}, importedCount: 0, skippedCount: 0, duplicateCount: 0,
+      newAccounts: 0, newCategories: 0, ambiguousRows: 0, ambiguousAccounts: [],
+      createdAt: typeof bundle.createdAt === 'string' ? bundle.createdAt : '',
+      app: typeof bundle.app === 'string' ? bundle.app : '' };
+    const bad = () => new Error(window.I18n.t('backup.badBundle'));
+    let seen = 0;
+    this.BUNDLE_FILES.forEach(([key, kind]) => {
+      const text = bundle.files[key];
+      if (typeof text !== 'string') return;
+      seen += 1;
+      if (!text.trim()) { // an empty slot: nothing to restore for that file
+        out.files[key] = { kind, importedCount: 0, skippedCount: 0, skipped: {}, duplicateCount: 0 };
+        return;
+      }
+      let result = null;
+      let error = null;
+      this.importText(text, { mode: 'restore' }, (r) => { result = r; }, (e) => { error = e; });
+      if (error) {
+        // A nested scope never announces its failure, so the inner route
+        // cannot tell "storage full" apart: the shared journal can.
+        const db = window.StackdDB;
+        const j = db && db._journal;
+        if (j && j.failed && typeof db.isQuotaError === 'function' && db.isQuotaError(j.failed)) {
+          throw new Error(window.I18n.t('others.importStorageFull'));
+        }
+        throw error;
+      }
+      // A hand-off kind (bank, statement, ledger, qif) or another bundle has
+      // no place inside a bundle.
+      if (!result || !result.kind || ['bank', 'statement', 'ledger', 'qif', 'bundle'].indexOf(result.kind) !== -1) throw bad();
+      out.files[key] = result;
+      out.importedCount += result.importedCount || 0;
+      out.skippedCount += result.skippedCount || 0;
+      out.duplicateCount += result.duplicateCount || 0;
+      out.newAccounts += result.newAccounts || 0;
+      out.newCategories += result.newCategories || 0;
+      if (result.ambiguousRows) {
+        out.ambiguousRows += result.ambiguousRows;
+        (result.ambiguousAccounts || []).forEach(n => { if (out.ambiguousAccounts.indexOf(n) === -1) out.ambiguousAccounts.push(n); });
+      }
+    });
+    if (!seen) throw bad();
+    return out;
   }
 };

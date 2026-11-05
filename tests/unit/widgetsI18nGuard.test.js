@@ -173,7 +173,9 @@ describe('no hard-coded English in widget output (1.0.1 BUG-09 guard)', () => {
     ],
     upcoming: [{ horizonDays: '30' }, { horizonDays: '7' }],
     categories: [{ direction: 'expense' }, { direction: 'income' }],
-    budgets: [{ mode: 'all' }]
+    budgets: [{ mode: 'all' }],
+    // 1.2.0 (UX-2): every account, then a single pick
+    accountBalances: [{ accountIds: [] }, { accountIds: ['uuid-1'] }]
   };
 
   it('renders every registry type × size × config without a leaked literal', () => {

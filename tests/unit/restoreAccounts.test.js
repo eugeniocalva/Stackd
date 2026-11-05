@@ -360,7 +360,8 @@ describe('1.0.2 (BUG-30) same-named accounts survive a restore', () => {
   });
 
   it('StackdExport.TX_HEADERS ends with AccountId and Id, and the cells are the ids', () => {
-    expect(window.StackdExport.TX_HEADERS.slice(-2)).toEqual(['AccountId', 'Id']);
+    // 1.2.0 (UX-10): columns are only ever appended — Attachments follows Id
+    expect(window.StackdExport.TX_HEADERS.slice(-3)).toEqual(['AccountId', 'Id', 'Attachments']);
     const { debit } = buildVisas();
     const rows = I().parseCSV(exportFiles().transactions);
     const fuel = rows.find(r => r.note === 'Fuel');

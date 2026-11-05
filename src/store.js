@@ -245,6 +245,18 @@ window.Store = {
     bankConnect: null,
     bankConnections: [],
     pro: null, // v1.13: Stack'd Pro entitlement (see _proDefaults)
+    // 1.2.0 (UX-9): explicit tag ↔ category links from the tag picker —
+    // { [tag]: [categoryId, …] }. A key with [] is a tag the user created
+    // with no category selected; links a saved transaction implies are NOT
+    // written here (derived lazily, see getTagsForCategory). User data: the
+    // categories CSV carries the linked tags (docs/ux-review-1.2-plan.md).
+    tagLinks: {},
+    // 1.2.0 (UX-11): backup page state. backupPrefs = { daily, lastAutoAt }
+    // (null = defaults, like exportPrefs); backupLog = newest-first entries
+    // { id, at, kind: 'auto'|'manual'|'restore', target, name, bytes, ok,
+    // error } capped at 20. Both are per-device and outside the CSV backup.
+    backupPrefs: null,
+    backupLog: [],
 
     initialized: false
   },
@@ -335,6 +347,9 @@ window.Store = {
     this.state.bankConnect = this._loadBankConnect(); // v1.05
     this.state.bankConnections = window.StackdDB.load('bankConnections', []); // v1.05
     this.state.pro = this._loadPro(); // v1.13
+    this.state.tagLinks = this._loadTagLinks(); // 1.2.0 (UX-9)
+    this.state.backupPrefs = window.StackdDB.load('backupPrefs', null); // 1.2.0 (UX-11)
+    this.state.backupLog = this._loadBackupLog(); // 1.2.0 (UX-11)
     this.applyTheme();
     this.initThemeListener();
     // Restore persisted history sort preference (default: asc = Oldest First)
@@ -574,7 +589,16 @@ window.Store = {
     if (this._healInferSeriesAnchors() || anchorsHealed) window.StackdDB.save('transactions', this.state.transactions);
     this._healRestoredImportKeys(); // 1.0.2 (BUG-32)
     this._healMultilineNotes(); // 1.0.2 (R1)
+    this._healTagLinks(); // 1.2.0 (UX-9)
     this._processRecurringTransactions();
+    // 1.2.0 (UX-10): the settled attachment index, then the orphan sweep —
+    // files no row references (a crash between a change and its cleanup, a
+    // restore over this install). Fire-and-forget. Skipped with no rows: an
+    // unreadable transactions key must never wipe every receipt.
+    this._attachmentIndex = this._indexAttachments();
+    if (window.Attachments && typeof window.Attachments.sweep === 'function' && this.state.transactions.length) {
+      window.Attachments.sweep(new Set(this._attachmentIndex.keys()));
+    }
 
     // ── Cross-Tab Synchronization ──────────────────────────────────────────
     // Listen to localStorage changes made natively by other tabs to ensure
@@ -593,7 +617,7 @@ window.Store = {
           changed = true;
         }
         if (e.key === 'stackd_v1_categories') { this.state.categories = window.StackdDB.load('categories', []); this._sanitizeMarkupFields('categories'); changed = true; } // 1.0.2 (BUG-24)
-        if (e.key === 'stackd_v1_transactions') { this.state.transactions = window.StackdDB.load('transactions', []); changed = true; }
+        if (e.key === 'stackd_v1_transactions') { this.state.transactions = window.StackdDB.load('transactions', []); this._attachmentIndex = this._indexAttachments(); changed = true; } // 1.2.0 (UX-10): the other tab cleaned up its own files
         if (e.key === 'stackd_v1_budgets') { this.state.budgets = window.StackdDB.load('budgets', []); changed = true; }
         if (e.key === 'stackd_v1_loans') { this.state.loans = window.StackdDB.load('loans', []); changed = true; }
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
@@ -606,6 +630,9 @@ window.Store = {
         if (e.key === 'stackd_v1_bankConnect') { this.state.bankConnect = this._loadBankConnect(); changed = true; } // v1.05
         if (e.key === 'stackd_v1_bankConnections') { this.state.bankConnections = window.StackdDB.load('bankConnections', []); changed = true; } // v1.05
         if (e.key === 'stackd_v1_pro') { this.state.pro = this._loadPro(); changed = true; } // v1.13
+        if (e.key === 'stackd_v1_tagLinks') { this.state.tagLinks = this._loadTagLinks(); changed = true; } // 1.2.0 (UX-9)
+        if (e.key === 'stackd_v1_backupPrefs') { this.state.backupPrefs = window.StackdDB.load('backupPrefs', null); changed = true; } // 1.2.0 (UX-11)
+        if (e.key === 'stackd_v1_backupLog') { this.state.backupLog = this._loadBackupLog(); changed = true; } // 1.2.0 (UX-11)
         if (e.key === 'stackd_v1_expandedGraphFilters') { this.state.expandedGraphFilters = window.StackdDB.load('expandedGraphFilters', { interval: 'monthly', accounts: [], categories: [] }); changed = true; } // 1.0.2 (BUG-29)
         if (e.key === 'stackd_v1_defaultAccountId') { this.state.defaultAccountId = window.StackdDB.load('defaultAccountId', ''); changed = true; } // 1.0.2 (BUG-29)
         if (e.key === 'stackd_v1_theme') {
@@ -637,6 +664,7 @@ window.Store = {
     this._budgetSpendIdx = null;
     this._importKeyIdx = null; // v0.99
     this._primaryIdx = null; // v1.02
+    this._tagCatIdx = null; // 1.2.0 (UX-9)
   },
 
   // ── Theme State Management & Detection ────────────────────────────────────
@@ -1418,6 +1446,7 @@ window.Store = {
           delete generatedTx.importKey;
           delete generatedTx.bankRef;
           delete generatedTx.amountEdited; // 1.0.2 (BUG-74): a clone is not a hand edit
+          delete generatedTx.attachments; // 1.2.0 (UX-10): a receipt belongs to ONE payment
 
           // If transfer, handle ref regenerations
           if (generatedTx.transferRef) {
@@ -1444,6 +1473,7 @@ window.Store = {
                 delete cpGen.importKey; // 1.0.1: nor a bank identity
                 delete cpGen.bankRef;
                 delete cpGen.amountEdited; // 1.0.2 (BUG-74)
+                delete cpGen.attachments; // 1.2.0 (UX-10)
                 this.state.transactions.push(cpGen);
                 // Strip the old counterpart's own nextDate (if it had one) so it
                 // can never act as a second generator for the same pair.
@@ -1464,6 +1494,7 @@ window.Store = {
     if (changed) {
       this._sortTransactions();
       this._importKeyIdx = null;
+      this._tagCatIdx = null; // 1.2.0 (UX-9)
       window.StackdDB.save('transactions', this.state.transactions);
     }
   },
@@ -1871,6 +1902,7 @@ window.Store = {
     this._budgetSpendIdx = null;
     this._importKeyIdx = null;
     this._primaryIdx = null;
+    this._tagCatIdx = null; // 1.2.0 (UX-9)
     if (touched.size) this._sortData(); // as _settleChange: the disk order is not memory's
     if (!wasQueued) this._emitQueued = false; // drop the run's own render
     this._saveFailure = prevFailure; // also undoes a claim made inside the run
@@ -1878,11 +1910,54 @@ window.Store = {
     return result;
   },
 
+  // ── 1.2.0 (UX-10): attachment files follow their rows ──────────────────
+  // The bytes live in window.Attachments (Filesystem / IndexedDB), only the
+  // metas ride on the rows. After a change LANDS, every attachment some row
+  // referenced before it and no row references now (a deleted row, account
+  // or bulk selection, a receipt removed in the form, a rebuilt series) is
+  // handed to Attachments.removeAll — never for a rolled-back change, never
+  // inside Store.dryRun (an import Check runs real reducers). One diff over
+  // the settled index instead of a hook per delete path; a meta that only
+  // moved (a regular row converted into a transfer) is still referenced and
+  // stays. RESET_APP sets _attachmentsWipe: the whole store goes. The boot
+  // sweep (_initState) catches whatever a crash left behind.
+  _attachmentIndex: null, // Map id → meta, as of the last landed change
+  _attachmentsWipe: false,
+
+  _indexAttachments() {
+    const index = new Map();
+    (this.state.transactions || []).forEach(t => {
+      if (t && Array.isArray(t.attachments)) t.attachments.forEach(a => { if (a && a.id) index.set(String(a.id), a); });
+    });
+    return index;
+  },
+
+  _dropDetachedAttachments(j) {
+    const A = window.Attachments;
+    if (this._attachmentsWipe) {
+      this._attachmentsWipe = false;
+      this._attachmentIndex = new Map();
+      if (A && typeof A.clear === 'function') A.clear();
+      return;
+    }
+    if (!this._attachmentIndex || !j || !j.touched || !j.touched.has('transactions')) return;
+    const before = this._attachmentIndex;
+    const now = this._indexAttachments();
+    this._attachmentIndex = now;
+    const gone = [];
+    before.forEach((meta, id) => { if (!now.has(id)) gone.push(meta); });
+    if (gone.length && A && typeof A.removeAll === 'function') A.removeAll(gone);
+  },
+
   _settleChange(j) {
     const db = window.StackdDB;
-    if (db._dry) return !(j ? j.failed : (db._journal && db._journal.failed)); // 1.1.0 (IE-2): dryRun restores
+    if (db._dry) { // 1.1.0 (IE-2): dryRun restores
+      this._attachmentsWipe = false; // 1.2.0 (UX-10): a dry run never touches a file
+      return !(j ? j.failed : (db._journal && db._journal.failed));
+    }
     if (!j) return !(db._journal && db._journal.failed); // nested: the outer scope settles
-    if (!j.failed) return true;
+    if (!j.failed) { this._dropDetachedAttachments(j); return true; }
+    this._attachmentsWipe = false; // 1.2.0 (UX-10): a rolled-back change keeps every file
     j.touched.forEach((key) => {
       try {
         if (!this._reloadSlice(key)) console.error('Store: no reload for', key);
@@ -1937,6 +2012,9 @@ window.Store = {
         return true;
       case 'bankConnect': s.bankConnect = this._loadBankConnect(); return true;
       case 'pro': s.pro = this._loadPro(); return true;
+      case 'tagLinks': s.tagLinks = this._loadTagLinks(); return true; // 1.2.0 (UX-9)
+      case 'backupPrefs': s.backupPrefs = L('backupPrefs', null); return true; // 1.2.0 (UX-11)
+      case 'backupLog': s.backupLog = this._loadBackupLog(); return true; // 1.2.0 (UX-11)
       case 'catDebtSeeded': case 'setup_done': return true; // flags with no state
       default: return false;
     }
@@ -1990,6 +2068,7 @@ window.Store = {
     this._budgetSpendIdx = null;
     this._importKeyIdx = null; // v0.99
     this._primaryIdx = null; // v1.02
+    this._tagCatIdx = null; // 1.2.0 (UX-9)
     let changed = false;
 
     switch (action) {
@@ -2425,6 +2504,7 @@ window.Store = {
              // 1.0.2 (BUG-27): paid state is per occurrence — the edited
              // payment still takes its flip, the others keep their own
              delete tUpdate.isPaid;
+             delete tUpdate.attachments; // 1.2.0 (UX-10): per payment, like paid state
              if (t.transferRef && t.type !== existingTx.type) {
                // Counterpart leg of a transfer pair: its account/category
                // belong to the OTHER side — only shared fields may propagate
@@ -2575,7 +2655,9 @@ window.Store = {
           // v0.82: the form's Paid toggle. Lean storage — the key exists only
           // when unpaid; both legs always share one paid state (the
           // TOGGLE_TRANSACTION_PAID mirror invariant).
-          ...(payload.isPaid === false ? { isPaid: false } : {})
+          ...(payload.isPaid === false ? { isPaid: false } : {}),
+          // 1.2.0 (UX-10): a pair's receipts live on its expense leg only
+          ...(Array.isArray(payload.attachments) && payload.attachments.length ? { attachments: payload.attachments } : {})
         });
 
         // 1.0.2 (BUG-35): each leg in its OWN currency, never converted. Across
@@ -2710,6 +2792,11 @@ window.Store = {
               if (payload.note !== undefined) item.comment = payload.note;
               if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
+              // 1.2.0 (UX-10): the pair's receipts, on this leg only
+              if (Array.isArray(payload.attachments)) {
+                 if (payload.attachments.length) item.attachments = payload.attachments;
+                 else delete item.attachments;
+              }
               item.updatedAt = new Date().toISOString();
            } else if (item.type === 'income') {
               if (incomeAmount !== undefined) item.amount = incomeAmount; // 1.0.2 (BUG-35)
@@ -2719,6 +2806,7 @@ window.Store = {
               if (payload.note !== undefined) item.comment = payload.note;
               if (payload.recurrence !== undefined) item.recurrence = legRecurrence(item);
               if (tagsArray !== undefined) item.tags = tagsArray;
+              if (Array.isArray(payload.attachments)) delete item.attachments; // 1.2.0 (UX-10): expense leg only
               item.updatedAt = new Date().toISOString();
            }
            // v0.82: paid state, mirrored on both legs. Canonical storage:
@@ -3285,7 +3373,75 @@ window.Store = {
           this.state.categories = this.state.categories.filter(c => c.id !== payload.id);
           this._sortData();
           window.StackdDB.save('categories', this.state.categories);
+          // 1.2.0 (UX-9): the id leaves every explicit tag link in the same
+          // (journaled) change; the tags themselves stay.
+          if (this._stripTagLinkCategory(payload.id)) window.StackdDB.save('tagLinks', this.state.tagLinks);
           changed = true;
+        }
+        break;
+      }
+
+      // ── 1.2.0 (UX-9): explicit tag ↔ category links (plan §C.1) ──────────
+      // Keys are Store.normalizeTag output; a key with [] is a tag the user
+      // created with no category. `silent` saves without a re-render: the tag
+      // picker links from inside the open transaction form, whose in-memory
+      // state a render would drop.
+      case 'LINK_TAG': {
+        const tag = this.normalizeTag(payload && payload.tag);
+        if (!tag) break;
+        const links = this.state.tagLinks;
+        let touched = false;
+        if (!Object.prototype.hasOwnProperty.call(links, tag)) { links[tag] = []; touched = true; }
+        const catId = payload.categoryId;
+        if (typeof catId === 'string' && catId && !links[tag].includes(catId) &&
+            this.state.categories.some(c => c.id === catId)) {
+          links[tag].push(catId);
+          touched = true;
+        }
+        if (touched) {
+          window.StackdDB.save('tagLinks', links);
+          if (!payload.silent) changed = true;
+        }
+        break;
+      }
+
+      case 'UNLINK_TAG': {
+        const tag = this.normalizeTag(payload && payload.tag);
+        // own keys only: a tag named after an Object.prototype member
+        // ('constructor') must not resolve to the inherited value
+        const ids = tag && Object.prototype.hasOwnProperty.call(this.state.tagLinks, tag) ? this.state.tagLinks[tag] : null;
+        if (!Array.isArray(ids) || !ids.includes(payload.categoryId)) break;
+        this.state.tagLinks[tag] = ids.filter(id => id !== payload.categoryId); // the key stays: an explicit tag
+        window.StackdDB.save('tagLinks', this.state.tagLinks);
+        if (!payload.silent) changed = true;
+        break;
+      }
+
+      case 'DELETE_TAG': {
+        const tag = this.normalizeTag(payload && payload.tag);
+        if (!tag || !Object.prototype.hasOwnProperty.call(this.state.tagLinks, tag)) break;
+        delete this.state.tagLinks[tag]; // transactions keep their own tags
+        window.StackdDB.save('tagLinks', this.state.tagLinks);
+        if (!payload.silent) changed = true;
+        break;
+      }
+
+      // The restore path (categories CSV `tags` column): silent by default,
+      // keys normalised, ids filtered to this install's categories; `merge`
+      // (default true) adds to what is here, false replaces the slice.
+      case 'SET_TAG_LINKS': {
+        const incoming = this._cleanTagLinks(payload && payload.links);
+        const merge = !payload || payload.merge !== false;
+        const before = JSON.stringify(this.state.tagLinks);
+        const next = merge ? this.state.tagLinks : {};
+        Object.keys(incoming).forEach(tag => {
+          if (!Object.prototype.hasOwnProperty.call(next, tag)) next[tag] = [];
+          incoming[tag].forEach(id => { if (!next[tag].includes(id)) next[tag].push(id); });
+        });
+        if (JSON.stringify(next) !== before) {
+          this.state.tagLinks = next;
+          window.StackdDB.save('tagLinks', next);
+          if (payload && payload.silent === false) changed = true;
         }
         break;
       }
@@ -3502,10 +3658,19 @@ window.Store = {
         window.StackdDB.save('defaultAccountId', '');
         this.state.exportPrefs = null; // 1.1.0 (IE-4)
         window.StackdDB.remove('exportPrefs');
+        // 1.2.0 (UX-9/UX-11): explicit tag links are user data (wiped with the
+        // rest); backup prefs/log are device state of the wiped install.
+        this.state.tagLinks = {};
+        window.StackdDB.save('tagLinks', {});
+        this.state.backupPrefs = null;
+        window.StackdDB.remove('backupPrefs');
+        this.state.backupLog = [];
+        window.StackdDB.save('backupLog', []);
         // Clear the first-launch flag so the region setup modal shows again
         // (v0.97: through StackdDB so the native file mirror deletes it too —
         // a raw removeItem would let the mirror resurrect it at next boot).
         window.StackdDB.remove('setup_done');
+        this._attachmentsWipe = true; // 1.2.0 (UX-10): every attachment file goes once the reset lands
         this.state.loans = [];
         // App will force reload by the caller, so we don't even need to emit strictly
         break;
@@ -3727,6 +3892,30 @@ window.Store = {
         this.state.exportPrefs = this.normalizeExportPrefs(Object.assign({}, this.getExportPrefs(), payload || {}));
         window.StackdDB.save('exportPrefs', this.state.exportPrefs);
         changed = true;
+        break;
+      }
+
+      // 1.2.0 (UX-11): the Backup page's prefs ({ daily, lastAutoAt,
+      // lastFailDay }) and its log — per-device state like exportPrefs, never
+      // in a backup. `silent: true` saves without a render: the daily run
+      // fires on resume, under whatever screen is open.
+      case 'SET_BACKUP_PREFS': {
+        const p = Object.assign({}, payload || {});
+        const silent = p.silent === true;
+        delete p.silent;
+        this.state.backupPrefs = this.normalizeBackupPrefs(Object.assign({}, this.getBackupPrefs(), p));
+        window.StackdDB.save('backupPrefs', this.state.backupPrefs);
+        changed = !silent;
+        break;
+      }
+
+      // Newest first, capped at BACKUP_LOG_MAX (the oldest fall off).
+      case 'APPEND_BACKUP_LOG': {
+        if (!payload || typeof payload !== 'object') break;
+        const entry = this.normalizeBackupLogEntry(payload);
+        this.state.backupLog = [entry].concat(Array.isArray(this.state.backupLog) ? this.state.backupLog : []).slice(0, this.BACKUP_LOG_MAX);
+        window.StackdDB.save('backupLog', this.state.backupLog);
+        changed = payload.silent !== true;
         break;
       }
 
@@ -4264,6 +4453,7 @@ window.Store = {
     });
     if (healed) {
       this._importKeyIdx = null;
+      this._tagCatIdx = null; // 1.2.0 (UX-9)
       window.StackdDB.save('transactions', this.state.transactions);
     }
   },
@@ -4282,6 +4472,25 @@ window.Store = {
       }
     });
     if (healed) window.StackdDB.save('transactions', this.state.transactions);
+  },
+
+  // 1.2.0 (UX-9): the explicit tag links a 1.2.0 install saved — keys
+  // normalised, ids of categories this install no longer has dropped,
+  // sentinels gone. Skipped entirely when any row names a category this
+  // install does not have: only an unreadable categories key (seeded with
+  // the defaults, store.js:576 spirit) gives that state, and healing then
+  // would drop every link to the user's own categories for good, file mirror
+  // included. Idempotent; saves only when it changed something (a corrupt
+  // key loads as {} and is neither healed nor re-saved).
+  _healTagLinks() {
+    const links = this.state.tagLinks;
+    const catIds = new Set(this.state.categories.map(c => c.id));
+    if (this.state.transactions.some(t => t.categoryId && !catIds.has(t.categoryId))) return;
+    const healed = this._cleanTagLinks(links);
+    if (JSON.stringify(healed) !== JSON.stringify(links)) {
+      this.state.tagLinks = healed;
+      window.StackdDB.save('tagLinks', healed);
+    }
   },
 
   // ── v1.02 per-account currency (docs/bank-import-plan.md §6) ──────────────
@@ -4472,6 +4681,52 @@ window.Store = {
     return this.normalizeExportPrefs(this.state.exportPrefs || this.exportDefaults());
   },
 
+  // 1.2.0 (UX-11): the Backup page's prefs. daily = the automatic backup
+  // toggle (native only); lastAutoAt = ISO time of the last automatic backup
+  // that was written; lastFailDay = the local day a failure sheet was shown
+  // (one per day). Anything else is dropped, as normalizeExportPrefs does.
+  backupDefaults() {
+    return { daily: false, lastAutoAt: null, lastFailDay: '' };
+  },
+
+  normalizeBackupPrefs(p) {
+    const d = this.backupDefaults();
+    const src = p || {};
+    const iso = (v) => (typeof v === 'string' && v && !isNaN(Date.parse(v))) ? v : null;
+    return {
+      daily: typeof src.daily === 'boolean' ? src.daily : d.daily,
+      lastAutoAt: iso(src.lastAutoAt),
+      lastFailDay: /^\d{4}-\d{2}-\d{2}$/.test(String(src.lastFailDay || '')) ? src.lastFailDay : d.lastFailDay
+    };
+  },
+
+  getBackupPrefs() {
+    return this.normalizeBackupPrefs(this.state.backupPrefs);
+  },
+
+  // The log of recent backups and restores: { id, at, kind, target, name,
+  // bytes, ok, error }. Values are bounded (names and errors are shown on the
+  // page, escaped at render) and anything unknown falls back.
+  BACKUP_LOG_MAX: 20,
+  BACKUP_LOG_KINDS: ['auto', 'manual', 'restore'],
+  BACKUP_TARGETS: ['icloud', 'documents', 'download'],
+
+  normalizeBackupLogEntry(e) {
+    const src = e && typeof e === 'object' ? e : {};
+    const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
+    const ok = src.ok !== false;
+    return {
+      id: str(src.id, 64) || window.StackdDB.generateId(),
+      at: (typeof src.at === 'string' && !isNaN(Date.parse(src.at))) ? src.at : new Date().toISOString(),
+      kind: this.BACKUP_LOG_KINDS.indexOf(src.kind) !== -1 ? src.kind : 'manual',
+      target: this.BACKUP_TARGETS.indexOf(src.target) !== -1 ? src.target : '',
+      name: str(src.name, 200),
+      bytes: Number.isFinite(src.bytes) && src.bytes > 0 ? Math.round(src.bytes) : 0,
+      ok,
+      error: ok ? '' : str(src.error, 200)
+    };
+  },
+
   getBalanceAtDate(date, accountIds = [], categoryIds = []) {
     // 1.0.2 (BUG-36): an explicit list that mixes currencies keeps only the
     // accounts aggregateSelection resolves (v1.02 guarded only []).
@@ -4582,6 +4837,146 @@ window.Store = {
       });
       return { monthLabels, points };
     }
+  },
+
+  // 1.2.0 (UX-1): the Home balance curve for a range chip
+  // ('1w' | '1m' | '6m' | 'ytd' | '1y' | 'max'). Same rows and sign as
+  // getBalanceAtDate (paid only, aggregatePredicate scope, category filter
+  // where rows without a category pass, nothing before the account opened),
+  // but in ONE pass: the rows are selected and sorted once, then the
+  // ascending cutoffs are walked with a running sum — never a
+  // getBalanceAtDate per point (a daily range would be 30 full scans).
+  // Every cutoff is clamped to today, so the last point is today's balance.
+  // '1y' yields the exact points of computeGraphBalances({interval:
+  // 'monthly'}). Balances are rounded to cents so a flat line never reads as
+  // a float-noise "down" trend. Returns { range, points: [{x, y, label,
+  // fullLabel, balance, date}], tickLabels (one per point, '' = no tick),
+  // baseline (= points[0].balance), start, end }.
+  computeBalanceSeries({ range = '1y', accountIds = [], categoryIds = [] } = {}) {
+    const RANGES = ['1w', '1m', '6m', 'ytd', '1y', 'max'];
+    if (!RANGES.includes(range)) range = '1y';
+    const accIds = accountIds || [];
+    const catIds = categoryIds || [];
+    const locale = this.getLocale();
+    const todayStr = this._todayYMD();
+    const now = new Date();
+    const Y = now.getFullYear(), M = now.getMonth(), D = now.getDate();
+    const day = (y, m, d) => new Date(y, m, d, 12); // noon-anchored (DST-safe)
+
+    // One selection pass, in getBalanceAtDate's predicate order.
+    const inScope = this.aggregatePredicate(accIds);
+    const rows = this.state.transactions.filter(t =>
+      t.isPaid !== false &&
+      inScope(t.accountId) &&
+      (catIds.length === 0 || !t.categoryId || catIds.includes(t.categoryId)) &&
+      !this._isTxBeforeOpeningDate(t)
+    );
+    rows.sort((a, b) => (a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)));
+
+    // Cutoffs: [{ cut: 'YYYY-MM-DD', label, fullLabel, tick }], ascending.
+    const cutoffs = [];
+    const fmtD = (d, o) => d.toLocaleDateString(locale, o);
+    const MONTH_YY = { month: 'short', year: '2-digit' };
+    const DAY_MONTH = { month: 'short', day: 'numeric' };
+    const pushDay = (d, label, tick) => cutoffs.push({
+      cut: this._localYMD(d), label, fullLabel: fmtD(d, DAY_MONTH), tick
+    });
+    const monthly = (fromY, fromM) => {
+      // every month from (fromY, fromM) to this month, cutoff = its last day
+      for (let d = new Date(fromY, fromM, 1); d.getFullYear() < Y || (d.getFullYear() === Y && d.getMonth() <= M);
+        d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+        const lbl = d.toLocaleDateString(locale, MONTH_YY);
+        cutoffs.push({ cut: this._localYMD(new Date(d.getFullYear(), d.getMonth() + 1, 0)), label: lbl, fullLabel: lbl, tick: lbl });
+      }
+    };
+    // Weekly/daily points that mark the first point of each month.
+    const monthTicks = () => {
+      let prev = null;
+      cutoffs.forEach(c => {
+        const ym = c.cut.slice(0, 7);
+        if (ym !== prev) {
+          const [y, m] = ym.split('-').map(Number);
+          c.tick = fmtD(day(y, m - 1, 1), { month: 'short' });
+        }
+        prev = ym;
+      });
+    };
+
+    if (range === '1w') {
+      for (let i = 6; i >= 0; i--) {
+        const d = day(Y, M, D - i);
+        const wd = fmtD(d, { weekday: 'short' });
+        pushDay(d, wd, wd);
+      }
+    } else if (range === '1m') {
+      for (let i = 29; i >= 0; i--) {
+        const d = day(Y, M, D - i);
+        const dn = fmtD(d, { day: 'numeric' });
+        pushDay(d, dn, i % 7 === 0 ? dn : '');
+      }
+    } else if (range === '6m') {
+      for (let i = 25; i >= 0; i--) {
+        const d = day(Y, M, D - i * 7);
+        pushDay(d, fmtD(d, DAY_MONTH), '');
+      }
+      monthTicks();
+    } else if (range === 'ytd') {
+      if (M === 0) {
+        // a January run: daily points from Jan 1 (one tick a week)
+        if (D === 1) pushDay(day(Y - 1, 11, 31), fmtD(day(Y - 1, 11, 31), DAY_MONTH), '');
+        for (let dd = 1; dd <= D; dd++) {
+          const d = day(Y, 0, dd);
+          pushDay(d, fmtD(d, DAY_MONTH), (D - dd) % 7 === 0 ? fmtD(d, { day: 'numeric' }) : '');
+        }
+      } else {
+        for (let dd = 1; ; dd += 7) {
+          const d = day(Y, 0, dd);
+          if (this._localYMD(d) >= todayStr) break;
+          pushDay(d, fmtD(d, DAY_MONTH), '');
+        }
+        const t = day(Y, M, D);
+        pushDay(t, fmtD(t, DAY_MONTH), '');
+        monthTicks();
+      }
+    } else if (range === 'max') {
+      let fromY = Y, fromM = M - 11;
+      if (rows.length > 0) {
+        const [ey, em] = String(rows[0].date).split('-').map(Number);
+        if (ey && em) { fromY = ey; fromM = em - 1; }
+        // never after this month, and at least two points
+        if (fromY > Y || (fromY === Y && fromM >= M)) { fromY = Y; fromM = M - 1; }
+      }
+      const norm = new Date(fromY, fromM, 1);
+      monthly(norm.getFullYear(), norm.getMonth());
+      // thin the ticks to at most 12, anchored on this month
+      const step = Math.ceil(cutoffs.length / 12);
+      const last = cutoffs.length - 1;
+      cutoffs.forEach((c, i) => { if ((last - i) % step !== 0) c.tick = ''; });
+    } else { // '1y' — computeGraphBalances' monthly series
+      monthly(Y, M - 11); // new Date() normalises a negative month
+    }
+
+    // The running sum over the ascending cutoffs.
+    let i = 0;
+    let sum = 0;
+    const points = cutoffs.map((c, idx) => {
+      const cut = c.cut > todayStr ? todayStr : c.cut;
+      while (i < rows.length && rows[i].date <= cut) {
+        const tx = rows[i++];
+        sum = this._isPositiveTx(tx) ? sum + tx.amount : sum - tx.amount;
+      }
+      const balance = Math.round(sum * 100) / 100;
+      return { x: idx, y: balance, label: c.label, fullLabel: c.fullLabel, balance, date: cut };
+    });
+    const clamp = (s) => (s > todayStr ? todayStr : s);
+    return {
+      range,
+      points,
+      tickLabels: cutoffs.map(c => c.tick || ''),
+      baseline: points.length ? points[0].balance : 0,
+      start: cutoffs.length ? clamp(cutoffs[0].cut) : todayStr,
+      end: cutoffs.length ? clamp(cutoffs[cutoffs.length - 1].cut) : todayStr
+    };
   },
 
   computeBalanceForecast(accountIds = []) {
@@ -4933,20 +5328,151 @@ window.Store = {
     return linkedAny;
   },
 
+  // 1.2.0 (UX-9): the ONE normaliser for a tag the user types or picks.
+  // trim, strip leading '#', lowercase, collapse whitespace to single spaces,
+  // drop the CSV separators ('|' ',') and control characters, cap at 40.
+  // Keeps unicode letters and inner spaces so restored tags ('café',
+  // 'road trip' — import.js _parseTags) stay selectable as they are. Returns
+  // '' for an empty or reserved value ('__untagged__', '__all__' are filter
+  // sentinels; 'uncategorized' is the filters' pseudo category id;
+  // '__proto__' would swap a plain object's prototype as a tagLinks key).
+  normalizeTag(raw) {
+    let s = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f]/g, '');
+    s = s.replace(/^[\s#]+/, '').replace(/[|,]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (s.length > 40) s = s.slice(0, 40).trim();
+    if (!s || s === '__untagged__' || s === '__all__' || s === 'uncategorized' || s === '__proto__') return '';
+    return s;
+  },
+
+  // 1.2.0 (UX-9): tagLinks slice loader — memory-only guard for a corrupt key
+  // (never re-saved at boot; the heal in the tags unit decides what to write).
+  _loadTagLinks() {
+    const raw = window.StackdDB.load('tagLinks', {});
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out = {};
+    Object.keys(raw).forEach(tag => {
+      if (tag === '__proto__') return; // JSON.parse keeps it as an own key; assigning it would swap out's prototype
+      const ids = Array.isArray(raw[tag]) ? raw[tag].filter(id => typeof id === 'string') : [];
+      out[tag] = ids;
+    });
+    return out;
+  },
+
+  // 1.2.0 (UX-11): backupLog slice loader (array of plain entries, else []).
+  _loadBackupLog() {
+    const raw = window.StackdDB.load('backupLog', []);
+    return Array.isArray(raw) ? raw.filter(e => e && typeof e === 'object') : [];
+  },
+
+  // 1.2.0 (UX-9): every tag the install knows — transaction tags ∪ the
+  // explicit tagLinks keys — in compareAlpha's order (a tag with no
+  // transaction yet lists too; TagsView shows it with 0 rows).
   getAllUniqueTags(querySubstring = '') {
     const tagsSet = new Set();
     this.state.transactions.forEach(tx => {
       if (Array.isArray(tx.tags)) {
-        tx.tags.forEach(tag => tagsSet.add(tag));
+        tx.tags.forEach(tag => { if (typeof tag === 'string' && tag) tagsSet.add(tag); });
       }
     });
-    
+    Object.keys(this.state.tagLinks || {}).forEach(tag => tagsSet.add(tag));
+
     let allTags = Array.from(tagsSet);
     if (querySubstring) {
-      const q = querySubstring.toLowerCase();
-      allTags = allTags.filter(tag => tag.includes(q));
+      const q = String(querySubstring).toLowerCase();
+      allTags = allTags.filter(tag => tag.toLowerCase().includes(q));
     }
-    return allTags.sort();
+    return this._sortTags(allTags);
+  },
+
+  // 1.2.0 (UX-9): compareAlpha's rule for plain strings — base sensitivity,
+  // numeric, locale-aware ('café' sorts with 'cafe', 'tag2' before 'tag10').
+  _sortTags(tags) {
+    return tags.sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base', numeric: true }));
+  },
+
+  // 1.2.0 (UX-9): derived links — every saved row with a category and tags
+  // (no aggregate rule: the picker is a vocabulary, not a sum; unpaid and
+  // pre-opening rows count). Same lifecycle as _importKeyIdx: nulled on every
+  // dispatch / _sortData / dryRun, rebuilt lazily in one O(T) pass.
+  _ensureTagCatIdx() {
+    let idx = this._tagCatIdx;
+    if (!idx) {
+      idx = this._tagCatIdx = { byCat: new Map(), byTag: new Map() };
+      for (const t of this.state.transactions) {
+        if (!t.categoryId || !Array.isArray(t.tags) || !t.tags.length) continue;
+        let tags = idx.byCat.get(t.categoryId);
+        if (!tags) { tags = new Set(); idx.byCat.set(t.categoryId, tags); }
+        for (const tag of t.tags) {
+          if (typeof tag !== 'string' || !tag) continue;
+          tags.add(tag);
+          let cats = idx.byTag.get(tag);
+          if (!cats) { cats = new Set(); idx.byTag.set(tag, cats); }
+          cats.add(t.categoryId);
+        }
+      }
+    }
+    return idx;
+  },
+
+  // 1.2.0 (UX-9): the picker's two sections. linked = explicit ∪ derived
+  // links of that category (alphabetical); others = every other tag. No
+  // category ('' — a transfer, "No category selected") → everything is others.
+  getTagsForCategory(categoryId) {
+    const all = this.getAllUniqueTags();
+    if (!categoryId) return { linked: [], others: all };
+    const linked = new Set();
+    const links = this.state.tagLinks || {};
+    Object.keys(links).forEach(tag => { if (Array.isArray(links[tag]) && links[tag].includes(categoryId)) linked.add(tag); });
+    const derived = this._ensureTagCatIdx().byCat.get(categoryId);
+    if (derived) derived.forEach(tag => linked.add(tag));
+    return { linked: this._sortTags(Array.from(linked)), others: all.filter(t => !linked.has(t)) };
+  },
+
+  // 1.2.0 (UX-9): the category ids a tag is linked to, explicit first, then
+  // derived (the rows that carry the pair), each id once.
+  getTagLinks(tag) {
+    const raw = String(tag == null ? '' : tag);
+    const out = [];
+    const add = (id) => { if (!out.includes(id)) out.push(id); };
+    const links = this.state.tagLinks || {};
+    const key = this.normalizeTag(raw);
+    // own keys only ('constructor' would otherwise read Object.prototype's)
+    const explicit = key && Object.prototype.hasOwnProperty.call(links, key) ? links[key] : null;
+    if (Array.isArray(explicit)) explicit.forEach(add);
+    const derived = this._ensureTagCatIdx().byTag.get(raw);
+    if (derived) derived.forEach(add);
+    return out;
+  },
+
+  // 1.2.0 (UX-9): a links object as the slice stores it — normalised keys
+  // (two raw keys that normalise alike merge), ids of this install's
+  // categories only, each once; anything else (sentinels, non-objects) gone.
+  _cleanTagLinks(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const catIds = new Set(this.state.categories.map(c => c.id));
+    Object.keys(raw).forEach(rawTag => {
+      const tag = this.normalizeTag(rawTag);
+      if (!tag) return;
+      if (!Object.prototype.hasOwnProperty.call(out, tag)) out[tag] = [];
+      (Array.isArray(raw[rawTag]) ? raw[rawTag] : []).forEach(id => {
+        if (typeof id === 'string' && catIds.has(id) && !out[tag].includes(id)) out[tag].push(id);
+      });
+    });
+    return out;
+  },
+
+  // 1.2.0 (UX-9): DELETE_CATEGORY's hook — true when a link named the id.
+  _stripTagLinkCategory(categoryId) {
+    const links = this.state.tagLinks || {};
+    let stripped = false;
+    Object.keys(links).forEach(tag => {
+      if (links[tag].includes(categoryId)) {
+        links[tag] = links[tag].filter(id => id !== categoryId);
+        stripped = true;
+      }
+    });
+    return stripped;
   },
 
   getAllUniqueNotes(querySubstring = '') {

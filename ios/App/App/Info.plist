@@ -33,6 +33,28 @@
     </array>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- 1.2.0 (UX-10): transaction attachments. The WebView's own file
+         chooser (input type=file) opens the camera / photo library; iOS
+         refuses both without these strings. Files never leave the device. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Take a photo of a receipt to attach it to a transaction. Photos stay on this device.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Pick a photo of a receipt to attach it to a transaction. Photos stay on this device.</string>
+    <!-- 1.2.0 (UX-11): the iCloud Drive folder of the backups (Files >
+         iCloud Drive > Stack'd > Stackd Backups). Bump the bundle version
+         whenever this dictionary changes, or iCloud keeps the old one. -->
+    <key>NSUbiquitousContainers</key>
+    <dict>
+      <key>iCloud.com.stackd.finance</key>
+      <dict>
+        <key>NSUbiquitousContainerIsDocumentScopePublic</key>
+        <true/>
+        <key>NSUbiquitousContainerName</key>
+        <string>Stack'd</string>
+        <key>NSUbiquitousContainerSupportedFolderLevels</key>
+        <string>Any</string>
+      </dict>
+    </dict>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchStoryboardName</key>

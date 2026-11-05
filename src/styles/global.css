@@ -23,6 +23,13 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* 1.2.0 (UX-8): form fields stay selectable. Inheriting body's
+   user-select: none is a known WebKit source of misplaced carets. */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 #app {
   display: flex;
   flex-direction: column;

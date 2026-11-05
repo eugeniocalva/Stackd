@@ -204,16 +204,23 @@ describe('Markup safety (1.0.2 BUG-24)', () => {
     expect(st.transactions.find(t => t.id === 'oldtx').recurrence.seriesId).toBe(P('oldseries'));
   });
 
-  it('a raw stored tag stays text in the tag chips and the tag autocomplete', async () => {
+  it('a raw stored tag stays text in the tag chips and the tag picker', async () => {
     boot();
     S().dispatch('ADD_ACCOUNT', { id: 'a', name: 'Main', openingBalance: 0, openingDate: '2026-01-01' });
     S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 1, accountId: 'a', categoryId: 'cat_rent', date: '2026-10-02', tags: [P('rawtag')] });
     const tx = S().getState().transactions.find(t => t.type === 'expense');
     const root = renderView('edit', 'AddTransactionView', { id: tx.id });
-    const input = root.querySelector('#tx-tags-input') || root.querySelector('input[id*="tag"]');
-    input.value = 'raw';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 350));
+    // 1.2.0 (UX-9): the field is a readonly trigger; typing happens in the
+    // TagPickerSheet's search box, which lists the stored tag.
+    const input = root.querySelector('#tx-tags-input');
+    expect(input.readOnly).toBe(true);
+    input.click();
+    const search = document.querySelector('#tps-search');
+    expect(search).toBeTruthy();
+    search.value = 'raw';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 50));
+    expect(document.querySelectorAll('#tag-picker-sheet .tps-row').length).toBe(1);
     expect(leaks()).toEqual([]);
   });
 

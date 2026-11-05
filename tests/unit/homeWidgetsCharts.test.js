@@ -307,7 +307,8 @@ describe('categories widget', () => {
     W().registry.categories.attach(instance, card, Store().getState());
     const chart = global.window.Chart._created[0];
     expect(chart.config.type).toBe('doughnut');
-    expect(chart.config.options.cutout).toBe('72%');
+    // 1.2.0 (UX-7): the thick shared ring (Components.RingChart, --ring-cutout)
+    expect(chart.config.options.cutout).toBe('62%');
   });
 });
 

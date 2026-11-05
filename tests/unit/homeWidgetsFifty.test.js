@@ -212,9 +212,10 @@ describe('50/30/20 widget (v0.82 static splitter)', () => {
 describe('phase 5 gallery', () => {
   beforeEach(boot);
 
-  it('pins the full eight-type gallery order', () => {
+  // 1.2.0 (UX-2): accountBalances joins right after latest (nine types).
+  it('pins the full gallery order', () => {
     expect(W().listTypes().map(t => t.type)).toEqual(
-      ['latest', 'incomeExpense', 'categories', 'netWorth', 'savings', 'upcoming', 'budgets', 'fiftyThirtyTwenty']
+      ['latest', 'accountBalances', 'incomeExpense', 'categories', 'netWorth', 'savings', 'upcoming', 'budgets', 'fiftyThirtyTwenty']
     );
   });
 });

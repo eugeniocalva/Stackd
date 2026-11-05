@@ -42,7 +42,7 @@ npx playwright test tests/e2e/debt_simulator.spec.js
 The app is **vanilla JS using global objects, not ES modules**. Each `src/*.js` file attaches a singleton to `window` and is loaded via ordered `<script defer>` tags in `index.html`. Dependency order matters and is fixed by that tag order:
 
 ```
-db.js → utils/scroll.js → utils/keyboard.js → loan-engine.js → store.js → components.js → widgets.js → views.js → router.js → export.js → import.js → main.js
+db.js → i18n.js → i18n/*.js → utils/scroll.js → utils/keyboard.js → attachments.js → loan-engine.js → store.js → components.js → widgets.js → insights.js → views.js → router.js → export.js → import.js → backup.js → bank-connect.js → pro.js → main.js → libs/pdf-lib.min.js
 ```
 
 The core globals and their roles:
@@ -128,8 +128,8 @@ loses it.
 ### Home dashboard widgets (v0.72)
 
 The dashboard's old static "Financial Milestone" card AND its Recent Activities
-section are gone, replaced by a user-configurable widget area (8 widget types).
-**`docs/home-widgets-plan.md` is the reference — read its §8a–§8e "as built"
+section are gone, replaced by a user-configurable widget area (9 widget types since 1.2.0 `accountBalances`).
+**`docs/home-widgets-plan.md` is the reference — read its §8a–§8f "as built"
 subsections before touching widget code.** A widget instance is
 `{id, type, size: 'small'|'large', config, createdAt}` under `stackd_v1_homeWidgets`;
 array order is display order. All rendering is driven by `window.Widgets.registry[type]`,
@@ -355,6 +355,59 @@ bite if forgotten:
   the explicit override. The Capacitor WebView origins (`https://localhost`,
   `capacitor://localhost`) must stay in the broker's `ALLOWED_ORIGINS` or every
   native request fails CORS preflight.
+
+## UX review round (1.2.0)
+
+**`docs/ux-review-1.2-plan.md` is the reference** (item map UX-1…UX-11,
+decisions, "As built"). Comment tag `// 1.2.0 (UX-N)`.
+
+- **Home graph (UX-1/3).** `DashboardView` shows a two-pane pager
+  (`#home-pager`): the balance curve from `Store.computeBalanceSeries({range,
+  accountIds, categoryIds})` (ranges 1w/1m/6m/ytd/1y/max, one running-sum pass,
+  every cutoff clamped to today, trend-coloured) and the 12 monthly net bars
+  (EOM, "End of month" caption; tap → Analytics). Range chip and pane live on the
+  view object (session only; a chip tap redraws without a dispatch). Home no
+  longer calls `computeGraphBalances` and the saved `expandedGraphFilters.interval`
+  only drives the expanded sheet, which keeps its per-account lines. Both charts
+  are tracked on the view and destroyed before every re-create and in `destroy()`.
+  `#chart-card-container` stays the expanded-sheet trigger.
+- **Rings (UX-7).** Every doughnut goes through `Components.RingChart`
+  (gradient arcs, glow, icon badges when radius ≥ 70 px, `--ring-cutout` 62 %).
+  The sweep plays only on entry: `attachEvents(…, isEntry)` → `Widgets.attachSection
+  (root, state, {isEntry})`; every other render uses `animation: false`.
+- **Widget drag (UX-5).** Long press → edit mode with wiggle + x badges (x asks
+  "Remove widget?"); the same gesture drags. The drag is DOM-only until release
+  and dispatches once; `Widgets.destroyCharts()` also ends a drag. The move-up/
+  down arrows stay visually hidden for keyboard and tests. `widget-card--auto`
+  is the one auto-height card (`accountBalances`, large only). Preview ids are
+  `__preview__[:size]` (the add-widget size rail mounts one chart per slide).
+- **Tag links (UX-9).** `stackd_v1_tagLinks` = `{tag: [categoryId|null…]}`
+  explicit links; `Store.getTagLinks(tag)` = explicit ∪ derived from saved rows.
+  Actions `LINK_TAG`/`UNLINK_TAG`/`DELETE_TAG`/`SET_TAG_LINKS`. Every tag goes
+  through `Store.normalizeTag` (rejects `__proto__`; lookups use own-property
+  checks). The form's Tags field opens `Components.TagPickerSheet` (category's
+  tags first, then all alphabetical; Apply links silently). The categories CSV
+  has a 5th `tags` column.
+- **Attachments (UX-10).** `window.Attachments` stores files outside
+  localStorage: Filesystem `DATA/stackd_attachments/<id>.<ext>` on native,
+  IndexedDB on the web; a transaction carries only metas
+  (`attachments: [{id, name, type, size…}]`, on the expense leg of a transfer,
+  first member of a series). Cleanup is a diff at `_settleChange`
+  (`_dropDetachedAttachments`); the boot sweep is skipped when there are no
+  transactions. Images are re-encoded; one the WebView cannot decode (HEIC on
+  Android) is refused. The transactions backup has an `Attachments` metadata
+  column (trusted in a Stack'd export only) — **bytes are never in a backup**.
+  `StackdExport.exportReceiptsPdf` merges photos + PDFs with the vendored
+  `window.PDFLib`; `_shareNative(name, text | {base64})`.
+- **Backup page (UX-11).** `window.StackdBackup` (`src/backup.js`): one JSON
+  bundle of the six backup CSVs (collected through `StackdExport._sink`),
+  restored as ONE change by `StackdImport._restoreBundle` (`analyzeText` says
+  `kind: 'bundle'`). Targets: iCloud Drive through the local
+  `plugins/stackd-cloud` plugin (`Capacitor.Plugins.StackdCloud`; needs the Mac
+  build + iCloud capability), else Filesystem Documents/DATA, web = download.
+  Daily backup is opportunistic (open/resume ≥ 24 h, native only, guarded);
+  prefs in `stackd_v1_backupPrefs`, history in `stackd_v1_backupLog` (20 rows,
+  10 newest automatic files kept). After `npm install`, `npx cap sync`.
 
 ## Working conventions in this repo
 

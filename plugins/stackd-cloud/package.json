@@ -1,0 +1,30 @@
+{
+  "name": "stackd-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stack'd backups in the user's own iCloud Drive (iOS ubiquity container). Android answers available:false.",
+  "license": "UNLICENSED",
+  "author": "Stack'd",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "ios/Sources/",
+    "StackdCloud.podspec"
+  ],
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

@@ -122,6 +122,21 @@
   --dur-quick: 150ms;
   --dur-view: 250ms;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 1.2.0 (UX round) visual layer. Chart.js cannot read these — the hex
+     twins live in Components.NetFlowChart._themeColors(); keep both in step.
+     Trend = the financial pair (no separate success/danger tokens). */
+  --trend-up: var(--color-income);
+  --trend-down: var(--color-expense);
+  --trend-up-rgb: 16 185 129;
+  --trend-down-rgb: 239 68 68;
+  --chart-baseline: var(--text-tertiary);
+  --ring-cutout: 62%;
+  --ring-glow-alpha: 0.35;
+  --ring-gloss: linear-gradient(160deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%);
+  --shadow-lift: 0 18px 40px rgba(15, 23, 42, 0.18);
+  --dur-wiggle: 260ms;
+  --wiggle-deg: 1.2deg;
 }
 
 :root[data-theme="dark"],
@@ -177,6 +192,13 @@ html.dark {
   
   --color-border: rgba(51, 65, 85, 0.6);
   --border-color: var(--color-border);
+
+  /* 1.2.0 (UX round) visual layer — dark twins */
+  --trend-up-rgb: 52 211 153;
+  --trend-down-rgb: 248 113 113;
+  --ring-glow-alpha: 0.5;
+  --ring-gloss: linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%);
+  --shadow-lift: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
 
 

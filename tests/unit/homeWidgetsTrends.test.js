@@ -298,6 +298,31 @@ describe('add-widget preview', () => {
     expect(global.window.Chart._created[0].destroyed).toBe(true);
   });
 
+  // 1.2.0 (UX-6): the size rail pre-renders every size, so each slide has
+  // its own card id and chart slot; the type's first size keeps PREVIEW_ID.
+  it('gives every size its own preview id and releases all of them', () => {
+    expect(W()._previewId('small', 'netWorth')).toBe(W().PREVIEW_ID);
+    expect(W()._previewId('large', 'netWorth')).toBe(`${W().PREVIEW_ID}:large`);
+    expect(W()._previewId('large', 'fiftyThirtyTwenty')).toBe(W().PREVIEW_ID); // large-only
+    const large = W().renderPreview('netWorth', 'large', {}, Store().getState());
+    expect(large).toContain(`data-widget-id="${W().PREVIEW_ID}:large"`);
+    expect(large).toContain('id="widget-canvas-__preview__-large"'); // selector-safe
+    expect(large).not.toContain('is-small');
+    expect(W().renderPreview('netWorth', 'small', {}, Store().getState())).toContain('widgets-grid--preview is-small');
+
+    const card = { addEventListener: () => {}, querySelector: () => ({ id: 'c' }) };
+    const root = { querySelector: () => card };
+    W().attachPreview(root, 'netWorth', 'small', {}, Store().getState());
+    W().attachPreview(root, 'netWorth', 'large', {}, Store().getState());
+    expect(W()._charts[W().PREVIEW_ID]).toBeDefined();
+    expect(W()._charts[`${W().PREVIEW_ID}:large`]).toBeDefined();
+    expect(global.window.Chart._created).toHaveLength(2); // the second did not replace the first
+
+    W().destroyPreview();
+    expect(Object.keys(W()._charts)).toEqual([]);
+    expect(global.window.Chart._created.every(c => c.destroyed)).toBe(true);
+  });
+
   it('applies the draft config to the preview', () => {
     seed([
       { amount: 300, date: monthDay(0, 2), categoryId: 'cat_groceries' },

@@ -36,10 +36,41 @@ test.describe('Home dashboard widgets', () => {
       ].forEach(t => S.dispatch('ADD_TRANSACTION', { ...t, accountId: accId, date: inMonth(day) }));
     });
     await page.waitForSelector('#widgets-section');
+    // 1.2.0: raw mouse gestures (long press) skip Playwright's actionability
+    // wait, so the boot splash must be gone before the first press.
+    await page.waitForSelector('#splash-screen', { state: 'detached' });
   };
 
   const scrollToWidgets = async (page) => {
     await page.locator('#widgets-section').scrollIntoViewIfNeeded();
+  };
+
+  // 1.2.0 (UX-6): the detail step pre-renders every size on a scroll-snap
+  // rail; the slide on screen is the active one.
+  const activeStage = (page) => page.locator('.awm-size-slide.is-active .widget-preview-stage');
+  const railIndex = (page) => page.evaluate(() => {
+    const r = document.querySelector('.awm-size-rail');
+    return Math.round(r.scrollLeft / r.clientWidth);
+  });
+  const scrollRail = (page, idx) => page.evaluate((i) => {
+    const r = document.querySelector('.awm-size-rail');
+    r.scrollLeft = i * r.clientWidth;
+    r.dispatchEvent(new Event('scroll'));
+  }, idx);
+
+  // 1.2.0 (UX-5): press-and-drag with the mouse from the centre of one card
+  // to the right edge of another, after a hold (150 ms in edit mode, the
+  // 450 ms long press outside it). Playwright runs with reducedMotion:
+  // 'reduce', so the wiggle is off and the boxes hold still.
+  const dragCard = async (page, fromIdx, toIdx, holdMs) => {
+    const cards = page.locator('#widgets-grid .widget-card');
+    const a = await cards.nth(fromIdx).boundingBox();
+    const b = await cards.nth(toIdx).boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(holdMs);
+    await page.mouse.move(b.x + b.width - 12, b.y + b.height / 2, { steps: 10 });
+    await page.mouse.up();
   };
 
   test('the old Financial Milestone card is gone', async ({ page }) => {
@@ -96,8 +127,8 @@ test.describe('Home dashboard widgets', () => {
     await page.click('.widget-gallery-card[data-widget-type="latest"]');
 
     // Detail step: live preview of the real card, and a direct add (no config).
-    await expect(page.locator('.widget-preview-stage')).toBeVisible();
-    await expect(page.locator('.widget-preview-stage .widget-card')).toContainText('Latest transactions');
+    await expect(activeStage(page)).toBeVisible();
+    await expect(activeStage(page).locator('.widget-card')).toContainText('Latest transactions');
     await expect(page.locator('#awm-confirm')).toHaveText('Add widget');
 
     await page.click('#awm-confirm');
@@ -109,76 +140,94 @@ test.describe('Home dashboard widgets', () => {
     expect(errors).toEqual([]);
   });
 
-  test('the size carousel changes the preview and the added widget', async ({ page }) => {
+  test('the size rail: a dot slides to the other size, and that size is added', async ({ page }) => {
     await bootstrap(page);
     await scrollToWidgets(page);
 
     await page.click('#btn-widgets-add-empty');
     await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
 
-    // Defaults to small.
+    // Defaults to small; both sizes are already on the rail.
     await expect(page.locator('.widget-size-caption')).toHaveText('Small');
-    await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(0);
+    await expect(page.locator('.awm-size-slide')).toHaveCount(2);
+    await expect(page.locator('.awm-size-slide.is-active')).toHaveAttribute('data-size', 'small');
+    await expect(page.locator('.awm-size-slide[data-size="large"] .widget-card--large')).toHaveCount(1);
 
-    // Flip to wide: the preview re-renders at the other size.
+    // The wide dot scrolls the rail to the wide slide.
     await page.click('.widget-size-dot[data-size="large"]');
     await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
-    await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(1);
+    await expect(page.locator('.awm-size-slide.is-active[data-size="large"]')).toHaveCount(1);
+    await expect(page.locator('.widget-size-dot[data-size="large"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => railIndex(page)).toBe(1);
 
     // netWorth is configurable, so the detail step advances rather than adding.
     await expect(page.locator('#awm-confirm')).toHaveText('Next');
     await page.click('#awm-confirm');
     await expect(page.locator('#awm-config')).toBeVisible();
+
+    // Back from the config step reopens the rail on the chosen slide.
+    await page.click('#awm-left');
+    await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+    await expect.poll(() => railIndex(page)).toBe(1);
+    await page.click('#awm-confirm');
+    await expect(page.locator('#awm-config')).toBeVisible();
     await page.click('#awm-confirm');
 
     await expect(page.locator('#add-widget-modal')).toHaveCount(0);
-    // The size chosen in the carousel is the size that gets added.
+    // The size chosen on the rail is the size that gets added.
     const size = await page.evaluate(() => window.Store.getState().homeWidgets[0].size);
     expect(size).toBe('large');
     await expect(page.locator('#widgets-grid .widget-card--large')).toHaveCount(1);
   });
 
-  test.describe('size swipe (v0.79)', () => {
-    // Touch/TouchEvent constructors only exist in a touch-enabled context.
-    test.use({ hasTouch: true });
+  test('swiping the rail settles the size (1.2.0 scroll-snap)', async ({ page }) => {
+    await bootstrap(page);
+    await scrollToWidgets(page);
 
-    const swipePreview = (page, dx, dy = 0) => page.evaluate(([deltaX, deltaY]) => {
-      const wrap = document.querySelector('#awm-preview');
-      const mk = (type, x, y) => {
-        const touch = new Touch({ identifier: 1, target: wrap, clientX: x, clientY: y });
-        return new TouchEvent(type, {
-          touches: type === 'touchend' ? [] : [touch],
-          changedTouches: [touch],
-          bubbles: true
-        });
-      };
-      wrap.dispatchEvent(mk('touchstart', 200, 300));
-      wrap.dispatchEvent(mk('touchend', 200 + deltaX, 300 + deltaY));
-    }, [dx, dy]);
+    await page.click('#btn-widgets-add-empty');
+    await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
+    await expect(page.locator('.widget-size-caption')).toHaveText('Small');
 
-    test('swiping the preview flips between sizes', async ({ page }) => {
-      await bootstrap(page);
-      await scrollToWidgets(page);
+    // A swipe is a native scroll of the rail; the size follows the slide the
+    // rail settles on.
+    await scrollRail(page, 1);
+    await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+    await expect(page.locator('.awm-size-slide.is-active[data-size="large"]')).toHaveCount(1);
+    await expect(page.locator('.widget-size-dot[data-size="large"]')).toHaveClass(/is-active/);
 
-      await page.click('#btn-widgets-add-empty');
-      await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
-      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+    await scrollRail(page, 0);
+    await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+    await expect(page.locator('.awm-size-slide.is-active[data-size="small"]')).toHaveCount(1);
 
-      // Left swipe → next size (wide). The preview is rebuilt each time, so
-      // the helper re-queries #awm-preview per gesture.
-      await swipePreview(page, -80);
-      await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
-      await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(1);
+    await scrollRail(page, 1);
+    await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+    await page.click('#awm-confirm'); // Next
+    await expect(page.locator('#awm-config')).toBeVisible();
+    await page.click('#awm-confirm'); // Add
+    await expect(page.locator('#add-widget-modal')).toHaveCount(0);
+    expect(await page.evaluate(() => window.Store.getState().homeWidgets[0].size)).toBe('large');
+  });
 
-      // Right swipe → back to small.
-      await swipePreview(page, 80);
-      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
-      await expect(page.locator('.widget-preview-stage .widget-card--large')).toHaveCount(0);
+  test('the size rail mounts one chart per slide and releases both (1.2.0)', async ({ page }) => {
+    await bootstrap(page);
+    await scrollToWidgets(page);
+    const instanceCount = () => page.evaluate(() => Object.keys(window.Chart.instances).length);
+    const baseline = await instanceCount();
 
-      // Mostly-vertical drags are ignored — the modal body owns scrolling.
-      await swipePreview(page, -50, 160);
-      await expect(page.locator('.widget-size-caption')).toHaveText('Small');
-    });
+    await page.click('#btn-widgets-add-empty');
+    await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
+    await expect.poll(instanceCount).toBe(baseline + 2);
+
+    await page.click('#awm-left');                          // detail → gallery
+    await expect(page.locator('.widget-gallery-grid')).toBeVisible();
+    expect(await instanceCount()).toBe(baseline);
+
+    await page.click('.widget-gallery-card[data-widget-type="netWorth"]');
+    await expect.poll(instanceCount).toBe(baseline + 2);
+    await page.click('#awm-left');                          // detail → gallery
+    await page.click('#awm-left');                          // gallery → closed
+    await expect(page.locator('#add-widget-modal')).toHaveCount(0);
+    expect(await instanceCount()).toBe(baseline);
   });
 
   test('edit-mode dispatches do not leak Chart.js instances (v0.80)', async ({ page }) => {
@@ -215,7 +264,7 @@ test.describe('Home dashboard widgets', () => {
     await page.click('.widget-gallery-card[data-widget-type="categories"]');
 
     // Detail first, then config.
-    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(activeStage(page)).toBeVisible();
     await expect(page.locator('#awm-confirm')).toHaveText('Next');
     await page.click('#awm-confirm');
 
@@ -242,13 +291,13 @@ test.describe('Home dashboard widgets', () => {
 
     await page.click('#btn-widgets-add-empty');
     await page.click('.widget-gallery-card[data-widget-type="categories"]');
-    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(activeStage(page)).toBeVisible();
 
     await page.click('#awm-confirm');                       // detail → config
     await expect(page.locator('#awm-config')).toBeVisible();
 
     await page.click('#awm-left');                          // config → detail
-    await expect(page.locator('.widget-preview-stage')).toBeVisible();
+    await expect(activeStage(page)).toBeVisible();
     await expect(page.locator('#awm-config')).toHaveCount(0);
 
     await page.click('#awm-left');                          // detail → gallery
@@ -260,7 +309,7 @@ test.describe('Home dashboard widgets', () => {
     await expect(page.locator('.widget-card')).toHaveCount(0);
   });
 
-  test('reorders, resizes, reconfigures and removes in edit mode', async ({ page }) => {
+  test('reorders by drag, resizes, reconfigures and removes in edit mode', async ({ page }) => {
     const errors = [];
     page.on('pageerror', err => errors.push(err));
 
@@ -280,11 +329,14 @@ test.describe('Home dashboard widgets', () => {
     // Only the configurable widget offers a gear.
     await expect(page.locator('[data-widget-action="configure"]')).toHaveCount(1);
 
-    // Reorder: move the first card down.
+    // Reorder: press-and-drag the first card past the second.
     const typesBefore = await page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type));
-    await page.locator('.widget-card').first().locator('[data-widget-action="move-down"]').click();
-    const typesAfter = await page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type));
-    expect(typesAfter).toEqual([...typesBefore].reverse());
+    await dragCard(page, 0, 1, 300);
+    await expect.poll(() => page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type)))
+      .toEqual([...typesBefore].reverse());
+    await expect(page.locator('.widget-drag-ghost')).toHaveCount(0);
+    await expect(page.locator('#widgets-grid')).toHaveClass(/is-editing/); // still editing
+    await expect(page.locator('#widgets-grid .widget-card').first()).toHaveAttribute('data-widget-type', typesBefore[1]);
 
     // Resize the first card to wide.
     await page.locator('.widget-card').first().locator('[data-widget-action="toggle-size"]').click();
@@ -302,9 +354,56 @@ test.describe('Home dashboard widgets', () => {
       window.Store.getState().homeWidgets.find(w => w.type === 'categories').config.direction);
     expect(direction).toBe('income');
 
-    // Remove one.
+    // Remove: the x badge asks first; Cancel keeps the widget...
     await page.locator('.widget-card').first().locator('[data-widget-action="remove"]').click();
+    await expect(page.locator('#active-modal')).toContainText('Remove widget?');
+    await page.click('#modal-save-btn');
+    await expect(page.locator('#active-modal')).toHaveCount(0);
+    await expect(page.locator('.widget-card')).toHaveCount(2);
+    // ...Remove removes it.
+    await page.locator('.widget-card').first().locator('[data-widget-action="remove"]').click();
+    await page.click('#modal-delete-btn');
     await expect(page.locator('.widget-card')).toHaveCount(1);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('a long press enters edit mode, the same gesture drags, a tap outside leaves (1.2.0)', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err));
+
+    await bootstrap(page);
+    await page.evaluate(() => {
+      window.Store.dispatch('ADD_HOME_WIDGET', { type: 'latest', size: 'small' });
+      window.Store.dispatch('ADD_HOME_WIDGET', { type: 'netWorth', size: 'small' });
+    });
+    await scrollToWidgets(page);
+    const typesBefore = await page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type));
+
+    // Long press (450 ms) on the first card, then keep moving: it drags.
+    await dragCard(page, 0, 1, 700);
+    await expect(page.locator('#widgets-grid')).toHaveClass(/is-editing/);
+    await expect(page.locator('#btn-widgets-edit')).toHaveText('Done');
+    expect(await page.evaluate(() => window.Store.getState().activeView)).toBe('dashboard');
+    expect(await page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type)))
+      .toEqual([...typesBefore].reverse());
+    await expect(page.locator('#widgets-grid [data-widget-action="remove"]')).toHaveCount(2);
+
+    // A tap anywhere outside the widget area leaves edit mode.
+    await page.locator('#router-view .section-title').first().click();
+    await expect(page.locator('#widgets-grid')).not.toHaveClass(/is-editing/);
+    expect(await page.evaluate(() => window.Store.getState().widgetEditMode)).toBe(false);
+
+    // A long press without moving just enters edit mode (no reorder).
+    await scrollToWidgets(page); // the tap above scrolled the title into view
+    const first = await page.locator('#widgets-grid .widget-card').first().boundingBox();
+    await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    await expect(page.locator('#widgets-grid')).toHaveClass(/is-editing/);
+    expect(await page.evaluate(() => window.Store.getState().homeWidgets.map(w => w.type)))
+      .toEqual([...typesBefore].reverse());
 
     expect(errors).toEqual([]);
   });

@@ -858,6 +858,8 @@ window.Components = {
   TransactionItem: {
     render(transaction, category, accountData, options = {}) {
       const esc = window.Components.esc; // 1.0.2 (BUG-24)
+      // 1.2.0 (UX-10): a paperclip + count next to the date
+      const attachCount = Array.isArray(transaction.attachments) ? transaction.attachments.length : 0;
       let amountClass = 'text-expense';
       let sign = '';
       
@@ -946,7 +948,7 @@ window.Components = {
                 <span class="tx-tag-more" style="display: none; ${TAG_PILL_STYLE}"></span>
               </div>` : ''}
             </div>
-            <div class="list-item-subtitle" style="flex-shrink: 0;">${dateStr}</div>
+            <div class="list-item-subtitle" style="flex-shrink: 0;">${attachCount ? `<span class="tx-attach-badge" role="img" aria-label="${esc(window.I18n.t('tx.attachmentsCount', { count: attachCount }))}"><i data-lucide="paperclip" aria-hidden="true"></i>${attachCount}</span>` : ''}${dateStr}</div>
           </div>
           ${beforeOpeningHtml}
         </div>`;
@@ -2329,7 +2331,16 @@ window.Components = {
         gridColor: isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.6)',
         // v0.83: was '#94a3b8' for BOTH themes — 2.56:1 on light cards, well
         // under WCAG AA. The ExpandedGraphModal already used this exact pair.
-        tickColor: isDark ? '#94a3b8' : '#64748b'
+        tickColor: isDark ? '#94a3b8' : '#64748b',
+        // 1.2.0 (UX-1/UX-3): trend pair (= --trend-up / --trend-down, the
+        // financial income/expense tokens), their rgb triplets for alpha
+        // fills, the dotted baseline and the surface (end-dot ring).
+        trendUp: isDark ? '#34d399' : '#10b981',
+        trendDown: isDark ? '#f87171' : '#ef4444',
+        trendUpRgb: isDark ? '52,211,153' : '16,185,129',
+        trendDownRgb: isDark ? '248,113,113' : '239,68,68',
+        baseline: isDark ? '#64748b' : '#94a3b8',
+        surface: isDark ? '#161e2e' : '#ffffff'
       };
     },
 
@@ -2508,6 +2519,286 @@ window.Components = {
     }
   },
 
+  // 1.2.0 (UX-7): the one look for every ring (Goals, Analytics, the Home
+  // categories and budgets widgets): thick arcs, a radial gradient per arc,
+  // a soft glow, canvas icon badges on big rings, and an entry-only sweep.
+  // config() decorates a plain Chart.js doughnut config; the drawing lives in
+  // an inline plugin registered at the config ROOT, so datasets[0]
+  // .backgroundColor stays the plain hex array the tests (and the hover
+  // colours) read — the plugin repaints over it.
+  RingChart: {
+    _iconCache: {},
+
+    _reduced() {
+      try {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      } catch (e) {
+        return false;
+      }
+    },
+
+    // opts: { animate, delay, badges: [{icon}|null per data index], track:
+    // [indexes painted flat, without gradient/glow/badge], glow }
+    config(base, opts) {
+      const o = opts || {};
+      const cfg = base || {};
+      // The sweep plays only when the caller says this is an entry render,
+      // and never under reduced motion.
+      const animate = !!o.animate && !this._reduced();
+      cfg.options = cfg.options || {};
+      cfg.options.cutout = '62%'; // --ring-cutout
+      // Room for the glow inside the canvas box (cards clip their overflow).
+      if (!cfg.options.layout) cfg.options.layout = { padding: 6 };
+      const ds = cfg.data && cfg.data.datasets && cfg.data.datasets[0];
+      if (ds) {
+        ds.borderWidth = 0;
+        ds.borderColor = 'transparent';
+        if (ds.hoverBorderWidth !== undefined) ds.hoverBorderWidth = 0;
+        ds.spacing = 2;
+        ds.borderRadius = 8;
+      }
+      const plugins = Array.isArray(cfg.plugins) ? cfg.plugins.filter(p => p !== this.plugin) : [];
+      plugins.push(this.plugin);
+      cfg.plugins = plugins;
+      cfg.options.plugins = cfg.options.plugins || {};
+      const isDark = !!(window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
+      cfg.options.plugins.stackdRing = {
+        badges: Array.isArray(o.badges) ? o.badges : null,
+        track: Array.isArray(o.track) ? o.track : [],
+        glow: o.glow !== false,
+        theme: isDark ? 'dark' : 'light',
+        animate
+      };
+      cfg.options.animation = animate
+        ? {
+          animateRotate: true,
+          animateScale: false,
+          duration: 700,
+          easing: 'easeOutQuart',
+          delay: o.delay || 0,
+          // Only the first (entry) sweep: later hover/active transitions keep
+          // the glow and start without the entry delay.
+          onProgress: (a) => { if (a && a.chart && !a.chart.$ringSwept) a.chart.$ringAnimating = true; },
+          // The glow pass is skipped while arcs move (iOS re-rasterises a
+          // shadow every frame); one extra draw adds it once they settle.
+          onComplete: (a) => {
+            const c = a && a.chart;
+            if (!c) return;
+            c.$ringAnimating = false;
+            if (!c.$ringSwept) {
+              c.$ringSwept = true;
+              const an = c.options && c.options.animation;
+              if (an && typeof an === 'object') an.delay = 0;
+            }
+            if (c.ctx) c.draw();
+          }
+        }
+        : false;
+      return cfg;
+    },
+
+    plugin: {
+      id: 'stackdRing',
+      beforeInit(chart, args, opts) {
+        chart.$ringAnimating = !!(opts && opts.animate);
+      },
+      afterDatasetsDraw(chart, args, opts) {
+        try {
+          window.Components.RingChart._paint(chart, opts);
+        } catch (e) { /* a plain ring is still a ring */ }
+      }
+    },
+
+    // The raw option object (plugin opts arrive through Chart.js' resolver
+    // proxies; arrays of objects come back wrapped).
+    _optsOf(chart, opts) {
+      const raw = chart && chart.config && chart.config.options && chart.config.options.plugins &&
+        chart.config.options.plugins.stackdRing;
+      return raw || opts || {};
+    },
+
+    _rgb(hex) {
+      const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+      if (!m) return null;
+      let h = m[1];
+      if (h.length === 3) h = h.split('').map(c => c + c).join('');
+      const n = parseInt(h, 16);
+      return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    },
+
+    // amount > 0 lightens towards white by that share of the remaining
+    // lightness, < 0 darkens by that share (HSL lightness).
+    _shade(hex, amount) {
+      const c = this._rgb(hex);
+      if (!c) return hex;
+      const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h = 0, s = 0;
+      let l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+      }
+      l = amount >= 0 ? l + (1 - l) * amount : l * (1 + amount);
+      const hue = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      let rr = l, gg = l, bb = l;
+      if (s !== 0) {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        rr = hue(p, q, h + 1 / 3);
+        gg = hue(p, q, h);
+        bb = hue(p, q, h - 1 / 3);
+      }
+      return `rgb(${Math.round(rr * 255)}, ${Math.round(gg * 255)}, ${Math.round(bb * 255)})`;
+    },
+
+    _rgba(hex, alpha) {
+      const c = this._rgb(hex);
+      return c ? `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})` : 'transparent';
+    },
+
+    // Refills one arc with `fill` through the element's own draw(), so the
+    // rounded corners, spacing and hover offset stay exactly Chart.js' own.
+    _fillArc(arc, ctx, fill) {
+      const shadow = Object.create(arc);
+      shadow.options = Object.assign({}, arc.options, { backgroundColor: fill, borderWidth: 0, borderColor: 'transparent' });
+      shadow.draw(ctx);
+    },
+
+    _paint(chart, opts) {
+      const o = this._optsOf(chart, opts);
+      const meta = chart.getDatasetMeta ? chart.getDatasetMeta(0) : null;
+      const ctx = chart.ctx;
+      if (!meta || !meta.data || !meta.data.length || !ctx) return;
+      const ds = (chart.data && chart.data.datasets && chart.data.datasets[0]) || {};
+      const colors = Array.isArray(ds.backgroundColor) ? ds.backgroundColor : [];
+      const track = new Set(Array.isArray(o.track) ? o.track : []);
+      const dark = o.theme === 'dark';
+      const surface = dark ? '#161e2e' : '#ffffff';
+      const glowAlpha = dark ? 0.5 : 0.35; // --ring-glow-alpha
+      const still = !chart.$ringAnimating;
+      const props = ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'];
+
+      let ring = 0;
+      meta.data.forEach((arc, i) => {
+        // The arc's resolved colour (its hover colour while hovered).
+        const own = arc.options && arc.options.backgroundColor;
+        const base = typeof own === 'string' && this._rgb(own) ? own : colors[i];
+        const p = arc.getProps(props, false);
+        ring = Math.max(ring, p.outerRadius || 0);
+        if (track.has(i) || !this._rgb(base)) return;
+        if (!(p.endAngle - p.startAngle > 0.001) || !(p.outerRadius > 0)) return;
+        if (o.glow !== false && still) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-over';
+          ctx.shadowBlur = 14;
+          ctx.shadowColor = this._rgba(base, glowAlpha);
+          this._fillArc(arc, ctx, base);
+          ctx.restore();
+        }
+        if (typeof ctx.createRadialGradient === 'function') {
+          const grad = ctx.createRadialGradient(p.x, p.y, Math.max(0, p.innerRadius), p.x, p.y, p.outerRadius);
+          grad.addColorStop(0, this._shade(base, 0.18));
+          grad.addColorStop(0.5, base);
+          grad.addColorStop(1, this._shade(base, -0.14));
+          ctx.save();
+          this._fillArc(arc, ctx, grad);
+          ctx.restore();
+        }
+      });
+
+      // Badges only where there is room for them: a big ring, a wide arc.
+      if (!Array.isArray(o.badges) || ring < 70) return;
+      meta.data.forEach((arc, i) => {
+        const badge = o.badges[i];
+        if (!badge || !badge.icon || track.has(i)) return;
+        const base = colors[i];
+        if (!this._rgb(base)) return;
+        const p = arc.getProps(props, false);
+        const mid = (p.innerRadius + p.outerRadius) / 2;
+        if ((p.endAngle - p.startAngle) * mid < 22) return;
+        const a = (p.startAngle + p.endAngle) / 2;
+        const bx = p.x + Math.cos(a) * mid;
+        const by = p.y + Math.sin(a) * mid;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, 10, 0, Math.PI * 2);
+        ctx.fillStyle = base;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = surface;
+        ctx.stroke();
+        const img = this._iconImage(badge.icon, chart);
+        if (img) ctx.drawImage(img, bx - 8, by - 8, 16, 16);
+        ctx.restore();
+      });
+    },
+
+    // White line icon as markup: lucide's own renderer first, the file://-
+    // safe EMERGENCY_ICONS snapshot (main.js) as the fallback.
+    _iconSvg(name) {
+      let svg = null;
+      const L = window.lucide;
+      const pascal = String(name).split('-').map(p => (p ? p[0].toUpperCase() + p.slice(1) : '')).join('');
+      try {
+        const node = L && L.icons && L.icons[pascal];
+        if (node && typeof L.createElement === 'function') {
+          const el = L.createElement(node);
+          if (el && typeof el.setAttribute === 'function') {
+            el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            el.setAttribute('width', '24');
+            el.setAttribute('height', '24');
+            el.setAttribute('stroke', '#ffffff');
+            svg = el.outerHTML;
+          }
+        }
+      } catch (e) { svg = null; }
+      if (!svg && typeof window.StackdIconSvg === 'function') {
+        svg = window.StackdIconSvg(name) || window.StackdIconSvg('help-circle');
+      }
+      return svg ? svg.replace(/currentColor/g, '#ffffff') : null;
+    },
+
+    // Cached per icon name. The first draw has no badge; the chart redraws
+    // itself once the image has loaded.
+    _iconImage(name, chart) {
+      const key = String(name);
+      let entry = this._iconCache[key];
+      if (!entry) {
+        const svg = this._iconSvg(key);
+        if (!svg || typeof window.Image !== 'function') {
+          this._iconCache[key] = { img: null, ready: false, failed: true, waiters: null };
+          return null;
+        }
+        const img = new window.Image();
+        entry = { img, ready: false, failed: false, waiters: new Set() };
+        this._iconCache[key] = entry;
+        img.onload = () => {
+          entry.ready = true;
+          const waiting = [...entry.waiters];
+          entry.waiters.clear();
+          waiting.forEach(c => { if (c && c.ctx) { try { c.draw(); } catch (e) { /* destroyed */ } } });
+        };
+        img.onerror = () => { entry.failed = true; entry.waiters.clear(); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      }
+      if (entry.ready) return entry.img;
+      if (!entry.failed && entry.waiters) entry.waiters.add(chart);
+      return null;
+    }
+  },
+
   CategoryDonutChart: {
     _chartInstance: null,
     _currentType: 'expense',
@@ -2683,7 +2974,10 @@ window.Components = {
       `;
     },
 
-    attachEvents(container, filters, currency) {
+    // 1.2.0 (UX-7): opts.animate = this is the Analytics entry render (the
+    // ring sweeps once); the type toggle's local re-render passes false.
+    attachEvents(container, filters, currency, opts) {
+      const animate = !!(opts && opts.animate);
       const canvas = container.querySelector('#categoryDonutChart');
       const toggleBtns = container.querySelectorAll('.chart-toggle-btn');
       if (currency !== undefined) this._currency = currency; // 1.0.2 (BUG-63)
@@ -2701,7 +2995,7 @@ window.Components = {
           const outerCard = container.querySelector('.donut-chart-layout')?.closest('.card') || container.querySelector('[style*="height: 200px"]')?.closest('.card');
           if (outerCard) {
             outerCard.outerHTML = this.render(newData, type, ccy); // 1.0.2 (BUG-63): same currency
-            this.attachEvents(container, filters, ccy);
+            this.attachEvents(container, filters, ccy, { animate: false });
           }
         }
       };
@@ -2814,15 +3108,16 @@ window.Components = {
         this._chartInstance.destroy();
       }
 
-      const GAP = 3; // px gap on each side of every segment
-
       const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
       const tooltipBg = isDark ? '#161e2e' : '#ffffff';
       const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
       const tooltipBody = isDark ? '#f8fafc' : '#334155';
       const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
 
-      this._chartInstance = new window.Chart(canvas, {
+      // 1.2.0 (UX-7): the shared ring look with an icon badge per arc; the
+      // sweep plays on the Analytics entry render only (v0.93's
+      // animation: false stays the rule for every other mount).
+      this._chartInstance = new window.Chart(canvas, window.Components.RingChart.config({
         type: 'doughnut',
         data: {
           labels: data.map(d => d.name),
@@ -2830,19 +3125,13 @@ window.Components = {
             data: data.map(d => d.amount),
             backgroundColor: data.map(d => d._color),
             hoverBackgroundColor: data.map(d => d._hoverColor),
-            borderWidth: GAP,
-            borderColor: 'transparent',
-            hoverBorderWidth: GAP,
             hoverBorderColor: 'transparent',
-            borderRadius: 6,
             hoverOffset: 8
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          cutout: '74%',
-          animation: false, // v0.93: no entry animation (see NetFlowChart note)
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -2867,202 +3156,185 @@ window.Components = {
             }
           }
         }
-      });
+      }, {
+        animate,
+        delay: 250, // past the view-transition snapshot
+        badges: data.map(d => ({ icon: d.icon || 'help-circle' }))
+      }));
     }
   },
 
-  TagsModal: {
-    show(options) {
-      const { initialTags = [], onSave } = options;
+  // -----------------------------------------------------------------------
+  // 1.2.0 (UX-9) TAG PICKER (docs/ux-review-1.2-plan.md §C.2) — replaces the
+  // orphan TagsModal. Full-screen sheet on the CategorySelectionModal shell:
+  // ✕ closes without a change, + (or Enter in the search box) creates or
+  // selects the typed tag, ✓ applies. The open category's tags (explicit ∪
+  // derived links, Store.getTagsForCategory) list first, then every other tag
+  // alphabetically. Apply hands the selection to onApply and then links the
+  // tags SILENTLY (LINK_TAG {silent}: saved, no re-render — the form that
+  // opened the sheet keeps its unsaved fields). Tag and category names are
+  // stored text: every one goes through Components.esc.
+  // -----------------------------------------------------------------------
+  TagPickerSheet: {
+    show(options = {}) {
+      const { selectedTags = [], categoryId = '', typeHint = '', onApply } = options;
       const container = document.getElementById('modal-container');
-      let currentTags = (initialTags || []).map(t => String(t).trim().toLowerCase()).filter(Boolean);
-      
-      const renderContent = () => {
-        const allTags = window.Store.getAllUniqueTags().map(t => String(t).toLowerCase());
-        const suggestions = allTags.filter(t => !currentTags.includes(t));
+      if (!container) return;
+      const esc = (v) => window.Components.esc(v);
+      const t = (k, p) => window.I18n.t(k, p);
+      const S = window.Store;
+      const catId = typeHint === 'transfer' ? '' : (categoryId || '');
+      const category = catId ? (S.getState().categories || []).find(c => c.id === catId) : null;
+      const groups = S.getTagsForCategory(category ? catId : '');
+      let selected = [];
+      (Array.isArray(selectedTags) ? selectedTags : []).forEach(tag => {
+        const s = String(tag == null ? '' : tag);
+        if (s && !selected.includes(s)) selected.push(s);
+      });
+      const created = [];
+      const known = new Set([...groups.linked, ...groups.others]);
 
-        const div = document.createElement('div');
-        div.innerHTML = `
-          <div class="modal-backdrop" id="tags-modal" role="dialog" aria-modal="true">
-            <div class="modal-content" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 85vh;">
-              <div class="modal-handle"></div>
-              <div style="padding: var(--space-5) var(--space-5) var(--space-2);">
-                <h2 class="header-title" style="margin: 0; font-size: var(--text-xl);">${window.I18n.t('form.tags')}</h2>
-                <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: var(--space-1) 0 0;">${window.I18n.t('tagsModal.body')}</p>
-              </div>
+      const old = document.getElementById('tag-picker-sheet');
+      if (old) old.remove();
 
-              <div style="padding: var(--space-4) var(--space-5); flex: 1; overflow-y: auto;">
-                <!-- Tag Input -->
-                <div style="margin-bottom: var(--space-5);">
-                  <div style="display: flex; gap: 8px;">
-                    <div style="flex: 1; position: relative;">
-                      <input type="text" id="tag-input" class="form-control" placeholder="${window.I18n.t('tagsModal.newTag')}" aria-label="${window.I18n.t('tagsModal.newTagAria')}" maxlength="20" style="padding-left: 32px;" autocomplete="off">
-                      <i data-lucide="hash" style="position: absolute; left: 10px; top: 12px; width: 14px; color: var(--text-tertiary);" aria-hidden="true"></i>
-                    </div>
-                    <button id="add-tag-btn" class="btn btn-primary" style="width: auto; padding: 0 16px;">Add</button>
-                  </div>
-                  <p style="color: var(--text-tertiary); font-size: var(--text-xs); margin-top: 6px; margin-bottom: 0;">Tags cannot contain spaces (use '_' as delimiter). Press Space or Enter to add a tag.</p>
-                </div>
-
-                <!-- Current Tags -->
-                <div style="margin-bottom: var(--space-6);">
-                  <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.active')}</label>
-                  <div id="current-tags-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    ${currentTags.length > 0 ? currentTags.map(tag => `
-                      <div class="tag-chip active" data-tag="${window.Components.esc(tag)}">
-                        <span>#${window.Components.esc(tag)}</span>
-                        <i data-lucide="x" style="width: 14px; margin-left: 4px; cursor: pointer;"></i>
-                      </div>
-                    `).join('') : `<p style="color: var(--text-tertiary); font-size: var(--text-sm); font-style: italic;">${window.I18n.t('tagsModal.none')}</p>`}
-                  </div>
-                </div>
-
-                <!-- Suggestions -->
-                ${suggestions.length > 0 ? `
-                  <div>
-                    <label class="form-label" style="font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); margin-bottom: var(--space-3); display: block;">${window.I18n.t('tagsModal.recent')}</label>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                      ${suggestions.slice(0, 10).map(tag => `
-                        <div class="tag-chip suggestion" data-tag="${window.Components.esc(tag)}">#${window.Components.esc(tag)}</div>
-                      `).join('')}
-                    </div>
-                  </div>
-                ` : ''}
-              </div>
-
-              <div style="padding: var(--space-5); border-top: 1px solid var(--border-color); display: flex; gap: var(--space-3);">
-                <button id="tags-cancel" data-back-dismiss class="btn btn-secondary" style="flex: 1;">${window.I18n.t('common.cancel')}</button>
-                <button id="tags-save" class="btn btn-primary" style="flex: 2;">${window.I18n.t('tagsModal.apply')}</button>
-              </div>
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.id = 'tag-picker-sheet';
+      backdrop.style.zIndex = '10000';
+      backdrop.style.display = 'flex';
+      backdrop.style.flexDirection = 'column';
+      backdrop.setAttribute('role', 'dialog');
+      backdrop.setAttribute('aria-modal', 'true');
+      backdrop.setAttribute('aria-labelledby', 'tps-title');
+      backdrop.innerHTML = `
+        <div class="modal-content tps-content">
+          <div class="modal-top-bar modal-top-bar--safe">
+            <button type="button" class="modal-btn-top modal-btn-close tps-top-btn" id="tps-close" aria-label="${t('tagPicker.closeAria')}">✕</button>
+            <h2 id="tps-title" class="header-title tps-title">${t('tagPicker.title')}</h2>
+            <div class="tps-top-actions">
+              <button type="button" class="modal-btn-top tps-top-btn tps-add" id="tps-add" aria-label="${t('tagPicker.addAria')}">+</button>
+              <button type="button" class="modal-btn-top tps-top-btn tps-apply" id="tps-apply" aria-label="${t('tagPicker.applyAria')}">✓</button>
             </div>
-            <style>
-              .tag-chip {
-                padding: 6px 12px;
-                border-radius: 16px;
-                font-size: 13px;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                transition: all 0.2s;
-                cursor: pointer;
-              }
-              .tag-chip.active {
-                background: var(--color-primary);
-                color: var(--text-on-primary);
-              }
-              .tag-chip.suggestion {
-                background: var(--bg-surface-sunken);
-                color: var(--text-secondary);
-                border: 1px solid var(--border-color);
-              }
-              .tag-chip.suggestion:hover {
-                border-color: var(--text-tertiary);
-              }
-            </style>
+          </div>
+          <div class="modal-body tps-body">
+            <input type="text" id="tps-search" class="form-control" placeholder="${t('tagPicker.search')}" aria-label="${t('tagPicker.search')}" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="60">
+            <div id="tps-selected" class="tps-selected"></div>
+            <div id="tps-lists"></div>
+          </div>
+        </div>
+      `;
+
+      const search = backdrop.querySelector('#tps-search');
+      const selectedEl = backdrop.querySelector('#tps-selected');
+      const listsEl = backdrop.querySelector('#tps-lists');
+      const query = () => String(search.value || '').toLowerCase().replace(/^[\s#]+/, '').trim();
+
+      const rowHtml = (tag) => {
+        const on = selected.includes(tag);
+        return `<div class="list-item touch-target tps-row${on ? ' is-selected' : ''}" data-tag="${esc(tag)}" role="checkbox" aria-checked="${on ? 'true' : 'false'}" tabindex="0">
+          <span class="tps-row-name">#${esc(tag)}</span>
+          ${created.includes(tag) ? `<span class="tps-row-new">${t('tagPicker.created')}</span>` : ''}
+          <span class="tps-row-check" aria-hidden="true">${on ? '✓' : ''}</span>
+        </div>`;
+      };
+
+      const render = () => {
+        selectedEl.innerHTML = selected.map(tag =>
+          `<button type="button" class="tag-chip tps-chip" data-tag="${esc(tag)}" aria-label="${t('form.removeTag', { tag: esc(tag) })}">#${esc(tag)} <span aria-hidden="true">×</span></button>`
+        ).join('') || `<span class="tps-selected-none">${t('form.tagsNone')}</span>`;
+        const q = query();
+        const match = (tag) => !q || tag.toLowerCase().includes(q);
+        // A tag created here joins the open category's list (it will be linked
+        // on Apply), or the all-tags list when there is no category.
+        const linked = category ? [...groups.linked, ...created.filter(c => !groups.linked.includes(c))] : [];
+        const others = category ? groups.others.filter(o => !created.includes(o)) : [...groups.others, ...created.filter(c => !groups.others.includes(c))];
+        const sortT = (a) => S._sortTags(a);
+        const inCat = sortT(linked.filter(match));
+        const all = sortT(others.filter(match));
+        let html = '';
+        if (category && inCat.length) {
+          html += `<div class="tps-section" id="tps-section-category">
+            <div class="tps-section-title">${t('tagPicker.inCategory', { category: esc(category.name) })}</div>
+            <div class="list-group">${inCat.map(rowHtml).join('')}</div>
           </div>`;
-        
-        const existing = document.getElementById('tags-modal');
-        if (existing) existing.remove();
-        container.appendChild(div.firstElementChild);
-        window.StackdHydrateIcons?.();
-        attachEvents();
+        }
+        if (all.length) {
+          html += `<div class="tps-section" id="tps-section-all">
+            <div class="tps-section-title">${t('tagPicker.allTags')}</div>
+            <div class="list-group">${all.map(rowHtml).join('')}</div>
+          </div>`;
+        }
+        if (!html) html = `<p class="tps-empty" id="tps-empty">${t('tagPicker.none')}</p>`;
+        listsEl.innerHTML = html;
       };
 
-      const attachEvents = () => {
-        const close = () => {
-          const backdrop = document.getElementById('tags-modal');
-          if (backdrop) {
-            backdrop.classList.remove('open');
-            setTimeout(() => backdrop.remove(), 300);
-          }
-        };
-
-        const cancelBtn = document.getElementById('tags-cancel');
-        const saveBtn = document.getElementById('tags-save');
-        if (cancelBtn) cancelBtn.onclick = close;
-        if (saveBtn) saveBtn.onclick = () => {
-          if (onSave) onSave(currentTags);
-          close();
-        };
-
-        const input = document.getElementById('tag-input');
-        const addBtn = document.getElementById('add-tag-btn');
-
-        const addTag = (textOverride) => {
-          const raw = textOverride !== undefined ? textOverride : (input ? input.value : '');
-          const val = raw.trim().toLowerCase().replace(/^#/, '');
-          if (val && !currentTags.includes(val)) {
-            currentTags.push(val);
-            renderContent();
-            const newInput = document.getElementById('tag-input');
-            if (newInput) newInput.focus();
-          } else if (input) {
-            input.value = '';
-          }
-        };
-
-        if (addBtn) addBtn.onclick = () => addTag();
-        if (input) {
-          input.oninput = () => {
-            input.value = input.value.toLowerCase();
-            if (input.value.includes(' ')) {
-              const parts = input.value.split(/\s+/);
-              const toAdd = parts.slice(0, -1);
-              const remainder = parts[parts.length - 1];
-              let addedAny = false;
-              toAdd.forEach(p => {
-                const cleaned = p.trim().toLowerCase().replace(/^#/, '');
-                if (cleaned && !currentTags.includes(cleaned)) {
-                  currentTags.push(cleaned);
-                  addedAny = true;
-                }
-              });
-              input.value = remainder;
-              if (addedAny) {
-                renderContent();
-                const newInput = document.getElementById('tag-input');
-                if (newInput) {
-                  newInput.focus();
-                  newInput.value = remainder;
-                }
-              }
-            }
-          };
-
-          input.onkeydown = (e) => {
-            if (e.key === ' ' || e.code === 'Space' || e.key === 'Enter') {
-              e.preventDefault();
-              addTag();
-            }
-          };
-        }
-
-        document.querySelectorAll('.tag-chip.active').forEach(chip => {
-          chip.onclick = () => {
-            const tag = chip.dataset.tag;
-            currentTags = currentTags.filter(t => t !== tag);
-            renderContent();
-          };
-        });
-
-        document.querySelectorAll('.tag-chip.suggestion').forEach(btn => {
-          btn.onclick = () => {
-            const tag = btn.dataset.tag.toLowerCase();
-            if (!currentTags.includes(tag)) {
-              currentTags.push(tag);
-              renderContent();
-            }
-          };
-        });
-
-        const backdropEl = document.getElementById('tags-modal');
-        if (backdropEl) {
-          backdropEl.onclick = (e) => { if (e.target.id === 'tags-modal') close(); };
-          requestAnimationFrame(() => backdropEl.classList.add('open'));
-        }
+      const toggle = (tag) => {
+        selected = selected.includes(tag) ? selected.filter(x => x !== tag) : [...selected, tag];
+        render();
       };
 
-      renderContent();
+      // + / Enter: the typed name, through the store's one normaliser. An
+      // existing tag is selected; a new one is selected and remembered as
+      // created (linked on Apply even with no category, so it stays listed).
+      const addTyped = () => {
+        const tag = S.normalizeTag(search.value);
+        if (!tag) { search.focus(); return; }
+        if (!known.has(tag) && !created.includes(tag)) created.push(tag);
+        if (!selected.includes(tag)) selected = [...selected, tag];
+        search.value = '';
+        render();
+      };
+
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        backdrop.classList.remove('open');
+        const content = backdrop.querySelector('.modal-content');
+        if (content) content.style.transform = 'translateY(100%)';
+        setTimeout(() => backdrop.remove(), 300);
+      };
+
+      const apply = () => {
+        const result = [...selected];
+        close();
+        if (onApply) onApply(result);
+        const toLink = [];
+        result.forEach(tag => {
+          if (category) {
+            if (!S.getTagLinks(tag).includes(catId)) toLink.push({ tag, categoryId: catId, silent: true });
+          } else if (created.includes(tag)) {
+            toLink.push({ tag, categoryId: null, silent: true });
+          }
+        });
+        if (toLink.length) S.batch(() => toLink.forEach(p => S.dispatch('LINK_TAG', p)));
+      };
+
+      backdrop.querySelector('#tps-close').onclick = close;
+      backdrop.querySelector('#tps-add').onclick = addTyped;
+      backdrop.querySelector('#tps-apply').onclick = apply;
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) { close(); return; }
+        const chip = e.target.closest('.tps-chip');
+        if (chip) { toggle(chip.dataset.tag); return; }
+        const row = e.target.closest('.tps-row');
+        if (row) toggle(row.dataset.tag);
+      });
+      backdrop.addEventListener('keydown', (e) => {
+        const row = e.target.closest && e.target.closest('.tps-row');
+        if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(row.dataset.tag); }
+      });
+      search.addEventListener('input', render);
+      search.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addTyped(); }
+      });
+
+      render();
+      container.appendChild(backdrop);
+      const content = backdrop.querySelector('.modal-content');
+      void content.offsetHeight; // start the slide from the closed position (no rAF: hidden panes have none)
+      backdrop.classList.add('open');
+      content.style.transform = 'translateY(0)';
     }
   },
 
@@ -3799,20 +4071,41 @@ window.Components = {
         const legendColor = isDark ? '#f8fafc' : '#1a1e21';
         const tickColor = isDark ? '#94a3b8' : '#64748b';
 
+        // 1.2.0 (UX-1): the Home curve's look — trend colour (end of the
+        // series vs its first point) and a fading gradient fill; the
+        // per-account lines, legend and y axis stay the sheet's own.
+        const mainPoints = (mainResult && mainResult.points) ? mainResult.points : [];
+        const pal = window.Components.NetFlowChart._themeColors();
+        const trendUp = mainPoints.length === 0 ||
+          mainPoints[mainPoints.length - 1].balance >= mainPoints[0].balance;
+        const trendColor = trendUp ? pal.trendUp : pal.trendDown;
+        const trendRgb = trendUp ? pal.trendUpRgb : pal.trendDownRgb;
         const datasets = [{
           label: window.I18n.t('analytics.totalNetBalance'),
-          data: (mainResult && mainResult.points) ? mainResult.points : [],
+          data: mainPoints,
           currency: aggSel.currency, // 1.0.2 (BUG-36)
-          borderColor: isDark ? '#38bdf8' : '#111111',
-          backgroundColor: isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(17, 17, 17, 0.05)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0,
+          borderColor: trendColor,
+          backgroundColor: (c) => {
+            const chart = c && c.chart;
+            const area = chart && chart.chartArea;
+            const g2d = chart && chart.ctx;
+            if (!area || !g2d || typeof g2d.createLinearGradient !== 'function') return 'rgba(' + trendRgb + ',0.12)';
+            const memo = chart.$stackdFill;
+            if (memo && memo.top === area.top && memo.bottom === area.bottom && memo.rgb === trendRgb) return memo.g;
+            const g = g2d.createLinearGradient(0, area.top, 0, area.bottom);
+            g.addColorStop(0, 'rgba(' + trendRgb + ',0.28)');
+            g.addColorStop(1, 'rgba(' + trendRgb + ',0)');
+            chart.$stackdFill = { top: area.top, bottom: area.bottom, rgb: trendRgb, g };
+            return g;
+          },
+          borderWidth: 2.5,
+          fill: 'start',
+          cubicInterpolationMode: 'monotone',
           pointRadius: activeInterval === 'weekly' ? 3 : 4,
           pointHoverRadius: 7,
           pointBackgroundColor: isDark ? '#161e2e' : '#ffffff',
           pointBorderWidth: 3,
-          pointBorderColor: isDark ? '#38bdf8' : '#111111'
+          pointBorderColor: trendColor
         }];
 
         visibleAccounts.forEach(acc => {
@@ -4011,13 +4304,22 @@ window.Components = {
 
       // Detail step: name, what it does, and a live preview you can flip
       // between the two sizes before committing.
+      // 1.2.0 (UX-6): a real scroll-snap rail — every size is pre-rendered on
+      // its own slide, so a swipe slides the next card in (the native scroll
+      // does the motion) and the dots follow the slide that settles.
+      const sizesOf = () => (selectedType && W.registry[selectedType] && W.registry[selectedType].sizes) || ['small'];
       const renderDetailStep = () => {
         const def = W.registry[selectedType];
         const sizes = def.sizes || ['small'];
+        const state = window.Store.getState();
         return `
           <h3 class="widget-detail-title">${esc(def.title)}</h3>
           <p class="widget-detail-desc">${esc(def.description)}</p>
-          <div id="awm-preview">${W.renderPreview(selectedType, selectedSize, draft, window.Store.getState())}</div>
+          <div class="awm-size-rail" id="awm-preview" data-horizontal-scroll>
+            ${sizes.map(s => `
+              <div class="awm-size-slide ${s === selectedSize ? 'is-active' : ''}" data-size="${esc(s)}">${W.renderPreview(selectedType, s, draft, state)}</div>
+            `).join('')}
+          </div>
           ${sizes.length > 1 ? `
             <div class="widget-size-dots" role="group" aria-label="${window.I18n.t('widget.sizeAria')}">
               ${sizes.map(s => `
@@ -4030,28 +4332,24 @@ window.Components = {
           ` : ''}`;
       };
 
-      // v0.93: size flips (dots + swipe) repaint ONLY the preview area. The old
-      // path ran renderAll() — a full-modal innerHTML rebuild, a second widget
-      // data pass, document-wide icon hydration and a synchronous animated
-      // chart mount, all inside the touch handler — which froze the swipe for
-      // seconds on device. The modal shell, footer and handlers stay put here
-      // (the swipe listener lives on #awm-preview itself and survives an
-      // innerHTML swap of its children).
-      const renderPreviewOnly = () => {
-        const previewWrap = backdrop.querySelector('#awm-preview');
-        if (!previewWrap || !selectedType) return;
-        W.destroyPreview();
-        const state = window.Store.getState();
-        previewWrap.innerHTML = W.renderPreview(selectedType, selectedSize, draft, state);
+      // v0.93: size flips never rebuild the modal (refactor-plan-2 §1.6).
+      // 1.2.0 (UX-6): nor the preview — every size is already on the rail, so
+      // a flip only moves the dots, the caption and the active slide.
+      const syncSizeUi = (size) => {
         backdrop.querySelectorAll('.widget-size-dot').forEach(d => {
-          const active = d.dataset.size === selectedSize;
+          const active = d.dataset.size === size;
           d.classList.toggle('is-active', active);
           d.setAttribute('aria-pressed', String(active));
         });
+        backdrop.querySelectorAll('.awm-size-slide').forEach(sl => {
+          sl.classList.toggle('is-active', sl.dataset.size === size);
+        });
         const caption = backdrop.querySelector('.widget-size-caption');
-        if (caption) caption.textContent = window.I18n.t(selectedSize === 'large' ? 'widget.sizeWide' : 'widget.sizeSmall');
-        if (window.StackdHydrateIcons) window.StackdHydrateIcons(previewWrap);
-        W.attachPreview(backdrop, selectedType, selectedSize, draft, state);
+        if (caption) caption.textContent = window.I18n.t(size === 'large' ? 'widget.sizeWide' : 'widget.sizeSmall');
+      };
+
+      const reducedMotion = () => {
+        try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
       };
 
       const renderAll = () => {
@@ -4090,9 +4388,15 @@ window.Components = {
 
         attachAll();
         if (window.StackdHydrateIcons) window.StackdHydrateIcons();
-        // Mount the preview chart after the markup is in the document.
+        // Mount the preview charts after the markup is in the document.
+        // 1.2.0 (UX-6): one per slide (each an animation-free rAF mount), and
+        // the rail opens on the selected size (e.g. back from the config step).
         if (isDetail) {
-          W.attachPreview(backdrop, selectedType, selectedSize, draft, window.Store.getState());
+          const rail = backdrop.querySelector('.awm-size-rail');
+          const idx = Math.max(0, sizesOf().indexOf(selectedSize));
+          if (rail && idx > 0) rail.scrollLeft = idx * rail.clientWidth;
+          const state = window.Store.getState();
+          sizesOf().forEach(sz => W.attachPreview(backdrop, selectedType, sz, draft, state));
         }
       };
 
@@ -4135,43 +4439,40 @@ window.Components = {
           };
         });
 
+        // 1.2.0 (UX-6): a dot scrolls the rail to its slide; the rail's own
+        // scroll (a swipe, or the dot's) settles the selected size. Handlers
+        // die with each renderAll() rebuild, so no cleanup is needed.
+        const rail = backdrop.querySelector('.awm-size-rail');
         backdrop.querySelectorAll('.widget-size-dot').forEach(dot => {
           dot.onclick = () => {
-            selectedSize = dot.dataset.size;
-            renderPreviewOnly(); // v0.93: targeted swap, not a full-modal rebuild
+            const sizes = sizesOf();
+            const idx = sizes.indexOf(dot.dataset.size);
+            if (idx < 0) return;
+            selectedSize = sizes[idx];
+            syncSizeUi(selectedSize);
+            if (!rail) return;
+            const left = idx * rail.clientWidth;
+            if (typeof rail.scrollTo === 'function') {
+              rail.scrollTo({ left, behavior: reducedMotion() ? 'auto' : 'smooth' });
+            } else {
+              rail.scrollLeft = left;
+            }
           };
         });
 
-        // v0.79: swiping the preview flips between sizes. The preview grid
-        // itself is pointer-events:none (it is a picture), so the gesture is
-        // read on its wrapper — the deepest hit-testable ancestor. Handlers
-        // die with each renderAll() innerHTML rebuild, so no cleanup needed.
-        const previewWrap = backdrop.querySelector('#awm-preview');
-        if (previewWrap && selectedType) {
-          const sizes = (W.registry[selectedType] && W.registry[selectedType].sizes) || [];
-          if (sizes.length > 1) {
-            let swipeStartX = 0;
-            let swipeStartY = 0;
-            previewWrap.addEventListener('touchstart', (e) => {
-              swipeStartX = e.touches[0].clientX;
-              swipeStartY = e.touches[0].clientY;
-            }, { passive: true });
-            previewWrap.addEventListener('touchend', (e) => {
-              const t = e.changedTouches && e.changedTouches[0];
-              if (!t) return;
-              const dx = t.clientX - swipeStartX;
-              const dy = t.clientY - swipeStartY;
-              // Ignore taps and mostly-vertical drags — the modal body scrolls.
-              if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
-              const idx = sizes.indexOf(selectedSize);
-              const next = dx < 0
-                ? Math.min(idx + 1, sizes.length - 1)
-                : Math.max(idx - 1, 0);
-              if (next === idx) return;
-              selectedSize = sizes[next];
-              renderPreviewOnly(); // v0.93: targeted swap, not a full-modal rebuild
-            }, { passive: true });
-          }
+        if (rail && selectedType && sizesOf().length > 1) {
+          let settle = null;
+          rail.addEventListener('scroll', () => {
+            clearTimeout(settle);
+            settle = setTimeout(() => {
+              if (!rail.isConnected) return;
+              const sizes = sizesOf();
+              const w = rail.clientWidth || 1;
+              const idx = Math.max(0, Math.min(sizes.length - 1, Math.round(rail.scrollLeft / w)));
+              selectedSize = sizes[idx];
+              syncSizeUi(selectedSize);
+            }, 80);
+          }, { passive: true });
         }
 
         const configRoot = backdrop.querySelector('#awm-config');
@@ -4994,6 +5295,119 @@ Object.assign(window.Components, {
       backdrop.querySelector('#ie-sheet-export').addEventListener('click', () => go('#export'));
       backdrop.querySelector('#ie-sheet-cancel').addEventListener('click', () => backdrop._close());
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+    }
+  },
+
+  // 1.2.0 (UX-10): the transaction form's "Add an attachment" sheet —
+  // Camera / Photo library / PDF file / Cancel. Each choice closes the sheet
+  // and runs its callback IN the tap (the form clicks a hidden file input,
+  // which iOS and Android only open from a user gesture).
+  AttachmentSheet: {
+    show(options) {
+      const o = options || {};
+      const t = (k) => window.I18n.t(k);
+      const btn = (id, icon, label) => `<button type="button" class="btn btn-secondary att-sheet-btn" id="${id}"><i data-lucide="${icon}" aria-hidden="true"></i><span>${label}</span></button>`;
+      const backdrop = window.Components._bankSheet('attachment-sheet', `
+        <h2 id="attachment-sheet-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: 1.1rem;">${t('attach.title')}</h2>
+        <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0 0 var(--space-4); line-height: 1.5;">${t('attach.body')}</p>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          ${btn('att-sheet-camera', 'camera', t('attach.camera'))}
+          ${btn('att-sheet-library', 'image', t('attach.library'))}
+          ${btn('att-sheet-pdf', 'file-text', t('attach.pdf'))}
+          <button type="button" class="btn btn-secondary" id="att-sheet-cancel" data-back-dismiss>${t('common.cancel')}</button>
+        </div>`);
+      if (!backdrop) return null;
+      const pick = (fn) => () => { backdrop._close(); if (typeof fn === 'function') fn(); };
+      backdrop.querySelector('#att-sheet-camera').addEventListener('click', pick(o.onCamera));
+      backdrop.querySelector('#att-sheet-library').addEventListener('click', pick(o.onLibrary));
+      backdrop.querySelector('#att-sheet-pdf').addEventListener('click', pick(o.onPdf));
+      backdrop.querySelector('#att-sheet-cancel').addEventListener('click', () => backdrop._close());
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop._close(); });
+      return backdrop;
+    }
+  },
+
+  // 1.2.0 (UX-10): a tapped attachment. An image opens full screen (object-
+  // fit contain) with Share and Delete; a PDF goes straight to the system
+  // (share sheet on native, a new tab on the web). A file this device does
+  // not hold (a backup restored on another phone) says so. onDelete(meta)
+  // is optional: the form removes the attachment from its list (the file goes
+  // when the save lands).
+  AttachmentViewer: {
+    show(options) {
+      const o = options || {};
+      const meta = o.meta;
+      const A = window.Attachments;
+      const esc = window.Components.esc;
+      const t = (k, p) => window.I18n.t(k, p);
+      if (!meta || !A) return null;
+      const missing = () => window.Components.NoticeSheet.show({ id: 'attachment-missing-modal', tone: 'info', title: meta.name || t('form.attachments'), body: t('attach.missing') });
+      if (meta.kind === 'pdf') {
+        A.read(meta).then((bytes) => {
+          if (!bytes) { missing(); return; }
+          A.share(meta);
+        });
+        return null;
+      }
+      const backdrop = window.Components._bankSheet('attachment-viewer', `
+        <div class="modal-top-bar att-viewer-bar">
+          <h2 id="attachment-viewer-title" class="att-viewer-title">${esc(meta.name || '')}</h2>
+          <button type="button" class="modal-btn-top modal-btn-close" id="att-viewer-close" aria-label="${esc(t('common.close'))}"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+        <div class="att-viewer-stage" id="att-viewer-stage">
+          <img id="att-viewer-img" alt="${esc(meta.name || '')}" hidden>
+          <p id="att-viewer-missing" class="att-viewer-missing" hidden>${t('attach.missing')}</p>
+        </div>
+        <div class="att-viewer-actions">
+          <button type="button" class="btn btn-secondary" id="att-viewer-share"><i data-lucide="share-2" aria-hidden="true"></i><span>${t('attach.share')}</span></button>
+          ${typeof o.onDelete === 'function' ? `<button type="button" class="btn btn-danger" id="att-viewer-delete"><i data-lucide="trash-2" aria-hidden="true"></i><span>${t('attach.delete')}</span></button>` : ''}
+        </div>`);
+      if (!backdrop) return null;
+      backdrop.classList.add('att-viewer');
+      const img = backdrop.querySelector('#att-viewer-img');
+      const gone = backdrop.querySelector('#att-viewer-missing');
+      const shareBtn = backdrop.querySelector('#att-viewer-share');
+      let url = null;
+      const showMissing = () => { img.hidden = true; gone.hidden = false; shareBtn.disabled = true; };
+      // An image that will not render may still be here (a format this
+      // WebView cannot draw): then it says so and Share stays available;
+      // only a file the device does not hold reads "not on this device".
+      img.addEventListener('error', () => {
+        img.hidden = true;
+        Promise.resolve(A.read(meta)).then((bytes) => {
+          if (!backdrop.isConnected) return;
+          if (!bytes) { showMissing(); return; }
+          gone.textContent = t('attach.noPreview');
+          gone.hidden = false;
+        });
+      });
+      Promise.resolve(A.displayUrl(meta)).then((u) => {
+        if (!backdrop.isConnected) return; // closed already (the URL is the form's, which revokes it)
+        if (!u) { showMissing(); return; }
+        url = u;
+        img.src = u;
+        img.hidden = false;
+      });
+      const close = () => { backdrop._close(); };
+      backdrop.querySelector('#att-viewer-close').addEventListener('click', close);
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop || e.target.id === 'att-viewer-stage') close(); });
+      shareBtn.addEventListener('click', () => { if (url) A.share(meta); });
+      const del = backdrop.querySelector('#att-viewer-delete');
+      if (del) {
+        del.addEventListener('click', () => {
+          close();
+          window.Components.Modal.show({
+            title: esc(meta.name || t('form.attachments')),
+            content: `<p>${t('attach.deleteConfirm')}</p>`,
+            saveText: t('form.keep'),
+            showDelete: true,
+            deleteText: t('attach.delete'),
+            onSave: (closeModal) => closeModal(),
+            onDelete: (closeModal) => { closeModal(); o.onDelete(meta); }
+          });
+        });
+      }
+      return backdrop;
     }
   },
 

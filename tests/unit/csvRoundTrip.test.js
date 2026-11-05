@@ -24,6 +24,7 @@ describe('CSV export/import round-trip (v0.68)', () => {
     executeFile('db.js');
     executeFile('i18n.js');
     executeFile('i18n/en.js');
+    executeFile('attachments.js'); // 1.2.0 (UX-10): the Attachments column
     executeFile('store.js');
     executeFile('export.js');
     executeFile('import.js');
@@ -153,6 +154,59 @@ describe('CSV export/import round-trip (v0.68)', () => {
     expect(transactions[0].isPaid).toBe(false);
     expect(transactions[0].comment).toBe('Beans, ground');
     expect(transactions[0].amount).toBe(12.5);
+  });
+
+  // 1.2.0 (UX-10): the metas travel in a JSON 'Attachments' column (never
+  // the bytes); a same-device restore keeps the ids, so the files re-link.
+  it('round-trips the attachment metas, made safe on the way back', () => {
+    window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 0 });
+    const account = window.Store.getState().accounts[0];
+    const metas = [
+      { id: 'att-1', kind: 'image', name: 'Receipt, "Café".jpg', ext: 'jpg', mime: 'image/jpeg', size: 1234, addedAt: '2026-11-05T10:00:00.000Z' },
+      { id: 'att-2', kind: 'pdf', name: 'bill.pdf', ext: 'pdf', mime: 'application/pdf', size: 99, addedAt: '2026-11-05T10:01:00.000Z' }
+    ];
+    window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 9, accountId: account.id, categoryId: 'cat_groceries', date: '2026-03-09', comment: 'with receipts', attachments: metas
+    });
+    window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 3, accountId: account.id, categoryId: 'cat_groceries', date: '2026-03-10', comment: 'plain'
+    });
+
+    const csv = exportCsv();
+    expect(csv.split(/\r?\n/)[0].split(',').pop()).toBe('Attachments');
+    window.Store.state.transactions = window.Store.state.transactions.filter(t => t.type === 'opening_balance');
+    const { transactions } = window.StackdImport.buildTransactions(window.StackdImport.parseCSV(csv));
+    const back = transactions.find(t => t.comment === 'with receipts');
+    expect(back.attachments).toEqual(metas);
+    expect(transactions.find(t => t.comment === 'plain').attachments).toBeUndefined();
+  });
+
+  it('an unreadable or hostile Attachments cell never breaks the restore', () => {
+    const I = window.StackdImport;
+    expect(I._parseAttachments('not json')).toEqual([]);
+    expect(I._parseAttachments('[{"id":"../../stackd_db/x","kind":"pdf","name":"x.pdf","ext":"../pdf"}]')[0])
+      .toMatchObject({ kind: 'pdf', ext: 'pdf' });
+    expect(I._parseAttachments('[{"id":"../../stackd_db/x","kind":"pdf"}]')[0].id).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(I._parseAttachments('')).toEqual([]);
+  });
+
+  // Like Id/AccountId (D10), the metas are read only from a Stack'd export:
+  // a foreign file with an "Attachments" column never aliases a stored file.
+  it('reads the Attachments column only from a Stack\'d export', () => {
+    window.Store.dispatch('ADD_ACCOUNT', { name: 'Wallet', openingBalance: 0 });
+    const account = window.Store.getState().accounts[0];
+    const metas = [{ id: 'att-9', kind: 'image', name: 'r.jpg', ext: 'jpg', mime: 'image/jpeg', size: 5, addedAt: '2026-11-05T10:00:00.000Z' }];
+    window.Store.dispatch('ADD_TRANSACTION', {
+      type: 'expense', amount: 9, accountId: account.id, categoryId: 'cat_groceries', date: '2026-03-09', comment: 'foreign', attachments: metas
+    });
+    const rows = window.StackdImport.parseCSV(exportCsv());
+    window.Store.state.transactions = window.Store.state.transactions.filter(t => t.type === 'opening_balance');
+    const own = window.StackdImport.buildTransactions(rows).transactions.find(t => t.comment === 'foreign');
+    expect(own.attachments).toEqual(metas);
+    const foreign = rows.map(r => { const c = { ...r }; delete c.seriesid; return c; });
+    const back = window.StackdImport.buildTransactions(foreign).transactions.find(t => t.comment === 'foreign');
+    expect(back).toBeDefined();
+    expect(back.attachments).toBeUndefined();
   });
 
   it('re-pairs transfer legs under a fresh transferRef', () => {

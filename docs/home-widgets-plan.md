@@ -2,7 +2,7 @@
 
 > **Status: COMPLETE — shipped as v0.72 (2026-08-07, all 5 phases).**
 > §2 describes the PRE-widget dashboard (historical). §4–§6 are the spec as
-> designed; the per-phase "as built" subsections (§8a–§8e) record what actually
+> designed; the per-phase "as built" subsections (§8a–§8f) record what actually
 > shipped, including deviations — read those first when touching widget code.
 > Line numbers cited in §2–§6 predate later edits; trust `src/`, not the numbers.
 
@@ -562,6 +562,28 @@ Verified: 430 unit tests, 19 e2e, lint 0 errors. In-browser: upgrade path
 (key removed → reload → seeded card with rows, Recent Activities gone), the
 50/30/20 card reconciling to the cent against seeded data, the config panel's
 live split validation, both themes, clean console, no horizontal overflow.
+
+### 8f. 1.2.0 UX round — as built (2026-11-05)
+
+From the owner's iPhone review (`docs/ux-review-1.2-plan.md`, Unit B):
+- **`accountBalances`** (9th type, large only): every account grouped by type
+  with subtotals and a Total, a note for accounts in another currency, row tap →
+  History for that account. It is the one auto-height card (`widget-card--auto`),
+  so it never scrolls inside; it is not offered in small and a stored `small` is
+  laid out wide. Gallery order: after `latest`.
+- **Drag reorder:** long press (~0.5 s) enters edit mode (wiggle, off under
+  reduced motion; x badge top-right → "Remove widget?" confirm); keep moving and
+  the same gesture drags, the others slide (FLIP). In edit mode a 150 ms hold
+  drags and a quick swipe scrolls. The card under the pointer wins the hit test;
+  boxes come from layout offsets so a card mid-FLIP does not oscillate. One
+  dispatch on release; Escape/touchcancel re-emit. A tap outside the widget area
+  ends edit mode. The move-up/down arrows stay, visually hidden (keyboard, tests).
+- **Size rail:** the add-widget preview is a scroll-snap rail with both sizes
+  (small centred, wide slides in); dots and caption follow; preview ids are
+  `__preview__:small` / `__preview__:large`, both released on close.
+- **Rings:** `categories`/`budgets` (and Goals, Analytics) draw through
+  `Components.RingChart`; the sweep runs only when Home is entered by a
+  navigation (`attachSection(root, state, {isEntry})`), never on a dispatch.
 
 ## 9. Open decisions (recommendation first — confirm or override)
 

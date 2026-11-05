@@ -103,20 +103,28 @@ describe('Mixed-currency selections on screen (1.0.2 BUG-36 / BUG-63)', () => {
     expect(html).not.toContain(CAPTION_ONE);
   });
 
-  it('Home chart: the excluded account gets no dashed line; tooltips use each line\'s currency', () => {
+  // 1.2.0 (UX-1, Decision 2): Home draws no per-account lines any more (the
+  // expanded sheet keeps them) — the curve and the net-flow bars both sum
+  // the base accounts only and speak the selection's currency.
+  it('Home charts: the excluded account adds nothing; tooltips use the selection currency', () => {
     S().dispatch('SAVE_EXPANDED_GRAPH_FILTERS', { interval: 'monthly', accounts: [main, us], categories: [] });
     global.window.Chart = vi.fn(function (canvas, cfg) { this.cfg = cfg; this.destroy = vi.fn(); });
     const view = global.window.Views.DashboardView;
     const container = document.getElementById('router-view');
     container.innerHTML = view.render(S().getState());
     view.attachEvents(container, S().getState());
-    const cfg = global.window.Chart.mock.calls[global.window.Chart.mock.calls.length - 1][1];
+    const calls = global.window.Chart.mock.calls.map(c => c[1]);
+    const cfg = calls.find(c => c.type === 'line');
     const labels = cfg.data.datasets.map(d => d.label);
-    expect(labels).toContain('Main');
+    expect(labels).not.toContain('Main');
     expect(labels).not.toContain('US Checking');
     expect(cfg.data.datasets[0].currency).toBe('EUR');
+    expect(cfg.data.datasets[0].data[cfg.data.datasets[0].data.length - 1].balance).toBe(1950);
     const label = cfg.options.plugins.tooltip.callbacks.label({ dataset: cfg.data.datasets[0], parsed: { y: 1950 } });
     expect(label).toContain('€1,950.00');
+    const bars = calls.find(c => c.type === 'bar');
+    expect(bars.data.datasets[0].currency).toBe('EUR');
+    expect(bars.data.datasets[0].data[bars.data.datasets[0].data.length - 1]).toBe(-50);
     view.destroy();
   });
 
