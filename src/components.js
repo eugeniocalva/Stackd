@@ -2526,6 +2526,108 @@ window.Components = {
   // an inline plugin registered at the config ROOT, so datasets[0]
   // .backgroundColor stays the plain hex array the tests (and the hover
   // colours) read — the plugin repaints over it.
+  // 1.2.0 (UX-8): the big amount fields draw their own caret. iOS WebKit
+  // leaves the system caret behind when the form scrolls with the field
+  // focused (it ended up below the digits), so the system caret is hidden
+  // (caret-color: transparent) and a blinking bar is drawn in an invisible
+  // copy of the text laid over the input. The copy is in the page, so it
+  // scrolls with the digits, and it splits the text at the selection, so the
+  // bar sits where the cursor really is. Nothing of the value reaches markup:
+  // the copy is built with textContent.
+  AmountCaret: {
+    attach(input) {
+      if (!input || input._amountCaret || typeof document === 'undefined') return null;
+      const group = input.parentElement;
+      if (!group) return null;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'amount-caret-overlay';
+      overlay.setAttribute('aria-hidden', 'true');
+      const line = document.createElement('span');
+      line.className = 'amount-caret-line';
+      const before = document.createTextNode('');
+      const caret = document.createElement('span');
+      caret.className = 'amount-caret';
+      const after = document.createTextNode('');
+      line.appendChild(before);
+      line.appendChild(caret);
+      line.appendChild(after);
+      overlay.appendChild(line);
+      group.appendChild(overlay);
+      input.classList.add('amount-input--own-caret');
+
+      const COPY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
+        'fontVariantNumeric', 'fontFeatureSettings', 'textTransform'];
+
+      const sync = () => {
+        if (!input.isConnected) { detach(); return; }
+        const focused = document.activeElement === input;
+        // The type toggles rewrite input.className; keep the system caret hidden.
+        input.classList.add('amount-input--own-caret');
+        overlay.classList.toggle('is-active', focused);
+        if (!focused) return;
+        const cs = window.getComputedStyle ? window.getComputedStyle(input) : null;
+        if (cs) {
+          COPY.forEach(p => { if (cs[p]) line.style[p] = cs[p]; });
+          const pad = (side) => (parseFloat(cs['padding' + side]) || 0) + (parseFloat(cs['border' + side + 'Width']) || 0);
+          overlay.style.paddingLeft = pad('Left') + 'px';
+          overlay.style.paddingRight = pad('Right') + 'px';
+          if (cs.color) caret.style.background = cs.color;
+        }
+        // Lay the copy exactly over the input's box (the group is the
+        // positioned ancestor).
+        overlay.style.left = input.offsetLeft + 'px';
+        overlay.style.top = input.offsetTop + 'px';
+        overlay.style.width = input.offsetWidth + 'px';
+        overlay.style.height = input.offsetHeight + 'px';
+
+        const value = input.value || '';
+        const s = typeof input.selectionStart === 'number' ? input.selectionStart : value.length;
+        const e = typeof input.selectionEnd === 'number' ? input.selectionEnd : s;
+        before.nodeValue = value.slice(0, s);
+        after.nodeValue = value.slice(s);
+        // A selected range shows the system highlight; no bar then.
+        caret.style.visibility = s === e ? 'visible' : 'hidden';
+
+        // A value wider than the box: the input scrolls from the start.
+        const overflowing = line.offsetWidth > overlay.clientWidth;
+        overlay.classList.toggle('is-overflowing', overflowing);
+        overlay.scrollLeft = overflowing ? (input.scrollLeft || 0) : 0;
+
+        // Solid while typing, then blink again.
+        caret.style.animation = 'none';
+        void caret.offsetWidth;
+        caret.style.animation = '';
+      };
+
+      // Selection moves (a tap inside the digits) are seen once the browser
+      // has applied them.
+      const syncSoon = () => setTimeout(sync, 0);
+      // A re-rendered view drops the old input: its document listeners go too.
+      const onSelection = () => { if (!input.isConnected) detach(); else if (document.activeElement === input) sync(); };
+      const onResize = onSelection;
+
+      const events = [['input', sync], ['focus', sync], ['blur', sync], ['keyup', sync],
+        ['select', sync], ['click', syncSoon], ['touchend', syncSoon]];
+      events.forEach(([t, fn]) => input.addEventListener(t, fn));
+      document.addEventListener('selectionchange', onSelection);
+      if (typeof window.addEventListener === 'function') window.addEventListener('resize', onResize);
+
+      function detach() {
+        events.forEach(([t, fn]) => input.removeEventListener(t, fn));
+        document.removeEventListener('selectionchange', onSelection);
+        if (typeof window.removeEventListener === 'function') window.removeEventListener('resize', onResize);
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        input.classList.remove('amount-input--own-caret');
+        input._amountCaret = null;
+      }
+
+      input._amountCaret = { sync, detach, overlay };
+      if (document.activeElement === input) sync();
+      return input._amountCaret;
+    }
+  },
+
   RingChart: {
     _iconCache: {},
 

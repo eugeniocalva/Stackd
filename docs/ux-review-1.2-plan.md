@@ -684,6 +684,14 @@ dropped from the tree, and the open minor review findings:
 - `home_widgets.spec.js` waits for the splash before raw mouse gestures and scrolls the
   widgets back into view before the second long press.
 
+**UX-8 after the device check (2026-11-05).** The tight line box did not cure the caret on
+the owner's iPhone. First fix (2d120c6): `KeyboardManager` no longer smooth-scrolls a focused
+field or re-scrolls on every visualViewport event. It still drifted after the owner scrolled
+the form with the keyboard open (WebKit does not move the system caret with a scrolled
+container), so Decision 11 became "draw our own caret": `Components.AmountCaret` on
+`#tx-amount` and `#dsim-principal` (system caret hidden, a blinking bar in an invisible copy of
+the text, split at the selection). Confirmed on the owner's iPhone in Safari.
+
 Verified: lint clean; 169 unit files / 2,203 tests; e2e 121/121 (the one failure was the
 spec timing above); `version:check`; browser preview (mobile, dark): pager both panes, chips,
 account balances widget, glossy rings (Home + Goals), tag picker create/apply, attachment

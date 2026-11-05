@@ -3770,3 +3770,57 @@ a:focus-visible,
   font-size: var(--text-sm);
   border-radius: var(--radius-lg);
 }
+
+/* ── 1.2.0 (UX-8) our own amount caret ──────────────────────────────────────
+   Components.AmountCaret hides the system caret (iOS left it behind when the
+   form scrolled with the field focused) and draws a bar in an invisible copy
+   of the text laid over the input. The copy scrolls with the page. */
+.amount-input-group {
+  position: relative;
+}
+.amount-input.amount-input--own-caret {
+  caret-color: transparent;
+}
+.amount-caret-overlay {
+  position: absolute;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: pre;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.amount-caret-overlay.is-active {
+  display: flex;
+}
+.amount-caret-overlay.is-overflowing {
+  justify-content: flex-start;
+}
+.amount-caret-line {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+.amount-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  /* from a little under the baseline to just over the digits */
+  vertical-align: -0.15em;
+  /* zero net advance: the copy's text stays exactly where the input's is */
+  margin-left: 0.06em;
+  margin-right: calc(-2px - 0.06em);
+  border-radius: 1px;
+  background: currentColor;
+  animation: amount-caret-blink 1.06s step-end infinite;
+}
+@keyframes amount-caret-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .amount-caret { animation: none; }
+}

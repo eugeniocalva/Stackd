@@ -2150,6 +2150,8 @@ window.Views = {
       const btnTransfer = document.getElementById('toggle-transfer');
       const typeInput = document.getElementById('tx-type');
       const amountInput = document.getElementById('tx-amount');
+      // 1.2.0 (UX-8): our own caret (iOS leaves the system one behind on scroll)
+      if (amountInput && window.Components.AmountCaret) window.Components.AmountCaret.attach(amountInput);
       const categorySelect = document.getElementById('tx-category');
       const groupCategory = document.getElementById('group-category');
       const groupTransferTo = document.getElementById('group-transfer-to');
@@ -6882,6 +6884,7 @@ Object.assign(window.Views, {
         if (el) el.addEventListener(evt, () => { d[prop] = el.value; updateDownPct(); });
       };
       bind('dsim-principal', 'principal');
+      if ($('dsim-principal') && window.Components.AmountCaret) window.Components.AmountCaret.attach($('dsim-principal')); // 1.2.0 (UX-8)
       bind('dsim-down', 'downPayment');
       bind('dsim-duration', 'duration');
       bind('dsim-rate', 'annualRate');

@@ -399,6 +399,13 @@ decisions, "As built"). Comment tag `// 1.2.0 (UX-N)`.
   column (trusted in a Stack'd export only) — **bytes are never in a backup**.
   `StackdExport.exportReceiptsPdf` merges photos + PDFs with the vendored
   `window.PDFLib`; `_shareNative(name, text | {base64})`.
+- **Amount caret (UX-8).** iOS WebKit leaves the system caret behind when a
+  focused field scrolls with its container, so the big amount fields
+  (`#tx-amount`, `#dsim-principal`) draw their own: `Components.AmountCaret.attach(input)`
+  hides the system caret (`.amount-input--own-caret`) and blinks a bar in an
+  invisible text copy laid over the input, split at the selection. A new
+  `.amount-input` field must attach it too. `KeyboardManager` never scrolls a
+  field that is already visible and never smooth-scrolls a focused one.
 - **Backup page (UX-11).** `window.StackdBackup` (`src/backup.js`): one JSON
   bundle of the six backup CSVs (collected through `StackdExport._sink`),
   restored as ONE change by `StackdImport._restoreBundle` (`analyzeText` says
