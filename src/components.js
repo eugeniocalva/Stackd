@@ -2680,6 +2680,53 @@ window.Components = {
 
   // 1.2.2 (HG-4): the sheet behind Home's "Balances hidden" pill. Show turns
   // hiding off; Done (primary, the thumb spot) keeps it on.
+  // 1.2.2 (HG-7 P4): the recurring payments behind the Smart Insights
+  // "recurring payments" insight. Read-only: each series by its next payment
+  // and frequency, biggest monthly cost first, with the monthly total.
+  // Amounts go through formatCurrency, so they mask on Home when balances are
+  // hidden (the sheet opens over the screen it was tapped on).
+  RecurringPaymentsSheet: {
+    show(rows, total) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (v) => window.I18n.esc(v);
+      const money = (v) => window.Store.formatCurrency(v);
+      const id = 'recurring-payments-sheet';
+      const list = (rows || []).map(r => `
+          <li class="recurring-sheet-row">
+            <span class="list-item-icon recurring-sheet-icon" aria-hidden="true"><i data-lucide="${esc(r.icon)}"></i></span>
+            <span class="recurring-sheet-text">
+              <span class="list-item-title">${esc(r.name)}</span>
+              <span class="list-item-subtitle">${esc(r.freq)}</span>
+            </span>
+            <span class="recurring-sheet-amount">${esc(money(r.amount))}</span>
+          </li>`).join('');
+      const backdrop = window.Components._bankSheet(id, `
+        <h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-1); font-size: var(--text-2xl);">${t('insight.recurring.title')}</h2>
+        <p id="${id}-body" class="recurring-sheet-total">${t('insight.recurring.perMonth', { amount: esc(window.Store.formatCurrency(total, null, { whole: true })) })}</p>
+        <ul class="recurring-sheet-list" role="list">${list}</ul>
+        <button type="button" class="btn btn-primary" id="${id}-done" data-back-dismiss>${t('common.done')}</button>`);
+      if (!backdrop) return null;
+      backdrop.setAttribute('aria-describedby', `${id}-body`);
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop._close();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      const done = backdrop.querySelector(`#${id}-done`);
+      done.addEventListener('click', close);
+      document.addEventListener('keydown', onKey);
+      setTimeout(() => { if (!closed && done.isConnected) { try { done.focus({ preventScroll: true }); } catch (e) { done.focus(); } } }, 50);
+      return backdrop;
+    }
+  },
+
   HiddenBalancesSheet: {
     show() {
       const t = (k, p) => window.I18n.t(k, p);

@@ -1,7 +1,8 @@
 # Smart Insights 2.0 — plan (1.2.2, HG-7)
 
-Status: **P1 (page + tab), P2 (widget + tab order) and P3 (rules, batch 1)
-BUILT 2026-11-06 (§11); P4 to do.** All decisions
+Status: **ALL FOUR PHASES BUILT 2026-11-06 (§11): P1 page + tab, P2 widget +
+tab order, P3 and P4 rules: all 21 types of §4 (4 attention, 17 insight);
+`lowBalanceAhead` stays dropped.** All decisions
 taken (§9): an Insights page and a 5th tab; the widget is opt-in; nothing on
 Home by default. Comment tag: `// 1.2.2 (HG-7)`.
 
@@ -580,3 +581,60 @@ pass at 200 %.
     before the account opened).
   - e2e: `insights.spec.js` checks Needs attention (an over budget and an
     unpaid payment), and that the budget opens Goals on this month.
+
+### P4 · Rules, batch 2 (2026-11-06)
+
+- **The facts pass grows again** (still a single O(T) walk). It adds:
+  - per-category spend by month, with its recurring part
+    (`catMonth` / `catMonthRec`);
+  - `recent`, the three calendar months before this one;
+  - this month a year ago, up to today's day number;
+  - the 60-day count of rows with no category;
+  - `series`: each recurring expense series' next payment.
+- **The eight rules:**
+
+  | Rule | Tier | Section · group | Figure | Fires when / notes | Opens |
+  |---|---|---|---|---|---|
+  | `categorySpike` | 3 | month · spending | +% | spend so far ≥ 120 % of the category's usual whole month (the average of the last three months with spend, at least two of them), and the excess is at least 2 % of a usual month's total spend | History: that category, this month |
+  | `budgetSuggest` | 2 | tidy · budgets | average a month | no budgets; a category at ≥ 15 % of recent spend whose spend is mostly one-off (a fixed bill gains nothing from a budget) | Goals, straight on that category's limit editor (`BudgetView.editCategoryId`) |
+  | `recurringLoad` | 2 | trends · upcoming | a month | ≥ 2 expense series with a payment ahead, each by its next payment converted to a month (days, weeks, months, years); the detail gives the share of the average monthly income | a **Recurring payments** sheet (`Components.RecurringPaymentsSheet`) over the screen: History has no recurring filter |
+  | `runway` | 3 | accounts · balance | months | today's balance (`getBalanceAtDate`) over an average month of the last three; one decimal under 10; bad under 1 month (+25), good from 6 | the balance graph sheet (`ExpandedGraphModal`) over the screen |
+  | `balanceTrend` | 3 | accounts · balance | ±amount | \|Δ\| ≥ 5 % against the same day three months ago, or a new high (above every month-end before this month, from `computeBalanceSeries('max')`, +15) | the balance graph sheet |
+  | `loanProgress` | 1 | accounts · loans | % repaid | an active loan at ≥ 1 % repaid (`getLoanProgress`); a 25/50/75 % mark passed in the last 30 days (+40); a loan paid off in that window says so, one paid off earlier is no news; sims are ignored | that loan's results (`#debt-results?id=…`) |
+  | `uncategorized` | 1 | tidy · data | count | ≥ 5 rows of the last 60 days with no category, in any currency or paid state; transfer legs are not counted | History: Uncategorized over those 60 days |
+  | `yearOverYear` | 4 | trends · seasonal | ±% | day ≥ 3, that month a year ago had ≥ 5 expenses, \|Δ\| ≥ 10 % against its same days | Analytics, this month |
+
+- **Opening in place.**
+  - An item may carry `go()`, which `Insights.open` calls instead of
+    navigating; its `href` stays the fallback.
+  - An item that opens a sheet also sets `sheet: true`, and its link
+    carries `aria-haspopup="dialog"`.
+  - The sheets open over the screen they were tapped on. On Home they mask
+    with hidden balances, like every Home surface.
+- **Locked list:** the nearest unlock comes first (sorted by tier, the rules'
+  order inside a tier). At tier 0 it describes all 17 insight types.
+- **Wording rules learnt here:**
+  - Never put an article or an eliding preposition before a value
+    (*il {pct}* → *l'8 %*; *de {name}* → *d'Auto*; *a {date}* before a
+    weekday).
+  - French and the other Romance languages phrase the loan line as
+    "{name} : {pct} remboursé".
+  - The P3 "next 7 days" detail now says "due {date}" in every language.
+- **Deviations from §4, on purpose:**
+  - `recurringLoad` opens a sheet, not History, because History cannot
+    filter recurring rows.
+  - The balance rules open the graph sheet over the current screen rather
+    than on Home.
+  - `uncategorized` leaves transfer legs out. History's Uncategorized filter
+    still lists them, labelled as transfers; `historySummary.test.js` pins
+    that behaviour.
+- **Strings:** 44 keys × 5 languages.
+- **Tests:**
+  - unit: `insights.test.js` adds 12 rule tests. Each one feeds the rows
+    the aggregates must ignore (unpaid, another currency, before the account
+    opened, transfers) and checks every rule names a family.
+  - e2e: `insights_destinations.spec.js` (new, clock pinned to 15 June 2026,
+    13 months of history) checks one destination per test: History by
+    category, the Goals limit editor, the recurring sheet (focus and Escape),
+    the balance graph sheet, loan results, History uncategorized and
+    Analytics.

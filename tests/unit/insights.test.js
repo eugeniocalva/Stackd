@@ -276,7 +276,12 @@ describe('the Insights page', () => {
     expect(starter.textContent).toContain('2 of 5 entries so far.');
     expect(starter.querySelector('a.insight-starter-btn').getAttribute('href')).toBe('#add');
     const locked = [...root.querySelectorAll('[data-locked]')];
-    expect(locked.map(l => l.dataset.locked)).toEqual(['monthOutlook', 'topSpending', 'incomeSource', 'accountMix', 'spendPace', 'budgetAtRisk', 'budgetsOnTrack', 'upcomingWeek', 'savingsRate']);
+    expect(locked.map(l => l.dataset.locked)).toEqual([
+      'monthOutlook', 'topSpending', 'incomeSource', 'accountMix', 'budgetAtRisk', 'budgetsOnTrack', 'upcomingWeek', 'loanProgress', 'uncategorized', // tier 1
+      'spendPace', 'savingsRate', 'budgetSuggest', 'recurringLoad', // tier 2
+      'categorySpike', 'runway', 'balanceTrend', // tier 3
+      'yearOverYear' // tier 4
+    ]);
     expect(locked[0].textContent).toContain("What you're set to put aside by the end of the month.");
     expect(root.querySelectorAll('[data-locked] .insight-progress')).toHaveLength(0);
     expect(root.querySelector('a[data-insight]')).toBeNull();
@@ -330,7 +335,9 @@ describe('the Insights page', () => {
 
   it('nothing to say this month: a quiet card instead of an empty page', () => {
     const id = addAccount('Main', 100);
-    // April, not May: a quiet May would itself be news (spending pace)
+    // April, not May: a quiet May would itself be news (spending pace); one
+    // budget, so no budget idea either (P4)
+    Store().dispatch('SAVE_BUDGET', { categoryId: 'cat_dining', amount: 100, startDate: '', endDate: null, isCumulative: false });
     for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-04-0${i + 1}` });
     const root = mountPage();
     expect(Insights().analyze(state()).tier).toBe(2);
@@ -481,7 +488,9 @@ describe('the Smart Insights widget', () => {
       expect(html).toContain('0 of 5 entries so far.');
     });
     const id = addAccount('Main', 100);
-    // April, not May: a quiet May would itself be news (spending pace)
+    // April, not May: a quiet May would itself be news (spending pace); one
+    // budget, so no budget idea either (P4)
+    Store().dispatch('SAVE_BUDGET', { categoryId: 'cat_dining', amount: 100, startDate: '', endDate: null, isCumulative: false });
     for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-04-0${i + 1}` });
     expect(W().registry.insights.render(inst('large'), state())).toContain('Nothing stands out today');
   });
@@ -622,7 +631,7 @@ describe('batch 1 rules (P3)', () => {
     const c = item('upcomingWeek');
     expect(c).toMatchObject({ figure: '$950', href: '#transactions', group: 'upcoming' });
     expect(c.head).toBe('2 payments due in the next 7 days');
-    expect(c.body).toMatch(/^The largest: Rent, \$900 on .*16/);
+    expect(c.body).toBe('The largest: Rent, $900, due Tuesday, June 16.');
     expect(c.filters.filters.period).toEqual({ type: 'custom', value: '', start: june(16), end: june(22) });
     expect(c.score).toBe(55); // $950 is under a quarter of the balance
   });
@@ -665,7 +674,7 @@ describe('batch 1 rules (P3)', () => {
     for (let i = 0; i < 5; i++) addTx({ accountId: id, date: june(1 + i) });
     const res = Insights().analyze(state());
     expect(res.tier).toBe(1);
-    expect(res.locked.map(l => l.id)).toEqual(['spendPace', 'savingsRate']);
+    expect(res.locked.map(l => l.id)).toEqual(['spendPace', 'savingsRate', 'budgetSuggest', 'recurringLoad', 'categorySpike', 'runway', 'balanceTrend', 'yearOverYear']);
     expect(res.locked[0].need).toBe('After a full month of entries');
   });
 
@@ -681,5 +690,220 @@ describe('batch 1 rules (P3)', () => {
     expect(root.querySelector('.insight-budgetbar-fill').style.width).toBe('67%');
     expect(root.querySelector('.insight-budgetbar-tick').style.left).toBe('50%');
     expect(root.querySelector('.insight-budgetbar-today').textContent).toBe('Today');
+  });
+});
+
+// 1.2.2 (HG-7 P4): batch 2 rules. The clock is 15 June 2026: the three
+// months before are March, April and May; a year ago is June 2025.
+describe('batch 2 rules (P4)', () => {
+  beforeEach(() => {
+    boot();
+    if (typeof global.requestAnimationFrame !== 'function') global.requestAnimationFrame = (fn) => fn();
+  });
+
+  const on = (ym, day) => `${ym}-${pad(day)}`;
+  const item = (id) => byId()[id];
+  const SPRING = ['2026-03', '2026-04', '2026-05'];
+  // rows every aggregate must ignore: unpaid, another currency, before the
+  // account opened, and (where it matters) a transfer
+  const noise = (main, categoryId, date, withTransfer) => {
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    const late = addAccount('Late', 0, { openingDate: '2026-06-10' });
+    addTx({ amount: 500, categoryId, accountId: main, date, isPaid: false });
+    addTx({ amount: 500, categoryId, accountId: eur, date });
+    addTx({ amount: 500, categoryId, accountId: late, date: '2026-05-01' });
+    if (withTransfer) Store().dispatch('ADD_TRANSFER', { amount: 500, expenseAccountId: main, incomeAccountId: eur, date });
+  };
+
+  it('categorySpike (tier 3): a category already past its usual whole month; History opens on it', () => {
+    const id = addAccount('Main', 9000);
+    SPRING.forEach(ym => {
+      addTx({ amount: 100, categoryId: 'cat_dining', accountId: id, date: on(ym, 2) });
+      for (let i = 0; i < 4; i++) addTx({ amount: 50, accountId: id, date: on(ym, 3 + i) });
+    });
+    for (let i = 0; i < 3; i++) addTx({ amount: 60, categoryId: 'cat_dining', accountId: id, date: june(1 + i) });
+    addTx({ amount: 400, categoryId: 'cat_health', accountId: id, date: june(4) }); // no usual month: never a spike
+    noise(id, 'cat_dining', june(5), true);
+    expect(Insights().analyze(state()).tier).toBe(3);
+    const c = item('categorySpike');
+    expect(c).toMatchObject({ figure: '+80%', tone: 'bad', dir: 'up', href: '#transactions', family: 'month', group: 'spending', score: 95 });
+    expect(c.head).toBe('Dining Out is already above your usual month');
+    expect(c.body).toBe('$180 so far, against about $100 in a usual month.');
+    expect(c.filters).toEqual({ page: 'history', filters: { categories: ['cat_dining'] }, replace: true });
+  });
+
+  it('budgetSuggest (tier 2): no budgets, a mostly one-off category at 15 %+; opens its Goals limit editor', () => {
+    const id = addAccount('Main', 9000);
+    addTx({
+      amount: 800, categoryId: 'cat_rent', accountId: id, date: on('2026-05', 1),
+      recurrence: { frequency: 'months', interval: 1, startDate: on('2026-05', 1), endDate: '2026-12-01' }
+    }); // the bigger share, but a fixed bill
+    for (let i = 0; i < 4; i++) addTx({ amount: 50, categoryId: 'cat_dining', accountId: id, date: on('2026-05', 2 + i) });
+    noise(id, 'cat_dining', on('2026-05', 10), true);
+    const c = item('budgetSuggest');
+    expect(c).toMatchObject({ figure: '$200', family: 'tidy', group: 'budgets', href: '#budget' });
+    expect(c.head).toBe('Set a budget for Dining Out?');
+    expect(c.body).toBe('It averages $200 a month, 20% of your spending.');
+    global.window.Views = { BudgetView: { editCategoryId: null } };
+    Insights().open(c);
+    expect(global.window.Views.BudgetView.editCategoryId).toBe('cat_dining');
+    expect(global.window.Router.navigate).toHaveBeenLastCalledWith('#budget');
+    Store().dispatch('SAVE_BUDGET', { categoryId: 'cat_groceries', amount: 100, startDate: '', endDate: null, isCumulative: false });
+    expect(item('budgetSuggest')).toBeUndefined();
+  });
+
+  it('recurringLoad (tier 2): live expense series as a monthly cost; a sheet lists them', () => {
+    document.body.innerHTML = '<div id="router-view"></div><div id="modal-container"></div>';
+    const id = addAccount('Main', 9000);
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    const rec = (frequency, startDate, endDate) => ({ frequency, interval: 1, startDate, endDate });
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 3000, accountId: id, date: on('2026-05', 1) });
+    for (let i = 0; i < 4; i++) addTx({ amount: 20, accountId: id, date: on('2026-05', 2 + i) });
+    addTx({ amount: 900, categoryId: 'cat_rent', accountId: id, date: on('2026-05', 1), recurrence: rec('months', on('2026-05', 1), '2026-12-01') });
+    addTx({ amount: 10, categoryId: 'cat_health', accountId: id, date: on('2026-05', 2), recurrence: rec('weeks', on('2026-05', 2), '2026-12-31') });
+    addTx({ amount: 120, categoryId: 'cat_entertainment', accountId: id, date: on('2026-05', 5), recurrence: rec('years', on('2026-05', 5), '2028-05-05') });
+    addTx({ amount: 50, categoryId: 'cat_utilities', accountId: id, date: on('2026-04', 1), recurrence: rec('months', on('2026-04', 1), '2026-05-30') }); // ended
+    addTx({ amount: 70, categoryId: 'cat_utilities', accountId: eur, date: on('2026-05', 3), recurrence: rec('months', on('2026-05', 3), '2026-12-03') }); // other currency
+    Store().dispatch('ADD_TRANSFER', { amount: 300, expenseAccountId: id, incomeAccountId: eur, date: on('2026-05', 4), recurrence: rec('months', on('2026-05', 4), '2026-12-04') });
+    const c = item('recurringLoad');
+    expect(c).toMatchObject({ figure: '$953', family: 'trends', group: 'upcoming', sheet: true });
+    expect(c.head).toBe('$953 goes to recurring payments every month');
+    expect(c.body).toBe('3 payments, 32% of your monthly income.');
+    Insights().open(c);
+    const sheet = document.getElementById('recurring-payments-sheet');
+    expect(sheet.getAttribute('role')).toBe('dialog');
+    expect(sheet.querySelector('h2').textContent).toBe('Recurring payments');
+    expect(sheet.querySelector('.recurring-sheet-total').textContent).toBe('$953 a month in total.');
+    const rows = [...sheet.querySelectorAll('.recurring-sheet-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim());
+    expect(rows).toEqual(['Rent Repeats every month $900.00', 'Health Repeats every week $10.00', 'Entertainment Repeats every year $120.00']);
+    expect(sheet.querySelector('[data-back-dismiss]')).not.toBeNull();
+    expect(global.window.Router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('runway (tier 3): today\'s balance over an average month of spending; opens the balance sheet', () => {
+    const id = addAccount('Main', 6000);
+    SPRING.forEach(ym => { for (let i = 0; i < 5; i++) addTx({ amount: 200, accountId: id, date: on(ym, 2 + i) }); });
+    noise(id, 'cat_groceries', on('2026-05', 10), true); // the transfer moves $500 out of the base-currency total
+    const c = item('runway');
+    expect(c).toMatchObject({ figure: '2.5', tone: '', family: 'accounts', group: 'balance', score: 40, sheet: true });
+    expect(c.head).toBe('Your balance would cover 2.5 months of spending');
+    expect(c.body).toBe('Based on $1,000 of spending in an average month.');
+    const show = vi.fn();
+    global.window.Components.ExpandedGraphModal.show = show;
+    Insights().open(c);
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(global.window.Router.navigate).not.toHaveBeenCalled();
+    const root = mountPage();
+    expect(root.querySelector('a[data-insight="runway"]').getAttribute('aria-haspopup')).toBe('dialog');
+    expect(root.querySelector('a[data-insight="accountMix"], a[data-insight="topSpending"]') === null
+      || !root.querySelector('a[data-insight="topSpending"]').hasAttribute('aria-haspopup')).toBe(true);
+  });
+
+  it('runway: under a month is flagged, and exactly one month is singular', () => {
+    const id = addAccount('Main', 3500);
+    SPRING.forEach(ym => { for (let i = 0; i < 5; i++) addTx({ amount: 200, accountId: id, date: on(ym, 2 + i) }); });
+    let c = item('runway');
+    expect(c).toMatchObject({ figure: '0.5', tone: 'bad', score: 65 });
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 500, accountId: id, date: june(1) });
+    c = item('runway');
+    expect(c.head).toBe('Your balance would cover 1 month of spending');
+  });
+
+  it('balanceTrend (tier 3): against three months ago, or a new high above every month-end', () => {
+    const id = addAccount('Main', 1000);
+    SPRING.forEach(ym => {
+      addTx({ type: 'income', categoryId: 'cat_salary', amount: 2000, accountId: id, date: on(ym, 1) });
+      for (let i = 0; i < 4; i++) addTx({ amount: 100, accountId: id, date: on(ym, 2 + i) });
+    });
+    let c = item('balanceTrend');
+    expect(c).toMatchObject({ variant: 'up', figure: '+$3,200', tone: 'good', dir: 'up', sheet: true });
+    expect(c.head).toBe('Your balance grew since March');
+    expect(c.body).toBe('$2,600 on March 15, $5,800 today.');
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 100, accountId: id, date: june(2) });
+    c = item('balanceTrend');
+    expect(c).toMatchObject({ variant: 'high', score: 55 });
+    expect(c.head).toBe('Your highest balance yet');
+  });
+
+  it('balanceTrend: a fall says so; a change under 5 % is no signal', () => {
+    const id = addAccount('Main', 10000);
+    SPRING.forEach(ym => { for (let i = 0; i < 5; i++) addTx({ amount: 300, accountId: id, date: on(ym, 2 + i) }); });
+    let c = item('balanceTrend');
+    expect(c).toMatchObject({ variant: 'down', figure: '-$3,000', tone: 'bad', dir: 'down' });
+    expect(c.head).toBe('Your balance fell since March');
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 2800, accountId: id, date: june(1) }); // -$200 of $8,500
+    c = item('balanceTrend');
+    expect(c).toBeUndefined();
+  });
+
+  it('loanProgress (tier 1): an active loan\'s progress, a mark passed in 30 days scores higher; opens its results', () => {
+    const id = addAccount('Main', 9000);
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: june(1 + i) });
+    const config = { type: 'personal', principal: 12000, duration: 24, durationUnit: 'months', annualRate: 0, firstPaymentDate: '2025-07-15', amortization: 'french' };
+    Store().dispatch('ADD_LOAN', { name: 'Car', kind: 'active', config });
+    Store().dispatch('ADD_LOAN', { name: 'Dream house', kind: 'sim', config: { ...config, principal: 300000 } });
+    const loan = state().loans.find(l => l.name === 'Car');
+    const p = Store().getLoanProgress(loan, june(15));
+    const c = item('loanProgress');
+    expect(c).toMatchObject({ figure: Insights()._pct(p.pct), href: `#debt-results?id=${encodeURIComponent(loan.id)}`, family: 'accounts', group: 'loans' });
+    expect(c.head).toBe(`You've repaid ${Insights()._pct(p.pct)} of Car`);
+    expect(c.variant).toBe(p.pct >= 50 ? 'milestone' : 'progress');
+    expect(c.body).toMatch(/payments? to go\.$/);
+  });
+
+  it('loanProgress: a loan paid off in the last 30 days says so; one paid off long ago is no news', () => {
+    const id = addAccount('Main', 9000);
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: june(1 + i) });
+    const config = { type: 'personal', principal: 1200, duration: 12, durationUnit: 'months', annualRate: 0, firstPaymentDate: '2025-06-20', amortization: 'french' }; // last payment 20 May: paid off 26 days ago
+    Store().dispatch('ADD_LOAN', { name: 'Phone', kind: 'active', config });
+    const loan = state().loans[0];
+    const p = Store().getLoanProgress(loan, june(15));
+    expect(p.isPaidOff).toBe(true);
+    const c = item('loanProgress');
+    expect(c).toMatchObject({ variant: 'paidOff', tone: 'good', figure: '100%', score: 70 });
+    expect(c.head).toBe('Phone is paid off');
+    expect(c.body).toBe('No payments left.');
+    Store().dispatch('UPDATE_LOAN', { id: loan.id, name: 'Phone', config: { ...config, firstPaymentDate: '2024-01-10' } });
+    expect(item('loanProgress')).toBeUndefined();
+  });
+
+  it('uncategorized (tier 1): 5+ rows of the last 60 days without a category, any currency or paid state', () => {
+    const id = addAccount('Main', 9000);
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    for (let i = 0; i < 3; i++) addTx({ categoryId: null, accountId: id, date: june(1 + i) });
+    addTx({ categoryId: null, accountId: eur, date: june(4) });
+    addTx({ categoryId: null, accountId: id, date: '2026-04-17', isPaid: false }); // day 60
+    addTx({ categoryId: null, accountId: id, date: '2026-04-16' });                // day 61: too old
+    addTx({ categoryId: null, accountId: id, date: june(20) });                    // not yet
+    Store().dispatch('ADD_TRANSFER', { amount: 5, expenseAccountId: id, incomeAccountId: eur, date: june(5) });
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: june(6 + i) });       // categorised
+    const c = item('uncategorized');
+    expect(c).toMatchObject({ figure: '5', family: 'tidy', group: 'data', href: '#transactions' });
+    expect(c.head).toBe('5 transactions have no category');
+    expect(c.filters).toEqual({ page: 'history', filters: { period: { type: 'custom', value: '', start: '2026-04-17', end: june(15) }, categories: ['uncategorized'] }, replace: true });
+    Store().dispatch('DELETE_TRANSACTION', { id: state().transactions.find(t => t.date === june(4) && !t.categoryId).id });
+    expect(item('uncategorized')).toBeUndefined();
+  });
+
+  it('yearOverYear (tier 4): this month so far against the same days a year ago', () => {
+    const id = addAccount('Main', 90000);
+    for (let k = 0; k < 12; k++) {
+      const d = new Date(2025, 5 + k, 1);
+      const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+      for (let i = 0; i < 5; i++) addTx({ amount: 100, accountId: id, date: on(ym, 1 + i) });
+    }
+    for (let i = 0; i < 3; i++) addTx({ amount: 100, accountId: id, date: june(1 + i) });
+    noise(id, 'cat_groceries', june(4), true);
+    expect(Insights().analyze(state()).tier).toBe(4);
+    const c = item('yearOverYear');
+    expect(c).toMatchObject({ figure: '-40%', tone: 'good', dir: 'down', family: 'trends', group: 'seasonal', href: '#analytics' });
+    expect(c.head).toBe("You've spent less than by this day last year");
+    expect(c.body).toBe('$300 so far this month, against $500 in the same days last year.');
+  });
+
+  it('every rule is in one catalogue family, and the widget never shows two of a family', () => {
+    const groups = Insights().rules.map(r => r.group);
+    expect(groups.every(Boolean)).toBe(true);
+    expect([...new Set(groups)].sort()).toEqual(['balance', 'bank', 'budgets', 'cashflow', 'data', 'loans', 'seasonal', 'spending', 'unpaid', 'upcoming']);
   });
 });

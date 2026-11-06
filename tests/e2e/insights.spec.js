@@ -60,7 +60,7 @@ test.describe('Insights page', () => {
     await bootstrap(page);
     await openTab(page);
     await expect(page.locator('#insights-starter')).toContainText('0 of 5 entries so far.');
-    await expect(page.locator('[data-locked]')).toHaveCount(9);
+    await expect(page.locator('[data-locked]')).toHaveCount(17);
     await page.locator('#insights-starter a.insight-starter-btn').click();
     await page.waitForFunction(() => window.Store.getState().activeView === 'add');
   });

@@ -60,6 +60,17 @@ window.Insights = {
   //     forecast counts them), primary currency, no transfer legs;
   //   - overdue: expenses still marked unpaid dated today or earlier, in any
   //     currency (a count, never a sum).
+  // P4 adds:
+  //   - catMonth / catMonthRec ('<categoryId>|YYYY-MM'): counted expense per
+  //     category and month, and the part of it from recurring series;
+  //   - recent: the three calendar months before this one;
+  //   - lySameDays / lyMonthRows: this month a year ago, up to today's day
+  //     number (yearOverYear);
+  //   - uncategorized: income/expense rows of the last 60 days with no
+  //     category (transfer legs have none by design), any paid state or
+  //     currency;
+  //   - series: each recurring expense series that still has a payment
+  //     ahead, by its next member (primary currency, no transfer legs).
   // Nothing dated before its account opened counts anywhere.
   _facts(state) {
     const S = window.Store;
@@ -69,7 +80,16 @@ window.Insights = {
     const daysInMonth = new Date(y, m, 0).getDate();
     const prevYm = S._localYMD(new Date(y, m - 2, 1)).slice(0, 7);
     const weekEnd = S._localYMD(new Date(y, m - 1, d + 7));
+    const ago60 = S._localYMD(new Date(y, m - 1, d - 59));
+    const lyYm = `${y - 1}-${String(m).padStart(2, '0')}`;
+    const recent = [1, 2, 3].map(i => S._localYMD(new Date(y, m - 1 - i, 1)).slice(0, 7));
     let rows = 0;
+    let lySameDays = 0;
+    let lyMonthRows = 0;
+    let uncategorized = 0;
+    const catMonth = {};
+    const catMonthRec = {};
+    const series = {};
     let mtdExpense = 0;
     let prevSameDays = 0;
     let prevExpenseRows = 0;
@@ -85,6 +105,7 @@ window.Insights = {
       if (!tx.date) return;
       if (S._isTxBeforeOpeningDate(tx)) return;
       if (isExp && tx.isPaid === false && tx.date <= today) overdue.push(tx);
+      if (!tx.transferRef && !tx.categoryId && tx.date >= ago60 && tx.date <= today) uncategorized++;
       if (tx.transferRef) return;
       if (tx.isPaid === false) return;
       if (!S._isPrimaryAccount(tx.accountId)) return;
@@ -97,12 +118,23 @@ window.Insights = {
       }
       if (tx.date > today) {
         if (isExp && tx.date <= weekEnd) upcoming.push(tx);
+        const sid = isExp && tx.recurrence && tx.recurrence.seriesId;
+        if (sid && (!series[sid] || tx.date < series[sid].date)) series[sid] = tx;
         return;
       }
       rows++;
       monthRows[mo] = (monthRows[mo] || 0) + 1;
       if (isExp) {
         monthExpense[mo] = (monthExpense[mo] || 0) + amount;
+        if (tx.categoryId) {
+          const key = tx.categoryId + '|' + mo;
+          catMonth[key] = (catMonth[key] || 0) + amount;
+          if (tx.recurrence) catMonthRec[key] = (catMonthRec[key] || 0) + amount;
+        }
+        if (mo === lyYm) {
+          lyMonthRows++;
+          if (Number(tx.date.slice(8, 10)) <= d) lySameDays += amount;
+        }
         if (mo === ym) mtdExpense += amount;
         if (mo === prevYm) {
           prevExpenseRows++;
@@ -122,7 +154,8 @@ window.Insights = {
     return {
       today, ym, prevYm, weekEnd, day: d, daysInMonth, rows, completeMonths, tier,
       monthRows, monthIncome, monthExpense, mtdExpense, prevSameDays, prevExpenseRows,
-      budget, upcoming, overdue
+      budget, upcoming, overdue,
+      ago60, recent, catMonth, catMonthRec, lySameDays, lyMonthRows, uncategorized, series
     };
   },
 
@@ -622,6 +655,306 @@ window.Insights = {
           params: { rate, income, expense, month }
         };
       }
+    },
+
+    // ── 1.2.2 (HG-7 P4): batch 2 ────────────────────────────────────────────
+    {
+      // A category that has already passed its usual WHOLE month (the average
+      // of the last three months in which it had spend, at least two of them).
+      // A yearly bill never trips it; a trivial category (excess under 2 % of
+      // a usual month's total spend) is not news.
+      id: 'categorySpike',
+      family: 'month',
+      group: 'spending',
+      minTier: 3,
+      nameKey: 'insight.name.spike',
+      compute(facts, state) {
+        const I = window.Insights;
+        const avgTotal = facts.recent.reduce((s, mo) => s + (facts.monthExpense[mo] || 0), 0) / facts.recent.length;
+        const cats = new Set(Object.keys(facts.catMonth).map(k => k.slice(0, k.lastIndexOf('|'))));
+        let best = null;
+        cats.forEach(cat => {
+          const now = facts.catMonth[`${cat}|${facts.ym}`] || 0;
+          if (!(now > 0)) return;
+          const past = facts.recent.map(mo => facts.catMonth[`${cat}|${mo}`] || 0).filter(v => v > 0);
+          if (past.length < 2) return;
+          const usual = past.reduce((a, b) => a + b, 0) / past.length;
+          if (now < usual * 1.2 || now - usual < Math.max(1, avgTotal * 0.02)) return;
+          if (!best || now / usual > best.ratio) best = { cat, now, usual, ratio: now / usual };
+        });
+        if (!best) return null;
+        const c = (state.categories || []).find(x => x.id === best.cat);
+        if (!c) return null;
+        const excess = (best.ratio - 1) * 100;
+        return {
+          score: 65 + Math.min(30, Math.round(excess / 2)),
+          figure: window.Store.formatPercent(excess, { digits: 0, signed: true }),
+          tone: 'bad',
+          dir: 'up',
+          head: I._t('insight.spike.head', { name: c.name }),
+          body: I._t('insight.spike.body', { now: I._money(best.now), usual: I._money(best.usual) }),
+          href: '#transactions',
+          filters: I._historyFilters(best.cat),
+          params: { name: c.name, now: best.now, usual: best.usual, excess }
+        };
+      }
+    },
+    {
+      // No budgets yet: the category worth a limit — at least 15 % of recent
+      // spending and mostly one-off spend (a fixed bill gains nothing from a
+      // budget). Opens Goals straight on that category's limit editor.
+      id: 'budgetSuggest',
+      family: 'tidy',
+      group: 'budgets',
+      minTier: 2,
+      nameKey: 'insight.name.budgetSuggest',
+      compute(facts, state) {
+        if ((state.budgets || []).some(b => b && parseFloat(b.amount) > 0)) return null;
+        const I = window.Insights;
+        const months = facts.recent.filter(mo => (facts.monthRows[mo] || 0) >= I.MONTH_MIN_ROWS);
+        const total = months.reduce((s, mo) => s + (facts.monthExpense[mo] || 0), 0);
+        if (!months.length || !(total > 0)) return null;
+        const cats = new Set(Object.keys(facts.catMonth).map(k => k.slice(0, k.lastIndexOf('|'))));
+        let best = null;
+        cats.forEach(cat => {
+          const sum = months.reduce((s, mo) => s + (facts.catMonth[`${cat}|${mo}`] || 0), 0);
+          const rec = months.reduce((s, mo) => s + (facts.catMonthRec[`${cat}|${mo}`] || 0), 0);
+          if (sum < total * 0.15 || rec > sum * 0.5) return;
+          if (!(state.categories || []).some(x => x.id === cat)) return;
+          if (!best || sum > best.sum) best = { cat, sum };
+        });
+        if (!best) return null;
+        const c = state.categories.find(x => x.id === best.cat);
+        const avg = best.sum / months.length;
+        return {
+          score: 30,
+          figure: I._money(avg),
+          tone: '',
+          head: I._t('insight.budgetSuggest.head', { name: c.name }),
+          body: I._t('insight.budgetSuggest.body', { amount: I._money(avg), pct: I._pct((best.sum / total) * 100) }),
+          href: '#budget',
+          go: () => {
+            const BV = window.Views && window.Views.BudgetView;
+            if (BV) BV.editCategoryId = best.cat;
+            window.Router.navigate('#budget');
+          },
+          params: { name: c.name, avg, share: best.sum / total }
+        };
+      }
+    },
+    {
+      // Recurring expense series that still have a payment ahead, as a
+      // monthly cost (by each one's next payment and its frequency). Opens a
+      // sheet listing them: History has no "recurring" filter.
+      id: 'recurringLoad',
+      family: 'trends',
+      group: 'upcoming',
+      minTier: 2,
+      nameKey: 'insight.name.recurring',
+      compute(facts, state) {
+        const I = window.Insights;
+        const PER_MONTH = { days: 30.4375, weeks: 52.1775 / 12, months: 1, years: 1 / 12 };
+        const rows = Object.keys(facts.series).map(sid => {
+          const tx = facts.series[sid];
+          const r = tx.recurrence || {};
+          const interval = Math.max(1, parseInt(r.interval, 10) || 1);
+          if (!PER_MONTH[r.frequency]) return null;
+          const amount = Number(tx.amount) || 0;
+          const cat = (state.categories || []).find(c => c.id === tx.categoryId);
+          return {
+            amount,
+            monthly: (amount * PER_MONTH[r.frequency]) / interval,
+            name: cat ? cat.name : (tx.comment || window.I18n.t('common.uncategorized')),
+            icon: cat && cat.icon ? cat.icon : 'receipt',
+            freq: window.I18n.t(`form.repeatsEvery.${r.frequency}`, { count: interval })
+          };
+        }).filter(x => x && x.monthly > 0).sort((a, b) => b.monthly - a.monthly || a.name.localeCompare(b.name));
+        if (rows.length < 2) return null;
+        const total = rows.reduce((s, x) => s + x.monthly, 0);
+        const months = facts.recent.filter(mo => (facts.monthRows[mo] || 0) >= I.MONTH_MIN_ROWS);
+        const income = months.length ? months.reduce((s, mo) => s + (facts.monthIncome[mo] || 0), 0) / months.length : 0;
+        return {
+          score: 35,
+          figure: I._money(total),
+          tone: '',
+          head: I._t('insight.recurring.head', { amount: I._money(total) }),
+          body: income > 0
+            ? I._t('insight.recurring.body', { n: rows.length, pct: I._pct((total / income) * 100) })
+            : I._t('insight.recurring.bodyNoIncome', { n: rows.length }),
+          href: '#transactions',
+          sheet: true,
+          go: () => window.Components.RecurringPaymentsSheet.show(rows, total),
+          params: { count: rows.length, total, income }
+        };
+      }
+    },
+    {
+      // Runway: today's balance against an average month of spending (the
+      // last three calendar months). Opens the balance graph sheet.
+      id: 'runway',
+      family: 'accounts',
+      group: 'balance',
+      minTier: 3,
+      nameKey: 'insight.name.runway',
+      compute(facts) {
+        const S = window.Store;
+        const I = window.Insights;
+        const avg = facts.recent.reduce((s, mo) => s + (facts.monthExpense[mo] || 0), 0) / facts.recent.length;
+        if (!(avg > 0)) return null;
+        const balance = S.getBalanceAtDate(facts.today, []);
+        if (!(balance > 0)) return null;
+        const months = balance / avg;
+        const digits = months < 10 ? 1 : 0;
+        const rounded = Number(months.toFixed(digits));
+        const n = new Intl.NumberFormat(S.getLocale(), { maximumFractionDigits: digits }).format(rounded);
+        return {
+          score: 40 + (months < 1 ? 25 : 0),
+          figure: n,
+          tone: months < 1 ? 'bad' : (months >= 6 ? 'good' : ''),
+          head: window.I18n.t('insight.runway.head', { count: rounded, n }),
+          body: I._t('insight.runway.body', { amount: I._money(avg) }),
+          href: '#dashboard',
+          sheet: true,
+          go: () => window.Components.ExpandedGraphModal.show(window.Store.getState()),
+          params: { months, balance, avg }
+        };
+      }
+    },
+    {
+      // The balance against the same day three months ago (|Δ| ≥ 5 %), or a
+      // new high: above every month-end before this month.
+      id: 'balanceTrend',
+      family: 'accounts',
+      group: 'balance',
+      minTier: 3,
+      nameKey: 'insight.name.balanceTrend',
+      compute(facts) {
+        const S = window.Store;
+        const I = window.Insights;
+        const [y, m, d] = facts.today.split('-').map(Number);
+        const then = S._localYMD(new Date(y, m - 4, Math.min(d, new Date(y, m - 3, 0).getDate())));
+        const now = S.getBalanceAtDate(facts.today, []);
+        const before = S.getBalanceAtDate(then, []);
+        const delta = now - before;
+        if (Math.abs(delta) < 1) return null;
+        const points = (S.computeBalanceSeries({ range: 'max' }).points || []).slice(0, -1);
+        const high = points.length >= 3 && delta > 0 && points.every(p => now > p.balance);
+        const rel = before !== 0 ? Math.abs(delta / before) : 1;
+        if (!high && rel < 0.05) return null;
+        const up = delta > 0;
+        const date = new Date(`${then}T12:00:00`).toLocaleDateString(S.getLocale(), { day: 'numeric', month: 'long' });
+        return {
+          variant: high ? 'high' : (up ? 'up' : 'down'),
+          score: 40 + (high ? 15 : 0),
+          figure: I._money(delta, true),
+          tone: up ? 'good' : 'bad',
+          dir: up ? 'up' : 'down',
+          head: high
+            ? window.I18n.t('insight.balance.high')
+            : I._t(up ? 'insight.balance.up' : 'insight.balance.down', { month: I._monthName(then.slice(0, 7)) }),
+          body: I._t('insight.balance.body', { then: I._money(before), date, now: I._money(now) }),
+          href: '#dashboard',
+          sheet: true,
+          go: () => window.Components.ExpandedGraphModal.show(window.Store.getState()),
+          params: { now, before, then, high }
+        };
+      }
+    },
+    {
+      // An active loan's progress (schedule-derived, Store.getLoanProgress).
+      // A 25/50/75 % mark passed in the last 30 days scores higher; a loan
+      // paid off in that window says so; one paid off earlier is no news.
+      id: 'loanProgress',
+      family: 'accounts',
+      group: 'loans',
+      minTier: 1,
+      nameKey: 'insight.name.loan',
+      compute(facts, state) {
+        const S = window.Store;
+        const I = window.Insights;
+        const [y, m, d] = facts.today.split('-').map(Number);
+        const ago = S._localYMD(new Date(y, m - 1, d - 30));
+        const cands = (state.loans || []).filter(l => l && l.kind === 'active' && l.config).map(loan => {
+          const p = S.getLoanProgress(loan, facts.today);
+          if (!p || p.pct < 1) return null;
+          const p0 = S.getLoanProgress(loan, ago);
+          const milestone = [25, 50, 75, 100].filter(ms => p0 && p0.pct < ms && p.pct >= ms).pop() || 0;
+          if (p.isPaidOff && milestone !== 100) return null;
+          return { loan, p, milestone };
+        }).filter(Boolean)
+          .sort((a, b) => (b.milestone - a.milestone) || (b.p.pct - a.p.pct) || String(a.loan.name).localeCompare(String(b.loan.name)));
+        if (!cands.length) return null;
+        const { loan, p, milestone } = cands[0];
+        const name = loan.name || '';
+        const left = p.totalCount - p.paidCount;
+        let body;
+        if (p.isPaidOff) body = window.I18n.t('insight.loan.paidOffBody');
+        else {
+          body = (milestone ? I._t('insight.loan.milestone', { milestone: I._pct(milestone) }) + ' ' : '')
+            + I._t('insight.loan.left', { amount: I._money(p.remainingC / 100), count: left });
+        }
+        return {
+          variant: p.isPaidOff ? 'paidOff' : (milestone ? 'milestone' : 'progress'),
+          score: 30 + (milestone ? 40 : 0),
+          figure: I._pct(p.pct),
+          tone: p.isPaidOff ? 'good' : '',
+          head: p.isPaidOff ? I._t('insight.loan.paidOff', { name }) : I._t('insight.loan.head', { name, pct: I._pct(p.pct) }),
+          body,
+          href: `#debt-results?id=${encodeURIComponent(loan.id)}`,
+          params: { name, pct: p.pct, milestone }
+        };
+      }
+    },
+    {
+      // Rows of the last 60 days with no category (5 or more). Transfer legs
+      // carry none by design and are not counted; History's Uncategorized
+      // filter still lists them, labelled as transfers.
+      id: 'uncategorized',
+      family: 'tidy',
+      group: 'data',
+      minTier: 1,
+      nameKey: 'insight.name.uncategorized',
+      compute(facts) {
+        const n = facts.uncategorized;
+        if (n < 5) return null;
+        return {
+          score: 30,
+          figure: String(n),
+          tone: '',
+          head: window.I18n.t('insight.uncategorized.head', { count: n }),
+          body: window.I18n.t('insight.uncategorized.body'),
+          href: '#transactions',
+          filters: { page: 'history', filters: { period: { type: 'custom', value: '', start: facts.ago60, end: facts.today }, categories: ['uncategorized'] }, replace: true },
+          params: { count: n }
+        };
+      }
+    },
+    {
+      // This month so far against the same days a year ago (|Δ| ≥ 10 %).
+      id: 'yearOverYear',
+      family: 'trends',
+      group: 'seasonal',
+      minTier: 4,
+      nameKey: 'insight.name.yoy',
+      compute(facts) {
+        if (facts.day < 3 || facts.lyMonthRows < 5 || !(facts.lySameDays > 0)) return null;
+        const delta = ((facts.mtdExpense - facts.lySameDays) / facts.lySameDays) * 100;
+        if (Math.abs(delta) < 10) return null;
+        const I = window.Insights;
+        const less = delta < 0;
+        return {
+          variant: less ? 'less' : 'more',
+          score: 35,
+          figure: window.Store.formatPercent(delta, { digits: 0, signed: true }),
+          tone: less ? 'good' : 'bad',
+          dir: less ? 'down' : 'up',
+          head: window.I18n.t(less ? 'insight.yoy.less' : 'insight.yoy.more'),
+          body: I._t('insight.yoy.body', { now: I._money(facts.mtdExpense), then: I._money(facts.lySameDays) }),
+          href: '#analytics',
+          filters: { page: 'analytics', filters: {}, replace: true },
+          params: { delta }
+        };
+      }
     }
   ],
 
@@ -650,8 +983,10 @@ window.Insights = {
       }
     });
     items.sort((a, b) => (b.rank - a.rank) || (a.id < b.id ? -1 : 1));
+    // P4: nearest unlock first (a stable sort keeps the rules' order inside a tier)
     const locked = this.rules
       .filter(r => r.family !== 'attention' && r.minTier > facts.tier)
+      .sort((a, b) => a.minTier - b.minTier)
       .map(r => Object.assign({ id: r.id, nameKey: r.nameKey }, this._need(r.minTier, facts)));
     return { facts, tier: facts.tier, items, locked };
   },
@@ -680,6 +1015,9 @@ window.Insights = {
   open(item, href) {
     if (item && item.filters) window.Store.dispatch('UPDATE_FILTERS', item.filters);
     if (item && Array.isArray(item.actions)) item.actions.forEach(([type, payload]) => window.Store.dispatch(type, payload));
+    // 1.2.2 (HG-7 P4): an item may open in place instead (a sheet over the
+    // current screen, or Goals' limit editor); its href stays the fallback.
+    if (item && typeof item.go === 'function') { item.go(); return; }
     window.Router.navigate(href || (item && item.href) || '#insights');
   },
 
@@ -704,6 +1042,11 @@ window.Insights = {
   // ── Markup ────────────────────────────────────────────────────────────────
   _toneClass(item) {
     return item.tone === 'good' ? ' insight-figure--good' : (item.tone === 'bad' ? ' insight-figure--bad' : '');
+  },
+
+  // 1.2.2 (HG-7 P4): a link that opens a sheet over the screen says so.
+  _popup(item) {
+    return item && item.sheet ? ' aria-haspopup="dialog"' : '';
   },
 
   _chevron() {
@@ -745,7 +1088,7 @@ window.Insights = {
   _renderHighlight(item) {
     const arrow = item.dir ? `<i data-lucide="${item.dir === 'up' ? 'arrow-up-right' : 'arrow-down-right'}" class="insight-arrow" aria-hidden="true"></i>` : '';
     return `
-      <a class="insight-highlight" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}">
+      <a class="insight-highlight" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}"${this._popup(item)}>
         <span class="insight-eyebrow"><span>${window.I18n.t(item.nameKey)}</span>${this._chevron()}</span>
         <span class="insight-figure insight-figure--lg${this._toneClass(item)}">${arrow}${this._esc(item.figure)}</span>
         <span class="insight-head">${item.head}</span>
@@ -758,7 +1101,7 @@ window.Insights = {
     const long = String(item.figure).length > 7 ? ' insight-figure--long' : '';
     return `
       <li>
-        <a class="insight-row" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}">
+        <a class="insight-row" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}"${this._popup(item)}>
           <span class="insight-figure${this._toneClass(item)}${long}">${this._esc(item.figure)}</span>
           <span class="insight-text"><span class="insight-head">${item.head}</span><span class="insight-body">${item.body}</span></span>
           ${this._chevron()}
@@ -919,7 +1262,7 @@ window.Insights = {
 
     const rows = picks.map(item => `
       <li>
-        <a class="widget-insight-row" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}"${tab}>
+        <a class="widget-insight-row" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}"${this._popup(item)}${tab}>
           ${this._widgetFigure(item)}
           <span class="widget-insight-head">${item.head}</span>
           ${this._chevron()}

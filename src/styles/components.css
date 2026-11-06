@@ -4548,3 +4548,53 @@ a:focus-visible,
   color: var(--text-secondary);
   white-space: nowrap;
 }
+
+/* ── 1.2.2 (HG-7 P4): the recurring payments sheet ─────────────────────── */
+.recurring-sheet-total {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.recurring-sheet-list {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.recurring-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) 0;
+}
+
+.recurring-sheet-row + .recurring-sheet-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.recurring-sheet-icon {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.recurring-sheet-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.recurring-sheet-text .list-item-title {
+  overflow-wrap: anywhere;
+}
+
+.recurring-sheet-amount {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}

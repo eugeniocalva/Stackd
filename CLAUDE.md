@@ -506,6 +506,15 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   `actions: [[type, payload]…]` dispatched on tap (budget rules open Goals on
   this month via `SET_MONTH_FILTER`). Never put a month name after an
   eliding preposition in a dictionary value (*d'octobre*).
+- **Smart Insights opening in place (HG-7, P4).** All 21 types of the plan
+  are built. An item may carry `go()` instead of navigating (the balance
+  graph sheet, `Components.RecurringPaymentsSheet`, Goals' limit editor via
+  `BudgetView.editCategoryId`); one that opens a sheet sets `sheet: true` so
+  its link carries `aria-haspopup="dialog"`. Every rule needs a `group`
+  (`insights.test.js` checks the families). No article or eliding
+  preposition before a placeholder value (*il {pct}*, *de {name}*,
+  *a {date}*). E2E per destination: `insights_destinations.spec.js` (clock
+  pinned).
 
 ## Working conventions in this repo
 
