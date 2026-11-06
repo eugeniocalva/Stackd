@@ -43,7 +43,7 @@ module.exports = {
         { h: 'Goals', p: 'A monthly budget per category. The Goals tab shows what is already spent, what is still committed by repeating logs, and how the month will end up, not only how it looks today.' },
         { h: 'Debt simulator', p: 'Enter an amount, a rate and a duration and read the full amortization schedule: every instalment, its interest share and the remaining principal. Link a loan to its repeating payment and progress tracks itself.' },
         { h: 'Bank statement import', p: "Drop in a statement as <code>CSV</code>, <code>camt.053</code> or <code>MT940</code>. Stack'd maps the columns, skips what you already logged, pairs transfers between your own wallets and shows a review before anything is saved. The file itself is never kept." },
-        { h: 'Home widgets and insights', p: 'Compose the Home screen from eight widget types: latest logs, income versus expense, top categories, budgets, savings rate, 50/30/20 and more. Smart Insights point out what changed this month in one line each.' }
+        { h: 'Home widgets and insights', p: 'Compose the Home screen from nine widget types: latest logs, account balances, income versus expense, top categories, budgets, savings rate, 50/30/20 and more. Smart Insights point out what changed this month in one line each.' }
       ]
     },
     pricing: {

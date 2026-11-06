@@ -35,7 +35,7 @@ module.exports = {
         { h: 'Objectifs', p: "Un budget mensuel par catégorie. L'onglet Objectifs montre ce qui est déjà dépensé, ce qui reste engagé par les opérations récurrentes et comment le mois va se terminer, pas seulement où il en est aujourd'hui." },
         { h: 'Simulateur de prêt', p: "Saisissez un montant, un taux et une durée et lisez le tableau d'amortissement complet : chaque échéance, sa part d'intérêts et le capital restant. Reliez un prêt à son paiement récurrent et la progression se suit toute seule." },
         { h: 'Import de relevés bancaires', p: "Déposez un relevé au format <code>CSV</code>, <code>camt.053</code> ou <code>MT940</code>. Stack'd associe les colonnes, ignore ce que vous avez déjà saisi, apparie les virements entre vos propres comptes et affiche un récapitulatif avant tout enregistrement. Le fichier lui-même n'est jamais conservé." },
-        { h: 'Widgets et smart insights', p: "Composez le tableau de bord avec huit types de widgets : dernières opérations, revenus et dépenses, principales catégories, budgets, taux d'épargne, 50/30/20 et plus. Les smart insights signalent ce qui a changé ce mois-ci, en une ligne chacun." }
+        { h: 'Widgets et smart insights', p: "Composez le tableau de bord avec neuf types de widgets : dernières opérations, soldes des comptes, revenus et dépenses, principales catégories, budgets, taux d'épargne, 50/30/20 et plus. Les smart insights signalent ce qui a changé ce mois-ci, en une ligne chacun." }
       ]
     },
     pricing: {

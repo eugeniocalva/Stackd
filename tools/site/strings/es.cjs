@@ -35,7 +35,7 @@ module.exports = {
         { h: 'Objetivos', p: 'Un presupuesto mensual por categoría. La pestaña Objetivos muestra lo que ya has gastado, lo que aún comprometen los movimientos recurrentes y cómo acabará el mes, no solo cómo va hoy.' },
         { h: 'Simulador de préstamos', p: 'Introduce un importe, un tipo de interés y una duración y consulta el cuadro de amortización completo: cada cuota, su parte de intereses y el capital pendiente. Vincula un préstamo a su pago recurrente y el progreso se sigue solo.' },
         { h: 'Importación de extractos bancarios', p: "Sube un extracto en <code>CSV</code>, <code>camt.053</code> o <code>MT940</code>. Stack'd asigna las columnas, omite lo que ya registraste, empareja las transferencias entre tus propias cuentas y muestra una revisión antes de guardar nada. El archivo nunca se conserva." },
-        { h: 'Widgets y smart insights', p: 'Compón el panel con ocho tipos de widget: últimos movimientos, ingresos frente a gastos, categorías principales, presupuestos, tasa de ahorro, 50/30/20 y más. Los smart insights señalan qué ha cambiado este mes, con una línea cada uno.' }
+        { h: 'Widgets y smart insights', p: 'Compón el panel con nueve tipos de widget: últimos movimientos, saldos de las cuentas, ingresos frente a gastos, categorías principales, presupuestos, tasa de ahorro, 50/30/20 y más. Los smart insights señalan qué ha cambiado este mes, con una línea cada uno.' }
       ]
     },
     pricing: {

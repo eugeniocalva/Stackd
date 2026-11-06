@@ -35,7 +35,7 @@ module.exports = {
         { h: 'Obiettivi', p: "Un budget mensile per categoria. La scheda Obiettivi mostra quanto è già speso, quanto è ancora impegnato dai movimenti ricorrenti e come finirà il mese, non solo com'è oggi." },
         { h: 'Simulatore di prestiti', p: "Inserisci importo, tasso e durata e leggi il piano di ammortamento completo: ogni rata, la sua quota di interessi e il capitale residuo. Collega un prestito al suo pagamento ricorrente e l'avanzamento si aggiorna da solo." },
         { h: 'Importazione degli estratti conto', p: "Carica un estratto conto in <code>CSV</code>, <code>camt.053</code> o <code>MT940</code>. Stack'd abbina le colonne, salta quello che hai già registrato, accoppia i trasferimenti tra i tuoi conti e mostra un riepilogo prima di salvare qualcosa. Il file non viene mai conservato." },
-        { h: 'Widget e smart insights', p: "Componi la dashboard con otto tipi di widget: ultimi movimenti, entrate e spese, categorie principali, budget, tasso di risparmio, 50/30/20 e altro. Gli smart insights segnalano cosa è cambiato questo mese, con una riga ciascuno." }
+        { h: 'Widget e smart insights', p: "Componi la dashboard con nove tipi di widget: ultimi movimenti, saldi dei conti, entrate e spese, categorie principali, budget, tasso di risparmio, 50/30/20 e altro. Gli smart insights segnalano cosa è cambiato questo mese, con una riga ciascuno." }
       ]
     },
     pricing: {
