@@ -99,7 +99,7 @@ describe('Mixed-currency selections on screen (1.0.2 BUG-36 / BUG-63)', () => {
   it('Home with a saved US-only selection reads in $', () => {
     S().dispatch('SAVE_EXPANDED_GRAPH_FILTERS', { interval: 'monthly', accounts: [us], categories: [] });
     const html = global.window.Views.DashboardView.render(S().getState());
-    expect(html).toContain('<h1 class="header-title" style="margin: 0 0 var(--space-3);">$960.00</h1>');
+    expect(html).toContain('<h1 class="header-title" id="dash-total" style="margin: 0 0 var(--space-3);">$960.00</h1>');
     expect(html).not.toContain(CAPTION_ONE);
   });
 
@@ -185,7 +185,7 @@ describe('Mixed-currency selections on screen (1.0.2 BUG-36 / BUG-63)', () => {
     const calls = global.window.Chart.mock.calls.map(c => c[1]);
     const bar = calls.find(c => c.type === 'bar');
     const donut = calls.find(c => c.type === 'doughnut');
-    expect(bar.options.plugins.tooltip.callbacks.label({ parsed: { y: -40 } })).toBe('Net: -$40.00');
+    expect(bar.options.plugins.tooltip.callbacks.label({ parsed: { y: -40 } })).toBe(' -$40.00'); // 1.2.2 (HG-6): no English "Net:" prefix
     expect(bar.options.scales.y.ticks.callback(100)).toBe('$100');
     expect(donut.options.plugins.tooltip.callbacks.label({ parsed: 40, dataset: { data: [40] } })).toContain('$40.00');
     view.destroy();

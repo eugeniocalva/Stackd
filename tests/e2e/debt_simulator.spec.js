@@ -51,8 +51,8 @@ test.describe('Loan simulator E2E flow', () => {
     await bootstrap(page);
     await goToHub(page);
 
-    // Hub: back link, tiles, My Loans empty state
-    await expect(page.locator('#debt-hub a[href="#dashboard"]')).toBeVisible();
+    // Hub: no back link (a tab-level page, 1.2.2 HG-3), tiles, My Loans empty state
+    await expect(page.locator('#debt-hub a[href="#dashboard"]')).toHaveCount(0);
     await expect(page.locator('.debt-type-tile')).toHaveCount(3);
     await expect(page.locator('#debt-loans-empty')).toBeVisible();
 

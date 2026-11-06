@@ -525,7 +525,7 @@ window.StackdExport = {
         acc ? acc.name : '-',
         cat ? cat.name : '-',
         t.comment || '',
-        window.Store.formatCurrency(t.amount, acc && acc.currency) // v1.02: row currency
+        window.Store.formatCurrency(t.amount, acc && acc.currency, { plain: true }) // v1.02: row currency; 1.2.2 (HG-4): a file is never masked
       ];
     });
 
@@ -603,7 +603,7 @@ window.StackdExport = {
     try { day = new Intl.DateTimeFormat(S.getLocale(), { dateStyle: 'medium' }).format(new Date(t.date + 'T12:00:00')); } catch (e) { /* undated row: the raw date */ }
     const signed = t.type === 'expense' ? -Math.abs(Number(t.amount) || 0) : Math.abs(Number(t.amount) || 0);
     const note = String(t.comment || t.note || '').trim();
-    return [day, acc ? acc.name : '', cat, S.formatCurrency(signed, acc && acc.currency), note].filter(Boolean).join(' · ');
+    return [day, acc ? acc.name : '', cat, S.formatCurrency(signed, acc && acc.currency, { plain: true }), note].filter(Boolean).join(' · ');
   },
 
   // Shortened with '…' until it fits `width` points.

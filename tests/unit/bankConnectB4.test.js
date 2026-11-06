@@ -182,32 +182,36 @@ describe('Bank Connect B4 (v1.08)', () => {
       expect(window.Router.navigate).toHaveBeenCalledWith('#import-map');
     });
 
+    // 1.2.2 (HG-7): the insights live on the Insights page; bank items are
+    // attention items, ranked first and listed under "Needs attention".
     it('the bankNew insight leads with the pending count and targets the hub', async () => {
       const BC = window.BankConnect;
       seedConn();
-      expect(window.Insights.compute(state()).find(c => c.stringId === 'bankNew')).toBeUndefined();
+      expect(window.Insights.compute(state()).find(c => c.id === 'bankNew')).toBeUndefined();
       await BC.refreshDue(state(), { now: NOW });
       const card = window.Insights.compute(state())[0];
-      expect(card).toMatchObject({ stringId: 'bankNew', href: '#bank-connect', params: { count: 2, bank: 'Mock ASPSP' } });
-      const html = window.Insights.renderSection(state());
+      expect(card).toMatchObject({ id: 'bankNew', kind: 'attention', figure: '2', href: '#bank-connect', params: { count: 2, bank: 'Mock ASPSP' } });
+      expect(card.head).toBe('New transactions from Mock ASPSP to review');
+      const html = window.Insights.renderPage(state());
       expect(html).toContain('data-insight="bankNew"');
-      expect(html).toContain('data-href="#bank-connect"');
-      expect(html).toContain('new transactions from <strong>Mock ASPSP</strong>');
+      expect(html).toContain('href="#bank-connect"');
+      expect(html).toContain('id="insights-sec-attention"');
       window.Store.dispatch('SET_BANK_CONNECT_PREFS', { enabled: false });
-      expect(window.Insights.compute(state()).find(c => c.stringId === 'bankNew')).toBeUndefined();
+      expect(window.Insights.compute(state()).find(c => c.id === 'bankNew')).toBeUndefined();
     });
 
     it('the reconnect insight covers expiring (days left) and expired connections', () => {
       const soon = new Date(NOW + 5 * 86400000).toISOString();
       vi.spyOn(Date, 'now').mockReturnValue(NOW);
       seedConn({ expiresAt: soon });
-      let card = window.Insights.compute(state()).find(c => c.stringId === 'bankExpiring');
-      expect(card).toMatchObject({ params: { bank: 'Mock ASPSP', days: 5 }, href: '#bank-connect' });
-      expect(window.Insights.renderSection(state())).toContain('5 days');
+      let card = window.Insights.compute(state()).find(c => c.id === 'bankReconnect');
+      expect(card).toMatchObject({ variant: 'expiring', figure: '5 days', params: { bank: 'Mock ASPSP', days: 5 }, href: '#bank-connect' });
+      expect(window.Insights.renderPage(state())).toContain('5 days');
       window.Store.dispatch('UPDATE_BANK_CONNECTION', { ref: 'ref_a', status: 'EX' });
-      card = window.Insights.compute(state()).find(c => c.stringId === 'bankExpired');
-      expect(card).toMatchObject({ tone: 'expense', params: { bank: 'Mock ASPSP' } });
-      expect(window.Insights.renderSection(state())).toContain('Expired');
+      card = window.Insights.compute(state()).find(c => c.id === 'bankReconnect');
+      expect(card).toMatchObject({ variant: 'expired', tone: 'bad', figure: 'Expired', params: { bank: 'Mock ASPSP' } });
+      expect(card.head).toBe('Access to Mock ASPSP has expired');
+      expect(window.Insights.renderPage(state())).toContain('Expired');
       vi.restoreAllMocks();
     });
   });

@@ -243,7 +243,7 @@ const clearSheets = () => {
 
 const VIEWS = (c) => [
   ['dashboard', 'DashboardView'], ['transactions', 'TransactionsView'], ['add', 'AddTransactionView'],
-  ['categories', 'CategoriesView'], ['budget', 'BudgetView'], ['analytics', 'AnalyticsView'],
+  ['categories', 'CategoriesView'], ['budget', 'BudgetView'], ['analytics', 'AnalyticsView'], ['insights', 'InsightsView'],
   ['settings', 'OthersView'], ['backup', 'BackupView'], ['import', 'ImportView'], ['import-review', 'ImportReviewView'], ['export', 'ExportView'], ['tags', 'TagsView'], ['debt', 'DebtHubView'], ['purchases', 'PurchasesView'],
   ['bank-connect', 'BankConnectHubView'], ['bank-connect-add', 'BankPickerView'],
   ['bank-connect-map', 'BankMapView', { ref: 'r1' }],

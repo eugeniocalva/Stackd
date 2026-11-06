@@ -59,10 +59,10 @@ describe('Debt views (hub / simulator / results)', () => {
   });
 
   describe('DebtHubView', () => {
-    it('renders the back link, type tiles, and the My Loans empty state', () => {
+    it('renders the title (no back link, 1.2.2 HG-3), type tiles, and the My Loans empty state', () => {
       const html = global.window.Views.DebtHubView.render(global.window.Store.getState());
       expect(html).toContain('Loans');
-      expect(html).toContain('href="#dashboard"');
+      expect(html).not.toContain('href="#dashboard"');
       expect(html).toContain('data-type="mortgage"');
       expect(html).toContain('data-type="personal"');
       expect(html).toContain('data-type="installment"');

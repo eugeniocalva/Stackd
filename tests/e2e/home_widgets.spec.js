@@ -47,14 +47,19 @@ test.describe('Home dashboard widgets', () => {
 
   // 1.2.0 (UX-6): the detail step pre-renders every size on a scroll-snap
   // rail; the slide on screen is the active one.
+  // 1.2.2 (HG-2): slides have their own widths and snap by their centre, so
+  // a slide's resting position is its centre on the rail's centre.
   const activeStage = (page) => page.locator('.awm-size-slide.is-active .widget-preview-stage');
   const railIndex = (page) => page.evaluate(() => {
     const r = document.querySelector('.awm-size-rail');
-    return Math.round(r.scrollLeft / r.clientWidth);
+    const at = (s) => Math.max(0, s.offsetLeft - (r.clientWidth - s.offsetWidth) / 2);
+    const d = [...r.querySelectorAll('.awm-size-slide')].map(s => Math.abs(at(s) - r.scrollLeft));
+    return d.indexOf(Math.min(...d));
   });
   const scrollRail = (page, idx) => page.evaluate((i) => {
     const r = document.querySelector('.awm-size-rail');
-    r.scrollLeft = i * r.clientWidth;
+    const s = r.querySelectorAll('.awm-size-slide')[i];
+    r.scrollLeft = Math.max(0, s.offsetLeft - (r.clientWidth - s.offsetWidth) / 2);
     r.dispatchEvent(new Event('scroll'));
   }, idx);
 
@@ -206,6 +211,59 @@ test.describe('Home dashboard widgets', () => {
     await page.click('#awm-confirm'); // Add
     await expect(page.locator('#add-widget-modal')).toHaveCount(0);
     expect(await page.evaluate(() => window.Store.getState().homeWidgets[0].size)).toBe('large');
+  });
+
+  test('the size rail: no panel, the other size peeks and fades, a tap brings it in (1.2.2 HG-2)', async ({ page }) => {
+    await bootstrap(page);
+    await scrollToWidgets(page);
+    await page.click('#btn-widgets-add-empty');
+    await page.click('.widget-gallery-card[data-widget-type="latest"]');
+    await expect(page.locator('.widget-size-caption')).toHaveText('Small');
+
+    const geo = () => page.evaluate(() => {
+      const rail = document.querySelector('.awm-size-rail');
+      const card = (s) => document.querySelector(`.awm-size-slide[data-size="${s}"] .widget-card`).getBoundingClientRect();
+      const stage = (s) => document.querySelector(`.awm-size-slide[data-size="${s}"] .widget-preview-stage`);
+      const small = card('small');
+      const large = card('large');
+      return {
+        vw: innerWidth,
+        railLeft: rail.getBoundingClientRect().left,
+        railWidth: rail.getBoundingClientRect().width,
+        stageBg: getComputedStyle(stage('small')).backgroundColor,
+        smallMid: small.left + small.width / 2,
+        smallMidY: small.top + small.height / 2,
+        largeMidY: large.top + large.height / 2,
+        largeLeft: large.left,
+        largeRight: large.right,
+        smallRight: small.right,
+        largeOpacity: Number(getComputedStyle(stage('large')).opacity),
+        smallOpacity: Number(getComputedStyle(stage('small')).opacity)
+      };
+    });
+
+    let g = await geo();
+    expect(g.stageBg).toBe('rgba(0, 0, 0, 0)'); // the sunken panel is gone
+    // full-bleed: nothing clipped at the sheet's padding (only its 1px border)
+    expect(g.railLeft).toBeLessThanOrEqual(1);
+    expect(g.railWidth).toBeGreaterThanOrEqual(g.vw - 2);
+    expect(Math.abs(g.smallMid - g.vw / 2)).toBeLessThan(2); // the small card is centred
+    expect(Math.abs(g.smallMidY - g.largeMidY)).toBeLessThan(2); // same middle line
+    expect(g.largeLeft).toBeLessThan(g.vw); // the wide card peeks in…
+    expect(g.largeLeft).toBeGreaterThan(g.smallRight); // …beside it
+    expect(g.smallOpacity).toBe(1);
+    expect(g.largeOpacity).toBeLessThan(0.6); // …faded
+
+    // a tap on the peeking card brings it in
+    await page.mouse.click(Math.min(g.vw - 8, g.largeLeft + 20), g.largeMidY);
+    await expect(page.locator('.widget-size-caption')).toHaveText('Wide');
+    await expect.poll(() => railIndex(page)).toBe(1);
+    await expect.poll(async () => (await geo()).largeOpacity).toBe(1);
+    g = await geo();
+    expect(Math.abs((g.largeLeft + g.largeRight) / 2 - g.vw / 2)).toBeLessThan(2);
+    expect(g.largeLeft).toBeGreaterThan(20); // narrower than the screen: the small card peeks back
+    expect(g.smallRight).toBeGreaterThan(0);
+    expect(g.smallOpacity).toBeLessThan(0.6);
   });
 
   test('the size rail mounts one chart per slide and releases both (1.2.0)', async ({ page }) => {

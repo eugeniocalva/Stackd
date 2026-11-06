@@ -534,18 +534,19 @@ window.Widgets = {
           data: {
             labels: recent.map(b => b.label),
             datasets: [
+              // 1.2.2 (HG-6): the shared bar look — theme trend pair, solid, rounded
               {
                 label: window.I18n.t('form.income'),
                 data: recent.map(b => b.income),
-                backgroundColor: 'rgba(16, 185, 129, 0.85)',
-                borderRadius: 4,
+                backgroundColor: window.Components.NetFlowChart.barFill(1, theme),
+                borderRadius: window.Components.NetFlowChart.BAR_RADIUS,
                 borderSkipped: false
               },
               {
                 label: window.I18n.t('charts.expenses'),
                 data: recent.map(b => b.expense),
-                backgroundColor: 'rgba(239, 68, 68, 0.85)',
-                borderRadius: 4,
+                backgroundColor: window.Components.NetFlowChart.barFill(-1, theme),
+                borderRadius: window.Components.NetFlowChart.BAR_RADIUS,
                 borderSkipped: false
               }
             ]
@@ -584,7 +585,8 @@ window.Widgets = {
               y: {
                 min: 0,
                 max: yScale.max,
-                grid: { color: theme.gridColor },
+                border: { display: false },
+                grid: window.Components.NetFlowChart.quietGrid(theme), // 1.2.2 (HG-6)
                 ticks: {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
@@ -655,9 +657,9 @@ window.Widgets = {
           <div class="widget-donut-layout">
             ${donutHtml}
             <div class="widget-donut-legend">
-              ${data.map(d => `
+              ${data.map(d => /* 1.2.2 (HG-5): the arc colour on the icon (was a dot) */ `
                 <div class="widget-legend-item">
-                  <span class="widget-legend-dot" style="background: ${W._esc(d._color)};"></span>
+                  <span class="widget-legend-icon" style="color: ${W._esc(d._color)};" aria-hidden="true"><i data-lucide="${W._esc(d.icon || 'circle')}"></i></span>
                   <span class="widget-legend-name">${W._esc(d.name)}</span>
                   <span class="widget-legend-pct">${W._esc(window.Store.formatPercent(d.percentage, { digits: 1 }))}</span>
                 </div>`).join('')}
@@ -680,8 +682,7 @@ window.Widgets = {
         const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         // 1.2.0 (UX-7): the shared ring look; the sweep only on a Home entry
-        // render (W._entryPass), badges only in the large size (RingChart
-        // draws them only on a ring wide enough to hold them).
+        // render (W._entryPass). 1.2.2 (HG-5): no icon badges on the ring.
         const config = window.Components.RingChart.config({
           type: 'doughnut',
           data: {
@@ -718,8 +719,7 @@ window.Widgets = {
           }
         }, {
           animate: W._entryPass,
-          delay: 250, // past the view-transition snapshot
-          badges: instance.size === 'large' ? data.map(d => ({ icon: d.icon })) : null
+          delay: 250 // past the view-transition snapshot
         });
         W._mountChart(instance.id, canvas, config, { animate: !!config.options.animation });
       },
@@ -951,9 +951,12 @@ window.Widgets = {
             datasets: [{
               data: buckets.map(b => b.net),
               // Colour per bar: a month where you overspent should read as a loss.
-              backgroundColor: buckets.map(b => b.net >= 0 ? 'rgba(16, 185, 129, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
-              borderRadius: 4,
-              borderSkipped: false
+              // 1.2.2 (HG-6): the shared bar look (theme trend pair, solid, rounded)
+              backgroundColor: buckets.map(b => window.Components.NetFlowChart.barFill(b.net, theme)),
+              borderRadius: window.Components.NetFlowChart.BAR_RADIUS,
+              borderSkipped: false,
+              barPercentage: 0.72,
+              categoryPercentage: 0.8
             }]
           },
           options: {
@@ -984,7 +987,8 @@ window.Widgets = {
                 display: isLarge,
                 min: yScale.min,
                 max: yScale.max,
-                grid: { color: theme.gridColor },
+                border: { display: false },
+                grid: window.Components.NetFlowChart.quietGrid(theme), // 1.2.2 (HG-6)
                 ticks: {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
@@ -1327,8 +1331,8 @@ window.Widgets = {
           : (theme.isDark ? ['#94a3b8', '#1f293d'] : ['#64748b', '#e2e8f0']);
         const data = overspent || (limit === 0 && spent === 0) ? [1, 0] : [spent, Math.max(limit - spent, 0)];
 
-        // 1.2.0 (UX-7): the shared ring look (no badges on a small card);
-        // index 1 is the track and stays flat.
+        // 1.2.0 (UX-7): the shared ring look; index 1 is the remaining
+        // budget, drawn in the track colour.
         const config = window.Components.RingChart.config({
           type: 'doughnut',
           data: {
@@ -1342,7 +1346,7 @@ window.Widgets = {
             maintainAspectRatio: false,
             plugins: { legend: { display: false }, tooltip: { enabled: false } }
           }
-        }, { animate: W._entryPass, delay: 250, track: [1] });
+        }, { animate: W._entryPass, delay: 250 });
         W._mountChart(instance.id, canvas, config, { animate: !!config.options.animation });
       },
 

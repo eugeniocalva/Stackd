@@ -307,8 +307,8 @@ describe('categories widget', () => {
     W().registry.categories.attach(instance, card, Store().getState());
     const chart = global.window.Chart._created[0];
     expect(chart.config.type).toBe('doughnut');
-    // 1.2.0 (UX-7): the thick shared ring (Components.RingChart, --ring-cutout)
-    expect(chart.config.options.cutout).toBe('62%');
+    // 1.2.0 (UX-7) / 1.2.2 (HG-5): the shared ring (Components.RingChart, --ring-cutout)
+    expect(chart.config.options.cutout).toBe('66%'); // 1.2.2 (HG-5): the shared flat ring
   });
 });
 

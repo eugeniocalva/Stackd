@@ -495,6 +495,9 @@ window.Views = {
       // every range ends on today, so the total is today's balance
       const globalBalance = points.length > 0 ? points[points.length - 1].balance : 0;
       const formattedBalance = window.Store.formatCurrency(globalBalance, aggSel.currency); // 1.0.2 (BUG-36)
+      // 1.2.2 (HG-4): hidden balances — every amount below formats masked
+      // (Store.isMoneyMasked); the pill on top opens the Show / Done sheet.
+      const hidden = window.Store.isMoneyMasked();
 
       let walletsHtml = `
         <div class="wallets-scroll-wrapper">
@@ -586,21 +589,27 @@ window.Views = {
         `<button type="button" class="home-pager-dot${pane === i ? ' is-active' : ''}" data-pane="${i}" aria-pressed="${pane === i ? 'true' : 'false'}" aria-label="${window.I18n.t(labelKey)}"></button>`;
 
       return `
-        <div class="container" style="padding-top: var(--space-8); padding-bottom: 100px;">
-          <div style="margin-bottom: var(--space-8);">
+        <div class="container" style="padding-top: ${hidden ? 'var(--space-4)' : 'var(--space-8)'}; padding-bottom: 100px;">
+          ${hidden ? `<div class="privacy-pill-row">
+            <button type="button" class="privacy-pill" id="privacy-pill" aria-haspopup="dialog">
+              <span class="privacy-pill-icon" aria-hidden="true"><i data-lucide="eye-off"></i></span>
+              <span>${window.I18n.t('privacy.pill')}</span>
+            </button>
+          </div>` : ''}
+          <div class="dash-head" id="dash-head" style="margin-bottom: var(--space-8);">
             <p class="section-title">${window.I18n.t('dash.totalBalance')}</p>
-            <h1 class="header-title" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
+            <h1 class="header-title" id="dash-total" style="margin: 0 0 var(--space-3);">${formattedBalance}</h1>
             ${aggSel.excluded > 0 // v1.02: honest totals; 1.0.2 (BUG-36): a saved mixed selection too
               ? `<p style="margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</p>`
               : ''}
             <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
-              <div style="display: flex; flex-direction: column; gap: 1px;">
-                <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
-                ${todayVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.pct}</span>` : ''}
-                <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">${window.I18n.t('dash.asOfToday')}</span>
+              <div class="dash-var-today" style="display: flex; flex-direction: column; gap: 1px;">
+                <span class="dash-var-abs" style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};">${todayVar.abs}</span>
+                <span class="dash-var-pct" style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${todayVar.color};"${todayVar.pct ? '' : ' hidden'}>${todayVar.pct}</span>
+                <span class="dash-var-cap" style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">${window.I18n.t('dash.asOfToday')}</span>
               </div>
-              <div style="width: 1px; align-self: stretch; background: var(--color-border); flex-shrink: 0;"></div>
-              <div style="display: flex; flex-direction: column; gap: 1px;">
+              <div class="dash-head-divider" style="width: 1px; align-self: stretch; background: var(--color-border); flex-shrink: 0;"></div>
+              <div class="dash-var-eom" style="display: flex; flex-direction: column; gap: 1px;">
                 <span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.abs}</span>
                 ${eomVar.pct ? `<span style="font-family: var(--font-family-display); font-size: var(--text-sm); font-weight: 700; color: ${eomVar.color};">${eomVar.pct}</span>` : ''}
                 <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: 500;">${window.I18n.t('dash.projectedEom')}</span>
@@ -628,6 +637,7 @@ window.Views = {
               </div>
               <div id="chart-card-container" style="height: 160px; position: relative; cursor: pointer;" title="${window.I18n.t('dash.expandGraphTitle')}" role="button" aria-label="${window.I18n.t('dash.expandGraphAria')}">
                 <canvas id="balanceChart"></canvas>
+                <div class="home-scrub-zone" id="balance-scrub-zone" aria-hidden="true"></div>
               </div>
             </section>
             <section class="home-pane" data-pane="1" id="netflow-pane" role="button" aria-label="${window.I18n.t('dash.paneNetAria')}">
@@ -637,6 +647,7 @@ window.Views = {
               </div>
               <div class="home-netflow-wrap" style="height: 160px; position: relative;">
                 <canvas id="netflowChart"></canvas>
+                <div class="home-scrub-zone" id="netflow-scrub-zone" aria-hidden="true"></div>
               </div>
             </section>
           </div>
@@ -652,8 +663,6 @@ window.Views = {
             ${walletsHtml}
           </div>
 
-          ${window.Insights ? window.Insights.renderSection(state) : ''}
-
           ${window.Widgets ? window.Widgets.renderSection(state) : ''}
         </div>
       `;
@@ -661,8 +670,7 @@ window.Views = {
     attachEvents(container, state, isEntry) {
       window.StackdHydrateIcons();
 
-      // v0.84: smart insights section (between the Wallets rail and widgets)
-      if (window.Insights) window.Insights.attachSection(container, state);
+      // 1.2.2 (HG-7): Smart Insights left Home for their own page (#insights).
 
       // v0.72: home widget area (replaced the static Financial Milestone card)
       // 1.2.0 (UX-7): isEntry (main.js render loop) tells the widgets this is
@@ -748,6 +756,12 @@ window.Views = {
       // charts mount; a pane change is view state only, never a dispatch.
       this._wirePager(container);
 
+      // 1.2.2 (HG-1): drag-to-read on both graphs (header / pane-head readout)
+      this._wireScrubs(container);
+
+      // 1.2.2 (HG-4): hidden balances — the pill's sheet, and shake to flip
+      this._wirePrivacy(container);
+
       if (!container.querySelector('#balanceChart')) return;
       if (!window.Chart) {
         console.error('DashboardView: window.Chart is NOT available.');
@@ -803,6 +817,272 @@ window.Views = {
       });
     },
 
+    // 1.2.2 (HG-1): drag-to-read. Each graph has a .home-scrub-zone laid over
+    // its PLOT AREA only (placed by _scrubPlugin after every layout), so a
+    // swipe on the range chips, the axis labels, the pane head or the
+    // gutters still pages the pager, while a sideways drag on the plot reads
+    // values instead. The zone carries touch-action: pan-y and, once a drag
+    // is locked sideways, cancels its touchmoves — belt and braces, so
+    // neither WebKit nor Chrome hands the drag to the pager. A drag that
+    // starts up/down scrolls the page as before; a press held still for
+    // HOLD_MS reads the point under the finger; a plain tap is left alone
+    // (the curve's click still opens the expanded sheet, the bars' opens
+    // Analytics). A mouse reads on hover. Callbacks get (…, isTouch).
+    SCRUB_HOLD_MS: 280,
+    SCRUB_SLOP: 6,
+
+    _wireScrub(zone, { indexAt, onStart, onIndex, onEnd }) {
+      if (!zone) return;
+      let touch = null; // { x0, y0, x, mode: null | 'scrub' | 'scroll', hold }
+      let scrubbing = false;
+      let byTouch = false;
+      let lastIdx = -1;
+      let suppressUntil = 0;
+      let lastTouchAt = 0;
+
+      const move = (clientX) => {
+        if (!scrubbing || !zone.isConnected) return;
+        const idx = indexAt(clientX);
+        if (idx === null || idx === undefined || idx === lastIdx) return;
+        lastIdx = idx;
+        onIndex(idx, byTouch);
+      };
+      const begin = (clientX, isTouch) => {
+        if (scrubbing || !zone.isConnected) return;
+        scrubbing = true;
+        byTouch = isTouch;
+        lastIdx = -1;
+        onStart(isTouch);
+        move(clientX);
+      };
+      const end = () => {
+        if (!scrubbing) return;
+        scrubbing = false;
+        lastIdx = -1;
+        onEnd(byTouch, zone.isConnected);
+      };
+      const finishTouch = () => {
+        lastTouchAt = Date.now();
+        if (!touch) return;
+        clearTimeout(touch.hold);
+        // a held or dragged press must not also count as a tap
+        if (touch.mode === 'scrub') suppressUntil = Date.now() + 600;
+        touch = null;
+        end();
+      };
+
+      zone.addEventListener('touchstart', (e) => {
+        lastTouchAt = Date.now();
+        if (!e.touches || e.touches.length !== 1) { finishTouch(); return; }
+        const p = e.touches[0];
+        touch = { x0: p.clientX, y0: p.clientY, x: p.clientX, mode: null, hold: null };
+        const t = touch;
+        t.hold = setTimeout(() => {
+          if (touch !== t || t.mode) return;
+          t.mode = 'scrub';
+          begin(t.x, true);
+        }, this.SCRUB_HOLD_MS);
+      }, { passive: true });
+
+      zone.addEventListener('touchmove', (e) => {
+        lastTouchAt = Date.now();
+        if (!touch || !e.touches || !e.touches[0]) return;
+        const p = e.touches[0];
+        touch.x = p.clientX;
+        if (!touch.mode) {
+          const dx = Math.abs(p.clientX - touch.x0);
+          const dy = Math.abs(p.clientY - touch.y0);
+          if (dx < this.SCRUB_SLOP && dy < this.SCRUB_SLOP) return;
+          clearTimeout(touch.hold);
+          touch.mode = dx > dy ? 'scrub' : 'scroll';
+          if (touch.mode === 'scrub') begin(p.clientX, true);
+        }
+        if (touch.mode === 'scrub') {
+          if (e.cancelable) e.preventDefault();
+          move(p.clientX);
+        }
+      }, { passive: false });
+
+      zone.addEventListener('touchend', finishTouch, { passive: true });
+      zone.addEventListener('touchcancel', finishTouch, { passive: true });
+
+      // Mouse: read on hover. Compatibility mouse events after a tap carry
+      // no pointerType 'mouse', and a recent touch rules them out anyway.
+      zone.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse' || touch || Date.now() - lastTouchAt < 800) return;
+        if (!scrubbing) begin(e.clientX, false); else move(e.clientX);
+      });
+      zone.addEventListener('pointerleave', (e) => {
+        if (e.pointerType !== 'mouse' || touch) return;
+        end();
+      });
+
+      zone.addEventListener('click', (e) => {
+        if (Date.now() < suppressUntil) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
+    },
+
+    // The point index under clientX on a laid-out chart (null before layout).
+    _scrubIndexAt(chart, clientX, count) {
+      if (!chart || !count || !chart.canvas || !chart.scales || !chart.scales.x) return null;
+      const x = chart.scales.x;
+      if (typeof x.getValueForPixel !== 'function') return null;
+      const r = chart.canvas.getBoundingClientRect();
+      const v = x.getValueForPixel(clientX - r.left);
+      if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+      return Math.max(0, Math.min(count - 1, Math.round(v)));
+    },
+
+    // A Chart.js plugin that keeps `zone` over the plot area and lets
+    // `drawMark(chart, idx)` paint the read point.
+    _scrubPlugin(zone, drawMark) {
+      return {
+        id: 'stackdScrub',
+        afterLayout: (chart) => {
+          const a = chart && chart.chartArea;
+          if (!zone || !a) return;
+          zone.style.left = Math.round(a.left) + 'px';
+          zone.style.width = Math.max(0, Math.round(a.right - a.left)) + 'px';
+          zone.style.top = '0px';
+          zone.style.height = Math.max(0, Math.round(a.bottom)) + 'px';
+        },
+        afterDatasetsDraw: (chart) => {
+          if (drawMark && chart && chart.$scrubIdx !== null && chart.$scrubIdx !== undefined) {
+            drawMark(chart, chart.$scrubIdx);
+          }
+        }
+      };
+    },
+
+    _wireScrubs(container) {
+      const H = window.Components && window.Components.Haptics;
+      const t = (k, p) => window.I18n.t(k, p);
+      const signColor = (n) => (n > 0 ? 'var(--color-income-val)' : (n < 0 ? 'var(--color-expense)' : 'var(--text-primary)'));
+      const signed = (n, cur) => {
+        const s = window.Store.formatCurrency(n, cur);
+        return n > 0 ? '+' + s : s;
+      };
+      const redraw = (chart) => {
+        if (chart && typeof chart.update === 'function') {
+          try { chart.update('none'); } catch (e) { /* a destroyed chart */ }
+        }
+      };
+
+      // ── The balance curve → the header total and its variation column ──
+      const head = container.querySelector('#dash-head');
+      const total = container.querySelector('#dash-total');
+      const vAbs = container.querySelector('.dash-var-today .dash-var-abs');
+      const vPct = container.querySelector('.dash-var-today .dash-var-pct');
+      const vCap = container.querySelector('.dash-var-today .dash-var-cap');
+      let saved = null;
+      this._wireScrub(container.querySelector('#balance-scrub-zone'), {
+        indexAt: (clientX) => {
+          const m = this._balanceMeta;
+          return this._scrubIndexAt(this._balanceChart, clientX, m ? m.points.length : 0);
+        },
+        onStart: (isTouch) => {
+          if (head && total && vAbs && vPct && vCap) {
+            saved = {
+              total: total.textContent,
+              abs: vAbs.textContent, absColor: vAbs.style.color,
+              pct: vPct.textContent, pctColor: vPct.style.color, pctHidden: vPct.hidden,
+              cap: vCap.textContent
+            };
+            head.classList.add('is-scrubbing');
+          }
+          if (isTouch && H) H.start();
+        },
+        onIndex: (idx, isTouch) => {
+          const m = this._balanceMeta;
+          const p = m && m.points[idx];
+          if (!p) return;
+          const chart = this._balanceChart;
+          if (chart) { chart.$scrubIdx = idx; redraw(chart); }
+          if (saved) {
+            const diff = Math.round((p.balance - m.baseline) * 100) / 100;
+            const color = signColor(diff);
+            total.textContent = window.Store.formatCurrency(p.balance, m.currency);
+            vAbs.textContent = signed(diff, m.currency);
+            vAbs.style.color = color;
+            if (m.baseline !== 0) {
+              const pct = window.Store.formatPercent((diff / Math.abs(m.baseline)) * 100, { digits: 1, signed: true });
+              vPct.textContent = t('dash.scrubSince', { pct, date: m.points[0].fullLabel || m.points[0].label || '' });
+              vPct.style.color = color;
+              vPct.hidden = false;
+            } else {
+              vPct.textContent = '';
+              vPct.hidden = true;
+            }
+            vCap.textContent = idx === m.points.length - 1 ? t('dash.asOfToday') : (p.fullLabel || p.label || '');
+          }
+          if (isTouch && H) H.tick();
+        },
+        onEnd: (isTouch, connected) => {
+          const chart = this._balanceChart;
+          if (chart && chart.$scrubIdx !== null && chart.$scrubIdx !== undefined) { chart.$scrubIdx = null; redraw(chart); }
+          if (saved && connected) {
+            total.textContent = saved.total;
+            vAbs.textContent = saved.abs; vAbs.style.color = saved.absColor;
+            vPct.textContent = saved.pct; vPct.style.color = saved.pctColor; vPct.hidden = saved.pctHidden;
+            vCap.textContent = saved.cap;
+            head.classList.remove('is-scrubbing');
+          }
+          saved = null;
+          if (isTouch && H) H.end();
+        }
+      });
+
+      // ── The monthly net bars → the pane head's caption ──
+      const cap = container.querySelector('#netflow-pane .home-pane-head .widget-card-caption');
+      let savedCap = null;
+      this._wireScrub(container.querySelector('#netflow-scrub-zone'), {
+        indexAt: (clientX) => {
+          const m = this._netflowMeta;
+          return this._scrubIndexAt(this._netflowChart, clientX, m ? m.nets.length : 0);
+        },
+        onStart: (isTouch) => {
+          if (cap) {
+            savedCap = { text: cap.textContent, color: cap.style.color };
+            cap.classList.add('is-scrubbing');
+          }
+          if (isTouch && H) H.start();
+        },
+        onIndex: (idx, isTouch) => {
+          const m = this._netflowMeta;
+          if (!m || idx >= m.nets.length) return;
+          const chart = this._netflowChart;
+          const ds = chart && chart.data && chart.data.datasets && chart.data.datasets[0];
+          if (ds) {
+            ds.backgroundColor = m.nets.map((n, i) =>
+              'rgba(' + (n >= 0 ? m.upRgb : m.downRgb) + ',' + (i === idx ? '0.95' : '0.22') + ')');
+            redraw(chart);
+          }
+          if (savedCap) {
+            const n = m.nets[idx];
+            cap.textContent = (m.labels[idx] || '') + ' · ' + signed(n, m.currency);
+            cap.style.color = signColor(n);
+          }
+          if (isTouch && H) H.tick();
+        },
+        onEnd: (isTouch, connected) => {
+          const m = this._netflowMeta;
+          const chart = this._netflowChart;
+          const ds = chart && chart.data && chart.data.datasets && chart.data.datasets[0];
+          if (ds && m) { ds.backgroundColor = m.colors.slice(); redraw(chart); }
+          if (savedCap && connected) {
+            cap.textContent = savedCap.text;
+            cap.style.color = savedCap.color;
+            cap.classList.remove('is-scrubbing');
+          }
+          savedCap = null;
+          if (isTouch && H) H.end();
+        }
+      });
+    },
+
     // 1.2.0 (UX-1): the Trade Republic-style curve — one trend-coloured
     // smooth line (green when the range ends at or above where it started,
     // red below), a fading gradient fill, a dotted baseline at the range's
@@ -841,6 +1121,33 @@ window.Views = {
         const totalCurrency = window.Store.aggregateSelection(
           window.Store.isPrimarySelection(inp.savedAccounts) ? [] : inp.savedAccounts).currency;
 
+        // 1.2.2 (HG-1): what drag-to-read needs (see _wireScrubs)
+        this._balanceMeta = { points, baseline, currency: totalCurrency };
+        const scrubbing = (c) => !!(c && c.chart && c.chart.$scrubIdx !== null && c.chart.$scrubIdx !== undefined);
+        const dimTrend = 'rgba(' + rgb + ',0.3)';
+        const drawMark = (chart, idx) => {
+          const meta = chart.getDatasetMeta(0);
+          const pt = meta && meta.data && meta.data[idx];
+          const a = chart.chartArea;
+          if (!pt || !a) return;
+          const g2d = chart.ctx;
+          g2d.save();
+          g2d.strokeStyle = pal.baseline;
+          g2d.lineWidth = 1;
+          g2d.beginPath();
+          g2d.moveTo(pt.x, a.top);
+          g2d.lineTo(pt.x, a.bottom);
+          g2d.stroke();
+          g2d.fillStyle = trend;
+          g2d.strokeStyle = pal.surface;
+          g2d.lineWidth = 2.5;
+          g2d.beginPath();
+          g2d.arc(pt.x, pt.y, 5.5, 0, Math.PI * 2);
+          g2d.fill();
+          g2d.stroke();
+          g2d.restore();
+        };
+
         const datasets = [{
           label: window.I18n.t('dash.totalBalance'),
           data: points,
@@ -865,8 +1172,13 @@ window.Views = {
             chart.$stackdFill = { top: area.top, bottom: area.bottom, rgb, g };
             return g;
           },
-          pointRadius: (c) => (c && c.dataIndex === last ? 4 : 0),
+          // the end dot on today, hidden while a drag reads another point
+          pointRadius: (c) => (c && c.dataIndex === last && !scrubbing(c) ? 4 : 0),
           pointHoverRadius: 6,
+          // 1.2.2 (HG-1): while reading, the curve after the finger fades
+          segment: {
+            borderColor: (s) => (scrubbing(s) && s.p0DataIndex >= s.chart.$scrubIdx ? dimTrend : undefined)
+          },
           pointBackgroundColor: trend,
           pointBorderColor: pal.surface,
           pointBorderWidth: 2.5,
@@ -907,9 +1219,13 @@ window.Views = {
             // (UX-1): a little more on the right for today's end dot.
             layout: { padding: { top: 8, right: 10, left: 2 } },
             interaction: { mode: 'index', intersect: false },
+            // 1.2.2 (HG-1): no Chart.js pointer handling — the scrub zone
+            // reads values into the header (no floating tooltip)
+            events: [],
             plugins: {
               legend: { display: false },
               tooltip: {
+                enabled: false,
                 filter: (item) => !item.dataset._baseline,
                 backgroundColor: pal.tooltipBg,
                 titleColor: pal.tooltipTitle,
@@ -962,7 +1278,8 @@ window.Views = {
               },
               y: { display: false, beginAtZero: false }
             }
-          }
+          },
+          plugins: [this._scrubPlugin(container.querySelector('#balance-scrub-zone'), drawMark)]
         });
       } catch (err) {
         console.error('DashboardView: FAILED to initialize Chart:', err);
@@ -982,11 +1299,16 @@ window.Views = {
           : this._netBuckets(inp);
         const pal = window.Components.NetFlowChart._themeColors();
         const nets = buckets.map(b => Math.round((Number(b.net) || 0) * 100) / 100);
-        const lastIdx = nets.length - 1;
-        const colors = nets.map((n, i) =>
-          'rgba(' + (n >= 0 ? pal.trendUpRgb : pal.trendDownRgb) + ',' + (i === lastIdx ? '0.9' : '0.55') + ')');
+        // 1.2.2 (HG-6): the shared bar look (NetFlowChart.barStyle), newest strong
+        const bars = window.Components.NetFlowChart.barStyle(nets, { emphasizeLast: true });
+        const colors = bars.backgroundColor;
         const currency = window.Store.aggregateSelection(
           window.Store.isPrimarySelection(inp.savedAccounts) ? [] : inp.savedAccounts).currency;
+        // 1.2.2 (HG-1): what drag-to-read needs (see _wireScrubs)
+        this._netflowMeta = {
+          labels: buckets.map(b => b.label), nets, colors: colors.slice(), currency,
+          upRgb: pal.trendUpRgb, downRgb: pal.trendDownRgb
+        };
 
         if (this._netflowChart) {
           try { this._netflowChart.destroy(); } catch (e) { /* already gone */ }
@@ -996,25 +1318,23 @@ window.Views = {
           type: 'bar',
           data: {
             labels: buckets.map(b => b.label),
-            datasets: [{
+            datasets: [Object.assign({
               label: window.I18n.t('dash.monthlyNet'),
               data: nets,
-              currency,
-              backgroundColor: colors,
-              borderRadius: 6,
-              borderSkipped: false,
-              barPercentage: 0.72,
-              categoryPercentage: 0.8
-            }]
+              currency
+            }, bars, { backgroundColor: colors.slice() })]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
             layout: { padding: { top: 8, right: 4, left: 2 } },
+            // 1.2.2 (HG-1): the scrub zone reads bars into the pane head
+            events: [],
             plugins: {
               legend: { display: false },
               tooltip: {
+                enabled: false,
                 backgroundColor: pal.tooltipBg,
                 titleColor: pal.tooltipTitle,
                 bodyColor: pal.tooltipBody,
@@ -1055,7 +1375,8 @@ window.Views = {
                 }
               }
             }
-          }
+          },
+          plugins: [this._scrubPlugin(container.querySelector('#netflow-scrub-zone'), null)]
         });
       } catch (err) {
         console.error('DashboardView: FAILED to initialize the net-flow chart:', err);
@@ -1067,7 +1388,27 @@ window.Views = {
     // or they keep detached canvases alive for the rest of the session.
     // v0.80: the balance line chart rides the same rule; 1.2.0 (UX-3): so does
     // the net-flow pane. The range chip survives; the pane resets.
+    // 1.2.2 (HG-4): the pill opens the Show / Done sheet; with Shake to hide
+    // on, a shake flips hidden balances (with a firm haptic tap). The detector
+    // runs only while Home is on screen — destroy() stops it.
+    _wirePrivacy(container) {
+      const pill = container.querySelector('#privacy-pill');
+      if (pill) pill.addEventListener('click', () => window.Components.HiddenBalancesSheet.show());
+      const P = window.Components && window.Components.PrivacyShake;
+      if (!P) return;
+      if (window.Store.getPrivacy().shake && P.supported()) {
+        P.start(() => {
+          if (window.Store.getState().activeView !== 'dashboard') return;
+          if (window.Components.Haptics) window.Components.Haptics.impact();
+          window.Store.dispatch('SET_PRIVACY', { hide: !window.Store.getPrivacy().hide });
+        });
+      } else {
+        P.stop();
+      }
+    },
+
     destroy() {
+      if (window.Components && window.Components.PrivacyShake) window.Components.PrivacyShake.stop(); // 1.2.2 (HG-4)
       if (window.Widgets) window.Widgets.destroyCharts();
       if (this._balanceChart) {
         try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }
@@ -1079,6 +1420,8 @@ window.Views = {
       }
       if (this._paneTimer) { clearTimeout(this._paneTimer); this._paneTimer = null; }
       this._pane = 0;
+      this._balanceMeta = null;
+      this._netflowMeta = null;
     }
   },
 
@@ -3383,6 +3726,18 @@ Object.assign(window.Views, {
   // -------------------------
   // CATEGORY DETAIL VIEW
   // -------------------------
+  // 1.2.2 (HG-7): the Insights page — a tab-level page (5th tab). The page is
+  // built by window.Insights (insights.js); render and attach run in one
+  // synchronous pass, so attachPage reuses the items render ranked.
+  InsightsView: {
+    render(state) {
+      return window.Insights ? window.Insights.renderPage(state) : '';
+    },
+    attachEvents(root) {
+      if (window.Insights) window.Insights.attachPage(root);
+    }
+  },
+
   CategoryDetailView: {
     render(state) {
       const params = window.Router ? window.Router.getParams() : {};
@@ -3643,6 +3998,12 @@ Object.assign(window.Views, {
         return window.Store.compareAlpha(a, b);
       });
 
+      // 1.2.2 (HG-5): one colour per category for this pass — the row icon
+      // and the ring arc read the same map, so they always match.
+      const ringColors = {};
+      window.Components.CategoryDonutChart._assignColors(displayedCategories.map(c => ({ id: c.id, name: c.name, color: c.color, icon: c.icon })))
+        .forEach(p => { ringColors[p.id] = p._color; });
+
       const categoryCards = displayedCategories.map(cat => {
         const bdg = window.Store.getBudgetForMonth(cat.id, selectedMonth);
         const hasBudget = bdg.allocated > 0;
@@ -3690,7 +4051,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.editForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
+                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${esc(cat.name)}${carryOverBadge}</div>
                     <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span>${overByHtml}</div>
@@ -3711,7 +4072,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.setForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon"><i data-lucide="${cat.icon}"></i></div>
+                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${cat.icon}"></i></div>
                   <div>
                     <div class="list-item-title">${esc(cat.name)}</div>
                     <div class="list-item-subtitle" style="color: var(--text-tertiary);">${window.I18n.t('budget.noLimit')}</div>
@@ -3734,7 +4095,7 @@ Object.assign(window.Views, {
       const overC = Math.round((totalSpent - totalAllocated) * 100);
       const overspent = overC > 0;
       const remC = -overC;
-      this._passTotals = { totalAllocated, totalSpent, overspent, segments };
+      this._passTotals = { totalAllocated, totalSpent, overspent, segments, ringColors };
 
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -4086,7 +4447,6 @@ Object.assign(window.Views, {
           // nothing budgeted is an empty track.
           let chartData;
           let colors;
-          let badges = null;
           if (overspent) {
             chartData = [1, 0];
             colors = isDark ? ['#f87171', trackColor] : ['#ef4444', trackColor];
@@ -4095,12 +4455,10 @@ Object.assign(window.Views, {
             colors = [trackColor];
           } else {
             const spentSegs = (totals.segments || []).filter(sg => Math.round(sg.spent * 100) > 0);
-            const painted = window.Components.CategoryDonutChart._assignColors(spentSegs.map(sg => ({
-              id: sg.cat.id, name: sg.cat.name, color: sg.cat.color, icon: sg.cat.icon, amount: sg.spent
-            })));
+            // 1.2.2 (HG-5): the rows' colour map (renderList, same pass)
+            const ringColors = totals.ringColors || {};
             chartData = spentSegs.map(sg => sg.spent).concat([Math.max(totalAllocated - totalSpent, 0)]);
-            colors = painted.map(p => p._color).concat([trackColor]);
-            badges = painted.map(p => ({ icon: p.icon })).concat([null]);
+            colors = spentSegs.map(sg => ringColors[sg.cat.id] || '#94a3b8').concat([trackColor]);
           }
           // v0.80: tracked + destroy-before-create — a bare `new Chart` here
           // leaked one instance per dispatch while on #budget (see the
@@ -4125,7 +4483,7 @@ Object.assign(window.Views, {
               maintainAspectRatio: false,
               plugins: { tooltip: { enabled: false }, legend: { display: false } }
             }
-          }, { animate: !!isEntry, delay: 250, badges, track: [chartData.length - 1] }));
+          }, { animate: !!isEntry, delay: 250 }));
         }
 
         // 1.2.0 (UX-7): the row rings sweep in with the summary ring (CSS,
@@ -4453,6 +4811,37 @@ Object.assign(window.Views, {
             </div>
           </div>
 
+          <!-- 1.2.2 (HG-4): hidden balances on Home, and shake to flip them -->
+          <div class="section-title">${window.I18n.t('privacy.section')}</div>
+          <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4);">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="eye-off"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title" id="label-hide-balances">${window.I18n.t('privacy.hideBalances')}</div>
+                  <div class="list-item-subtitle" style="white-space: normal; line-height: 1.4;">${window.I18n.t('privacy.hideBalancesDesc')}</div>
+                </div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink: 0;">
+                <input type="checkbox" id="toggle-hide-balances" aria-labelledby="label-hide-balances" ${window.Store.getPrivacy().hide ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%;">
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="vibrate"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title" id="label-shake-to-hide">${window.I18n.t('privacy.shakeToHide')}</div>
+                  <div class="list-item-subtitle" style="white-space: normal; line-height: 1.4;">${window.I18n.t('privacy.shakeToHideDesc')}</div>
+                </div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink: 0;">
+                <input type="checkbox" id="toggle-shake-to-hide" aria-labelledby="label-shake-to-hide" ${window.Store.getPrivacy().shake ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
           <!-- 1.1.0 (IE-5, docs/import-export-plan.md §3a): one Data card —
                Online banking (when enabled), Import and export (a sheet:
                Import file / Export file), Backup (the six Stack'd backup
@@ -4606,6 +4995,28 @@ Object.assign(window.Views, {
       rowAction('btn-open-import-export', () => window.Components.ImportExportSheet.show());
       rowAction('btn-open-backup', () => window.Router.navigate('#backup'));
       rowAction('btn-import-rules', () => window.Components.ImportRulesModal.show()); // v1.01
+
+      // 1.2.2 (HG-4): Privacy. Turning Shake to hide on asks iOS for motion
+      // access from this tap; a refusal turns it back off and says why.
+      const toggleHide = document.getElementById('toggle-hide-balances');
+      if (toggleHide) {
+        toggleHide.addEventListener('change', (e) => window.Store.dispatch('SET_PRIVACY', { hide: e.target.checked }));
+      }
+      const toggleShake = document.getElementById('toggle-shake-to-hide');
+      if (toggleShake) {
+        toggleShake.addEventListener('change', async (e) => {
+          const on = e.target.checked;
+          if (!on) { window.Store.dispatch('SET_PRIVACY', { shake: false }); return; }
+          const P = window.Components.PrivacyShake;
+          const answer = await P.requestPermission();
+          if (answer === 'denied') {
+            e.target.checked = false;
+            window.Components.NoticeSheet.show({ id: 'motion-denied-sheet', title: window.I18n.t('privacy.shakeToHide'), body: window.I18n.t('privacy.motionDenied') });
+            return;
+          }
+          window.Store.dispatch('SET_PRIVACY', { shake: true });
+        });
+      }
 
       const toggleTimeInput = document.getElementById('toggle-enable-time-input');
       if (toggleTimeInput) {
@@ -6693,8 +7104,7 @@ Object.assign(window.Views, {
 
       return `
         <div id="debt-hub" class="container" style="padding-bottom: 100px;">
-          <a href="#dashboard" class="touch-target" style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); margin-bottom: var(--space-2); margin-top: var(--space-2);" aria-label="${window.I18n.t('debt.backToDashboardAria')}"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i> ${window.I18n.t('nav.dashboard')}</a>
-          <h1 class="page-header-title" style="margin-bottom: var(--space-1);">${window.I18n.t('debt.loans')}</h1>
+          <h1 class="page-header-title" style="margin-top: var(--space-4); margin-bottom: var(--space-1);">${window.I18n.t('debt.loans')}</h1><!-- 1.2.2 (HG-3): a tab-level page, no back link; the title sits on the shared line -->
           <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">${window.I18n.t('debt.hubSubtitle')}</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             ${tile('mortgage')}

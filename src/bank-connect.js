@@ -1058,7 +1058,7 @@ window.BankConnect = {
     if (!m && !y) return null;
     let perMonth = null;
     if (y && y.priceMicros && y.currency) {
-      try { perMonth = window.Store.formatCurrency(y.priceMicros / 12e6, y.currency); } catch (e) { perMonth = null; }
+      try { perMonth = window.Store.formatCurrency(y.priceMicros / 12e6, y.currency, { plain: true }); } catch (e) { perMonth = null; } // 1.2.2 (HG-4): a price is never masked
     }
     return { monthly: { price: m ? m.price : null }, yearly: { price: y ? y.price : null, perMonth } };
   },

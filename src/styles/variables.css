@@ -131,9 +131,7 @@
   --trend-up-rgb: 16 185 129;
   --trend-down-rgb: 239 68 68;
   --chart-baseline: var(--text-tertiary);
-  --ring-cutout: 62%;
-  --ring-glow-alpha: 0.35;
-  --ring-gloss: linear-gradient(160deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%);
+  --ring-cutout: 66%; /* 1.2.2 (HG-5): flat solid rings, no glow or gloss */
   --shadow-lift: 0 18px 40px rgba(15, 23, 42, 0.18);
   --dur-wiggle: 260ms;
   --wiggle-deg: 1.2deg;
@@ -196,8 +194,6 @@ html.dark {
   /* 1.2.0 (UX round) visual layer — dark twins */
   --trend-up-rgb: 52 211 153;
   --trend-down-rgb: 248 113 113;
-  --ring-glow-alpha: 0.5;
-  --ring-gloss: linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%);
   --shadow-lift: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
 

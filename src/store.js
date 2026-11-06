@@ -160,6 +160,10 @@ window.Store = {
     defaultAccountId: '', // v0.53
     enableTimeInput: false,
     exportPrefs: null, // 1.1.0 (IE-4): the Export screen's settings; null = the language's defaults
+    // 1.2.2 (HG-4): Home's hidden balances. hide masks every amount on Home
+    // (Store.isMoneyMasked); shake flips hide from a shake while Home is on
+    // screen. Per-device pref, outside the CSV backup.
+    privacy: { hide: false, shake: false },
     isSelectionMode: false,
     selectedTransactionIds: [],
 
@@ -330,6 +334,7 @@ window.Store = {
     this.state.theme = window.StackdDB.load('theme', 'system');
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); // 1.1.0 (IE-4)
+    this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); // 1.2.2 (HG-4)
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
     // v0.72 Phase 5: Recent Activities left the dashboard when the widget area
     // shipped, so a user who has NEVER configured widgets (key absent — distinct
@@ -623,6 +628,7 @@ window.Store = {
         if (e.key === 'stackd_v1_currency') { this.state.currency = window.StackdDB.load('currency', 'USD'); changed = true; }
         if (e.key === 'stackd_v1_language') { this.state.language = window.StackdDB.load('language', 'en'); if (window.I18n) window.I18n.setLang(this.state.language); changed = true; } // v0.86 P8a
         if (e.key === 'stackd_v1_exportPrefs') { this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); changed = true; } // 1.1.0 (IE-4)
+        if (e.key === 'stackd_v1_privacy') { this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); changed = true; } // 1.2.2 (HG-4)
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
@@ -2003,6 +2009,7 @@ window.Store = {
       case 'theme': s.theme = L('theme', 'system'); this.applyTheme(); return true;
       case 'enableTimeInput': s.enableTimeInput = L('enableTimeInput', false); return true;
       case 'exportPrefs': s.exportPrefs = L('exportPrefs', null); return true; // 1.1.0 (IE-4)
+      case 'privacy': s.privacy = this.normalizePrivacy(L('privacy', null)); return true; // 1.2.2 (HG-4)
       case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
       case 'historyFilterSortOrder': s.historyFilters.sortOrder = L('historyFilterSortOrder', 'asc'); return true;
       case 'defaultAccountId': s.defaultAccountId = L('defaultAccountId', ''); return true;
@@ -3658,6 +3665,8 @@ window.Store = {
         window.StackdDB.save('defaultAccountId', '');
         this.state.exportPrefs = null; // 1.1.0 (IE-4)
         window.StackdDB.remove('exportPrefs');
+        this.state.privacy = this.normalizePrivacy(null); // 1.2.2 (HG-4): a fresh install shows its balances
+        window.StackdDB.remove('privacy');
         // 1.2.0 (UX-9/UX-11): explicit tag links are user data (wiped with the
         // rest); backup prefs/log are device state of the wiped install.
         this.state.tagLinks = {};
@@ -3916,6 +3925,14 @@ window.Store = {
         this.state.backupLog = [entry].concat(Array.isArray(this.state.backupLog) ? this.state.backupLog : []).slice(0, this.BACKUP_LOG_MAX);
         window.StackdDB.save('backupLog', this.state.backupLog);
         changed = payload.silent !== true;
+        break;
+      }
+
+      // 1.2.2 (HG-4): { hide?, shake? } — merged, booleans only.
+      case 'SET_PRIVACY': {
+        this.state.privacy = this.normalizePrivacy(Object.assign({}, this.getPrivacy(), payload || {}));
+        window.StackdDB.save('privacy', this.state.privacy);
+        changed = true;
         break;
       }
 
@@ -4198,16 +4215,21 @@ window.Store = {
   // amount — every row, wallet card and widget value. Cache per locale+digits;
   // language/currency switches produce a new key, so no invalidation needed.
   _numberFormatCache: {},
-  formatCurrency(amount, currencyCode) {
+  formatCurrency(amount, currencyCode, opts) {
     // v1.02: optional currency override (per-account surfaces). The cache key
     // stays locale|digits — the symbol is applied OUTSIDE the cached formatter
     // and the decimals rule is folded into the digits half of the key.
     const code = currencyCode || this.state.currency;
     const symbol = this.getCurrencySymbol(code);
     const isNeg = amount < 0;
+    // 1.2.2 (HG-4): hidden balances — the sign and symbol stay, the figure
+    // becomes a fixed-length mask (no length hint). Files and prices pass
+    // { plain: true }: they are never a Home surface.
+    if (!(opts && opts.plain) && this.isMoneyMasked()) return `${isNeg ? '-' : ''}${symbol}${this.MONEY_MASK}`;
     const abs = Math.abs(amount);
-    // No decimal places for Yen / Renminbi
-    const noDecimals = code === 'JPY' || code === 'CNY';
+    // No decimal places for Yen / Renminbi; 1.2.2 (HG-7): { whole: true }
+    // rounds to whole units for a headline figure (Insights).
+    const noDecimals = code === 'JPY' || code === 'CNY' || !!(opts && opts.whole);
     const key = this.getLocale() + '|' + (noDecimals ? '0' : '2');
     let fmt = this._numberFormatCache[key];
     if (!fmt) {
@@ -4675,6 +4697,25 @@ window.Store = {
       quoteAll: typeof src.quoteAll === 'boolean' ? src.quoteAll : d.quoteAll,
       bom: typeof src.bom === 'boolean' ? src.bom : d.bom
     };
+  },
+
+  // 1.2.2 (HG-4): hidden balances on Home.
+  normalizePrivacy(p) {
+    const src = p && typeof p === 'object' ? p : {};
+    return { hide: src.hide === true, shake: src.shake === true };
+  },
+
+  getPrivacy() {
+    return this.normalizePrivacy(this.state.privacy);
+  },
+
+  // Amounts are masked on Home only, and only while it is the active view:
+  // every Home surface (header, graph readouts, widgets, the sheets opened
+  // from Home) formats through formatCurrency, and SET_VIEW flips activeView
+  // before the next screen renders, so History/Budget/Analytics stay plain.
+  MONEY_MASK: '••••',
+  isMoneyMasked() {
+    return this.state.activeView === 'dashboard' && !!(this.state.privacy && this.state.privacy.hide === true);
   },
 
   getExportPrefs() {

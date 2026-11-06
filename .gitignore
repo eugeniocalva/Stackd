@@ -20,3 +20,6 @@ vite.config.ts.timestamp-*
 
 # Hero title frames, contact sheets and videos (tools/site/hero-render.cjs)
 tools/site/out/
+
+# Capacitor plugin build output (local plugins under plugins/)
+plugins/*/android/build/

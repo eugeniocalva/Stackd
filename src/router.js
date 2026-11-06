@@ -10,6 +10,7 @@ window.Router = {
     '#settings': 'settings',
     '#budget': 'budget',
     '#analytics': 'analytics',
+    '#insights': 'insights', // 1.2.2 (HG-7): Smart Insights page (5th tab)
     '#edit-account': 'edit-account',
     '#tags': 'tags',
     '#category-detail': 'category-detail',

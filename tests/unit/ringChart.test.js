@@ -1,9 +1,9 @@
-// 1.2.0 (UX-7) — Components.RingChart: the one ring look (thick arcs, a
-// gradient per arc, glow, canvas icon badges) and the entry-only sweep, on
-// every ring: the Home categories and budgets widgets, the Analytics donut
-// and the Goals ring (now one arc per budgeted category) + its row rings.
-// docs/ux-review-1.2-plan.md B.4. The Chart stubs never run plugin hooks,
-// so _paint is driven here with a fake chart and a recording context.
+// 1.2.0 (UX-7) — Components.RingChart: the one ring look and the entry-only
+// sweep, on every ring: the Home categories and budgets widgets, the
+// Analytics donut and the Goals ring (one arc per budgeted category) + its
+// row rings. docs/ux-review-1.2-plan.md B.4. 1.2.2 (HG-5): the look is flat
+// solid arcs (no gradient, glow or icon badges); the legends carry each
+// category's icon tinted in its arc colour instead of a colour bar or dot.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -71,6 +71,8 @@ const acc = () => S().getState().accounts[0].id;
 const spend = (amount, cat, date = '2026-10-05') =>
   S().dispatch('ADD_TRANSACTION', { type: 'expense', amount, accountId: acc(), categoryId: cat, date });
 const doughnuts = () => charts.filter(c => c.config.type === 'doughnut');
+// jsdom serialises an inline colour as rgb()
+const hexToRgb = (h) => { const n = parseInt(h.slice(1), 16); return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`; };
 
 const baseConfig = () => ({
   type: 'doughnut',
@@ -81,19 +83,23 @@ const baseConfig = () => ({
 describe('RingChart.config', () => {
   beforeEach(boot);
 
-  it('makes the ring thick and gapped, and registers the plugin at the config root', () => {
-    const cfg = RC().config(baseConfig(), { badges: [{ icon: 'pin' }, null], track: [1] });
-    expect(cfg.options.cutout).toBe('62%');
+  it('makes every ring flat and solid: one cutout, small rounded gaps, no outline (1.2.2 HG-5)', () => {
+    const cfg = RC().config(baseConfig(), {});
+    expect(cfg.options.cutout).toBe('66%');
     const ds = cfg.data.datasets[0];
     expect(ds.borderWidth).toBe(0);
+    expect(ds.hoverBorderWidth).toBe(0);
     expect(ds.spacing).toBe(2);
-    expect(ds.borderRadius).toBe(8);
-    expect(cfg.plugins).toContain(RC().plugin);
-    expect(RC().plugin.id).toBe('stackdRing');
+    expect(ds.borderRadius).toBe(6);
     expect(cfg.options.plugins.legend).toEqual({ display: false });
-    expect(cfg.options.plugins.stackdRing).toMatchObject({
-      badges: [{ icon: 'pin' }, null], track: [1], glow: true, theme: 'light', animate: false
-    });
+  });
+
+  it('paints nothing over Chart.js: no plugin, no gradient, glow or badges', () => {
+    const cfg = RC().config(baseConfig(), { badges: [{ icon: 'pin' }, null], track: [1] });
+    expect(cfg.plugins).toBeUndefined();
+    expect(cfg.options.plugins.stackdRing).toBeUndefined();
+    expect(RC().plugin).toBeUndefined();
+    expect(RC()._paint).toBeUndefined();
   });
 
   it('keeps datasets[0].backgroundColor the plain hex array', () => {
@@ -101,164 +107,24 @@ describe('RingChart.config', () => {
     expect(cfg.data.datasets[0].backgroundColor).toEqual(['#10b981', '#e2e8f0']);
   });
 
-  it('never registers the plugin twice', () => {
-    const cfg = RC().config(RC().config(baseConfig(), {}), {});
-    expect(cfg.plugins.filter(p => p === RC().plugin)).toHaveLength(1);
-  });
-
   it('animation is false unless the caller says this is an entry render', () => {
     expect(RC().config(baseConfig(), {}).options.animation).toBe(false);
     expect(RC().config(baseConfig(), { animate: false }).options.animation).toBe(false);
   });
 
-  it('an entry render gets the sweep: rotate only, 700ms, the given delay', () => {
+  it('an entry render gets the sweep: rotate only, 700ms, the given delay, then no delay', () => {
     const anim = RC().config(baseConfig(), { animate: true, delay: 250 }).options.animation;
     expect(anim).toMatchObject({ animateRotate: true, animateScale: false, duration: 700, easing: 'easeOutQuart', delay: 250 });
-    // the glow waits for the arcs to settle, then one extra draw adds it
-    const chart = { $ringAnimating: false, ctx: {}, draw: vi.fn() };
-    anim.onProgress({ chart });
-    expect(chart.$ringAnimating).toBe(true);
+    // later hover transitions start at once
+    const chart = { options: { animation: anim } };
     anim.onComplete({ chart });
-    expect(chart.$ringAnimating).toBe(false);
-    expect(chart.draw).toHaveBeenCalledTimes(1);
+    expect(anim.delay).toBe(0);
   });
 
   it('reduced motion turns the sweep off', () => {
     reduce = true;
     const cfg = RC().config(baseConfig(), { animate: true });
     expect(cfg.options.animation).toBe(false);
-    expect(cfg.options.plugins.stackdRing.animate).toBe(false);
-  });
-
-  it('follows the dark theme', () => {
-    S().state.activeTheme = 'dark';
-    expect(RC().config(baseConfig(), {}).options.plugins.stackdRing.theme).toBe('dark');
-  });
-
-  it('the plugin starts a sweeping chart without its glow', () => {
-    const chart = {};
-    RC().plugin.beforeInit(chart, {}, { animate: true });
-    expect(chart.$ringAnimating).toBe(true);
-    RC().plugin.beforeInit(chart, {}, { animate: false });
-    expect(chart.$ringAnimating).toBe(false);
-  });
-});
-
-describe('RingChart drawing (fake chart, recording context)', () => {
-  beforeEach(boot);
-
-  const makeCtx = () => {
-    const log = [];
-    return {
-      log,
-      save() {}, restore() {}, beginPath() {}, fill() { log.push(['fill', this.fillStyle]); }, stroke() {},
-      arc(...a) { log.push(['badge', a]); },
-      drawImage() { log.push(['img']); },
-      createRadialGradient(...a) {
-        const g = { stops: [], addColorStop(o, c) { this.stops.push([o, c]); } };
-        log.push(['grad', a, g]);
-        return g;
-      },
-      set globalCompositeOperation(v) { log.push(['gco', v]); },
-      get globalCompositeOperation() { return 'source-over'; },
-      set shadowBlur(v) { log.push(['blur', v]); },
-      get shadowBlur() { return 0; },
-      shadowColor: ''
-    };
-  };
-  const makeArc = (start, end, inner, outer, color, fills) => ({
-    x: 120, y: 120, startAngle: start, endAngle: end, innerRadius: inner, outerRadius: outer,
-    options: { backgroundColor: color },
-    getProps(props) { const o = {}; props.forEach(p => { o[p] = this[p]; }); return o; },
-    draw() { fills.push(this.options.backgroundColor); }
-  });
-  const makeChart = (arcs, colors, ringOpts, animating = false) => ({
-    ctx: makeCtx(),
-    $ringAnimating: animating,
-    data: { datasets: [{ backgroundColor: colors }] },
-    getDatasetMeta: () => ({ data: arcs }),
-    config: { options: { plugins: { stackdRing: ringOpts } } },
-    draw: vi.fn()
-  });
-
-  it('refills every non-track arc with a radial gradient and glows behind it', () => {
-    const fills = [];
-    const arcs = [makeArc(0, 2, 60, 100, '#10b981', fills), makeArc(2, 6, 60, 100, '#e2e8f0', fills)];
-    const chart = makeChart(arcs, ['#10b981', '#e2e8f0'], { track: [1], glow: true, theme: 'light' });
-    RC()._paint(chart);
-    const grads = chart.ctx.log.filter(l => l[0] === 'grad');
-    expect(grads).toHaveLength(1);
-    expect(grads[0][1]).toEqual([120, 120, 60, 120, 120, 100]);
-    const stops = grads[0][2].stops;
-    expect(stops[1]).toEqual([0.5, '#10b981']);
-    expect(stops[0][1]).not.toBe('#10b981'); // lighter inside
-    expect(stops[2][1]).not.toBe('#10b981'); // darker outside
-    expect(chart.ctx.log).toContainEqual(['gco', 'destination-over']);
-    expect(chart.ctx.log).toContainEqual(['blur', 14]);
-    // glow fill (base) then the gradient; the track arc is never repainted
-    expect(fills).toHaveLength(2);
-    expect(fills[0]).toBe('#10b981');
-    expect(fills[1]).toBe(grads[0][2]);
-  });
-
-  it('draws no glow while the arcs are still moving', () => {
-    const fills = [];
-    const chart = makeChart([makeArc(0, 2, 60, 100, '#10b981', fills)], ['#10b981'], { track: [], glow: true }, true);
-    RC()._paint(chart);
-    expect(chart.ctx.log).not.toContainEqual(['gco', 'destination-over']);
-    expect(fills).toHaveLength(1); // the gradient only
-  });
-
-  it('badges only a big ring, only on arcs wide enough, never on the track', () => {
-    const fills = [];
-    const arcs = [
-      makeArc(0, 2, 60, 100, '#10b981', fills),     // wide: badge
-      makeArc(2, 2.1, 60, 100, '#f59e0b', fills),   // 0.1 rad × 80px = 8px: too narrow
-      makeArc(2.1, 6, 60, 100, '#e2e8f0', fills)    // track
-    ];
-    const chart = makeChart(arcs, ['#10b981', '#f59e0b', '#e2e8f0'],
-      { badges: [{ icon: 'pin' }, { icon: 'pin' }, { icon: 'pin' }], track: [2], glow: false });
-    RC()._paint(chart);
-    const badges = chart.ctx.log.filter(l => l[0] === 'badge');
-    expect(badges).toHaveLength(1);
-    // centred on the arc's mid-angle, halfway through the ring's thickness
-    const [bx, by, r] = badges[0][1];
-    expect(bx).toBeCloseTo(120 + Math.cos(1) * 80, 5);
-    expect(by).toBeCloseTo(120 + Math.sin(1) * 80, 5);
-    expect(r).toBe(10);
-  });
-
-  it('a ring under 70px radius gets no badges', () => {
-    const fills = [];
-    const chart = makeChart([makeArc(0, 3, 40, 65, '#10b981', fills)], ['#10b981'],
-      { badges: [{ icon: 'pin' }], track: [], glow: false });
-    RC()._paint(chart);
-    expect(chart.ctx.log.filter(l => l[0] === 'badge')).toHaveLength(0);
-  });
-
-  it('shades a colour lighter and darker', () => {
-    expect(RC()._shade('#808080', 0.5)).toBe('rgb(192, 192, 192)');
-    expect(RC()._shade('#808080', -0.5)).toBe('rgb(64, 64, 64)');
-    expect(RC()._rgb('#fff')).toEqual({ r: 255, g: 255, b: 255 });
-    expect(RC()._rgb('var(--x)')).toBeNull();
-  });
-
-  it("icons come from lucide's renderer first, white, then the file:// snapshot", () => {
-    global.window.lucide = {
-      icons: { ShoppingCart: ['svg', {}, []] },
-      createElement: () => {
-        const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        el.setAttribute('stroke', 'currentColor');
-        return el;
-      }
-    };
-    const svg = RC()._iconSvg('shopping-cart');
-    expect(svg).toContain('stroke="#ffffff"');
-    expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
-
-    delete global.window.lucide;
-    global.window.StackdIconSvg = (n) => (n === 'help-circle' ? '<svg stroke="currentColor"><circle/></svg>' : null);
-    expect(RC()._iconSvg('not-an-icon')).toBe('<svg stroke="#ffffff"><circle/></svg>');
   });
 });
 
@@ -283,8 +149,7 @@ describe('Home ring widgets play the sweep on an entry render only', () => {
     expect(doughnuts()).toHaveLength(2);
     doughnuts().forEach(c => {
       expect(c.config.options.animation).toMatchObject({ animateRotate: true, duration: 700, delay: 250 });
-      expect(c.config.plugins).toContain(RC().plugin);
-      expect(c.config.options.cutout).toBe('62%');
+      expect(c.config.options.cutout).toBe('66%');
     });
     expect(W()._entryPass).toBe(false); // only for that attach loop
   });
@@ -294,35 +159,33 @@ describe('Home ring widgets play the sweep on an entry render only', () => {
     mount();
     expect(doughnuts()).toHaveLength(4);
     expect(doughnuts().every(c => c.config.options.animation === false)).toBe(true);
-    expect(doughnuts().every(c => c.config.plugins.includes(RC().plugin))).toBe(true);
+    expect(doughnuts().every(c => c.config.options.cutout === '66%')).toBe(true);
   });
 
   it('reduced motion: no sweep even on entry (the look stays)', () => {
     reduce = true;
     mount({ isEntry: true });
     expect(doughnuts().every(c => c.config.options.animation === false)).toBe(true);
-    expect(doughnuts().every(c => c.config.options.cutout === '62%')).toBe(true);
+    expect(doughnuts().every(c => c.config.options.cutout === '66%')).toBe(true);
   });
 
-  it('the budgets ring keeps its hex pair, with the remainder as a flat track', () => {
+  it('the budgets ring keeps its hex pair, the remainder in the track colour', () => {
     mount({ isEntry: true });
     const ring = doughnuts().find(c => !c.config.data.labels);
     expect(ring.config.data.datasets[0].data).toEqual([50, 150]);
     expect(ring.config.data.datasets[0].backgroundColor).toEqual(['#64748b', '#e2e8f0']);
-    expect(ring.config.options.plugins.stackdRing.track).toEqual([1]);
-    expect(ring.config.options.plugins.stackdRing.badges).toBeNull();
   });
 
-  it('the categories ring badges its arcs in the large size only', () => {
-    mount({ isEntry: false });
-    const small = doughnuts().find(c => c.config.data.labels);
-    expect(small.config.options.plugins.stackdRing.badges).toBeNull();
+  it('the large categories legend shows each icon in its arc colour, no dot (1.2.2 HG-5)', () => {
     const inst = S().getState().homeWidgets[0];
     S().dispatch('UPDATE_HOME_WIDGET', { id: inst.id, size: 'large' });
-    charts = [];
     mount({ isEntry: false });
     const large = doughnuts().find(c => c.config.data.labels);
-    expect(large.config.options.plugins.stackdRing.badges).toEqual([{ icon: 'shopping-cart' }, { icon: 'utensils' }]);
+    const colors = large.config.data.datasets[0].backgroundColor;
+    const icons = [...rv().querySelectorAll('.widget-legend-item .widget-legend-icon')];
+    expect(icons.map(i => i.querySelector('i').getAttribute('data-lucide'))).toEqual(['shopping-cart', 'utensils']);
+    expect(icons.map(i => i.style.color)).toEqual(colors.map(hexToRgb));
+    expect(rv().querySelector('.widget-legend-dot')).toBeNull();
   });
 
   it('the add-widget preview never animates', () => {
@@ -335,7 +198,7 @@ describe('Home ring widgets play the sweep on an entry render only', () => {
     W().attachPreview(root, 'categories', 'small', {}, S().getState());
     expect(doughnuts()).toHaveLength(1);
     expect(doughnuts()[0].config.options.animation).toBe(false);
-    expect(doughnuts()[0].config.plugins).toContain(RC().plugin);
+    expect(doughnuts()[0].config.options.cutout).toBe('66%');
   });
 });
 
@@ -353,13 +216,20 @@ describe('Analytics donut', () => {
     return V;
   };
 
-  it('sweeps on the Analytics entry render, with an icon badge per arc', () => {
+  it('sweeps on the Analytics entry render', () => {
     render(true);
     const donut = doughnuts()[0];
     expect(donut.config.options.animation).toMatchObject({ animateRotate: true, delay: 250 });
-    expect(donut.config.options.cutout).toBe('62%');
+    expect(donut.config.options.cutout).toBe('66%');
     expect(donut.config.data.datasets[0].backgroundColor).toEqual(['#10b981', '#f59e0b']);
-    expect(donut.config.options.plugins.stackdRing.badges).toEqual([{ icon: 'shopping-cart' }, { icon: 'utensils' }]);
+  });
+
+  it('each legend row tints its icon in the arc colour, with no colour bar (1.2.2 HG-5)', () => {
+    render(false);
+    const rows = [...rv().querySelectorAll('.donut-legend-item')];
+    expect(rows).toHaveLength(2);
+    expect(rows.map(r => r.querySelector('.list-item-icon').style.color)).toEqual(['#10b981', '#f59e0b'].map(hexToRgb));
+    expect(rv().querySelector('.donut-legend-color')).toBeNull();
   });
 
   it('a same-view re-render and the type toggle never replay it', () => {
@@ -372,7 +242,6 @@ describe('Analytics donut', () => {
     rv().querySelector('.chart-toggle-btn[data-type="income"]').click();
     expect(doughnuts()).toHaveLength(1);
     expect(doughnuts()[0].config.options.animation).toBe(false);
-    expect(doughnuts()[0].config.plugins).toContain(RC().plugin);
   });
 });
 
@@ -404,8 +273,11 @@ describe('Goals ring and row rings', () => {
     // displayed order: budgeted first, alphabetical (Dining Out, Groceries, Transport)
     expect(ds.data).toEqual([30, 50, 220]);
     expect(ds.backgroundColor).toEqual(['#f59e0b', '#10b981', '#e2e8f0']);
-    expect(ring.config.options.plugins.stackdRing.track).toEqual([2]);
-    expect(ring.config.options.plugins.stackdRing.badges).toEqual([{ icon: 'utensils' }, { icon: 'shopping-cart' }, null]);
+    // 1.2.2 (HG-5): each row's icon wears its arc's colour (one map per pass)
+    const iconColor = (id) => rv().querySelector(`.budget-cat-row[data-id="${id}"] .list-item-icon`).style.color;
+    expect(iconColor('cat_dining')).toBe(hexToRgb('#f59e0b'));
+    expect(iconColor('cat_groceries')).toBe(hexToRgb('#10b981'));
+    expect(iconColor('cat_transport')).not.toBe(''); // no arc yet, still its own colour
   });
 
   it('overspent stays the full red ring', () => {
@@ -415,14 +287,12 @@ describe('Goals ring and row rings', () => {
     const ds = ring.config.data.datasets[0];
     expect(ds.data).toEqual([1, 0]);
     expect(ds.backgroundColor[0]).toBe('#ef4444');
-    expect(ring.config.options.plugins.stackdRing.track).toEqual([1]);
-    expect(ring.config.options.plugins.stackdRing.badges).toBeNull();
   });
 
   it('nothing budgeted is an empty track', () => {
     const ring = render(false);
     expect(ring.config.data.datasets[0].data).toEqual([1]);
-    expect(ring.config.options.plugins.stackdRing.track).toEqual([0]);
+    expect(ring.config.data.datasets[0].backgroundColor).toEqual(['#e2e8f0']);
   });
 
   it('the rings sweep on the Goals entry render only', () => {

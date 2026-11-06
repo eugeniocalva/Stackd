@@ -89,6 +89,11 @@ window.Components = {
             <div class="nav-icon"><i data-lucide="pie-chart"></i></div>
             <div class="nav-item-indicator"></div>
           </a>
+          <!-- 1.2.2 (HG-7): Smart Insights, a page of its own -->
+          <a href="#insights" class="nav-item touch-target" data-view="insights" aria-label="${window.I18n.t('nav.insights')}">
+            <div class="nav-icon"><i data-lucide="lightbulb"></i></div>
+            <div class="nav-item-indicator"></div>
+          </a>
         </div>
         <button id="nav-fab-toggle" class="nav-fab touch-target" aria-label="${window.I18n.t('nav.toggleActions')}" aria-expanded="false" style="border: none; cursor: pointer;">
           <i data-lucide="plus" style="width: 28px; height: 28px;"></i>
@@ -2340,7 +2345,42 @@ window.Components = {
         trendUpRgb: isDark ? '52,211,153' : '16,185,129',
         trendDownRgb: isDark ? '248,113,113' : '239,68,68',
         baseline: isDark ? '#64748b' : '#94a3b8',
-        surface: isDark ? '#161e2e' : '#ffffff'
+        surface: isDark ? '#161e2e' : '#ffffff',
+        // 1.2.2 (HG-6): the quiet grid's hairline (the zero line uses baseline)
+        hairline: isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(226, 232, 240, 0.9)'
+      };
+    },
+
+    // 1.2.2 (HG-6): the app's one bar look — Home's monthly net. Solid fills
+    // in the theme's trend pair (up = income green, down = expense red),
+    // rounded, no outline. emphasizeLast: the newest bar strong, the earlier
+    // ones softer (Home); otherwise every bar the same strength (Analytics).
+    BAR_ALPHA: 0.9,
+    BAR_ALPHA_SOFT: 0.55,
+    BAR_RADIUS: 6,
+    barFill(value, pal, alpha) {
+      const p = pal || this._themeColors();
+      return 'rgba(' + (value >= 0 ? p.trendUpRgb : p.trendDownRgb) + ',' + (alpha == null ? this.BAR_ALPHA : alpha) + ')';
+    },
+    barStyle(values, opts) {
+      const pal = this._themeColors();
+      const last = values.length - 1;
+      const soft = !!(opts && opts.emphasizeLast);
+      return {
+        backgroundColor: values.map((v, i) => this.barFill(v, pal, soft && i !== last ? this.BAR_ALPHA_SOFT : this.BAR_ALPHA)),
+        borderWidth: 0,
+        borderRadius: this.BAR_RADIUS,
+        borderSkipped: false,
+        barPercentage: 0.72,
+        categoryPercentage: 0.8
+      };
+    },
+    // Faint solid hairlines, the zero line drawn like Home's baseline.
+    quietGrid(pal) {
+      const p = pal || this._themeColors();
+      return {
+        color: (c) => (c && c.tick && c.tick.value === 0 ? p.baseline : p.hairline),
+        drawTicks: false
       };
     },
 
@@ -2368,14 +2408,12 @@ window.Components = {
 
       return `
         <div class="card card-elevated" style="padding: var(--space-5); margin-top: var(--space-4); border-radius: var(--radius-2xl); position: relative; overflow: hidden;">
-          <!-- DECORATIVE BACKGROUND GRADIENT -->
-          <div style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: var(--color-primary); opacity: 0.03; border-radius: 20px; filter: blur(30px);"></div>
-          
+
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); position: relative; z-index: 1;">
             <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">${window.I18n.t('charts.netFlowAnalysis')}</p>
             <span style="font-size: 10px; color: var(--text-tertiary); font-weight: 700; background: var(--bg-surface-sunken); padding: 2px 8px; border-radius: 10px;">${window.I18n.t('charts.incomeMinusExpenses')}</span>
           </div>
-          
+
           <div style="height: 200px; width: 100%; position: relative; z-index: 1;">
             <canvas id="netFlowChart"></canvas>
           </div>
@@ -2392,9 +2430,9 @@ window.Components = {
 
       const labels = data.map(d => d.label);
       const values = data.map(d => d.net);
-      
-      const colors = data.map(d => d.net >= 0 ? '#10b981' : '#ef4444'); 
-      const bgColors = data.map(d => d.net >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)');
+
+      // 1.2.2 (HG-6): Home's solid bars, every bar the same strength
+      const bars = this.barStyle(values);
 
       // v0.80: track the instance on the component. The old getChart(canvas)
       // guard could never find the previous chart — every re-render replaces
@@ -2410,20 +2448,14 @@ window.Components = {
 
       // Dynamic Y-axis scaling (multiples of 10/50/100/200/250/500) — see _computeYScale
       const yScale = this._computeYScale(values);
-      const { tooltipBg, tooltipTitle, tooltipBody, tooltipBorder, gridColor, tickColor } = this._themeColors();
+      const pal = this._themeColors();
+      const { tooltipBg, tooltipTitle, tooltipBody, tooltipBorder, tickColor } = pal;
 
       this._chartInstance = new window.Chart(canvas, {
         type: 'bar',
         data: {
           labels: labels,
-          datasets: [{
-            data: values,
-            backgroundColor: bgColors,
-            borderColor: colors,
-            borderWidth: 2,
-            borderRadius: 6,
-            borderSkipped: false
-          }]
+          datasets: [Object.assign({ data: values }, bars)]
         },
         options: {
           responsive: true,
@@ -2440,11 +2472,11 @@ window.Components = {
 
               // Clone filters and update for History view
               const newHistoryFilters = {
-                period: { 
-                  type: 'custom', 
-                  start: bucket.start, 
-                  end: bucket.end, 
-                  value: bucket.start 
+                period: {
+                  type: 'custom',
+                  start: bucket.start,
+                  end: bucket.end,
+                  value: bucket.start
                 },
                 types: [...filters.types],
                 accounts: [...filters.accounts],
@@ -2470,14 +2502,15 @@ window.Components = {
               padding: 12,
               displayColors: false,
               callbacks: {
-                label: (ctx) => `Net: ${window.Store.formatCurrency(ctx.parsed.y, ccy)}`
+                // 1.2.2 (HG-6): was an English "Net:" in every language
+                label: (ctx) => ` ${window.Store.formatCurrency(ctx.parsed.y, ccy)}`
               }
             }
           },
           scales: {
-            x: { 
-              grid: { display: false }, 
-              ticks: { 
+            x: {
+              grid: { display: false },
+              ticks: {
                 autoSkip: true,
                 autoSkipPadding: 6,
                 maxRotation: 45,
@@ -2491,16 +2524,14 @@ window.Components = {
                   };
                 },
                 color: tickColor
-              } 
+              }
             },
-            y: { 
+            y: {
               display: true,
               min: yScale.min,
               max: yScale.max,
-              grid: {
-                color: gridColor,
-                borderDash: [4, 4]
-              },
+              border: { display: false },
+              grid: this.quietGrid(pal), // 1.2.2 (HG-6)
               ticks: {
                 stepSize: yScale.stepSize,
                 font: { size: 10, family: 'Manrope', weight: '600' },
@@ -2519,13 +2550,140 @@ window.Components = {
     }
   },
 
-  // 1.2.0 (UX-7): the one look for every ring (Goals, Analytics, the Home
-  // categories and budgets widgets): thick arcs, a radial gradient per arc,
-  // a soft glow, canvas icon badges on big rings, and an entry-only sweep.
-  // config() decorates a plain Chart.js doughnut config; the drawing lives in
-  // an inline plugin registered at the config ROOT, so datasets[0]
-  // .backgroundColor stays the plain hex array the tests (and the hover
-  // colours) read — the plugin repaints over it.
+  // 1.2.0 (UX-7) / 1.2.2 (HG-5): the one look for every ring (Goals,
+  // Analytics, the Home categories and budgets widgets): flat solid arcs with
+  // small rounded gaps, and an entry-only sweep. config() decorates a plain
+  // Chart.js doughnut config; datasets[0].backgroundColor stays the plain hex
+  // array.
+  // 1.2.2 (HG-1): selection haptics (the picker "tick") for drag-to-read on
+  // the Home graphs. @capacitor/haptics is a native plugin reached through
+  // Capacitor.Plugins (no plugin JS is bundled); on the web, or when the
+  // plugin is missing, every call is a no-op. start() arms the generator
+  // (Android only ticks between selectionStart and selectionEnd).
+  Haptics: {
+    _plugin() {
+      const cap = window.Capacitor;
+      if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform()) return null;
+      return (cap.Plugins && cap.Plugins.Haptics) || null;
+    },
+    _call(method, arg) {
+      const p = this._plugin();
+      if (!p || typeof p[method] !== 'function') return;
+      try {
+        const r = arg === undefined ? p[method]() : p[method](arg);
+        if (r && typeof r.catch === 'function') r.catch(() => {});
+      } catch (e) { /* haptics are a nicety, never an error */ }
+    },
+    start() { this._call('selectionStart'); },
+    tick() { this._call('selectionChanged'); },
+    end() { this._call('selectionEnd'); },
+    // 1.2.2 (HG-4): one firm tap — a shake flipped hidden balances
+    impact() { this._call('impact', { style: 'MEDIUM' }); }
+  },
+
+  // 1.2.2 (HG-4): shake to hide balances on Home. Listens to devicemotion
+  // only while started (DashboardView.attachEvents starts it when the pref is
+  // on, destroy() stops it). A shake = PEAKS jolts above THRESHOLD m/s²
+  // (gravity removed) inside WINDOW_MS; one jolt counts once (PEAK_GAP_MS),
+  // and a fired shake waits COOLDOWN_MS. iOS asks permission through
+  // DeviceMotionEvent.requestPermission (from the Settings switch tap; the
+  // Capacitor bridge grants it without a prompt); Android needs none.
+  PrivacyShake: {
+    THRESHOLD: 13,
+    PEAKS: 3,
+    WINDOW_MS: 900,
+    PEAK_GAP_MS: 90,
+    COOLDOWN_MS: 1500,
+    _handler: null,
+    _onShake: null,
+    _peaks: [],
+    _lastPeak: 0,
+    _lastFire: -Infinity,
+    supported() {
+      return typeof window.DeviceMotionEvent !== 'undefined';
+    },
+    async requestPermission() {
+      const DME = window.DeviceMotionEvent;
+      if (!DME) return 'unsupported';
+      if (typeof DME.requestPermission !== 'function') return 'granted';
+      try { return await DME.requestPermission(); } catch (e) { return 'denied'; }
+    },
+    isRunning() { return !!this._handler; },
+    start(onShake) {
+      this._onShake = onShake;
+      if (this._handler) return;
+      this._peaks = [];
+      this._handler = (e) => this._sample(e, Date.now());
+      window.addEventListener('devicemotion', this._handler);
+    },
+    stop() {
+      if (this._handler) window.removeEventListener('devicemotion', this._handler);
+      this._handler = null;
+      this._onShake = null;
+      this._peaks = [];
+    },
+    // The jolt size of one motion event, gravity removed: `acceleration` when
+    // the device gives it, else |accelerationIncludingGravity| − g.
+    _magnitude(e) {
+      const a = e && e.acceleration;
+      if (a && a.x != null && a.y != null && a.z != null) return Math.hypot(a.x, a.y, a.z);
+      const g = e && e.accelerationIncludingGravity;
+      if (g && g.x != null && g.y != null && g.z != null) return Math.abs(Math.hypot(g.x, g.y, g.z) - 9.81);
+      return 0;
+    },
+    _sample(e, now) {
+      if (this._magnitude(e) < this.THRESHOLD) return;
+      if (now - this._lastPeak < this.PEAK_GAP_MS) return;
+      this._lastPeak = now;
+      this._peaks = this._peaks.filter(t => now - t <= this.WINDOW_MS);
+      this._peaks.push(now);
+      if (this._peaks.length < this.PEAKS || now - this._lastFire < this.COOLDOWN_MS) return;
+      this._lastFire = now;
+      this._peaks = [];
+      if (typeof this._onShake === 'function') {
+        try { this._onShake(); } catch (err) { console.error('PrivacyShake:', err); }
+      }
+    }
+  },
+
+  // 1.2.2 (HG-4): the sheet behind Home's "Balances hidden" pill. Show turns
+  // hiding off; Done (primary, the thumb spot) keeps it on.
+  HiddenBalancesSheet: {
+    show() {
+      const t = (k, p) => window.I18n.t(k, p);
+      const id = 'hidden-balances-sheet';
+      const backdrop = window.Components._bankSheet(id, `
+        <div class="privacy-sheet-icon" aria-hidden="true"><i data-lucide="eye-off"></i></div>
+        <h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-2); font-size: var(--text-2xl);">${t('privacy.hiddenTitle')}</h2>
+        <p id="${id}-body" style="margin: 0 0 var(--space-6); font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);">${t('privacy.hiddenBody')}</p>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button type="button" class="btn btn-secondary" id="${id}-show">${t('privacy.show')}</button>
+          <button type="button" class="btn btn-primary" id="${id}-done" data-back-dismiss>${t('common.done')}</button>
+        </div>`);
+      if (!backdrop) return null;
+      backdrop.setAttribute('aria-describedby', `${id}-body`);
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop._close();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector(`#${id}-done`).addEventListener('click', close);
+      backdrop.querySelector(`#${id}-show`).addEventListener('click', () => {
+        close();
+        window.Store.dispatch('SET_PRIVACY', { hide: false });
+      });
+      document.addEventListener('keydown', onKey);
+      return backdrop;
+    }
+  },
+
   // 1.2.0 (UX-8): the big amount fields draw their own caret. iOS WebKit
   // leaves the system caret behind when the form scrolls with the field
   // focused (it ended up below the digits), so the system caret is hidden
@@ -2629,8 +2787,6 @@ window.Components = {
   },
 
   RingChart: {
-    _iconCache: {},
-
     _reduced() {
       try {
         return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -2639,8 +2795,16 @@ window.Components = {
       }
     },
 
-    // opts: { animate, delay, badges: [{icon}|null per data index], track:
-    // [indexes painted flat, without gradient/glow/badge], glow }
+    // 1.2.2 (HG-5): flat solid arcs — no gradient, no glow, no icon badges
+    // (the legends carry the icons, tinted in the arc colour). Every ring
+    // (Analytics, Budget, the Home categories and budgets widgets) gets the
+    // same cutout, gap and corner rounding here.
+    CUTOUT: '66%', // --ring-cutout
+    SPACING: 2,
+    RADIUS: 6,
+
+    // opts: { animate, delay }. Unknown keys (old callers' badges/track) are
+    // ignored.
     config(base, opts) {
       const o = opts || {};
       const cfg = base || {};
@@ -2648,29 +2812,17 @@ window.Components = {
       // and never under reduced motion.
       const animate = !!o.animate && !this._reduced();
       cfg.options = cfg.options || {};
-      cfg.options.cutout = '62%'; // --ring-cutout
-      // Room for the glow inside the canvas box (cards clip their overflow).
-      if (!cfg.options.layout) cfg.options.layout = { padding: 6 };
+      cfg.options.cutout = this.CUTOUT;
+      if (!cfg.options.layout) cfg.options.layout = { padding: 4 };
       const ds = cfg.data && cfg.data.datasets && cfg.data.datasets[0];
       if (ds) {
         ds.borderWidth = 0;
         ds.borderColor = 'transparent';
-        if (ds.hoverBorderWidth !== undefined) ds.hoverBorderWidth = 0;
-        ds.spacing = 2;
-        ds.borderRadius = 8;
+        ds.hoverBorderWidth = 0;
+        ds.hoverBorderColor = 'transparent';
+        ds.spacing = this.SPACING;
+        ds.borderRadius = this.RADIUS;
       }
-      const plugins = Array.isArray(cfg.plugins) ? cfg.plugins.filter(p => p !== this.plugin) : [];
-      plugins.push(this.plugin);
-      cfg.plugins = plugins;
-      cfg.options.plugins = cfg.options.plugins || {};
-      const isDark = !!(window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
-      cfg.options.plugins.stackdRing = {
-        badges: Array.isArray(o.badges) ? o.badges : null,
-        track: Array.isArray(o.track) ? o.track : [],
-        glow: o.glow !== false,
-        theme: isDark ? 'dark' : 'light',
-        animate
-      };
       cfg.options.animation = animate
         ? {
           animateRotate: true,
@@ -2678,226 +2830,15 @@ window.Components = {
           duration: 700,
           easing: 'easeOutQuart',
           delay: o.delay || 0,
-          // Only the first (entry) sweep: later hover/active transitions keep
-          // the glow and start without the entry delay.
-          onProgress: (a) => { if (a && a.chart && !a.chart.$ringSwept) a.chart.$ringAnimating = true; },
-          // The glow pass is skipped while arcs move (iOS re-rasterises a
-          // shadow every frame); one extra draw adds it once they settle.
+          // Only the entry sweep waits for the view transition: later hover
+          // transitions start at once.
           onComplete: (a) => {
-            const c = a && a.chart;
-            if (!c) return;
-            c.$ringAnimating = false;
-            if (!c.$ringSwept) {
-              c.$ringSwept = true;
-              const an = c.options && c.options.animation;
-              if (an && typeof an === 'object') an.delay = 0;
-            }
-            if (c.ctx) c.draw();
+            const an = a && a.chart && a.chart.options && a.chart.options.animation;
+            if (an && typeof an === 'object') an.delay = 0;
           }
         }
         : false;
       return cfg;
-    },
-
-    plugin: {
-      id: 'stackdRing',
-      beforeInit(chart, args, opts) {
-        chart.$ringAnimating = !!(opts && opts.animate);
-      },
-      afterDatasetsDraw(chart, args, opts) {
-        try {
-          window.Components.RingChart._paint(chart, opts);
-        } catch (e) { /* a plain ring is still a ring */ }
-      }
-    },
-
-    // The raw option object (plugin opts arrive through Chart.js' resolver
-    // proxies; arrays of objects come back wrapped).
-    _optsOf(chart, opts) {
-      const raw = chart && chart.config && chart.config.options && chart.config.options.plugins &&
-        chart.config.options.plugins.stackdRing;
-      return raw || opts || {};
-    },
-
-    _rgb(hex) {
-      const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
-      if (!m) return null;
-      let h = m[1];
-      if (h.length === 3) h = h.split('').map(c => c + c).join('');
-      const n = parseInt(h, 16);
-      return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-    },
-
-    // amount > 0 lightens towards white by that share of the remaining
-    // lightness, < 0 darkens by that share (HSL lightness).
-    _shade(hex, amount) {
-      const c = this._rgb(hex);
-      if (!c) return hex;
-      const r = c.r / 255, g = c.g / 255, b = c.b / 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      let h = 0, s = 0;
-      let l = (max + min) / 2;
-      if (max !== min) {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-        else if (max === g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h /= 6;
-      }
-      l = amount >= 0 ? l + (1 - l) * amount : l * (1 + amount);
-      const hue = (p, q, t) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1 / 6) return p + (q - p) * 6 * t;
-        if (t < 1 / 2) return q;
-        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-        return p;
-      };
-      let rr = l, gg = l, bb = l;
-      if (s !== 0) {
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        rr = hue(p, q, h + 1 / 3);
-        gg = hue(p, q, h);
-        bb = hue(p, q, h - 1 / 3);
-      }
-      return `rgb(${Math.round(rr * 255)}, ${Math.round(gg * 255)}, ${Math.round(bb * 255)})`;
-    },
-
-    _rgba(hex, alpha) {
-      const c = this._rgb(hex);
-      return c ? `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})` : 'transparent';
-    },
-
-    // Refills one arc with `fill` through the element's own draw(), so the
-    // rounded corners, spacing and hover offset stay exactly Chart.js' own.
-    _fillArc(arc, ctx, fill) {
-      const shadow = Object.create(arc);
-      shadow.options = Object.assign({}, arc.options, { backgroundColor: fill, borderWidth: 0, borderColor: 'transparent' });
-      shadow.draw(ctx);
-    },
-
-    _paint(chart, opts) {
-      const o = this._optsOf(chart, opts);
-      const meta = chart.getDatasetMeta ? chart.getDatasetMeta(0) : null;
-      const ctx = chart.ctx;
-      if (!meta || !meta.data || !meta.data.length || !ctx) return;
-      const ds = (chart.data && chart.data.datasets && chart.data.datasets[0]) || {};
-      const colors = Array.isArray(ds.backgroundColor) ? ds.backgroundColor : [];
-      const track = new Set(Array.isArray(o.track) ? o.track : []);
-      const dark = o.theme === 'dark';
-      const surface = dark ? '#161e2e' : '#ffffff';
-      const glowAlpha = dark ? 0.5 : 0.35; // --ring-glow-alpha
-      const still = !chart.$ringAnimating;
-      const props = ['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'];
-
-      let ring = 0;
-      meta.data.forEach((arc, i) => {
-        // The arc's resolved colour (its hover colour while hovered).
-        const own = arc.options && arc.options.backgroundColor;
-        const base = typeof own === 'string' && this._rgb(own) ? own : colors[i];
-        const p = arc.getProps(props, false);
-        ring = Math.max(ring, p.outerRadius || 0);
-        if (track.has(i) || !this._rgb(base)) return;
-        if (!(p.endAngle - p.startAngle > 0.001) || !(p.outerRadius > 0)) return;
-        if (o.glow !== false && still) {
-          ctx.save();
-          ctx.globalCompositeOperation = 'destination-over';
-          ctx.shadowBlur = 14;
-          ctx.shadowColor = this._rgba(base, glowAlpha);
-          this._fillArc(arc, ctx, base);
-          ctx.restore();
-        }
-        if (typeof ctx.createRadialGradient === 'function') {
-          const grad = ctx.createRadialGradient(p.x, p.y, Math.max(0, p.innerRadius), p.x, p.y, p.outerRadius);
-          grad.addColorStop(0, this._shade(base, 0.18));
-          grad.addColorStop(0.5, base);
-          grad.addColorStop(1, this._shade(base, -0.14));
-          ctx.save();
-          this._fillArc(arc, ctx, grad);
-          ctx.restore();
-        }
-      });
-
-      // Badges only where there is room for them: a big ring, a wide arc.
-      if (!Array.isArray(o.badges) || ring < 70) return;
-      meta.data.forEach((arc, i) => {
-        const badge = o.badges[i];
-        if (!badge || !badge.icon || track.has(i)) return;
-        const base = colors[i];
-        if (!this._rgb(base)) return;
-        const p = arc.getProps(props, false);
-        const mid = (p.innerRadius + p.outerRadius) / 2;
-        if ((p.endAngle - p.startAngle) * mid < 22) return;
-        const a = (p.startAngle + p.endAngle) / 2;
-        const bx = p.x + Math.cos(a) * mid;
-        const by = p.y + Math.sin(a) * mid;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(bx, by, 10, 0, Math.PI * 2);
-        ctx.fillStyle = base;
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = surface;
-        ctx.stroke();
-        const img = this._iconImage(badge.icon, chart);
-        if (img) ctx.drawImage(img, bx - 8, by - 8, 16, 16);
-        ctx.restore();
-      });
-    },
-
-    // White line icon as markup: lucide's own renderer first, the file://-
-    // safe EMERGENCY_ICONS snapshot (main.js) as the fallback.
-    _iconSvg(name) {
-      let svg = null;
-      const L = window.lucide;
-      const pascal = String(name).split('-').map(p => (p ? p[0].toUpperCase() + p.slice(1) : '')).join('');
-      try {
-        const node = L && L.icons && L.icons[pascal];
-        if (node && typeof L.createElement === 'function') {
-          const el = L.createElement(node);
-          if (el && typeof el.setAttribute === 'function') {
-            el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-            el.setAttribute('width', '24');
-            el.setAttribute('height', '24');
-            el.setAttribute('stroke', '#ffffff');
-            svg = el.outerHTML;
-          }
-        }
-      } catch (e) { svg = null; }
-      if (!svg && typeof window.StackdIconSvg === 'function') {
-        svg = window.StackdIconSvg(name) || window.StackdIconSvg('help-circle');
-      }
-      return svg ? svg.replace(/currentColor/g, '#ffffff') : null;
-    },
-
-    // Cached per icon name. The first draw has no badge; the chart redraws
-    // itself once the image has loaded.
-    _iconImage(name, chart) {
-      const key = String(name);
-      let entry = this._iconCache[key];
-      if (!entry) {
-        const svg = this._iconSvg(key);
-        if (!svg || typeof window.Image !== 'function') {
-          this._iconCache[key] = { img: null, ready: false, failed: true, waiters: null };
-          return null;
-        }
-        const img = new window.Image();
-        entry = { img, ready: false, failed: false, waiters: new Set() };
-        this._iconCache[key] = entry;
-        img.onload = () => {
-          entry.ready = true;
-          const waiting = [...entry.waiters];
-          entry.waiters.clear();
-          waiting.forEach(c => { if (c && c.ctx) { try { c.draw(); } catch (e) { /* destroyed */ } } });
-        };
-        img.onerror = () => { entry.failed = true; entry.waiters.clear(); };
-        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-      }
-      if (entry.ready) return entry.img;
-      if (!entry.failed && entry.waiters) entry.waiters.add(chart);
-      return null;
     }
   },
 
@@ -3035,12 +2976,13 @@ window.Components = {
                 // reveals its per-tag breakdown (filled lazily in
                 // attachEvents). 'Others' aggregates categories 6+, so it has
                 // no single tag breakdown and stays inert, as before.
+                // 1.2.2 (HG-5): the icon carries the arc colour (no colour
+                // bar), like the account tiles on Home.
                 const row = `
                   <div class="donut-legend-item touch-target" data-cat-id="${esc(item.id)}"
                        ${item.isOthers ? '' : 'role="button" tabindex="0" aria-expanded="false"'}
                        style="cursor: ${item.isOthers ? 'default' : 'pointer'}; padding: 8px 4px; border-radius: var(--radius-md); transition: background 0.2s; align-items: center;">
-                    <div class="donut-legend-color" style="background: ${item._color}; opacity: ${item.isOthers ? '0.6' : '1'}; height: 32px;"></div>
-                    <div class="list-item-icon" style="width: 32px; height: 32px; min-width: 32px;"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
+                    <div class="list-item-icon ring-legend-icon" style="width: 32px; height: 32px; min-width: 32px; color: ${esc(item._color)};"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
                     <div class="donut-legend-info" style="margin-left: 4px;">
                       <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(item.name)}</span>
                       <span class="donut-legend-pct">${esc(window.Store.formatPercent(item.percentage, { digits: 1 }))}</span>
@@ -3216,9 +3158,9 @@ window.Components = {
       const tooltipBody = isDark ? '#f8fafc' : '#334155';
       const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
 
-      // 1.2.0 (UX-7): the shared ring look with an icon badge per arc; the
-      // sweep plays on the Analytics entry render only (v0.93's
-      // animation: false stays the rule for every other mount).
+      // 1.2.0 (UX-7): the shared ring look; the sweep plays on the Analytics
+      // entry render only (v0.93's animation: false stays the rule for every
+      // other mount). 1.2.2 (HG-5): no icon badges — the legend carries them.
       this._chartInstance = new window.Chart(canvas, window.Components.RingChart.config({
         type: 'doughnut',
         data: {
@@ -3260,8 +3202,7 @@ window.Components = {
         }
       }, {
         animate,
-        delay: 250, // past the view-transition snapshot
-        badges: data.map(d => ({ icon: d.icon || 'help-circle' }))
+        delay: 250 // past the view-transition snapshot
       }));
     }
   },
@@ -4417,7 +4358,7 @@ window.Components = {
         return `
           <h3 class="widget-detail-title">${esc(def.title)}</h3>
           <p class="widget-detail-desc">${esc(def.description)}</p>
-          <div class="awm-size-rail" id="awm-preview" data-horizontal-scroll>
+          <div class="awm-size-rail" id="awm-preview" data-horizontal-scroll data-first="${esc(sizes[0])}" data-last="${esc(sizes[sizes.length - 1])}">
             ${sizes.map(s => `
               <div class="awm-size-slide ${s === selectedSize ? 'is-active' : ''}" data-size="${esc(s)}">${W.renderPreview(selectedType, s, draft, state)}</div>
             `).join('')}
@@ -4452,6 +4393,51 @@ window.Components = {
 
       const reducedMotion = () => {
         try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+      };
+
+      // 1.2.2 (HG-2): the rail's geometry. Slides have their own widths and
+      // snap by their centre, so a slide's resting scroll position is its
+      // centre on the rail's centre (never idx × width).
+      const railSlides = (rail) => Array.from(rail.querySelectorAll('.awm-size-slide'));
+      const slideLeft = (rail, slide) => Math.max(0, slide.offsetLeft - (rail.clientWidth - slide.offsetWidth) / 2);
+      const nearestSlide = (rail) => {
+        let best = 0;
+        let bestD = Infinity;
+        railSlides(rail).forEach((s, i) => {
+          const d = Math.abs(slideLeft(rail, s) - rail.scrollLeft);
+          if (d < bestD) { bestD = d; best = i; }
+        });
+        return best;
+      };
+      // The card in focus is whole; the other one shrinks (toward the focused
+      // side, so its peeking edge stays put) and fades, in step with the
+      // finger. Reduce Motion keeps the fade and drops the scale.
+      const paintRail = (rail) => {
+        const slides = railSlides(rail);
+        if (slides.length < 2) return;
+        const still = reducedMotion();
+        const mid = rail.scrollLeft + rail.clientWidth / 2;
+        const travel = Math.abs(slideLeft(rail, slides[1]) - slideLeft(rail, slides[0])) || 1;
+        slides.forEach(s => {
+          const inner = s.firstElementChild;
+          if (!inner) return;
+          const c = s.offsetLeft + s.offsetWidth / 2;
+          const t = Math.min(1, Math.abs(c - mid) / travel);
+          inner.style.transformOrigin = c > mid ? 'left center' : 'right center';
+          inner.style.transform = still || t === 0 ? '' : `scale(${(1 - 0.08 * t).toFixed(4)})`;
+          inner.style.opacity = t === 0 ? '' : (1 - 0.55 * t).toFixed(3);
+        });
+      };
+      const showSlide = (rail, idx, smooth) => {
+        const slide = railSlides(rail)[idx];
+        if (!slide) return;
+        const left = slideLeft(rail, slide);
+        if (smooth && typeof rail.scrollTo === 'function') {
+          rail.scrollTo({ left, behavior: reducedMotion() ? 'auto' : 'smooth' });
+        } else {
+          rail.scrollLeft = left;
+          paintRail(rail);
+        }
       };
 
       const renderAll = () => {
@@ -4496,7 +4482,7 @@ window.Components = {
         if (isDetail) {
           const rail = backdrop.querySelector('.awm-size-rail');
           const idx = Math.max(0, sizesOf().indexOf(selectedSize));
-          if (rail && idx > 0) rail.scrollLeft = idx * rail.clientWidth;
+          if (rail) showSlide(rail, idx, false); // 1.2.2 (HG-2): also paints the peek
           const state = window.Store.getState();
           sizesOf().forEach(sz => W.attachPreview(backdrop, selectedType, sz, draft, state));
         }
@@ -4545,32 +4531,33 @@ window.Components = {
         // scroll (a swipe, or the dot's) settles the selected size. Handlers
         // die with each renderAll() rebuild, so no cleanup is needed.
         const rail = backdrop.querySelector('.awm-size-rail');
+        const goToSize = (size) => {
+          const sizes = sizesOf();
+          const idx = sizes.indexOf(size);
+          if (idx < 0) return;
+          selectedSize = sizes[idx];
+          syncSizeUi(selectedSize);
+          if (rail) showSlide(rail, idx, true);
+        };
         backdrop.querySelectorAll('.widget-size-dot').forEach(dot => {
-          dot.onclick = () => {
-            const sizes = sizesOf();
-            const idx = sizes.indexOf(dot.dataset.size);
-            if (idx < 0) return;
-            selectedSize = sizes[idx];
-            syncSizeUi(selectedSize);
-            if (!rail) return;
-            const left = idx * rail.clientWidth;
-            if (typeof rail.scrollTo === 'function') {
-              rail.scrollTo({ left, behavior: reducedMotion() ? 'auto' : 'smooth' });
-            } else {
-              rail.scrollLeft = left;
-            }
+          dot.onclick = () => goToSize(dot.dataset.size);
+        });
+        // 1.2.2 (HG-2): a tap on the peeking card brings it in
+        backdrop.querySelectorAll('.awm-size-slide').forEach(slide => {
+          slide.onclick = () => {
+            if (slide.dataset.size !== selectedSize) goToSize(slide.dataset.size);
           };
         });
 
         if (rail && selectedType && sizesOf().length > 1) {
           let settle = null;
           rail.addEventListener('scroll', () => {
+            paintRail(rail); // 1.2.2 (HG-2): the peek follows the finger
             clearTimeout(settle);
             settle = setTimeout(() => {
               if (!rail.isConnected) return;
               const sizes = sizesOf();
-              const w = rail.clientWidth || 1;
-              const idx = Math.max(0, Math.min(sizes.length - 1, Math.round(rail.scrollLeft / w)));
+              const idx = Math.max(0, Math.min(sizes.length - 1, nearestSlide(rail)));
               selectedSize = sizes[idx];
               syncSizeUi(selectedSize);
             }, 80);

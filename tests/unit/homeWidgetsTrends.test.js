@@ -230,8 +230,9 @@ describe('savings widget', () => {
     const { instance } = renderOne('savings', 'large', {});
     const chart = mount('savings', instance);
     const colors = chart.config.data.datasets[0].backgroundColor;
-    expect(colors[colors.length - 1]).toContain('239, 68, 68');   // this month: lost
-    expect(colors[colors.length - 2]).toContain('16, 185, 129');  // last month: saved
+    // 1.2.2 (HG-6): the shared bar look (theme trend pair, solid)
+    expect(colors[colors.length - 1]).toBe('rgba(239,68,68,0.9)');   // this month: lost
+    expect(colors[colors.length - 2]).toBe('rgba(16,185,129,0.9)');  // last month: saved
   });
 
   it('agrees with incomeExpense everywhere — both whole-month/EOM (v0.94)', () => {

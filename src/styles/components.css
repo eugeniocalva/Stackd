@@ -1515,14 +1515,6 @@ a:focus-visible,
   padding: var(--space-1) 0;
 }
 
-.donut-legend-color {
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-  flex-shrink: 0;
-  opacity: 0.8;
-}
-
 .donut-legend-info {
   flex: 1;
   display: flex;
@@ -2196,84 +2188,8 @@ a:focus-visible,
 
 
 /* ── Home dashboard widgets (v0.72, docs/home-widgets-plan.md §6.1) ──────── */
-/* ── Smart Insights section (v0.84) ──────────────────────────────────────
-   Up to three compact rule-based cards between the Wallets rail and the
-   widget area. Deliberately NOT the fixed-height widget card family — these
-   are single-line-ish rows that grow with their text. */
-.insights-section {
-  margin-top: var(--space-8);
-}
-
-.insights-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-
-.insight-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  cursor: pointer;
-  transition: transform var(--dur-quick) var(--ease-spring);
-}
-
-.insight-card:active {
-  transform: scale(0.99);
-}
-
-.insight-icon {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--bg-surface-sunken);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-
-.insight-icon svg,
-.insight-icon [data-lucide] {
-  width: 16px;
-  height: 16px;
-}
-
-.insight-value {
-  flex-shrink: 0;
-  font-family: var(--font-family-display);
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--text-primary); /* neutral tone; the pairs below override */
-}
-
-/* Tone colors use the AA -text tokens: the flat .text-income class resolves
-   to --color-income-val (#059669), which is only 3.8:1 on light cards —
-   under the 4.5:1 minimum at this 15px size. Scoped here so the shared
-   classes stay untouched elsewhere. */
-.insight-value.text-income {
-  color: var(--color-income-text) !important;
-}
-
-.insight-value.text-expense {
-  color: var(--color-expense-text) !important;
-}
-
-.insight-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.75rem; /* 12px floor, matching the v0.83 widget pass */
-  line-height: 1.35;
-  color: var(--text-secondary);
-}
-
-.insight-text strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
+/* Smart Insights: the Home section (v0.84) became the Insights page in
+   1.2.2 (HG-7); its styles are in the HG-7 block at the end of this file. */
 
 .widgets-section {
   margin-top: var(--space-8);
@@ -2802,11 +2718,20 @@ a:focus-visible,
   min-width: 0;
 }
 
-.widget-legend-dot {
+/* 1.2.2 (HG-5): the category icon in its arc colour (was a colour dot) */
+.widget-legend-icon {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.widget-legend-icon i,
+.widget-legend-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .widget-legend-name {
@@ -2866,10 +2791,10 @@ a:focus-visible,
   margin-bottom: var(--space-6);
 }
 
+/* 1.2.2 (HG-2): a plain wrapper — the sunken panel behind the preview is gone
+   (it showed as a moving shadow between the size slides). */
 .widget-preview-stage {
-  padding: var(--space-5) var(--space-2);
-  border-radius: var(--radius-xl);
-  background: var(--bg-surface-sunken);
+  padding: 0;
 }
 
 /* The preview reuses the dashboard grid so a small widget occupies exactly one
@@ -3389,8 +3314,25 @@ a:focus-visible,
 /* UX-6: the add-widget size rail. A native scroll-snap pager (the
    [data-horizontal-scroll] exception grants overflow-x and pan-x), one
    slide per size, both pre-rendered. */
+/* 1.2.2 (HG-2): no sunken stage any more — the cards sit on the sheet. The
+   rail is full-bleed (out to the screen edges, so nothing is clipped at the
+   sheet's padding), every slide is exactly its card's width (a small card at
+   its true half-row width, the wide card 44px in from each edge so the other
+   size peeks in), and the ::before/::after spacers let the first and last
+   slide centre. One fixed height: both cards sit on the same middle line, so
+   nothing jumps during a swipe. The scale/fade that follows the finger is
+   painted from the scroll position (paintRail in Components). */
 .awm-size-rail {
+  --awm-gap: var(--space-3);
+  --awm-w-small: calc((100% - 2 * var(--space-4) - var(--space-3)) / 2);
+  --awm-w-large: calc(100% - 88px);
+  position: relative; /* the slides' offsetParent */
   display: flex;
+  align-items: center;
+  gap: var(--awm-gap);
+  margin-inline: calc(-1 * var(--space-4));
+  padding-block: 4px;
+  min-height: calc(var(--widget-h-large) + 8px);
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
 }
@@ -3399,13 +3341,46 @@ a:focus-visible,
   display: none;
 }
 
+.awm-size-rail::before,
+.awm-size-rail::after {
+  content: '';
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+.awm-size-rail[data-first="small"]::before { width: calc((100% - var(--awm-w-small)) / 2 - var(--awm-gap)); }
+.awm-size-rail[data-first="large"]::before { width: calc((100% - var(--awm-w-large)) / 2 - var(--awm-gap)); }
+.awm-size-rail[data-last="small"]::after { width: calc((100% - var(--awm-w-small)) / 2 - var(--awm-gap)); }
+.awm-size-rail[data-last="large"]::after { width: calc((100% - var(--awm-w-large)) / 2 - var(--awm-gap)); }
+
 .awm-size-slide {
-  flex: 0 0 100%;
-  width: 100%;
+  flex: 0 0 auto;
+  width: var(--awm-w-small);
   min-width: 0;
   box-sizing: border-box;
   scroll-snap-align: center;
   scroll-snap-stop: always;
+}
+
+.awm-size-slide[data-size="large"] {
+  width: var(--awm-w-large);
+}
+
+/* the peeking slide is a tap target that brings it in */
+.awm-size-slide:not(.is-active) {
+  cursor: pointer;
+}
+
+/* the scale/fade is driven by the scroll, frame by frame — never eased */
+.awm-size-slide > .widget-preview-stage {
+  transition: none;
+  will-change: transform, opacity;
+}
+
+/* inside the rail the slide already has the card's width */
+.awm-size-rail .widgets-grid--preview,
+.awm-size-rail .widgets-grid--preview.is-small {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* A small card is centred on its slide, at its true half-row width. */
@@ -3823,4 +3798,396 @@ a:focus-visible,
 }
 @media (prefers-reduced-motion: reduce) {
   .amount-caret { animation: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   1.2.2 (build 10202 round)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1.2.2 (HG-1) Home graphs: drag-to-read ──
+   The zone sits over the plot area only (the view's _scrubPlugin sets
+   left/top/width/height after each chart layout; the insets below are the
+   pre-layout fallback that keeps the axis labels swipeable). pan-y: a drag
+   that starts on the plot never pages the pager, but still scrolls Home. */
+.home-scrub-zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 28px;
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* the total changes while reading — fixed-width digits keep it still */
+#dash-total {
+  font-variant-numeric: tabular-nums;
+}
+
+/* while reading, the header shows the read point: the EOM column (a
+   projection of today) steps aside without moving the layout */
+.dash-head.is-scrubbing .dash-head-divider,
+.dash-head.is-scrubbing .dash-var-eom {
+  visibility: hidden;
+}
+
+.home-pane-head .widget-card-caption.is-scrubbing {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 1.2.2 (HG-3) One title line on every page ──
+   A page title's top edge sits var(--space-8) below the view area — where
+   Home's "Total balance", New Log and Settings already start (container
+   --space-4 + header --space-4). The sticky bars (Budget, Analytics,
+   History) open with only --space-2 of padding, so their header row takes
+   the rest. History's tall right column (Select, period, sort, filters)
+   stays at the top of its bar and only the title steps down, so the title
+   no longer drifts with the number of indicator lines and the bar does not
+   grow. */
+.history-header-sticky > .page-header {
+  margin-top: calc(var(--space-8) - var(--space-2));
+}
+
+#history-sticky-header > .page-header {
+  margin-top: 0;
+  align-items: flex-start;
+}
+
+#history-sticky-header > .page-header > .page-header-title {
+  margin-top: calc(var(--space-8) - var(--space-2));
+}
+
+/* ── 1.2.2 (HG-4) Hidden balances on Home ──
+   The pill sits centred on top of Home while amounts are masked and opens
+   the Show / Done sheet. It inverts the surface (text colour as fill) so it
+   reads as a status, not a card; the eye-off sits in a small disc. */
+.privacy-pill-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+
+.privacy-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 4px 16px 4px 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--text-primary);
+  color: var(--bg-base);
+  font-family: var(--font-family-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease;
+}
+
+.privacy-pill:active {
+  transform: scale(0.97);
+}
+
+.privacy-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+.privacy-pill-icon svg,
+.privacy-pill-icon i {
+  width: 16px;
+  height: 16px;
+}
+
+.privacy-sheet-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  margin-bottom: var(--space-4);
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+}
+
+.privacy-sheet-icon svg,
+.privacy-sheet-icon i {
+  width: 22px;
+  height: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .privacy-pill { transition: none; }
+}
+
+/* ── 1.2.2 (HG-7): the Insights page ────────────────────────────────────────
+   docs/smart-insights-plan.md §3. A highlight card (metric look), then
+   grouped rows per section, no icons. Text never below 14 px (detail),
+   16 px headlines, figures in the display face. Every insight is a real link;
+   focus clears the fixed tab bar (2.4.11). */
+.insights-sub {
+  margin: 0 0 var(--space-5);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.insights-page a[data-insight],
+.insights-page .insight-starter-btn {
+  scroll-margin-top: var(--space-6);
+  scroll-margin-bottom: calc(112px + var(--safe-bottom, 0px));
+}
+
+.insight-highlight,
+.insights-group {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+}
+
+.insight-highlight {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.insight-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.insight-figure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* the AA -text tokens (≥ 4.5:1 on the card in both themes); the headline
+   always says the verdict in words too (1.4.1) */
+.insight-figure--good { color: var(--color-income-text); }
+.insight-figure--bad { color: var(--color-expense-text); }
+
+.insight-figure--lg {
+  margin-top: 6px;
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.insight-arrow {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.insight-head {
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.insight-highlight .insight-head { margin-top: 2px; }
+
+.insight-body {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.insight-highlight .insight-body { margin-top: var(--space-2); }
+
+.insight-chev {
+  flex-shrink: 0;
+  margin-left: auto; /* stays right when the row wraps */
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+}
+
+/* split bar + legend (aria-hidden: the detail line carries the numbers) */
+.insight-viz {
+  display: block;
+  margin-top: var(--space-3);
+}
+
+.insight-split {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+}
+
+.insight-split > span {
+  min-width: 4px;
+  border-radius: 3px;
+}
+
+.insight-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.insight-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+
+.insights-sec-title {
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.insights-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.insights-group > li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.insight-row {
+  display: flex;
+  flex-wrap: wrap; /* large text: figure, then the sentence full width, then the chevron (1.4.4/1.4.10) */
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: 64px;
+  padding: 14px var(--space-4);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.insight-row .insight-figure {
+  flex: 0 0 5.75rem;
+  font-size: 1.25rem;
+}
+
+.insight-row .insight-figure--long { font-size: 1.0625rem; }
+
+.insight-text {
+  flex: 1 1 9rem; /* fits beside the figure at normal sizes; wraps when text is large */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Unlocks with more data: static rows, the lock in the figure column */
+.insight-lock {
+  flex: 0 0 5.75rem;
+  color: var(--text-secondary);
+}
+
+.insight-lock svg,
+.insight-lock [data-lucide] {
+  width: 20px;
+  height: 20px;
+}
+
+.insight-row--locked .insight-head { color: var(--text-secondary); }
+
+.insight-progress {
+  position: relative;
+  display: block;
+  max-width: 180px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: var(--bg-surface-dim);
+  overflow: hidden;
+}
+
+.insight-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--text-secondary);
+}
+
+.insight-progress--wide {
+  max-width: none;
+  margin-top: var(--space-3);
+}
+
+.insight-starter-btn {
+  align-self: flex-start;
+  width: auto;
+  margin-top: var(--space-4);
+  padding: 10px var(--space-5);
+  min-height: 44px;
+}
+
+.insights-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-6) var(--space-1) 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.insights-note svg,
+.insights-note [data-lucide] {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+.insight-highlight:focus-visible,
+.insight-row:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.insight-row:focus-visible { outline-offset: -2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .insight-highlight,
+  .insight-row {
+    transition: background-color var(--dur-quick, 0.15s) ease;
+  }
+}
+
+.insight-highlight:active,
+.insight-row:active {
+  background-color: var(--bg-surface-sunken);
 }

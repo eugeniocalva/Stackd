@@ -249,14 +249,15 @@ test.describe('Bank Connect (B2) E2E flow', () => {
       });
     });
 
-    // Background refresh (what refreshOnOpen does after boot) → the dashboard insight.
+    // Background refresh (what refreshOnOpen does after boot) → the insight,
+    // on the Insights page since 1.2.2 (HG-7), under "Needs attention".
     const r = await page.evaluate(() => window.BankConnect.refreshDue(window.Store.getState()));
     expect(r).toEqual({ fetched: 1, newTotal: 2, failed: 0 });
-    await page.evaluate(() => { location.hash = '#dashboard'; });
-    await page.waitForSelector('.insight-card[data-insight="bankNew"]');
-    await expect(page.locator('.insight-card[data-insight="bankNew"]')).toContainText('new transactions from');
-    await expect(page.locator('.insight-card[data-insight="bankNew"] .insight-value')).toHaveText('2');
-    await page.click('.insight-card[data-insight="bankNew"]');
+    await page.evaluate(() => { location.hash = '#insights'; });
+    const bankNew = page.locator('#insights-sec-attention ~ ul a[data-insight="bankNew"]');
+    await expect(bankNew).toContainText('New transactions from Test Bank to review');
+    await expect(bankNew.locator('.insight-figure')).toHaveText('2');
+    await bankNew.click();
     await page.waitForSelector('#bank-connect');
     await expect(page.locator('.bank-new-badge')).toHaveText('2 new');
     await expect(page.locator('.bank-acc-review')).toHaveText('Review 2 new');

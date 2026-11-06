@@ -65,8 +65,9 @@ describe('CategoryDonutChart Distinct Colors', () => {
 
     const html = global.window.Components.CategoryDonutChart.render(rawData, 'expense');
     
-    // Check that style background contains the category colors
-    expect(html).toContain('background: #f59e0b'); // Dining Out amber
-    expect(html).toContain('background: #10b981'); // Groceries emerald
+    // 1.2.2 (HG-5): the colour is on each row's icon (no colour bar)
+    expect(html).toContain('color: #f59e0b;'); // Dining Out amber
+    expect(html).toContain('color: #10b981;'); // Groceries emerald
+    expect(html).not.toContain('donut-legend-color');
   });
 });

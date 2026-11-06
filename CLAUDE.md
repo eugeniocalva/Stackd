@@ -372,7 +372,7 @@ decisions, "As built"). Comment tag `// 1.2.0 (UX-N)`.
   are tracked on the view and destroyed before every re-create and in `destroy()`.
   `#chart-card-container` stays the expanded-sheet trigger.
 - **Rings (UX-7).** Every doughnut goes through `Components.RingChart`
-  (gradient arcs, glow, icon badges when radius ≥ 70 px, `--ring-cutout` 62 %).
+  (flat solid arcs since 1.2.2 HG-5 — no gradient, glow or badges; `--ring-cutout` 66 %).
   The sweep plays only on entry: `attachEvents(…, isEntry)` → `Widgets.attachSection
   (root, state, {isEntry})`; every other render uses `animation: false`.
 - **Widget drag (UX-5).** Long press → edit mode with wiggle + x badges (x asks
@@ -415,6 +415,77 @@ decisions, "As built"). Comment tag `// 1.2.0 (UX-N)`.
   Daily backup is opportunistic (open/resume ≥ 24 h, native only, guarded);
   prefs in `stackd_v1_backupPrefs`, history in `stackd_v1_backupLog` (20 rows,
   10 newest automatic files kept). After `npm install`, `npx cap sync`.
+
+## Build 10202 round (1.2.2, in progress)
+
+Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
+`components.css`.
+
+- **Drag-to-read on the Home graphs (HG-1).** Each Home chart has a
+  `.home-scrub-zone` laid over its plot area only (`DashboardView._scrubPlugin`
+  places it after every Chart.js layout), so swipes on the chips, axis labels,
+  pane head and gutters still page `#home-pager`. `_wireScrub` owns the gesture:
+  sideways drag or a 280 ms hold reads values (touchmove cancelled + `touch-action:
+  pan-y`), a vertical drag scrolls, a plain tap keeps its click (curve → expanded
+  sheet, bars → Analytics), a mouse reads on hover. The curve reads into the header
+  (`#dash-total`, `.dash-var-today`, `dash.scrubSince`), the bars into the pane-head
+  caption — DOM-only, never a dispatch. Both Home charts run with `events: []` and
+  tooltips off. `Components.Haptics` (`@capacitor/haptics` via `Capacitor.Plugins`,
+  no-op on the web) ticks per point. Real-touch e2e: `home_graph_scrub.spec.js`
+  (CDP touch; wait for `#splash-screen` to detach first).
+- **Add-widget size rail (HG-2).** No sunken `.widget-preview-stage` panel; the
+  rail is full-bleed, each slide is its card's width (small = the true half-row
+  width, wide = `100% - 88px` so the other size peeks), `::before/::after`
+  spacers (from `data-first`/`data-last`) centre the end slides, and a slide's
+  resting scroll position is its centre on the rail's centre — never
+  `idx × clientWidth` (`slideLeft`/`nearestSlide` in the modal; the e2e helpers
+  use the same formula). `paintRail` scales/fades the off-centre card from the
+  scroll position; a tap on the peeking card brings it in.
+- **One title line (HG-3).** Every top-level page title (and Home's "Total
+  balance") starts `--space-8` (32 px) below the view area. Sticky-bar pages
+  (Budget, Analytics) get it from `.history-header-sticky > .page-header`;
+  History steps only its title down so its tall right column doesn't grow the
+  bar. The Loans hub is a tab-level page: no back link. A new top-level page
+  must land on the same line — `page_titles.spec.js` checks them all.
+- **Hidden balances (HG-4).** `state.privacy = {hide, shake}` under
+  `stackd_v1_privacy` (`SET_PRIVACY`, `getPrivacy`; per-device, outside the
+  backup, reset by `RESET_APP`). `Store.isMoneyMasked()` = hide on AND
+  `activeView === 'dashboard'`; then `formatCurrency` returns sign + symbol +
+  `••••` (no length hint), so every Home surface, chart callback and sheet
+  opened from Home is masked and other screens are not. Percentages stay.
+  Files and prices pass `formatCurrency(v, ccy, { plain: true })` — a new
+  export or price path must too. Home shows `#privacy-pill` →
+  `Components.HiddenBalancesSheet` (Show / Done). `Components.PrivacyShake`
+  (devicemotion, 3 jolts > 13 m/s² in 900 ms, 1.5 s cooldown) runs only while
+  Home is mounted (`DashboardView._wirePrivacy`, stopped in `destroy()`); the
+  Settings switch asks `DeviceMotionEvent.requestPermission` (the Capacitor iOS
+  bridge grants it silently). iOS Safari gives motion only on https.
+- **Rings and legends (HG-5).** `RingChart.config` only sets cutout 66 %,
+  spacing 2, radius 6, no border, and the entry sweep — no plugin, nothing
+  painted over Chart.js. Legends carry the colour on the category icon (like
+  the Home account tiles): Analytics rows (`.list-item-icon` `color`), the
+  large categories widget (`.widget-legend-icon`) and Budget rows, whose icon
+  and ring arc read one map per pass (`_passTotals.ringColors`). No colour bars
+  or dots.
+- **One bar look (HG-6).** Every bar chart uses Home's monthly-net style
+  through `NetFlowChart.barStyle(values, {emphasizeLast})` / `barFill(v, pal)`:
+  solid fills in the theme trend pair at 0.9, radius 6, no outline (Home keeps
+  its earlier bars at 0.55; Analytics draws them all equal). Axes that keep
+  labels use `NetFlowChart.quietGrid(pal)` (hairlines, zero line = baseline).
+  Analytics, Income vs Expenses and Savings follow it; a new bar chart must too.
+- **Smart Insights page (HG-7, P1).** `docs/smart-insights-plan.md` is the
+  reference (§11 "As built"). Insights left Home: `#insights` →
+  `Views.InsightsView` → `Insights.renderPage/attachPage`, reached from a 5th
+  tab (`lightbulb`). Tab and page are "Smart Insights"; other languages use
+  their own words, never one close to Analytics (§3.4). A rule is `{id, family, minTier, nameKey,
+  compute(facts, state)}`; `family` is the page section; items carry
+  plain-text `head`/`body` built by `Insights._t` (params escaped, no markup in
+  the dictionary), a `figure` from `formatPercent` /
+  `formatCurrency(v, ccy, {whole: true})`, an `href` (+ optional `filters`
+  applied on tap). Data tiers come from rows counted by the aggregate rule;
+  attention items rank first, insights by score + a daily offset. Every
+  insight is a real `<a>`; rows wrap at large text — a new row type must pass
+  the 200 % reflow and focus-clearance e2e in `insights.spec.js`.
 
 ## Working conventions in this repo
 
