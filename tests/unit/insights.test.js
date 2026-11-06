@@ -276,7 +276,7 @@ describe('the Insights page', () => {
     expect(starter.textContent).toContain('2 of 5 entries so far.');
     expect(starter.querySelector('a.insight-starter-btn').getAttribute('href')).toBe('#add');
     const locked = [...root.querySelectorAll('[data-locked]')];
-    expect(locked.map(l => l.dataset.locked)).toEqual(['monthOutlook', 'topSpending', 'incomeSource', 'accountMix']);
+    expect(locked.map(l => l.dataset.locked)).toEqual(['monthOutlook', 'topSpending', 'incomeSource', 'accountMix', 'spendPace', 'budgetAtRisk', 'budgetsOnTrack', 'upcomingWeek', 'savingsRate']);
     expect(locked[0].textContent).toContain("What you're set to put aside by the end of the month.");
     expect(root.querySelectorAll('[data-locked] .insight-progress')).toHaveLength(0);
     expect(root.querySelector('a[data-insight]')).toBeNull();
@@ -330,7 +330,8 @@ describe('the Insights page', () => {
 
   it('nothing to say this month: a quiet card instead of an empty page', () => {
     const id = addAccount('Main', 100);
-    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-05-0${i + 1}` });
+    // April, not May: a quiet May would itself be news (spending pace)
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-04-0${i + 1}` });
     const root = mountPage();
     expect(Insights().analyze(state()).tier).toBe(2);
     expect(root.querySelector('.insight-quiet').textContent).toContain('Nothing stands out today');
@@ -480,7 +481,8 @@ describe('the Smart Insights widget', () => {
       expect(html).toContain('0 of 5 entries so far.');
     });
     const id = addAccount('Main', 100);
-    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-05-0${i + 1}` });
+    // April, not May: a quiet May would itself be news (spending pace)
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-04-0${i + 1}` });
     expect(W().registry.insights.render(inst('large'), state())).toContain('Nothing stands out today');
   });
 
@@ -512,5 +514,172 @@ describe('the Smart Insights widget', () => {
     const html = W().registry.insights.render(inst('large'), state());
     expect(html).not.toContain('<img src=x');
     expect(html).not.toContain('<b>B</b>');
+  });
+});
+
+// 1.2.2 (HG-7 P3): batch 1 rules. The clock is 15 June 2026 (day 15 of 30).
+describe('batch 1 rules (P3)', () => {
+  beforeEach(() => boot());
+
+  const budget = (categoryId, amount) => Store().dispatch('SAVE_BUDGET', { categoryId, amount, startDate: '', endDate: null, isCumulative: false });
+  const may = (day) => `2026-05-${pad(day)}`;
+  const item = (id) => byId()[id];
+  // rows the aggregates must ignore: unpaid, a transfer, another currency, before the account opened
+  const noise = (main, categoryId, date) => {
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    const late = addAccount('Late', 0, { openingDate: '2026-06-10' });
+    addTx({ amount: 500, categoryId, accountId: main, date, isPaid: false });
+    addTx({ amount: 500, categoryId, accountId: eur, date });
+    addTx({ amount: 500, categoryId, accountId: late, date: '2026-05-01' });
+    Store().dispatch('ADD_TRANSFER', { amount: 500, expenseAccountId: main, incomeAccountId: eur, date });
+  };
+
+  it('budgetOver: the budget furthest over, the others counted; opens Goals on this month', () => {
+    const id = addAccount('Main', 5000);
+    budget('cat_groceries', 100);
+    budget('cat_dining', 50);
+    budget('cat_transport', 50);
+    addTx({ amount: 80, categoryId: 'cat_groceries', accountId: id, date: june(2) });
+    addTx({ amount: 40, categoryId: 'cat_groceries', accountId: id, date: june(3) });
+    addTx({ amount: 60, categoryId: 'cat_dining', accountId: id, date: june(4) });
+    noise(id, 'cat_transport', june(5)); // none of it is Transport spend
+    const c = item('budgetOver');
+    expect(c).toMatchObject({ kind: 'attention', figure: '$20', tone: 'bad', href: '#budget', group: 'budgets' });
+    expect(c.head).toBe('Groceries is over its budget');
+    expect(c.body).toBe('$120 spent of $100 this month. One more budget is over too.');
+    Store().dispatch('SET_MONTH_FILTER', '2026-01');
+    Insights().open(c);
+    expect(state().activeMonthFilter).toBe('2026-06');
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#budget');
+  });
+
+  it('budgetAtRisk: one-off spend runs on at its pace; a rent paid on the 1st is not "over by the 5th"', () => {
+    const id = addAccount('Main', 5000);
+    budget('cat_dining', 300);
+    budget('cat_rent', 1000);
+    for (let i = 0; i < 5; i++) addTx({ amount: 40, categoryId: 'cat_dining', accountId: id, date: june(2 + i) });
+    addTx({
+      amount: 1000, categoryId: 'cat_rent', accountId: id, date: june(1),
+      recurrence: { frequency: 'months', interval: 1, startDate: june(1), endDate: '2026-12-01' }
+    });
+    const c = item('budgetAtRisk');
+    expect(c).toMatchObject({ figure: '67%', href: '#budget', family: 'month', group: 'budgets' });
+    expect(c.head).toBe('Dining Out could go over its budget');
+    expect(c.body).toBe('67% used, 15 days to go. At this pace: about $400 by the end of the month, against a limit of $300.');
+    expect(c.viz).toEqual({ type: 'budget', used: 200 / 300, today: 0.5 });
+    expect(c.score).toBe(70 + 25); // 33 % over, capped at +25
+    const status = Insights()._budgetStatus(Insights()._facts(state()), state());
+    expect(status.find(b => b.id === 'cat_rent')).toMatchObject({ projected: 1000, risk: false, onTrack: true });
+  });
+
+  it('budgetsOnTrack: two or more budgets, from day 10, every one set to end within its limit', () => {
+    const id = addAccount('Main', 5000);
+    budget('cat_groceries', 400);
+    budget('cat_dining', 300);
+    for (let i = 0; i < 5; i++) addTx({ amount: 20, categoryId: i % 2 ? 'cat_dining' : 'cat_groceries', accountId: id, date: june(2 + i) });
+    const c = item('budgetsOnTrack');
+    expect(c).toMatchObject({ figure: '2 of 2', tone: 'good', href: '#budget' });
+    expect(c.head).toBe('All your budgets are on track');
+    addTx({ amount: 250, categoryId: 'cat_dining', accountId: id, date: june(8) }); // now at risk
+    expect(item('budgetsOnTrack')).toBeUndefined();
+    expect(item('budgetAtRisk')).toBeDefined();
+  });
+
+  it('overdueUnpaid: unpaid expenses dated today or earlier, any currency; History opens on their range', () => {
+    const id = addAccount('Main', 5000);
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    addTx({ amount: 30, accountId: id, date: june(1), isPaid: false });
+    addTx({ amount: 30, accountId: eur, date: june(15), isPaid: false });
+    addTx({ amount: 30, accountId: id, date: june(20), isPaid: false }); // not due yet
+    addTx({ amount: 30, accountId: id, date: june(2) });                 // paid
+    const c = item('overdueUnpaid');
+    expect(c).toMatchObject({ kind: 'attention', figure: '2', tone: 'bad', href: '#transactions', group: 'unpaid' });
+    expect(c.head).toBe('2 payments past their date are still unpaid');
+    expect(c.body).toBe('Mark them paid in History, or move them to a new date.');
+    expect(c.filters).toEqual({ page: 'history', filters: { period: { type: 'custom', value: '', start: june(1), end: june(15) }, types: ['expense'] }, replace: true });
+    Insights().open(c);
+    expect(state().historyFilters.period).toMatchObject({ type: 'custom', start: june(1), end: june(15) });
+  });
+
+  it('overdueUnpaid: one payment says it in the singular', () => {
+    const id = addAccount('Main', 5000);
+    addTx({ amount: 30, accountId: id, date: june(3), isPaid: false });
+    const c = item('overdueUnpaid');
+    expect(c.head).toBe('1 payment past its date is still unpaid');
+    expect(c.body).toBe('Mark it paid in History, or move it to a new date.');
+  });
+
+  it('upcomingWeek: scheduled expenses in the next 7 days, by the forecast rules; History opens on the week', () => {
+    const id = addAccount('Main', 5000);
+    for (let i = 0; i < 5; i++) addTx({ amount: 10, accountId: id, date: june(1 + i) });
+    addTx({ amount: 900, categoryId: 'cat_rent', accountId: id, date: june(16) });
+    addTx({ amount: 50, categoryId: 'cat_dining', accountId: id, date: june(22) });
+    addTx({ amount: 70, accountId: id, date: june(23) });                  // after the week
+    addTx({ amount: 70, accountId: id, date: june(18), isPaid: false });   // unpaid: not in the forecast
+    const eur = addAccount('Euro', 0, { currency: 'EUR' });
+    addTx({ amount: 70, accountId: eur, date: june(17) });                 // other currency
+    Store().dispatch('ADD_TRANSFER', { amount: 70, expenseAccountId: id, incomeAccountId: eur, date: june(17) });
+    const c = item('upcomingWeek');
+    expect(c).toMatchObject({ figure: '$950', href: '#transactions', group: 'upcoming' });
+    expect(c.head).toBe('2 payments due in the next 7 days');
+    expect(c.body).toMatch(/^The largest: Rent, \$900 on .*16/);
+    expect(c.filters.filters.period).toEqual({ type: 'custom', value: '', start: june(16), end: june(22) });
+    expect(c.score).toBe(55); // $950 is under a quarter of the balance
+  });
+
+  it('spendPace (tier 2): this month so far against last month by the same day, |Δ| ≥ 10 %', () => {
+    const id = addAccount('Main', 5000);
+    for (let i = 0; i < 5; i++) addTx({ amount: 100, accountId: id, date: may(2 + i) });
+    addTx({ amount: 400, accountId: id, date: may(20) }); // after day 15: not part of the comparison
+    for (let i = 0; i < 3; i++) addTx({ amount: 100, accountId: id, date: june(1 + i) });
+    noise(id, 'cat_groceries', june(4));
+    const c = item('spendPace');
+    expect(Insights().analyze(state()).tier).toBe(2);
+    expect(c).toMatchObject({ figure: '-40%', tone: 'good', dir: 'down', href: '#analytics', group: 'spending' });
+    expect(c.head).toBe("You've spent less than by this day last month");
+    expect(c.body).toBe('$300 so far this month, against $500 by this day last month.');
+    expect(c.viz.type).toBe('bars');
+    expect(c.viz.parts.map(p => p.value)).toEqual([300, 500]);
+    addTx({ amount: 160, accountId: id, date: june(5) }); // $460 vs $500: -8 %, no signal
+    expect(item('spendPace')).toBeUndefined();
+  });
+
+  it('savingsRate (tier 2): last month kept, or spent more than earned; opens Analytics on that month', () => {
+    const id = addAccount('Main', 5000);
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 2000, accountId: id, date: may(1) });
+    for (let i = 0; i < 5; i++) addTx({ amount: 300, accountId: id, date: may(2 + i) });
+    noise(id, 'cat_groceries', may(10));
+    let c = item('savingsRate');
+    expect(c).toMatchObject({ figure: '25%', tone: 'good', family: 'trends', group: 'cashflow' });
+    expect(c.head).toBe('In May, you kept 25% of your income');
+    expect(c.body).toBe('$2,000 in, $1,500 out.');
+    expect(c.filters).toEqual({ page: 'analytics', filters: { period: { type: 'month', value: '2026-05-01', start: '', end: '' } }, replace: true });
+    addTx({ amount: 1000, accountId: id, date: may(12) });
+    c = item('savingsRate');
+    expect(c).toMatchObject({ figure: '-25%', tone: 'bad', variant: 'over' });
+    expect(c.head).toBe('In May, you spent more than you earned');
+  });
+
+  it('the new rules unlock at their tiers and describe themselves while locked', () => {
+    const id = addAccount('Main', 5000);
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: june(1 + i) });
+    const res = Insights().analyze(state());
+    expect(res.tier).toBe(1);
+    expect(res.locked.map(l => l.id)).toEqual(['spendPace', 'savingsRate']);
+    expect(res.locked[0].need).toBe('After a full month of entries');
+  });
+
+  it('draws the pace bars and the budget bar with its today tick (aria-hidden)', () => {
+    const bars = Insights()._renderViz({ type: 'bars', parts: [{ label: 'This month', value: 300, color: 'red' }, { label: 'Last month', value: 500, color: 'grey' }] });
+    const root = document.getElementById('router-view');
+    root.innerHTML = bars;
+    expect(root.querySelector('.insight-bars').getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelectorAll('.insight-bars-row')).toHaveLength(2);
+    expect(root.querySelector('.insight-bars-track > span').style.width).toBe('60%');
+    root.innerHTML = Insights()._renderViz({ type: 'budget', used: 0.67, today: 0.5 });
+    expect(root.querySelector('.insight-budgetbar').getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelector('.insight-budgetbar-fill').style.width).toBe('67%');
+    expect(root.querySelector('.insight-budgetbar-tick').style.left).toBe('50%');
+    expect(root.querySelector('.insight-budgetbar-today').textContent).toBe('Today');
   });
 });

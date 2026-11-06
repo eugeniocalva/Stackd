@@ -1,7 +1,7 @@
 # Smart Insights 2.0 — plan (1.2.2, HG-7)
 
-Status: **P1 (page + tab) and P2 (widget + tab order) BUILT 2026-11-06 (§11);
-P3–P4 to do.** All decisions
+Status: **P1 (page + tab), P2 (widget + tab order) and P3 (rules, batch 1)
+BUILT 2026-11-06 (§11); P4 to do.** All decisions
 taken (§9): an Insights page and a 5th tab; the widget is opt-in; nothing on
 Home by default. Comment tag: `// 1.2.2 (HG-7)`.
 
@@ -526,3 +526,57 @@ pass at 200 %.
   - e2e: `insights.spec.js` (the widget from the gallery, its links,
     masking), `nav_order.spec.js` (new: keyboard reorder with focus and live
     region, 44 px targets, reset, a grip drag, reload).
+
+### P3 · Rules, batch 1 (2026-11-06)
+
+- **One wider facts pass** (`_facts`, still a single O(T) walk). It adds:
+  - month income and expense;
+  - this month's spend so far, and last month's spend up to today's day
+    number;
+  - per-category budget spend for this month, split into *fixed* (recurring
+    or dated after today) and *linear* (one-off rows up to today);
+  - the next 7 days' scheduled expenses;
+  - the overdue unpaid expenses.
+
+  Nothing dated before its account opened counts anywhere.
+- **Budget projection** (`_budgetStatus`, memoized on the facts):
+  - It reads Goals' own figures (`getBudgetForMonth`: the month's limit plus
+    rollover).
+  - It projects fixed + linear ÷ day × days in the month. So a rent paid on
+    the 1st is not "6× over by the 5th", and a recurring bill later in the
+    month is already counted.
+  - Each budget gets one of three states: *over* (spent > limit), *risk* (not
+    over, day ≥ 5, projection ≥ 105 % of the limit) or *onTrack* (projection
+    ≤ limit).
+- **The seven rules:**
+
+  | Rule | Section · group | Figure | Fires when / notes | Opens |
+  |---|---|---|---|---|
+  | `budgetOver` | attention · budgets | amount over | the budget furthest over; the others counted in the detail ("One more budget is over too.") | Goals, set to this month (`SET_MONTH_FILTER` through the new `item.actions`) |
+  | `overdueUnpaid` | attention · unpaid | count | unpaid expenses dated today or earlier, in any currency (a count, never a sum) | History: expenses from the oldest one to today (custom period) |
+  | `budgetAtRisk` | month · budgets | % used | the worst projection; score 70 + overrun (max +25); budget bar with a *today* tick in the highlight | Goals, this month |
+  | `budgetsOnTrack` | month · budgets | "n of n" | ≥ 2 budgets, day ≥ 10, every one on track | Goals, this month |
+  | `upcomingWeek` | month · upcoming | total | paid-flag expenses in the next 7 days, primary currency, no transfer legs (the forecast's rules); +10 when the total is over a quarter of the balance; the detail names the largest with a full date | History: expenses over the coming week |
+  | `spendPace` | month · spending | ±% | tier 2; day ≥ 3, last month had ≥ 5 expenses, \|Δ\| ≥ 10 %; score 60 + \|Δ\| (max 95); pace bars in the highlight | Analytics, this month |
+  | `savingsRate` | trends · cashflow | % | tier 2; last month had ≥ 5 counted rows and income; "In {month}, you kept {pct}…" or "…spent more than you earned" | Analytics, last month |
+
+- **Wording:**
+  - Month names never follow a preposition that elides (*d'octobre*,
+    *ad agosto*). The savings head starts "En / In / Em {month}", and the pace
+    detail says "last month" without naming it.
+  - The upcoming date is written in full: the short form ends in an
+    abbreviation dot (*nov.*), which doubled the sentence's own.
+- **Micro-charts** (`_renderViz`, all `aria-hidden`): `bars` (label, track,
+  amount) and `budget` (fill, *today* tick, and a "Today" label kept within
+  10–90 %).
+- **Locked list:** at tier 1 it now shows Spending pace and Savings rate,
+  with "After a full month of entries" and a progress bar. At tier 0 it
+  describes all nine insight types.
+- **Strings:** 41 keys × 5 languages (`insight.name.*`, heads and bodies,
+  plurals, `insight.viz.today`, `insight.desc.*`).
+- **Tests:**
+  - unit: `insights.test.js` adds 10 rule tests. Each one also feeds the
+    rows the aggregates must ignore (unpaid, a transfer, another currency,
+    before the account opened).
+  - e2e: `insights.spec.js` checks Needs attention (an over budget and an
+    unpaid payment), and that the budget opens Goals on this month.

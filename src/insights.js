@@ -47,33 +47,123 @@ window.Insights = {
   TIER_MONTHS: { 2: 1, 3: 3, 4: 12 },
 
   // ── Facts ─────────────────────────────────────────────────────────────────
+  // One O(T) walk feeds every rule (plan §5.3). Counted rows follow the
+  // aggregate rule; P3 adds, from the same walk:
+  //   - monthIncome / monthExpense per month (counted rows);
+  //   - mtdExpense, and prevSameDays = last month's spend up to today's day
+  //     number (spendPace), prevExpenseRows;
+  //   - budget[categoryId] = { fixed, linear }: this month's budget spend by
+  //     Goals' row rules (paid, primary, no transfer legs, future rows too),
+  //     split into what is already fixed (recurring or dated after today) and
+  //     what is spent at a running pace (one-off rows up to today);
+  //   - upcoming: paid-flag expenses dated in the next 7 days (as the
+  //     forecast counts them), primary currency, no transfer legs;
+  //   - overdue: expenses still marked unpaid dated today or earlier, in any
+  //     currency (a count, never a sum).
+  // Nothing dated before its account opened counts anywhere.
   _facts(state) {
     const S = window.Store;
     const today = S._todayYMD();
     const ym = today.slice(0, 7);
+    const [y, m, d] = today.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const prevYm = S._localYMD(new Date(y, m - 2, 1)).slice(0, 7);
+    const weekEnd = S._localYMD(new Date(y, m - 1, d + 7));
     let rows = 0;
+    let mtdExpense = 0;
+    let prevSameDays = 0;
+    let prevExpenseRows = 0;
     const monthRows = {};
+    const monthIncome = {};
+    const monthExpense = {};
+    const budget = {};
+    const upcoming = [];
+    const overdue = [];
     (state.transactions || []).forEach(tx => {
-      if (tx.type !== 'income' && tx.type !== 'expense') return;
+      const isExp = tx.type === 'expense';
+      if (!isExp && tx.type !== 'income') return;
+      if (!tx.date) return;
+      if (S._isTxBeforeOpeningDate(tx)) return;
+      if (isExp && tx.isPaid === false && tx.date <= today) overdue.push(tx);
       if (tx.transferRef) return;
       if (tx.isPaid === false) return;
-      if (!tx.date || tx.date > today) return;
       if (!S._isPrimaryAccount(tx.accountId)) return;
-      if (S._isTxBeforeOpeningDate(tx)) return;
+      const mo = tx.date.slice(0, 7);
+      const amount = Number(tx.amount) || 0;
+      if (isExp && tx.categoryId && mo === ym) {
+        const b = budget[tx.categoryId] || (budget[tx.categoryId] = { fixed: 0, linear: 0 });
+        if (tx.recurrence || tx.date > today) b.fixed += amount;
+        else b.linear += amount;
+      }
+      if (tx.date > today) {
+        if (isExp && tx.date <= weekEnd) upcoming.push(tx);
+        return;
+      }
       rows++;
-      const m = tx.date.slice(0, 7);
-      monthRows[m] = (monthRows[m] || 0) + 1;
+      monthRows[mo] = (monthRows[mo] || 0) + 1;
+      if (isExp) {
+        monthExpense[mo] = (monthExpense[mo] || 0) + amount;
+        if (mo === ym) mtdExpense += amount;
+        if (mo === prevYm) {
+          prevExpenseRows++;
+          if (Number(tx.date.slice(8, 10)) <= d) prevSameDays += amount;
+        }
+      } else {
+        monthIncome[mo] = (monthIncome[mo] || 0) + amount;
+      }
     });
     const completeMonths = Object.keys(monthRows)
-      .filter(m => m < ym && monthRows[m] >= this.MONTH_MIN_ROWS).length;
+      .filter(mo => mo < ym && monthRows[mo] >= this.MONTH_MIN_ROWS).length;
     let tier = 1;
     if (rows < this.STARTER_ROWS) tier = 0;
     else if (completeMonths >= this.TIER_MONTHS[4]) tier = 4;
     else if (completeMonths >= this.TIER_MONTHS[3]) tier = 3;
     else if (completeMonths >= this.TIER_MONTHS[2]) tier = 2;
-    const [y, m, d] = today.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    return { today, ym, day: d, daysInMonth, rows, completeMonths, tier };
+    return {
+      today, ym, prevYm, weekEnd, day: d, daysInMonth, rows, completeMonths, tier,
+      monthRows, monthIncome, monthExpense, mtdExpense, prevSameDays, prevExpenseRows,
+      budget, upcoming, overdue
+    };
+  },
+
+  // Every budget with a limit this month, read the way Goals reads it
+  // (getBudgetForMonth: the month's limit plus any rollover), with a
+  // projection for the month's end: what is already fixed (recurring and
+  // future rows) plus the one-off spend so far run on at its daily pace.
+  // A rent paid on the 1st is not "6× over by the 5th". Memoized per facts.
+  _budgetStatus(facts, state) {
+    if (facts._budgetStatus) return facts._budgetStatus;
+    const S = window.Store;
+    const out = [];
+    const seen = new Set();
+    (state.budgets || []).forEach(b => {
+      if (!b || !b.categoryId || seen.has(b.categoryId)) return;
+      seen.add(b.categoryId);
+      const r = S.getBudgetForMonth(b.categoryId, facts.ym);
+      if (!(r.allocated > 0)) return; // no limit this month (or a deleted budget)
+      const cat = (state.categories || []).find(c => c.id === b.categoryId);
+      if (!cat) return;
+      const part = facts.budget[b.categoryId] || { fixed: 0, linear: 0 };
+      const projected = part.fixed + (part.linear / facts.day) * facts.daysInMonth;
+      const limit = r.finalLimit;
+      const over = r.spent > limit;
+      out.push({
+        id: b.categoryId, name: cat.name, spent: r.spent, limit, projected, over,
+        risk: !over && facts.day >= 5 && limit > 0 && projected >= limit * 1.05,
+        onTrack: !over && projected <= limit
+      });
+    });
+    facts._budgetStatus = out;
+    return out;
+  },
+
+  _monthName(ymStr) {
+    const [yy, mm] = ymStr.split('-').map(Number);
+    return new Date(yy, mm - 1, 1).toLocaleDateString(window.Store.getLocale(), { month: 'long' });
+  },
+
+  _goals(facts) {
+    return [['SET_MONTH_FILTER', facts.ym]]; // Goals opens on this month
   },
 
   // ── Small helpers ─────────────────────────────────────────────────────────
@@ -324,6 +414,214 @@ window.Insights = {
           params: { name: top.name, pct: top.pct }
         };
       }
+    },
+
+    // ── 1.2.2 (HG-7 P3): batch 1 ────────────────────────────────────────────
+    {
+      // A budget already past its limit this month (Goals' own figures).
+      // One item: the budget furthest over, the rest counted in the detail.
+      id: 'budgetOver',
+      family: 'attention',
+      group: 'budgets',
+      minTier: 0,
+      nameKey: 'insight.name.budgetOver',
+      compute(facts, state) {
+        const I = window.Insights;
+        const list = I._budgetStatus(facts, state).filter(b => b.over)
+          .sort((a, b) => (b.spent - b.limit) - (a.spent - a.limit) || a.name.localeCompare(b.name));
+        if (!list.length) return null;
+        const top = list[0];
+        const more = list.length - 1;
+        return {
+          score: 85,
+          figure: I._money(top.spent - top.limit),
+          tone: 'bad',
+          head: I._t('insight.budgetOver.head', { name: top.name }),
+          body: I._t('insight.budgetOver.body', { spent: I._money(top.spent), limit: I._money(top.limit) })
+            + (more ? ' ' + window.I18n.t('insight.budgetOver.more', { count: more }) : ''),
+          href: '#budget',
+          actions: I._goals(facts),
+          params: { name: top.name, over: top.spent - top.limit, count: list.length }
+        };
+      }
+    },
+    {
+      // Expenses still marked unpaid on or after their date. A count in any
+      // currency; History opens on the range from the oldest one to today.
+      id: 'overdueUnpaid',
+      family: 'attention',
+      group: 'unpaid',
+      minTier: 0,
+      nameKey: 'insight.name.unpaid',
+      compute(facts) {
+        const n = facts.overdue.length;
+        if (!n) return null;
+        const oldest = facts.overdue.reduce((min, tx) => (tx.date < min ? tx.date : min), facts.today);
+        return {
+          score: 80,
+          figure: String(n),
+          tone: 'bad',
+          head: window.I18n.t('insight.unpaid.head', { count: n }),
+          body: window.I18n.t('insight.unpaid.body', { count: n }),
+          href: '#transactions',
+          filters: { page: 'history', filters: { period: { type: 'custom', value: '', start: oldest, end: facts.today }, types: ['expense'] }, replace: true },
+          params: { count: n, oldest }
+        };
+      }
+    },
+    {
+      // Spending pace: this month so far against last month by the same day.
+      id: 'spendPace',
+      family: 'month',
+      group: 'spending',
+      minTier: 2,
+      nameKey: 'insight.name.pace',
+      compute(facts) {
+        if (facts.day < 3 || facts.prevExpenseRows < 5 || !(facts.prevSameDays > 0)) return null;
+        const delta = ((facts.mtdExpense - facts.prevSameDays) / facts.prevSameDays) * 100;
+        if (Math.abs(delta) < 10) return null;
+        const I = window.Insights;
+        const less = delta < 0;
+        return {
+          variant: less ? 'less' : 'more',
+          score: 60 + Math.min(35, Math.round(Math.abs(delta))),
+          figure: window.Store.formatPercent(delta, { digits: 0, signed: true }),
+          tone: less ? 'good' : 'bad',
+          dir: less ? 'down' : 'up',
+          head: window.I18n.t(less ? 'insight.pace.less' : 'insight.pace.more'),
+          body: I._t('insight.pace.body', { now: I._money(facts.mtdExpense), then: I._money(facts.prevSameDays) }),
+          href: '#analytics',
+          filters: { page: 'analytics', filters: {}, replace: true },
+          viz: {
+            type: 'bars',
+            parts: [
+              { label: window.I18n.t('insight.pace.thisMonth'), value: facts.mtdExpense, color: less ? 'var(--color-income-text)' : 'var(--color-expense-text)' },
+              { label: window.I18n.t('insight.pace.lastMonth'), value: facts.prevSameDays, color: 'var(--text-tertiary)' }
+            ]
+          },
+          params: { delta, now: facts.mtdExpense, then: facts.prevSameDays }
+        };
+      }
+    },
+    {
+      // A budget on course to pass its limit (it is not over yet).
+      id: 'budgetAtRisk',
+      family: 'month',
+      group: 'budgets',
+      minTier: 1,
+      nameKey: 'insight.name.budgetRisk',
+      compute(facts, state) {
+        const I = window.Insights;
+        const list = I._budgetStatus(facts, state).filter(b => b.risk)
+          .sort((a, b) => (b.projected / b.limit) - (a.projected / a.limit) || a.name.localeCompare(b.name));
+        if (!list.length) return null;
+        const top = list[0];
+        const more = list.length - 1;
+        const used = (top.spent / top.limit) * 100;
+        const daysLeft = facts.daysInMonth - facts.day;
+        const overrun = Math.round((top.projected / top.limit - 1) * 100);
+        return {
+          score: 70 + Math.min(25, overrun),
+          figure: I._pct(used),
+          tone: '',
+          head: I._t('insight.budgetRisk.head', { name: top.name }),
+          body: I._t('insight.budgetRisk.body', { pct: I._pct(used), count: daysLeft })
+            + ' ' + I._t('insight.budgetRisk.pace', { amount: I._money(top.projected), limit: I._money(top.limit) })
+            + (more ? ' ' + window.I18n.t('insight.budgetRisk.more', { count: more }) : ''),
+          href: '#budget',
+          actions: I._goals(facts),
+          viz: { type: 'budget', used: Math.min(1, top.spent / top.limit), today: facts.day / facts.daysInMonth },
+          params: { name: top.name, used, projected: top.projected, limit: top.limit }
+        };
+      }
+    },
+    {
+      // Every budget set to end the month within its limit.
+      id: 'budgetsOnTrack',
+      family: 'month',
+      group: 'budgets',
+      minTier: 1,
+      nameKey: 'insight.name.budgetsOk',
+      compute(facts, state) {
+        if (facts.day < 10) return null;
+        const list = window.Insights._budgetStatus(facts, state);
+        if (list.length < 2 || !list.every(b => b.onTrack)) return null;
+        return {
+          score: 40,
+          figure: window.I18n.t('insight.budgetsOk.figure', { n: list.length, total: list.length }),
+          tone: 'good',
+          head: window.I18n.t('insight.budgetsOk.head'),
+          body: window.I18n.t('insight.budgetsOk.body'),
+          href: '#budget',
+          actions: window.Insights._goals(facts),
+          params: { count: list.length }
+        };
+      }
+    },
+    {
+      // The week ahead: scheduled expenses in the next 7 days.
+      id: 'upcomingWeek',
+      family: 'month',
+      group: 'upcoming',
+      minTier: 1,
+      nameKey: 'insight.name.upcoming',
+      compute(facts, state) {
+        const list = facts.upcoming;
+        if (!list.length) return null;
+        const S = window.Store;
+        const I = window.Insights;
+        const total = list.reduce((s, tx) => s + (Number(tx.amount) || 0), 0);
+        const big = list.reduce((a, b) => ((Number(b.amount) || 0) > (Number(a.amount) || 0) ? b : a));
+        const cat = (state.categories || []).find(c => c.id === big.categoryId);
+        const name = cat ? cat.name : window.I18n.t('common.uncategorized');
+        const date = new Date(`${big.date}T12:00:00`).toLocaleDateString(S.getLocale(), { weekday: 'long', day: 'numeric', month: 'long' }); // long: a short form ends in an abbreviation dot ('nov.') that doubles the sentence's own
+        const balance = (state.accounts || []).filter(a => S._isPrimaryAccount(a.id))
+          .reduce((s, a) => s + S.getAccountBalance(a.id), 0);
+        const [yy, mm, dd] = facts.today.split('-').map(Number);
+        return {
+          score: 55 + (balance > 0 && total > balance * 0.25 ? 10 : 0),
+          figure: I._money(total),
+          tone: '',
+          head: window.I18n.t('insight.upcoming.head', { count: list.length }),
+          body: I._t('insight.upcoming.body', { name, amount: I._money(Number(big.amount) || 0), date }),
+          href: '#transactions',
+          filters: {
+            page: 'history',
+            filters: { period: { type: 'custom', value: '', start: S._localYMD(new Date(yy, mm - 1, dd + 1)), end: facts.weekEnd }, types: ['expense'] },
+            replace: true
+          },
+          params: { count: list.length, total }
+        };
+      }
+    },
+    {
+      // Last month's savings rate: what was kept out of what came in.
+      id: 'savingsRate',
+      family: 'trends',
+      group: 'cashflow',
+      minTier: 2,
+      nameKey: 'insight.name.savings',
+      compute(facts) {
+        const p = facts.prevYm;
+        const income = facts.monthIncome[p] || 0;
+        if ((facts.monthRows[p] || 0) < window.Insights.MONTH_MIN_ROWS || !(income > 0)) return null;
+        const I = window.Insights;
+        const expense = facts.monthExpense[p] || 0;
+        const rate = ((income - expense) / income) * 100;
+        const kept = rate >= 0;
+        const month = I._monthName(p);
+        return {
+          variant: kept ? 'kept' : 'over',
+          score: 45 + (kept ? 0 : 15),
+          figure: I._pct(rate),
+          tone: kept ? 'good' : 'bad',
+          head: I._t(kept ? 'insight.savings.kept' : 'insight.savings.over', { month, pct: I._pct(rate) }),
+          body: I._t('insight.savings.body', { income: I._money(income), expense: I._money(expense) }),
+          href: '#analytics',
+          filters: { page: 'analytics', filters: { period: { type: 'month', value: `${p}-01`, start: '', end: '' } }, replace: true },
+          params: { rate, income, expense, month }
+        };
+      }
     }
   ],
 
@@ -381,6 +679,7 @@ window.Insights = {
   // shows the rows it talks about, then its screen.
   open(item, href) {
     if (item && item.filters) window.Store.dispatch('UPDATE_FILTERS', item.filters);
+    if (item && Array.isArray(item.actions)) item.actions.forEach(([type, payload]) => window.Store.dispatch(type, payload));
     window.Router.navigate(href || (item && item.href) || '#insights');
   },
 
@@ -412,7 +711,30 @@ window.Insights = {
   },
 
   _renderViz(viz) {
-    if (!viz || viz.type !== 'split' || !viz.parts.length) return '';
+    if (!viz) return '';
+    // 1.2.2 (HG-7 P3): pace bars (this month vs last month by the same day)
+    // and a budget bar with a "today" tick. aria-hidden like the split bar:
+    // the detail line carries the same numbers in words.
+    if (viz.type === 'bars' && viz.parts && viz.parts.length) {
+      const max = Math.max(...viz.parts.map(p => p.value), 1);
+      const rows = viz.parts.map(p => `
+          <span class="insight-bars-row">
+            <span class="insight-bars-label">${this._esc(p.label)}</span>
+            <span class="insight-bars-track"><span style="width: ${Math.max(2, Math.round((p.value / max) * 100))}%; background: ${this._esc(p.color)};"></span></span>
+            <span class="insight-bars-value">${this._esc(this._money(p.value))}</span>
+          </span>`).join('');
+      return `<span class="insight-viz insight-bars" aria-hidden="true">${rows}</span>`;
+    }
+    if (viz.type === 'budget') {
+      const used = Math.round(Math.max(0, Math.min(1, viz.used)) * 100);
+      const today = Math.round(Math.max(0, Math.min(1, viz.today)) * 100);
+      return `
+        <span class="insight-viz insight-budgetbar" aria-hidden="true">
+          <span class="insight-budgetbar-track"><span class="insight-budgetbar-fill" style="width: ${used}%;"></span><span class="insight-budgetbar-tick" style="left: ${today}%;"></span></span>
+          <span class="insight-budgetbar-today" style="left: ${Math.min(90, Math.max(10, today))}%;">${window.I18n.t('insight.viz.today')}</span>
+        </span>`;
+    }
+    if (viz.type !== 'split' || !viz.parts || !viz.parts.length) return '';
     const bar = viz.parts.map(p =>
       `<span style="flex: ${Math.max(1, Math.round(p.pct))} 1 0; background: ${this._esc(p.color)};"></span>`).join('');
     const legend = viz.parts.filter(p => p.label).map(p =>

@@ -60,7 +60,7 @@ test.describe('Insights page', () => {
     await bootstrap(page);
     await openTab(page);
     await expect(page.locator('#insights-starter')).toContainText('0 of 5 entries so far.');
-    await expect(page.locator('[data-locked]')).toHaveCount(4);
+    await expect(page.locator('[data-locked]')).toHaveCount(9);
     await page.locator('#insights-starter a.insight-starter-btn').click();
     await page.waitForFunction(() => window.Store.getState().activeView === 'add');
   });
@@ -96,6 +96,28 @@ test.describe('Insights page', () => {
       return { linkBottom: el.bottom, navTop: nav.top };
     });
     expect(linkBottom).toBeLessThanOrEqual(navTop);
+  });
+
+  // 1.2.2 (HG-7 P3): a budget over its limit and a payment still unpaid sit
+  // under Needs attention; the budget opens Goals on this month.
+  test('needs attention: an over budget and an unpaid payment; the budget opens Goals', async ({ page }) => {
+    await bootstrap(page);
+    await seed(page);
+    await page.evaluate(() => {
+      const S = window.Store;
+      const acc = S.getState().accounts.find(a => a.name === 'BPI').id;
+      S.dispatch('SAVE_BUDGET', { categoryId: 'cat_dining', amount: 100, startDate: '', endDate: null, isCumulative: false });
+      S.dispatch('ADD_TRANSACTION', { type: 'expense', categoryId: 'cat_utilities', amount: 45, accountId: acc, date: S._todayYMD(), isPaid: false });
+      S.dispatch('SET_MONTH_FILTER', '2020-01');
+    });
+    await openTab(page);
+    const attention = page.locator('section[aria-labelledby="insights-sec-attention"]');
+    await expect(attention.locator('h2')).toHaveText('Needs attention');
+    await expect(attention.locator('a[data-insight="budgetOver"]')).toContainText('Dining Out is over its budget');
+    await expect(attention.locator('a[data-insight="overdueUnpaid"]')).toContainText('1 payment past its date is still unpaid');
+    await attention.locator('a[data-insight="budgetOver"]').click();
+    await page.waitForFunction(() => window.Store.getState().activeView === 'budget');
+    expect(await page.evaluate(() => window.Store.getState().activeMonthFilter)).toBe(await page.evaluate(() => window.Store._todayYMD().slice(0, 7)));
   });
 
   // 1.2.2 (HG-7 P2): the opt-in Home widget.

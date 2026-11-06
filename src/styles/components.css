@@ -4474,3 +4474,77 @@ a:focus-visible,
   color: var(--color-primary);
   cursor: pointer;
 }
+
+/* ── 1.2.2 (HG-7 P3): highlight micro-charts ───────────────────────────────
+   Pace bars (this month vs last month by the same day) and a budget bar with
+   a "today" tick. Both aria-hidden: the detail line says the same in words. */
+.insight-bars {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px var(--space-2);
+}
+
+.insight-bars-row { display: contents; }
+
+.insight-bars-label,
+.insight-bars-value {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.insight-bars-value { font-variant-numeric: tabular-nums; }
+
+.insight-bars-track {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-surface-sunken);
+  overflow: hidden;
+}
+
+.insight-bars-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.insight-budgetbar {
+  position: relative;
+  padding-bottom: 18px;
+}
+
+.insight-budgetbar-track {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-surface-sunken);
+}
+
+.insight-budgetbar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--text-primary);
+}
+
+.insight-budgetbar-tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--color-expense-text);
+}
+
+.insight-budgetbar-today {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}

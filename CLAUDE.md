@@ -497,6 +497,15 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   an entry in both `NAV_TABS` and `BottomNav.TABS`. Settings → Tab bar moves
   tabs with Move up/down (focus kept, `Components.Announcer` live region)
   or a grip drag.
+- **Smart Insights rules (HG-7, P3).** Rules read the one facts pass
+  (`Insights._facts`: month totals, pace, per-category budget fixed/linear
+  spend, next-7-days, overdue unpaid) — a new rule adds to that walk rather
+  than scanning the ledger again. Budget rules go through
+  `Insights._budgetStatus` (Goals' `getBudgetForMonth` + a projection that
+  never runs recurring/future rows on at a daily pace). An item may carry
+  `actions: [[type, payload]…]` dispatched on tap (budget rules open Goals on
+  this month via `SET_MONTH_FILTER`). Never put a month name after an
+  eliding preposition in a dictionary value (*d'octobre*).
 
 ## Working conventions in this repo
 
