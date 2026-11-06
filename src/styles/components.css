@@ -4191,3 +4191,286 @@ a:focus-visible,
 .insight-row:active {
   background-color: var(--bg-surface-sunken);
 }
+
+/* ── 1.2.2 (HG-7 P2): the Smart Insights widget (registry.insights) ────────
+   Small: the top item, figure over a headline clamped at 3 lines (the card
+   is fixed-height; the full text is one tap away on the page). Large: up to
+   three rows, one per family, then "All insights"; the card grows with them
+   (.widget-card--auto), so nothing is clamped. */
+.widget-insight {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-md, 12px);
+}
+
+.widget-insight-figure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* the tone wins over the base colour above */
+.widget-insight-figure.insight-figure--good { color: var(--color-income-text); }
+.widget-insight-figure.insight-figure--bad { color: var(--color-expense-text); }
+
+.widget-insight-figure .insight-arrow {
+  width: 18px;
+  height: 18px;
+}
+
+.widget-insight-head {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.widget-insight-head--clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.widget-insight-body {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.widget-insight--starter .widget-insight-head,
+.widget-insight--quiet .widget-insight-head {
+  font-size: 0.9375rem;
+}
+
+/* the large card hugs its rows (a starter or quiet card is short); the
+   small height is its floor */
+.widget-card--auto[data-widget-type="insights"] {
+  min-height: var(--widget-h-small);
+}
+
+.widget-insights {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.widget-insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.widget-insight-list > li + li {
+  border-top: 1px solid var(--border-color);
+}
+
+.widget-insight-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* one column for every row, so the headlines line up; a figure is never
+   broken mid-number (a longer one widens its own row's column) */
+.widget-insight-row .widget-insight-figure {
+  flex: 0 0 auto;
+  min-width: 5.25rem;
+  font-size: 1.125rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.widget-insight-row .widget-insight-figure--long { font-size: 1rem; }
+
+.widget-insight-row .widget-insight-head {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.widget-insight-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-end;
+  min-height: 44px;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-1);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.widget-insight-all .insight-chev {
+  width: 18px;
+  height: 18px;
+  margin-left: 0;
+  color: currentColor;
+}
+
+.widget-insight:focus-visible,
+.widget-insight-row:focus-visible,
+.widget-insight-all:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+/* ── 1.2.2 (HG-7 P2): Settings → Tab bar ───────────────────────────────────
+   Home is locked first; each other row has a drag grip and Move up / Move
+   down buttons (44 × 44, the non-drag path, WCAG 2.5.7). */
+.nav-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-order-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 60px;
+  padding: var(--space-2) 0;
+}
+
+.nav-order-row + .nav-order-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.nav-order-icon {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.nav-order-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nav-order-text .list-item-subtitle {
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.nav-order-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 44px;
+  margin-left: calc(-1 * var(--space-2));
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: none; /* the drag is ours, not a scroll */
+}
+
+.nav-order-grip svg,
+.nav-order-grip [data-lucide] {
+  width: 18px;
+  height: 18px;
+}
+
+.nav-order-grip--none { cursor: default; }
+
+.nav-order-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.nav-order-lock svg,
+.nav-order-lock [data-lucide] {
+  width: 18px;
+  height: 18px;
+}
+
+.nav-order-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.nav-order-btn svg,
+.nav-order-btn [data-lucide] {
+  width: 20px;
+  height: 20px;
+}
+
+.nav-order-btn:disabled {
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nav-order-btn:focus-visible,
+.nav-order-reset:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.nav-order-row.is-dragging {
+  z-index: 2;
+  background: var(--bg-surface); /* solid: the rows it passes must not show through */
+  box-shadow: 0 8px 24px var(--color-overlay, rgba(0, 0, 0, 0.18));
+  border-radius: 12px;
+}
+
+.nav-order-row.is-dragging .nav-order-grip { cursor: grabbing; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-order-list.is-dragging .nav-order-row:not(.is-dragging) {
+    transition: transform 0.18s ease;
+  }
+}
+
+.nav-order-reset {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: var(--space-1) 0 var(--space-2);
+  border: none;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+}

@@ -588,10 +588,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       // v0.88 P8c: the nav is mounted once, outside the wholesale view render,
       // so a language change must rebuild it explicitly or its labels keep the
       // boot-time language.
-      if (navContainer && window.Components.BottomNav && navContainer._lang !== state.language) {
+      // 1.2.2 (HG-7 P2): the same for a new tab order (Settings → Tab bar).
+      const navKey = window.Components.BottomNav && window.Components.BottomNav.key
+        ? window.Components.BottomNav.key(state) : state.language;
+      if (navContainer && window.Components.BottomNav && navContainer._navKey !== navKey) {
         navContainer.innerHTML = window.Components.BottomNav.render();
         window.Components.BottomNav.attachEvents(navContainer);
-        navContainer._lang = state.language;
+        navContainer._navKey = navKey;
         // v0.93: the render-loop hydration below is scoped to #router-view,
         // so the rebuilt nav hydrates its own subtree here.
         if (window.StackdHydrateIcons) window.StackdHydrateIcons(navContainer);

@@ -4679,6 +4679,154 @@ Object.assign(window.Views, {
   // OTHERS VIEW (formerly Settings)
   // -------------------------
   OthersView: {
+    // 1.2.2 (HG-7 P2, docs/smart-insights-plan.md §3.5): the tab bar order.
+    // Home is locked first (it is also the start screen); every other tab
+    // moves with Move up / Move down — the keyboard and assistive path, so
+    // dragging stays optional (WCAG 2.5.7) — or by dragging its grip. After a
+    // move, focus returns to the moved row's button and a polite live region
+    // outside #router-view says where it went (4.1.3).
+    _navFocus: null,
+
+    _renderNavOrder() {
+      const S = window.Store;
+      const tabs = window.Components.BottomNav.TABS;
+      const order = S.getNavOrder();
+      const isDefault = order.join(',') === S.NAV_TABS.join(',');
+      const rows = order.map((view, i) => {
+        const tab = tabs[view];
+        const name = window.I18n.t(tab.labelKey);
+        return `
+            <li class="nav-order-row" data-nav-view="${esc(view)}">
+              <span class="nav-order-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+              <span class="list-item-icon nav-order-icon" aria-hidden="true"><i data-lucide="${esc(tab.icon)}"></i></span>
+              <span class="nav-order-text"><span class="list-item-title">${name}</span></span>
+              <button type="button" class="nav-order-btn" data-nav-move="up" data-nav-view="${esc(view)}" aria-label="${window.I18n.t('navOrder.moveUp', { name: esc(name) })}"${i === 0 ? ' disabled' : ''}><i data-lucide="chevron-up"></i></button>
+              <button type="button" class="nav-order-btn" data-nav-move="down" data-nav-view="${esc(view)}" aria-label="${window.I18n.t('navOrder.moveDown', { name: esc(name) })}"${i === order.length - 1 ? ' disabled' : ''}><i data-lucide="chevron-down"></i></button>
+            </li>`;
+      }).join('');
+      return `
+          <div class="section-title" id="nav-order-title">${window.I18n.t('navOrder.section')}</div>
+          <div class="card card-elevated nav-order-card" style="margin-bottom: var(--space-6); padding: var(--space-2) var(--space-5);">
+            <ol class="nav-order-list" id="nav-order-list" aria-labelledby="nav-order-title">
+              <li class="nav-order-row nav-order-row--locked" data-nav-view="dashboard">
+                <span class="nav-order-grip nav-order-grip--none" aria-hidden="true"></span>
+                <span class="list-item-icon nav-order-icon" aria-hidden="true"><i data-lucide="home"></i></span>
+                <span class="nav-order-text">
+                  <span class="list-item-title">${window.I18n.t('nav.dashboard')}</span>
+                  <span class="list-item-subtitle">${window.I18n.t('navOrder.homeLocked')}</span>
+                </span>
+                <span class="nav-order-lock" aria-hidden="true"><i data-lucide="lock"></i></span>
+              </li>
+              ${rows}
+            </ol>
+            ${isDefault ? '' : `<button type="button" class="nav-order-reset" id="btn-nav-order-reset">${window.I18n.t('navOrder.reset')}</button>`}
+          </div>`;
+    },
+
+    // One move: the new order, the live-region message and where focus goes
+    // once the view has re-rendered (attachEvents reads _navFocus).
+    _moveNav(order, view, focusDir) {
+      const S = window.Store;
+      S.dispatch('SET_NAV_ORDER', order);
+      const now = S.getNavOrder();
+      const tab = window.Components.BottomNav.TABS[view];
+      this._navFocus = { view, dir: focusDir };
+      window.Components.Announcer.say(window.I18n.t('navOrder.moved', {
+        name: window.I18n.t(tab.labelKey), pos: now.indexOf(view) + 2, total: now.length + 1
+      }));
+    },
+
+    _attachNavOrder(container) {
+      const list = container.querySelector('#nav-order-list');
+      if (!list) return;
+      window.Components.Announcer.ensure();
+      const S = window.Store;
+
+      list.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-nav-move]');
+        if (!btn || btn.disabled) return;
+        const order = S.getNavOrder();
+        const view = btn.dataset.navView;
+        const from = order.indexOf(view);
+        const to = btn.dataset.navMove === 'up' ? from - 1 : from + 1;
+        if (from === -1 || to < 0 || to >= order.length) return;
+        [order[from], order[to]] = [order[to], order[from]];
+        this._moveNav(order, view, btn.dataset.navMove);
+      });
+
+      const reset = container.querySelector('#btn-nav-order-reset');
+      if (reset) {
+        reset.addEventListener('click', () => {
+          S.dispatch('SET_NAV_ORDER', S.NAV_TABS.slice());
+          this._navFocus = { view: S.NAV_TABS[0], dir: 'down' };
+          window.Components.Announcer.say(window.I18n.t('navOrder.resetDone'));
+        });
+      }
+
+      // Back from a move: the moved row's button keeps the focus (the other
+      // one when the row reached an end and this one is now disabled).
+      if (this._navFocus) {
+        const f = this._navFocus;
+        this._navFocus = null;
+        const pick = (dir) => list.querySelector(`button[data-nav-move="${dir}"][data-nav-view="${f.view}"]`);
+        const other = f.dir === 'up' ? 'down' : 'up';
+        const target = [pick(f.dir), pick(other)].find(b => b && !b.disabled);
+        if (target) target.focus({ preventScroll: true });
+      }
+
+      // Drag by the grip (pointer events; the buttons above are the path for
+      // everyone else). DOM-only until release, then one dispatch.
+      list.addEventListener('pointerdown', (e) => {
+        const grip = e.target.closest('.nav-order-grip:not(.nav-order-grip--none)');
+        if (!grip || (e.button !== undefined && e.button !== 0)) return;
+        const row = grip.closest('.nav-order-row');
+        const rows = [...list.querySelectorAll('.nav-order-row:not(.nav-order-row--locked)')];
+        const from = rows.indexOf(row);
+        if (from === -1) return;
+        e.preventDefault();
+        const rects = rows.map(r => r.getBoundingClientRect());
+        const pitch = rects.length > 1 ? rects[1].top - rects[0].top : rects[from].height;
+        const startY = e.clientY;
+        let to = from;
+        if (grip.setPointerCapture) { try { grip.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ } }
+        row.classList.add('is-dragging');
+        list.classList.add('is-dragging');
+        const onMove = (ev) => {
+          const min = rects[0].top - rects[from].top;
+          const max = rects[rects.length - 1].top - rects[from].top;
+          const dy = Math.max(min, Math.min(max, ev.clientY - startY));
+          row.style.transform = `translateY(${dy}px)`;
+          const centre = rects[from].top + rects[from].height / 2 + dy;
+          to = rects.filter((r, i) => i !== from && r.top + r.height / 2 < centre).length;
+          rows.forEach((r, i) => {
+            if (i === from) return;
+            let shift = 0;
+            if (from < to && i > from && i <= to) shift = -pitch;
+            else if (from > to && i >= to && i < from) shift = pitch;
+            r.style.transform = shift ? `translateY(${shift}px)` : '';
+          });
+        };
+        const finish = (commit) => {
+          grip.removeEventListener('pointermove', onMove);
+          grip.removeEventListener('pointerup', onUp);
+          grip.removeEventListener('pointercancel', onCancel);
+          rows.forEach(r => { r.style.transform = ''; });
+          row.classList.remove('is-dragging');
+          list.classList.remove('is-dragging');
+          if (!commit || to === from) return;
+          const order = rows.map(r => r.dataset.navView);
+          const [moved] = order.splice(from, 1);
+          order.splice(to, 0, moved);
+          this._moveNav(order, moved, to > from ? 'down' : 'up');
+        };
+        const onUp = () => finish(true);
+        const onCancel = () => finish(false);
+        grip.addEventListener('pointermove', onMove);
+        grip.addEventListener('pointerup', onUp);
+        grip.addEventListener('pointercancel', onCancel);
+      });
+    },
+
     render(state) {
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -4810,6 +4958,8 @@ Object.assign(window.Views, {
               </div>
             </div>
           </div>
+
+          ${this._renderNavOrder()}
 
           <!-- 1.2.2 (HG-4): hidden balances on Home, and shake to flip them -->
           <div class="section-title">${window.I18n.t('privacy.section')}</div>
@@ -4995,6 +5145,8 @@ Object.assign(window.Views, {
       rowAction('btn-open-import-export', () => window.Components.ImportExportSheet.show());
       rowAction('btn-open-backup', () => window.Router.navigate('#backup'));
       rowAction('btn-import-rules', () => window.Components.ImportRulesModal.show()); // v1.01
+
+      this._attachNavOrder(container); // 1.2.2 (HG-7 P2): Tab bar
 
       // 1.2.2 (HG-4): Privacy. Turning Shake to hide on asks iOS for motion
       // access from this tap; a refusal turns it back off and says why.

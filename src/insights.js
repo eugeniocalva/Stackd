@@ -22,10 +22,13 @@
 //     follow the aggregate rule: income/expense only, no transfer legs, no
 //     unpaid rows, nothing dated after today or before its account opened,
 //     primary currency only.
-//   - rules: { id, family, minTier, nameKey, compute(facts, state) } → an
+//   - rules: { id, family, group, minTier, nameKey, compute(facts, state) } → an
 //     item { score, figure, tone, dir?, head, body, href, filters?, viz? } or
 //     null. `head`/`body` are built here from escaped params (plain text,
 //     no markup in the dictionary), `figure` comes from Store formatters.
+//     `family` is the page section; `group` is the catalogue family (plan
+//     §4.2: spending, budgets, cashflow…) — the Home widget shows at most one
+//     item per group (P2).
 //   - ranking: attention items first (by score), then insights by score plus
 //     a small offset hashed from id + today, so close calls change day to
 //     day but never reshuffle within a day.
@@ -134,6 +137,7 @@ window.Insights = {
       // for review (in memory only — see BankConnect._pending). No network.
       id: 'bankNew',
       family: 'attention',
+      group: 'bank',
       minTier: 0,
       nameKey: 'insight.name.bank',
       compute(facts, state) {
@@ -158,6 +162,7 @@ window.Insights = {
       // v1.08 B4: a bank consent that expired or expires within 14 days.
       id: 'bankReconnect',
       family: 'attention',
+      group: 'bank',
       minTier: 0,
       nameKey: 'insight.name.bank',
       compute(facts, state) {
@@ -194,6 +199,7 @@ window.Insights = {
       // exact computeBalanceForecast figure the dashboard header shows.
       id: 'monthOutlook',
       family: 'month',
+      group: 'cashflow',
       minTier: 1,
       nameKey: 'insight.name.outlook',
       compute() {
@@ -237,6 +243,7 @@ window.Insights = {
       // Spending: the top expense category's share of month-to-date spend.
       id: 'topSpending',
       family: 'month',
+      group: 'spending',
       minTier: 1,
       nameKey: 'insight.name.topSpending',
       compute() {
@@ -262,6 +269,7 @@ window.Insights = {
       // Income mix: only when one source brings in at least half.
       id: 'incomeSource',
       family: 'month',
+      group: 'cashflow',
       minTier: 1,
       nameKey: 'insight.name.income',
       compute() {
@@ -288,6 +296,7 @@ window.Insights = {
       // Money placement: how the positive balances are spread.
       id: 'accountMix',
       family: 'accounts',
+      group: 'balance',
       minTier: 1,
       nameKey: 'insight.name.accounts',
       compute(facts, state) {
@@ -333,6 +342,7 @@ window.Insights = {
         items.push(Object.assign({}, res, {
           id: rule.id,
           family: rule.family,
+          group: rule.group || rule.id,
           kind: attention ? 'attention' : 'insight',
           nameKey: rule.nameKey,
           rank: (attention ? 1000 : 0) + res.score + (attention ? 0 : this._rotation(rule.id, facts.today))
@@ -348,9 +358,30 @@ window.Insights = {
     return { facts, tier: facts.tier, items, locked };
   },
 
-  // The ranked items only (the widget and tests read this).
+  // The ranked items only (tests read this).
   compute(state) {
     return this.analyze(state).items;
+  },
+
+  // 1.2.2 (HG-7 P2): the widget's picks — ranked order (attention first),
+  // at most one item per catalogue family (no two budget rows).
+  top(items, n) {
+    const seen = new Set();
+    const out = [];
+    for (const item of items || []) {
+      if (out.length >= n) break;
+      if (seen.has(item.group)) continue;
+      seen.add(item.group);
+      out.push(item);
+    }
+    return out;
+  },
+
+  // Opens what an insight is about: its filters first, so the destination
+  // shows the rows it talks about, then its screen.
+  open(item, href) {
+    if (item && item.filters) window.Store.dispatch('UPDATE_FILTERS', item.filters);
+    window.Router.navigate(href || (item && item.href) || '#insights');
   },
 
   // What a locked tier still needs, as text + a 0–1 progress.
@@ -505,9 +536,7 @@ window.Insights = {
     root.querySelectorAll('a[data-insight]').forEach(a => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        const item = byId[a.dataset.insight];
-        if (item && item.filters) window.Store.dispatch('UPDATE_FILTERS', item.filters);
-        window.Router.navigate(a.getAttribute('href'));
+        this.open(byId[a.dataset.insight], a.getAttribute('href'));
       });
     });
     const starter = root.querySelector('.insight-starter-btn');
@@ -517,5 +546,87 @@ window.Insights = {
         window.Router.navigate('#add');
       });
     }
+  },
+
+  // ── Home widget (1.2.2 HG-7 P2, plan §3.3) ────────────────────────────────
+  // registry.insights in widgets.js delegates here, so the page and the
+  // widget share one engine and one daily rotation. Opt-in only: no seed, no
+  // migration. Small = the top item (attention first) and the card opens the
+  // page; large = the top three, one per family, each opening its own screen,
+  // plus "All insights". Amounts mask on Home like every Home surface
+  // (formatCurrency → Store.isMoneyMasked); percentages stay.
+  _widgetItems: {},
+
+  // The small card shows the arrow; the rows leave it out so every figure
+  // fits the one column (the sign and the colour still say the direction).
+  _widgetFigure(item, withArrow) {
+    const arrow = withArrow && item.dir ? `<i data-lucide="${item.dir === 'up' ? 'arrow-up-right' : 'arrow-down-right'}" class="insight-arrow" aria-hidden="true"></i>` : '';
+    const long = String(item.figure).length > 7 ? ' widget-insight-figure--long' : '';
+    return `<span class="widget-insight-figure${this._toneClass(item)}${long}">${arrow}${this._esc(item.figure)}</span>`;
+  },
+
+  renderWidget(instance, state) {
+    const large = instance.size === 'large';
+    // A preview card in the Add-widget sheet is a picture, not a control.
+    const preview = String(instance.id || '').indexOf('__preview__') === 0;
+    const tab = preview ? ' tabindex="-1"' : '';
+    const res = this.analyze(state);
+    const page = (cls, inner) => `<a class="widget-insight${cls}" href="#insights" data-insight-open="page"${tab}>${inner}</a>`;
+
+    if (res.tier === 0) {
+      this._widgetItems[instance.id] = [];
+      const done = Math.min(res.facts.rows, this.STARTER_ROWS);
+      return page(' widget-insight--starter', `
+        <span class="widget-insight-head">${window.I18n.t('insights.starter.head')}</span>
+        <span class="insight-progress insight-progress--wide" aria-hidden="true"><span style="width: ${Math.round((done / this.STARTER_ROWS) * 100)}%;"></span></span>
+        <span class="widget-insight-body">${window.I18n.t('insights.starter.progress', { done, total: this.STARTER_ROWS })}</span>`);
+    }
+
+    const picks = this.top(res.items, large ? 3 : 1);
+    this._widgetItems[instance.id] = picks;
+    if (!picks.length) {
+      return page(' widget-insight--quiet', `
+        <span class="widget-insight-head">${window.I18n.t('insights.quiet.head')}</span>
+        <span class="widget-insight-body">${window.I18n.t('insights.quiet.body')}</span>`);
+    }
+
+    if (!large) {
+      const item = picks[0];
+      return page('', `${this._widgetFigure(item, true)}<span class="widget-insight-head widget-insight-head--clamp">${item.head}</span>`);
+    }
+
+    const rows = picks.map(item => `
+      <li>
+        <a class="widget-insight-row" href="${this._esc(item.href)}" data-insight="${this._esc(item.id)}"${tab}>
+          ${this._widgetFigure(item)}
+          <span class="widget-insight-head">${item.head}</span>
+          ${this._chevron()}
+        </a>
+      </li>`).join('');
+    return `
+      <div class="widget-insights">
+        <ul class="widget-insight-list" role="list">${rows}</ul>
+        <a class="widget-insight-all" href="#insights" data-insight-open="page"${tab}><span>${window.I18n.t('widget.insights.all')}</span>${this._chevron()}</a>
+      </div>`;
+  },
+
+  attachWidget(instance, card) {
+    card.addEventListener('click', (e) => {
+      // Edit mode: a tap is for the edit chrome, never a navigation (the
+      // links must not follow their href either).
+      if (window.Store.getState().widgetEditMode) {
+        if (e.target && e.target.closest && e.target.closest('a')) e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const a = e.target && e.target.closest ? e.target.closest('a[data-insight]') : null;
+      if (a) {
+        const item = (this._widgetItems[instance.id] || []).find(i => i.id === a.dataset.insight);
+        this.open(item, a.getAttribute('href'));
+        return;
+      }
+      // the rest of the card (and "All insights") opens the page
+      window.Router.navigate('#insights');
+    });
   }
 };

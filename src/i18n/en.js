@@ -49,6 +49,13 @@ window.I18n.dicts.en = {
   'privacy.hiddenBody': 'Amounts on Home are hidden. Tap Show to see them again.',
   'privacy.show': 'Show',
   'privacy.motionDenied': "Motion access is off, so a shake can't hide your balances. Turn it on in your phone's settings for Stack'd.",
+  'navOrder.section': 'Tab bar', // 1.2.2 (HG-7 P2): Settings → Tab bar
+  'navOrder.homeLocked': 'Always first · opens at start',
+  'navOrder.moveUp': 'Move {name} up',
+  'navOrder.moveDown': 'Move {name} down',
+  'navOrder.moved': '{name} is now in position {pos} of {total}.',
+  'navOrder.reset': 'Restore the default order',
+  'navOrder.resetDone': 'Default order restored.',
   'dash.filteredView': 'Filtered View ({interval})',
   'dash.interval.monthly': 'Monthly',
   'dash.interval.weekly': 'Weekly',
@@ -782,6 +789,8 @@ window.I18n.dicts.en = {
   'insights.starter.cta': 'Add a transaction',
   'insights.quiet.head': 'Nothing stands out today',
   'insights.quiet.body': "Insights appear as this month's entries come in.",
+  'widget.insights.desc': "Today's top insights, worked out from your own entries.", // 1.2.2 (HG-7 P2): the Home widget
+  'widget.insights.all': 'All insights',
   'insights.lock.entries': 'After {total} entries · {done} of {total}',
   'insights.lock.months.one': 'After a full month of entries',
   'insights.lock.months.other': 'After {count} months of entries · month {current} of {count}',

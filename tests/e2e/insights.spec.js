@@ -98,6 +98,41 @@ test.describe('Insights page', () => {
     expect(linkBottom).toBeLessThanOrEqual(navTop);
   });
 
+  // 1.2.2 (HG-7 P2): the opt-in Home widget.
+  test('the widget: added from the gallery; the small card opens the page, a large row its own screen; amounts mask', async ({ page }) => {
+    await bootstrap(page);
+    await seed(page);
+    await page.click('#btn-widgets-add-empty');
+    await page.click('.widget-gallery-card[data-widget-type="insights"]');
+    await expect(page.locator('#awm-confirm')).toHaveText('Add widget');
+    await page.click('#awm-confirm');
+    const small = page.locator('.widget-card[data-widget-type="insights"]');
+    await expect(small).toHaveCount(1);
+    await expect(small.locator('.widget-card-title')).toHaveText('Smart Insights');
+    await small.locator('a.widget-insight').click();
+    await page.waitForFunction(() => window.Store.getState().activeView === 'insights');
+
+    await page.evaluate(() => {
+      const S = window.Store;
+      S.dispatch('REMOVE_HOME_WIDGET', { id: S.getState().homeWidgets[0].id });
+      S.dispatch('ADD_HOME_WIDGET', { type: 'insights', size: 'large', config: {} });
+      location.hash = '#dashboard';
+    });
+    const large = page.locator('.widget-card[data-widget-type="insights"].widget-card--auto');
+    await expect(large.locator('a.widget-insight-row[data-insight]')).toHaveCount(3);
+    await expect(large.locator('a.widget-insight-all')).toHaveText('All insights');
+
+    // hidden balances: the outlook's amount masks, the percentages stay
+    await page.evaluate(() => window.Store.dispatch('SET_PRIVACY', { hide: true }));
+    await expect(large.locator('a[data-insight="monthOutlook"] .widget-insight-figure')).toContainText('••••');
+    await expect(large.locator('a[data-insight="topSpending"] .widget-insight-figure')).toHaveText(/\d+%/);
+    await page.evaluate(() => window.Store.dispatch('SET_PRIVACY', { hide: false }));
+
+    await large.locator('a[data-insight="topSpending"]').click();
+    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
+    expect(await page.evaluate(() => window.Store.getState().historyFilters.categories)).toEqual(['cat_rent']);
+  });
+
   test('reflows at 200 % text: nothing scrolls sideways, no headline is clipped', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
     await bootstrap(page);

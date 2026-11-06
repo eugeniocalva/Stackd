@@ -43,6 +43,25 @@ window.Components = {
   },
 
   BottomNav: {
+    // 1.2.2 (HG-7): five tabs. P2: the order after Home is the user's
+    // (Settings → Tab bar, Store.getNavOrder); Home is always first.
+    TABS: {
+      dashboard: { icon: 'home', labelKey: 'nav.dashboard' },
+      transactions: { icon: 'list', labelKey: 'nav.history' },
+      budget: { icon: 'target', labelKey: 'nav.goals' },
+      analytics: { icon: 'pie-chart', labelKey: 'nav.analytics' },
+      insights: { icon: 'lightbulb', labelKey: 'nav.insights' }
+    },
+    tabs() {
+      const S = window.Store;
+      const order = S && S.getNavOrder ? S.getNavOrder() : ['transactions', 'budget', 'analytics', 'insights'];
+      return ['dashboard'].concat(order).filter(v => this.TABS[v]).map(v => Object.assign({ view: v }, this.TABS[v]));
+    },
+    // What the mounted nav was built from: main.js rebuilds it when this changes.
+    key(state) {
+      const S = window.Store;
+      return (state.language || '') + '|' + (S && S.getNavOrder ? S.getNavOrder().join(',') : '');
+    },
     render() {
       return `
         <div class="nav-overlay" id="nav-overlay" aria-hidden="true" style="opacity: 0; pointer-events: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.3); background: rgba(0,0,0,0.3); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 998; transition: opacity 0.3s ease;"></div>
@@ -73,27 +92,11 @@ window.Components = {
         </div>
 
         <div class="nav-pill">
-          <a href="#dashboard" class="nav-item touch-target" data-view="dashboard" aria-label="${window.I18n.t('nav.dashboard')}">
-            <div class="nav-icon"><i data-lucide="home"></i></div>
+          ${this.tabs().map(tab => `
+          <a href="#${tab.view}" class="nav-item touch-target" data-view="${tab.view}" aria-label="${window.I18n.t(tab.labelKey)}">
+            <div class="nav-icon"><i data-lucide="${tab.icon}"></i></div>
             <div class="nav-item-indicator"></div>
-          </a>
-          <a href="#transactions" class="nav-item touch-target" data-view="transactions" aria-label="${window.I18n.t('nav.history')}">
-            <div class="nav-icon"><i data-lucide="list"></i></div>
-            <div class="nav-item-indicator"></div>
-          </a>
-          <a href="#budget" class="nav-item touch-target" data-view="budget" aria-label="${window.I18n.t('nav.goals')}">
-            <div class="nav-icon"><i data-lucide="target"></i></div>
-            <div class="nav-item-indicator"></div>
-          </a>
-          <a href="#analytics" class="nav-item touch-target" data-view="analytics" aria-label="${window.I18n.t('nav.analytics')}">
-            <div class="nav-icon"><i data-lucide="pie-chart"></i></div>
-            <div class="nav-item-indicator"></div>
-          </a>
-          <!-- 1.2.2 (HG-7): Smart Insights, a page of its own -->
-          <a href="#insights" class="nav-item touch-target" data-view="insights" aria-label="${window.I18n.t('nav.insights')}">
-            <div class="nav-icon"><i data-lucide="lightbulb"></i></div>
-            <div class="nav-item-indicator"></div>
-          </a>
+          </a>`).join('')}
         </div>
         <button id="nav-fab-toggle" class="nav-fab touch-target" aria-label="${window.I18n.t('nav.toggleActions')}" aria-expanded="false" style="border: none; cursor: pointer;">
           <i data-lucide="plus" style="width: 28px; height: 28px;"></i>
@@ -2560,6 +2563,35 @@ window.Components = {
   // Capacitor.Plugins (no plugin JS is bundled); on the web, or when the
   // plugin is missing, every call is a no-op. start() arms the generator
   // (Android only ticks between selectionStart and selectionEnd).
+  // 1.2.2 (HG-7 P2): one polite live region, outside #router-view, so a
+  // status message survives the wholesale re-render that follows a dispatch
+  // (WCAG 4.1.3). ensure() creates it ahead of the first message: a region
+  // created together with its text is often not read.
+  Announcer: {
+    ensure() {
+      const doc = window.document;
+      if (!doc || !doc.body) return null;
+      let el = doc.getElementById('sr-announcer');
+      if (!el) {
+        el = doc.createElement('div');
+        el.id = 'sr-announcer';
+        el.className = 'visually-hidden';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        doc.body.appendChild(el);
+      }
+      return el;
+    },
+    say(text) {
+      const el = this.ensure();
+      if (!el) return;
+      // cleared first, so the same message twice is read twice
+      el.textContent = '';
+      clearTimeout(this._timer);
+      this._timer = setTimeout(() => { el.textContent = String(text || ''); }, 60);
+    }
+  },
+
   Haptics: {
     _plugin() {
       const cap = window.Capacitor;

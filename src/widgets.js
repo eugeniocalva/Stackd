@@ -1532,6 +1532,31 @@ window.Widgets = {
           });
         });
       }
+    },
+
+    // 1.2.2 (HG-7 P2, docs/smart-insights-plan.md §3.3): Smart Insights on
+    // Home. Opt-in only (no seed, no migration). The engine and the markup
+    // live in insights.js, which loads after this file and is called at
+    // render time, so the page and the widget share one ranking. The large
+    // card grows with its rows (autoHeight 'large'); the small one keeps the
+    // fixed height and clamps its headline.
+    insights: {
+      get title() { return window.I18n.t('insights.title'); },
+      get description() { return window.I18n.t('widget.insights.desc'); },
+      icon: 'lightbulb',
+      sizes: ['small', 'large'],
+      hasConfig: false,
+      defaultConfig: {},
+      autoHeight: 'large',
+
+      render(instance, state) {
+        if (!window.Insights) return window.Widgets._emptyState(window.I18n.t('widget.loadFailed'));
+        return window.Insights.renderWidget(instance, state);
+      },
+
+      attach(instance, card) {
+        if (window.Insights) window.Insights.attachWidget(instance, card);
+      }
     }
   },
 
@@ -1583,7 +1608,9 @@ window.Widgets = {
     if (isLarge) classes.push('widget-card--large');
     // 1.2.0 (UX-2): the one opt-in exception to the fixed card heights
     // (v0.73): the box grows with its content (accountBalances).
-    if (def && def.autoHeight) classes.push('widget-card--auto');
+    // 1.2.2 (HG-7): autoHeight 'large' grows the large card only (a small
+    // auto-height card would stretch its row partner).
+    if (def && (def.autoHeight === true || (def.autoHeight === 'large' && isLarge))) classes.push('widget-card--auto');
     if (editMode) classes.push('is-editing');
 
     // Unknown type: keep the slot visible and removable rather than throwing.

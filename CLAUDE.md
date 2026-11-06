@@ -486,6 +486,17 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   attention items rank first, insights by score + a daily offset. Every
   insight is a real `<a>`; rows wrap at large text — a new row type must pass
   the 200 % reflow and focus-clearance e2e in `insights.spec.js`.
+- **Smart Insights widget + tab order (HG-7, P2).** `registry.insights` is
+  opt-in (no seed) and delegates to `Insights.renderWidget/attachWidget`;
+  the large card shows one item per rule `group` (catalogue family), so a new
+  rule needs a `group`. `autoHeight: 'large'` grows only the large card. The
+  tab bar after Home is `state.navOrder` (`stackd_v1_navOrder`,
+  `SET_NAV_ORDER`, `Store.NAV_TABS`/`normalizeNavOrder`, reset by
+  `RESET_APP`, not in the backup); `BottomNav.TABS`/`tabs()` build the bar and
+  `main.js` rebuilds it when `BottomNav.key(state)` changes. A new tab needs
+  an entry in both `NAV_TABS` and `BottomNav.TABS`. Settings → Tab bar moves
+  tabs with Move up/down (focus kept, `Components.Announcer` live region)
+  or a grip drag.
 
 ## Working conventions in this repo
 

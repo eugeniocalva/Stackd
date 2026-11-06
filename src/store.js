@@ -164,6 +164,9 @@ window.Store = {
     // (Store.isMoneyMasked); shake flips hide from a shake while Home is on
     // screen. Per-device pref, outside the CSV backup.
     privacy: { hide: false, shake: false },
+    // 1.2.2 (HG-7 P2): the tab bar order after Home (Home is always first
+    // and the start screen). Per-device pref, outside the CSV backup.
+    navOrder: ['transactions', 'budget', 'analytics', 'insights'],
     isSelectionMode: false,
     selectedTransactionIds: [],
 
@@ -335,6 +338,7 @@ window.Store = {
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); // 1.1.0 (IE-4)
     this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); // 1.2.2 (HG-4)
+    this.state.navOrder = this.normalizeNavOrder(window.StackdDB.load('navOrder', null)); // 1.2.2 (HG-7 P2)
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
     // v0.72 Phase 5: Recent Activities left the dashboard when the widget area
     // shipped, so a user who has NEVER configured widgets (key absent — distinct
@@ -629,6 +633,7 @@ window.Store = {
         if (e.key === 'stackd_v1_language') { this.state.language = window.StackdDB.load('language', 'en'); if (window.I18n) window.I18n.setLang(this.state.language); changed = true; } // v0.86 P8a
         if (e.key === 'stackd_v1_exportPrefs') { this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); changed = true; } // 1.1.0 (IE-4)
         if (e.key === 'stackd_v1_privacy') { this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); changed = true; } // 1.2.2 (HG-4)
+        if (e.key === 'stackd_v1_navOrder') { this.state.navOrder = this.normalizeNavOrder(window.StackdDB.load('navOrder', null)); changed = true; } // 1.2.2 (HG-7 P2)
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
@@ -2010,6 +2015,7 @@ window.Store = {
       case 'enableTimeInput': s.enableTimeInput = L('enableTimeInput', false); return true;
       case 'exportPrefs': s.exportPrefs = L('exportPrefs', null); return true; // 1.1.0 (IE-4)
       case 'privacy': s.privacy = this.normalizePrivacy(L('privacy', null)); return true; // 1.2.2 (HG-4)
+      case 'navOrder': s.navOrder = this.normalizeNavOrder(L('navOrder', null)); return true; // 1.2.2 (HG-7 P2)
       case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
       case 'historyFilterSortOrder': s.historyFilters.sortOrder = L('historyFilterSortOrder', 'asc'); return true;
       case 'defaultAccountId': s.defaultAccountId = L('defaultAccountId', ''); return true;
@@ -3667,6 +3673,8 @@ window.Store = {
         window.StackdDB.remove('exportPrefs');
         this.state.privacy = this.normalizePrivacy(null); // 1.2.2 (HG-4): a fresh install shows its balances
         window.StackdDB.remove('privacy');
+        this.state.navOrder = this.normalizeNavOrder(null); // 1.2.2 (HG-7 P2): the default tab order
+        window.StackdDB.remove('navOrder');
         // 1.2.0 (UX-9/UX-11): explicit tag links are user data (wiped with the
         // rest); backup prefs/log are device state of the wiped install.
         this.state.tagLinks = {};
@@ -3932,6 +3940,14 @@ window.Store = {
       case 'SET_PRIVACY': {
         this.state.privacy = this.normalizePrivacy(Object.assign({}, this.getPrivacy(), payload || {}));
         window.StackdDB.save('privacy', this.state.privacy);
+        changed = true;
+        break;
+      }
+
+      // 1.2.2 (HG-7 P2): [viewId…] — the tabs after Home, normalised.
+      case 'SET_NAV_ORDER': {
+        this.state.navOrder = this.normalizeNavOrder(payload);
+        window.StackdDB.save('navOrder', this.state.navOrder);
         changed = true;
         break;
       }
@@ -4707,6 +4723,25 @@ window.Store = {
 
   getPrivacy() {
     return this.normalizePrivacy(this.state.privacy);
+  },
+
+  // 1.2.2 (HG-7 P2): the tab bar. Home is not in the list: it is always the
+  // first tab and the start screen. A stored order keeps the known ids in
+  // its order (once each); a tab it lacks (a newer build's) is appended in
+  // the default order, so no page can ever drop off the bar.
+  NAV_TABS: ['transactions', 'budget', 'analytics', 'insights'],
+  normalizeNavOrder(order) {
+    const src = Array.isArray(order) ? order : [];
+    const out = [];
+    src.forEach(id => {
+      if (typeof id === 'string' && this.NAV_TABS.indexOf(id) !== -1 && out.indexOf(id) === -1) out.push(id);
+    });
+    this.NAV_TABS.forEach(id => { if (out.indexOf(id) === -1) out.push(id); });
+    return out;
+  },
+
+  getNavOrder() {
+    return this.normalizeNavOrder(this.state.navOrder);
   },
 
   // Amounts are masked on Home only, and only while it is the active view:

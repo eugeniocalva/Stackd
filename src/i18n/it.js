@@ -50,6 +50,13 @@ window.I18n.dicts.it = {
   'privacy.hiddenBody': 'Gli importi nella Home sono nascosti. Tocca Mostra per rivederli.',
   'privacy.show': 'Mostra',
   'privacy.motionDenied': "L'accesso al movimento è disattivato, quindi scuotere non può nascondere i saldi. Attivalo nelle impostazioni del telefono per Stack'd.",
+  'navOrder.section': 'Barra delle schede', // 1.2.2 (HG-7 P2): Settings → Tab bar
+  'navOrder.homeLocked': "Sempre in prima posizione · si apre all'avvio",
+  'navOrder.moveUp': 'Sposta {name} su',
+  'navOrder.moveDown': 'Sposta {name} giù',
+  'navOrder.moved': 'Posizione {pos} di {total}: {name}.',
+  'navOrder.reset': "Ripristina l'ordine predefinito",
+  'navOrder.resetDone': 'Ordine predefinito ripristinato.',
   'dash.filteredView': 'Vista filtrata ({interval})',
   'dash.interval.monthly': 'Mensile',
   'dash.interval.weekly': 'Settimanale',
@@ -763,6 +770,8 @@ window.I18n.dicts.it = {
   'insights.starter.cta': 'Aggiungi una transazione',
   'insights.quiet.head': 'Niente da segnalare oggi',
   'insights.quiet.body': 'Gli approfondimenti compaiono man mano che registri i movimenti del mese.',
+  'widget.insights.desc': 'Gli approfondimenti del giorno, calcolati dai tuoi movimenti.', // 1.2.2 (HG-7 P2): the Home widget
+  'widget.insights.all': 'Tutti gli approfondimenti',
   'insights.lock.entries': 'Dopo {total} movimenti · {done} su {total}',
   'insights.lock.months.one': 'Dopo un mese completo di movimenti',
   'insights.lock.months.other': 'Dopo {count} mesi di movimenti · mese {current} su {count}',

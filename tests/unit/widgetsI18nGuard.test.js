@@ -77,6 +77,7 @@ const boot = (pseudo = true) => {
   executeFile('store.js');
   executeFile('components.js');
   executeFile('widgets.js');
+  executeFile('insights.js'); // 1.2.2 (HG-7 P2): the insights widget renders through it
   global.window.Chart = makeChartStub();
   Store().init();
   Store().state.currency = 'EUR';

@@ -213,9 +213,10 @@ describe('phase 5 gallery', () => {
   beforeEach(boot);
 
   // 1.2.0 (UX-2): accountBalances joins right after latest (nine types).
+  // 1.2.2 (HG-7 P2): Smart Insights joins last (ten types).
   it('pins the full gallery order', () => {
     expect(W().listTypes().map(t => t.type)).toEqual(
-      ['latest', 'accountBalances', 'incomeExpense', 'categories', 'netWorth', 'savings', 'upcoming', 'budgets', 'fiftyThirtyTwenty']
+      ['latest', 'accountBalances', 'incomeExpense', 'categories', 'netWorth', 'savings', 'upcoming', 'budgets', 'fiftyThirtyTwenty', 'insights']
     );
   });
 });

@@ -380,3 +380,137 @@ describe('formatCurrency { whole: true }', () => {
     expect(Store().formatCurrency(3071.6, null, { whole: true })).toBe('$••••');
   });
 });
+
+// 1.2.2 (HG-7 P2, plan §3.3): the Home widget (registry.insights).
+describe('the Smart Insights widget', () => {
+  beforeEach(() => boot());
+
+  const W = () => global.window.Widgets;
+  const inst = (size, id) => ({ id: id || `w-${size}`, type: 'insights', size, config: {}, createdAt: '' });
+  const mountCard = (size, id) => {
+    const root = document.getElementById('router-view');
+    const instance = inst(size, id);
+    root.innerHTML = `<div class="widget-card">${W().registry.insights.render(instance, state())}</div>`;
+    const card = root.querySelector('.widget-card');
+    W().registry.insights.attach(instance, card);
+    return card;
+  };
+  // Outlook (cashflow) + top spending + income (cashflow) + account mix.
+  const rich = () => {
+    const id = addAccount('Main', 9000);
+    addAccount('Spare', 1000);
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 3000, accountId: id, date: june(1) });
+    for (let i = 0; i < 4; i++) addTx({ amount: 100, categoryId: 'cat_rent', accountId: id, date: june(2 + i) });
+  };
+
+  it('is in the gallery, opt-in only: a fresh install seeds no insights widget', () => {
+    expect(W().listTypes().map(t => t.type)).toContain('insights');
+    const def = W().registry.insights;
+    expect(def.title).toBe('Smart Insights');
+    expect(def.sizes).toEqual(['small', 'large']);
+    expect(def.hasConfig).toBe(false);
+    expect(W().registry.insights.icon).toBe('lightbulb');
+    expect(Store()._defaultHomeWidgets().map(w => w.type)).not.toContain('insights');
+  });
+
+  it('only the large card grows with its rows (autoHeight "large")', () => {
+    const small = W()._renderCard(inst('small'), state(), false, 0, 1);
+    const large = W()._renderCard(inst('large'), state(), false, 0, 1);
+    expect(small).not.toContain('widget-card--auto');
+    expect(large).toContain('widget-card--auto');
+  });
+
+  it('one item per catalogue family, attention first', () => {
+    rich();
+    const items = Insights().compute(state());
+    const ids = items.map(i => i.id);
+    expect(ids).toContain('monthOutlook');
+    expect(ids).toContain('incomeSource'); // same family (cashflow) as the outlook
+    const picks = Insights().top(items, 3);
+    expect(picks.map(i => i.group)).toEqual([...new Set(picks.map(i => i.group))]);
+    expect(picks.map(i => i.id)).not.toContain('incomeSource');
+    const fake = [{ id: 'a', group: 'bank', kind: 'attention' }, { id: 'b', group: 'bank', kind: 'attention' }, { id: 'c', group: 'spending' }];
+    expect(Insights().top(fake, 3).map(i => i.id)).toEqual(['a', 'c']);
+  });
+
+  it('small: the top item with its figure, the card opens the page', () => {
+    rich();
+    const top = Insights().compute(state())[0];
+    const card = mountCard('small');
+    const a = card.querySelector('a.widget-insight');
+    expect(a.getAttribute('href')).toBe('#insights');
+    expect(card.querySelector('.widget-insight-figure').textContent).toContain(top.figure);
+    expect(card.querySelector('.widget-insight-head').textContent).toBe(top.head);
+    expect(card.querySelector('.widget-insight-head--clamp')).not.toBeNull();
+    a.click();
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#insights');
+  });
+
+  it('large: up to three rows, each opening its own screen with its filters; "All insights" opens the page', () => {
+    rich();
+    const card = mountCard('large');
+    const rows = card.querySelectorAll('ul[role="list"] > li > a.widget-insight-row[data-insight]');
+    expect(rows.length).toBe(3);
+    const spend = card.querySelector('a[data-insight="topSpending"]');
+    spend.click();
+    expect(state().historyFilters.categories).toEqual(['cat_rent']);
+    expect(global.window.Router.navigate).toHaveBeenLastCalledWith('#transactions');
+    card.querySelector('a.widget-insight-all').click();
+    expect(global.window.Router.navigate).toHaveBeenLastCalledWith('#insights');
+    // the rows carry no arrow (one figure column); the small card does
+    expect(card.querySelector('.widget-insight-row .insight-arrow')).toBeNull();
+  });
+
+  it('edit mode: a tap never navigates', () => {
+    rich();
+    const card = mountCard('large');
+    Store().dispatch('TOGGLE_WIDGET_EDIT_MODE', true);
+    const before = global.window.Router.navigate.mock.calls.length;
+    const a = card.querySelector('a[data-insight]');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    a.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(global.window.Router.navigate.mock.calls.length).toBe(before);
+  });
+
+  it('tier 0: the starter in both sizes; nothing to say: the quiet card', () => {
+    ['small', 'large'].forEach(size => {
+      const html = W().registry.insights.render(inst(size), state());
+      expect(html).toContain('Log a few days of spending to unlock insights');
+      expect(html).toContain('0 of 5 entries so far.');
+    });
+    const id = addAccount('Main', 100);
+    for (let i = 0; i < 5; i++) addTx({ accountId: id, date: `2026-05-0${i + 1}` });
+    expect(W().registry.insights.render(inst('large'), state())).toContain('Nothing stands out today');
+  });
+
+  it('amounts mask on Home when balances are hidden; percentages stay', () => {
+    rich();
+    Store().dispatch('SET_PRIVACY', { hide: true });
+    Store().state.activeView = 'dashboard';
+    const html = W().registry.insights.render(inst('large'), state());
+    expect(html).toContain('$••••');
+    expect(html).not.toMatch(/\$[0-9]/);
+    expect(html).toMatch(/\d+%/);
+  });
+
+  it('a preview card is a picture: its links leave the tab order', () => {
+    rich();
+    const html = W().registry.insights.render(inst('large', '__preview__:large'), state());
+    const root = document.getElementById('router-view');
+    root.innerHTML = html;
+    const links = [...root.querySelectorAll('a')];
+    expect(links.length).toBeGreaterThan(0);
+    links.forEach(a => expect(a.getAttribute('tabindex')).toBe('-1'));
+    expect(W().registry.insights.render(inst('large'), state())).not.toContain('tabindex="-1"');
+  });
+
+  it('escapes user names in the widget too', () => {
+    const id = addAccount('<img src=x onerror=1>', 9000);
+    addAccount('<b>B</b>', 1000);
+    for (let i = 0; i < 5; i++) addTx({ amount: 1, accountId: id, date: june(1 + i) });
+    const html = W().registry.insights.render(inst('large'), state());
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('<b>B</b>');
+  });
+});

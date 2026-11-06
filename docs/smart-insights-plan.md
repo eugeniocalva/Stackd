@@ -1,6 +1,7 @@
 # Smart Insights 2.0 — plan (1.2.2, HG-7)
 
-Status: **P1 (page + tab) BUILT 2026-11-06 (§11); P2–P4 to do.** All decisions
+Status: **P1 (page + tab) and P2 (widget + tab order) BUILT 2026-11-06 (§11);
+P3–P4 to do.** All decisions
 taken (§9): an Insights page and a 5th tab; the widget is opt-in; nothing on
 Home by default. Comment tag: `// 1.2.2 (HG-7)`.
 
@@ -160,6 +161,21 @@ lists everything below it.
   to Analytics ("Statistiques / Statistiche / Estadísticas / Estatísticas"),
   so "Analyses / Analisi / Análisis / Análises" are ruled out. The tab and the
   page share one name.
+  - The names in use:
+
+    | Language | Name |
+    |---|---|
+    | English | Smart Insights |
+    | Italian | Approfondimenti smart |
+    | Portuguese | Dicas Inteligentes (the user's own wording, title case) |
+    | French | Astuces intelligentes |
+    | Spanish | Consejos inteligentes |
+
+  - Portuguese, French and Spanish all say "smart tips" (second pass,
+    2026-11-06). The first pass used "Aperçus / Perspectivas / Perspetivas",
+    which was too abstract.
+  - French uses *astuces* rather than *conseils*, because *conseils* reads as
+    financial advice, which these are not.
 - **Decided: five tabs, all visible, no scrolling.**
   - The pill already stretches to 320 px.
   - With five items, each one is 54 px wide on a 393 px phone and 47 px on a
@@ -445,13 +461,68 @@ pass at 200 %.
   old `.insights-section` / `.insight-card` styles are gone; the HG-7 CSS
   block sits at the end of `components.css`.
 - **Strings:** the fragment keys were removed and about 45 whole-sentence keys
-  added in all 5 languages, plus `nav.insights` = `insights.title`: "Smart
-  Insights / Aperçus intelligents / Approfondimenti smart / Perspectivas
-  inteligentes / Perspetivas inteligentes" (§3.4). The other insights strings
-  agree with the new noun's gender.
+  added in all 5 languages, plus `nav.insights` = `insights.title` (the names are in §3.4). The other
+  insights strings agree with the noun's gender (for example *les astuces …
+  calculées*, *los consejos … calculados*).
 - **Tests:**
   - unit: `insights.test.js` (rewritten, 22 tests); `bankConnectB4.test.js`
     and `escapeGuard.test.js` (now render `InsightsView`);
   - e2e: `insights.spec.js` (rewritten: tab, starter, keyboard, 2.4.11 focus
     clearance, 200 % reflow), `page_titles.spec.js` (adds `#insights`),
     `bank_connect.spec.js` (the bank insight on the page).
+
+### P2 · Widget + tab order (2026-11-06)
+
+- **Widget, `registry.insights`** (last in the Add-widget list; no seed, no
+  migration). `widgets.js` delegates to `Insights.renderWidget` /
+  `attachWidget`, so the page and the widget share one ranking.
+  - Small: the top item (attention first). It shows the figure (with the
+    arrow) and the headline clamped at 3 lines; the whole card opens the
+    page.
+  - Large: `Insights.top(items, 3)`, at most one item per catalogue family.
+    Each rule now carries a `group` (bank, cashflow, spending, balance…),
+    which is how the outlook and the income source never both show. Each row
+    opens its own screen with its filters (`Insights.open`, shared with the
+    page); "All insights" opens the page.
+  - The rows leave the arrow out, so every figure fits the one 5.25rem column
+    and the headlines line up. A figure never breaks mid-number; a longer one
+    widens its own row.
+  - Tier 0 shows the starter (head, bar, "n of 5 entries so far") in both
+    sizes, and a tier with nothing to say shows the quiet card.
+  - `autoHeight: 'large'` is new: only the large card grows
+    (`.widget-card--auto`). The insights card's floor is the small height,
+    so a starter or quiet card is not a tall empty box.
+  - In edit mode a tap never follows a link. A preview card in the
+    Add-widget sheet takes its links out of the tab order (`tabindex="-1"`).
+  - Amounts mask on Home (`formatCurrency` → `isMoneyMasked`) and
+    percentages stay.
+- **Tab bar order** (Settings → Tab bar, under Appearance):
+  - `state.navOrder` (`stackd_v1_navOrder`) holds the tabs after Home.
+    `Store.NAV_TABS` is the default; `normalizeNavOrder` drops unknown ids
+    and Home, keeps each id once and appends missing tabs in the default
+    order. It is set by `SET_NAV_ORDER`, reset by `RESET_APP`, listed in
+    `_reloadSlice`, synced across tabs and left out of the backup.
+  - `Components.BottomNav.TABS` / `tabs()` build the bar. `main.js` rebuilds
+    it when `BottomNav.key(state)` (language + order) changes. The app still
+    opens on Home.
+  - The Home row is locked first ("Always first · opens at start"). Every
+    other row has a grip and Move up / Move down (44 × 44, disabled at the
+    ends, labelled "Move {name} up/down").
+  - After a move, focus returns to the moved row's button (the other one
+    when it reached an end). `Components.Announcer` (one polite
+    `#sr-announcer` live region outside `#router-view`, created before the
+    first message) says "{name} is now in position {pos} of {total}". The
+    count includes Home, as the list shows it.
+  - Dragging the grip uses pointer events and stays DOM-only until release,
+    then dispatches once.
+  - "Restore the default order" shows only when the order differs.
+- **Strings:** `navOrder.*` (7 keys) and `widget.insights.desc/all`, in all
+  5 languages. The Romance languages phrase the move message as "Position 3
+  sur 5 : {name}" so no participle has to agree with a tab name.
+- **Tests:**
+  - unit: `insights.test.js` (+10 widget tests), `navOrder.test.js` (new,
+    11), `widgetsI18nGuard.test.js` (loads `insights.js`, so the widget's
+    output is guarded), `homeWidgetsFifty.test.js` (ten types);
+  - e2e: `insights.spec.js` (the widget from the gallery, its links,
+    masking), `nav_order.spec.js` (new: keyboard reorder with focus and live
+    region, 44 px targets, reset, a grip drag, reload).

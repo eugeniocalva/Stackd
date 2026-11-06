@@ -9,7 +9,7 @@ window.I18n.dicts.pt = {
   'nav.history': 'Histórico',
   'nav.goals': 'Objetivos',
   'nav.analytics': 'Estatísticas',
-  'nav.insights': 'Perspetivas inteligentes', // 1.2.2 (HG-7)
+  'nav.insights': 'Dicas Inteligentes', // 1.2.2 (HG-7)
   'nav.toggleActions': 'Menu de ações',
   'nav.addLog': 'Adicionar movimento',
   'nav.addAccount': 'Adicionar conta',
@@ -50,6 +50,13 @@ window.I18n.dicts.pt = {
   'privacy.hiddenBody': 'Os valores do Início estão ocultos. Toca em Mostrar para os veres de novo.',
   'privacy.show': 'Mostrar',
   'privacy.motionDenied': "O acesso ao movimento está desligado, por isso agitar não pode ocultar os saldos. Liga-o para a Stack'd nas definições do telemóvel.",
+  'navOrder.section': 'Barra de separadores', // 1.2.2 (HG-7 P2): Settings → Tab bar
+  'navOrder.homeLocked': 'Sempre em primeiro lugar · abre ao iniciar',
+  'navOrder.moveUp': 'Mover {name} para cima',
+  'navOrder.moveDown': 'Mover {name} para baixo',
+  'navOrder.moved': 'Posição {pos} de {total}: {name}.',
+  'navOrder.reset': 'Repor a ordem predefinida',
+  'navOrder.resetDone': 'Ordem predefinida reposta.',
   'dash.filteredView': 'Vista filtrada ({interval})',
   'dash.interval.monthly': 'Mensal',
   'dash.interval.weekly': 'Semanal',
@@ -748,7 +755,7 @@ window.I18n.dicts.pt = {
 
   // ── Smart insights (P8e; 1.2.2 HG-7: the Insights page) — whole sentences,
   // plain text: params are escaped by Insights._t, the dictionary holds no markup
-  'insights.title': 'Perspetivas inteligentes',
+  'insights.title': 'Dicas Inteligentes',
   'insights.sub': 'Calculadas a partir dos seus próprios registos, neste telemóvel.',
   'insights.sec.attention': 'Requer atenção',
   'insights.sec.month': 'Este mês',
@@ -756,13 +763,15 @@ window.I18n.dicts.pt = {
   'insights.sec.accounts': 'Contas e empréstimos',
   'insights.sec.tidy': 'Por arrumar',
   'insights.sec.locked': 'Por desbloquear com mais dados',
-  'insights.note': 'As perspetivas são calculadas neste telemóvel a partir dos seus registos. Nada sai do dispositivo.',
+  'insights.note': 'As dicas são calculadas neste telemóvel a partir dos seus registos. Nada sai do dispositivo.',
   'insights.starter.eyebrow': 'Primeiros passos',
-  'insights.starter.head': 'Registe alguns dias de despesas para desbloquear as perspetivas',
+  'insights.starter.head': 'Registe alguns dias de despesas para desbloquear as dicas',
   'insights.starter.progress': '{done} de {total} registos até agora.',
   'insights.starter.cta': 'Adicionar uma transação',
   'insights.quiet.head': 'Nada a assinalar hoje',
-  'insights.quiet.body': 'As perspetivas aparecem à medida que regista os movimentos do mês.',
+  'insights.quiet.body': 'As dicas aparecem à medida que regista os movimentos do mês.',
+  'widget.insights.desc': 'As dicas do dia, calculadas a partir dos seus registos.', // 1.2.2 (HG-7 P2): the Home widget
+  'widget.insights.all': 'Todas as dicas',
   'insights.lock.entries': 'Após {total} registos · {done} de {total}',
   'insights.lock.months.one': 'Após um mês completo de registos',
   'insights.lock.months.other': 'Após {count} meses de registos · mês {current} de {count}',
