@@ -482,11 +482,21 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   dispatched): Chart.js `events: []`, `hoverOffset: 0`, padding 7 (resting
   size unchanged), one hit test on `#budget-ring-box` over `CategoryRing.hitZones`
   (a drawn slice always answers for itself; a slice under 24° also gets a halo over the track), real `.ring-arc-btn` buttons (pointer-events none) for
-  keyboard/screen readers, a badge (icon, then the share of spending at 0.9 s;
-  one pill under reduced motion), `Components.Announcer` for pointer taps only.
+  keyboard/screen readers, a badge (icon, then icon + share of spending at 0.9 s —
+  one end state on every path, at once under reduced motion; the pill grows
+  away from the centre and `CategoryRing._fitBadge` keeps it inside its card,
+  refitted on resize; a leaving pill fades where it is (`.is-leaving`) and
+  `_resetBadge` re-arms it; root ≥ 20 px = large text: readout below the
+  ring, no badges), `Components.Announcer` for pointer taps only.
   A re-render restores the focus in its final state; the tab switch and
   `destroy()` drop it and its timers. E2E: `ring_focus.spec.js` (it turns the
   suite's reduced motion off and waits for the entry slide).
+  P2: the controller is shared — `CategoryRing.layout/overlayHtml/readoutHtml/
+  select/wire` with a host object per ring; the Analytics donut (220 px
+  `#analytics-ring-box`, `CategoryDonutChart._focus`, `dropFocus()`) uses it,
+  no tooltip. A new ring = a host, not a copy. The donut binds only
+  `.category-donut-card .chart-toggle-btn[data-type]` (the balance chips share
+  the class).
 - **One bar look (HG-6).** Every bar chart uses Home's monthly-net style
   through `NetFlowChart.barStyle(values, {emphasizeLast})` / `barFill(v, pal)`:
   solid fills in the theme trend pair at 0.9, radius 6, no outline (Home keeps

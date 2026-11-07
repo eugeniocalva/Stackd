@@ -3112,11 +3112,16 @@ window.Components = {
 
     _ease(t) { return 1 - Math.pow(1 - t, 4); }, // easeOutQuart, the entry sweep's curve
 
-    _targets(count, index) {
+    // scale: the ring's outer radius / 82 (Goals' 180 px box), so a bigger
+    // ring (Analytics' 220 px) thickens in proportion.
+    _targets(count, index, scale) {
+      const k = scale || 1;
+      const IN = { dOut: this.FOCUS_IN.dOut * k, dIn: this.FOCUS_IN.dIn * k };
+      const OUT = { dOut: this.FOCUS_OUT.dOut * k, dIn: this.FOCUS_OUT.dIn * k };
       const out = [];
       for (let i = 0; i < count; i++) {
         if (index < 0) out.push({ dOut: 0, dIn: 0 });
-        else out.push(i === index ? this.FOCUS_IN : this.FOCUS_OUT);
+        else out.push(i === index ? IN : OUT);
       }
       return out;
     },
@@ -3165,11 +3170,11 @@ window.Components = {
     // from wherever the arcs are now; `instant` (re-render restore, reduced
     // motion) jumps to the end. A timeout finishes the tween where
     // requestAnimationFrame is suspended (hidden documents).
-    focus(chart, count, index, instant) {
+    focus(chart, count, index, instant, scale) {
       if (!chart) return;
       const prev = chart.$ringFocus;
       const from = prev ? this._deltas(prev) : this._targets(count, -1);
-      const to = this._targets(count, index);
+      const to = this._targets(count, index, scale);
       if (chart.$ringRaf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(chart.$ringRaf);
       clearTimeout(chart.$ringSnap);
       const canDraw = () => typeof chart.draw === 'function' && chart.canvas && chart.canvas.isConnected !== false && chart.ctx;
@@ -3202,6 +3207,263 @@ window.Components = {
       if (chart.$ringRaf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(chart.$ringRaf);
       clearTimeout(chart.$ringSnap);
       chart.$ringRaf = null;
+    },
+
+    // ── The shared tap-to-focus controller (Goals P1, Analytics P2) ──────────
+    // A ring: slices [{ id, name, icon, value, color, members? }] drawn
+    // biggest first, then (Goals only) the track value; in a square box.
+    layout(slices, track, box) {
+      const size = box || 180;
+      const values = slices.map(sl => sl.value).concat(track == null ? [] : [track]);
+      const geo = this.geometry(values, { box: size });
+      const zones = this.hitZones(geo.arcs, values.map((v, i) => i < slices.length));
+      return { geo, zones, count: values.length, hasTrack: track != null, box: size, scale: geo.outer / 82 };
+    },
+
+    // Root font ≥ 20 px: the readout leaves the hole for the space under the
+    // ring (WCAG 1.4.4) and the badge hides; the share moves into the caption.
+    // 1.2.2 (HG-8 review C6): 20, not 24 — from ~21 px a French caption wraps
+    // out of the hole and the pill near 6 o'clock lands on it. Android's text
+    // sizes: 115 % (18.4 px) keeps the hole, 130 % (20.8 px) goes below.
+    bigText() {
+      try {
+        return parseFloat(window.getComputedStyle(document.documentElement).fontSize) >= 20;
+      } catch (e) {
+        return false;
+      }
+    },
+
+    // The ring's overlay: a real button per slice — the keyboard and
+    // screen-reader path (WCAG 2.1.1, 4.1.2); pointer-events none, a finger
+    // goes through the box's one hit test — on its drawn mid, and a badge per
+    // slice (the icon, then the icon and the share). A focus is written in its final
+    // state: no replay. o: { focus, groupLabel (t() output), ariaOf(slice)
+    // (markup-safe), pctOf(slice) }.
+    overlayHtml(ring, slices, o) {
+      const esc = (v) => window.I18n.esc(v);
+      const rBtn = (ring.geo.outer + ring.geo.inner) / 2;
+      const rBadge = rBtn + ring.scale; // the middle of the focused band
+      const reduced = window.Components.RingChart._reduced();
+      const buttons = slices.map((sl, i) => {
+        const pt = this.point(ring.geo, ring.zones[i].mid, rBtn);
+        return `<button type="button" class="ring-arc-btn" data-arc-id="${esc(sl.id)}" aria-pressed="${sl.id === o.focus}" aria-label="${o.ariaOf(sl)}" style="left: ${pt.x.toFixed(1)}px; top: ${pt.y.toFixed(1)}px;"></button>`;
+      }).join('');
+      const badges = slices.map((sl, i) => {
+        const pt = this.point(ring.geo, ring.geo.arcs[i].mid, rBadge);
+        // --push: the slice's sideways direction (sin of its angle from 12
+        // o'clock). The pill grows away from the centre — at 3 o'clock to the
+        // right, at 9 to the left, at 12 and 6 both ways — so it stays off the
+        // readout in the hole (at large text the readout moves below the
+        // ring and the badges hide).
+        const push = Math.sin(ring.geo.arcs[i].mid);
+        const on = sl.id === o.focus ? (reduced ? ' is-on is-both' : ' is-on is-pct is-static') : '';
+        return `<span class="ring-badge${on}" data-arc-id="${esc(sl.id)}" aria-hidden="true" style="left: ${pt.x.toFixed(1)}px; top: ${pt.y.toFixed(1)}px; --slice: ${esc(sl.color)}; --push: ${push.toFixed(3)};"><span class="ring-badge-icon"><i data-lucide="${esc(sl.icon)}"></i></span><span class="ring-badge-pct">${esc(o.pctOf(sl))}</span></span>`;
+      }).join('');
+      return `${slices.length ? `<div class="ring-arc-group" role="group" aria-label="${o.groupLabel}">${buttons}</div>` : ''}${badges}`;
+    },
+
+    // The focused readout (raw strings in; escaped here).
+    readoutHtml(r, below) {
+      const esc = (v) => window.I18n.esc(v);
+      const x = r || {};
+      return `<div class="ring-focus-readout${below ? ' ring-focus-readout--below' : ''}" aria-hidden="true"><div class="ring-focus-name">${esc(x.name || '')}</div><div class="ring-focus-amount">${esc(x.amount || '')}</div><div class="ring-focus-caption">${esc(x.caption || '')}</div></div>`;
+    },
+
+    clearTimers(timers) {
+      if (!timers) return;
+      timers.forEach(id => clearTimeout(id));
+      timers.length = 0;
+    },
+
+    _readoutOf(box) {
+      const inner = box.querySelector('.ring-focus-readout');
+      if (inner) return inner;
+      const next = box.nextElementSibling;
+      return next && next.classList && next.classList.contains('ring-focus-readout') ? next : null;
+    },
+
+    // Focus a slice (id), or clear (null / the focused id again). host: { box,
+    // ring, slices, timers (array), chart() → Chart, getFocus() → id|null,
+    // setFocus(id|null), readout(slice) → { name, amount, caption },
+    // announce(slice) → text, cleared (text) }. `viaPointer` adds the haptic
+    // and the live-region message; a button activation is already announced
+    // through its aria-pressed change (WCAG 4.1.3).
+    select(host, id, viaPointer) {
+      const box = host && host.box;
+      if (!box || !host.ring) return;
+      const slices = host.slices || [];
+      const cur = host.getFocus();
+      const next = id && id !== cur && slices.some(sl => sl.id === id) ? id : null;
+      if (next === cur) return;
+      host.setFocus(next);
+      this.clearTimers(host.timers);
+      const idx = next ? slices.findIndex(sl => sl.id === next) : -1;
+      this.focus(host.chart(), host.ring.count, idx, false, host.ring.scale);
+
+      box.querySelectorAll('.ring-arc-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.arcId === next)));
+      box.classList.toggle('is-focused', !!next);
+      const slice = next ? slices[idx] : null;
+      const readout = this._readoutOf(box);
+      if (slice && readout) {
+        const r = host.readout(slice);
+        readout.querySelector('.ring-focus-name').textContent = r.name;
+        readout.querySelector('.ring-focus-amount').textContent = r.amount;
+        readout.querySelector('.ring-focus-caption').textContent = r.caption;
+      }
+
+      // the badge that loses the focus fades out where it is (is-leaving keeps
+      // its layout, colours and fit); the one that takes it starts as a clean
+      // hidden disc, whatever it was doing (a quick re-tap catches it leaving)
+      box.querySelectorAll('.ring-badge.is-on').forEach(b => {
+        b.classList.remove('is-on');
+        b.classList.add('is-leaving');
+      });
+      const badge = slice ? [...box.querySelectorAll('.ring-badge')].find(b => b.dataset.arcId === next) : null;
+      if (badge) {
+        this._resetBadge(badge);
+        if (window.Components.RingChart._reduced()) {
+          badge.classList.add('is-on', 'is-both'); // no timed swap: icon and share at once
+          this._fitBadge(badge, badge.offsetWidth);
+        } else {
+          host.timers.push(setTimeout(() => { if (badge.isConnected) badge.classList.add('is-on'); }, 60));
+          host.timers.push(setTimeout(() => {
+            if (!badge.isConnected) return;
+            // 1.2.2 (HG-8): the pill keeps the icon beside the share — measure
+            // its natural width with both inside, put the disc width back,
+            // then grow to it so the width change animates.
+            badge.classList.add('is-pct');
+            badge.style.width = 'max-content'; // not auto: that shrinks near the box edge
+            const w = Math.ceil(badge.offsetWidth) || 64;
+            this._fitBadge(badge, w);
+            badge.style.width = '28px';
+            void badge.offsetWidth; // commit the disc width
+            badge.style.width = `${w}px`;
+          }, 900));
+        }
+      }
+
+      if (viaPointer) {
+        if (slice && window.Components.Haptics) window.Components.Haptics.light();
+        if (window.Components.Announcer) window.Components.Announcer.say(slice ? host.announce(slice) : host.cleared);
+      }
+    },
+
+    // 1.2.2 (HG-8 review C3/C5/C7): keep a focused pill inside the box that
+    // clips it (the card). The room beside a ring depends on the viewport and
+    // the text size, so it is measured: --push-k scales the outward growth
+    // (1 = all the way, 0 = centred on the band) and, if even a centred pill
+    // would cross the edge, --nudge moves it back in. w is the pill's final
+    // width; the geometry is computed, not read from the (possibly
+    // mid-transition) badge rect. A failed read leaves the pill unfitted.
+    _fitBadge(badge, w) {
+      if (!badge) return;
+      badge.style.removeProperty('--push-k');
+      badge.style.removeProperty('--nudge');
+      try {
+        this._fitBadgeTo(badge, w);
+      } catch (e) {
+        badge.style.removeProperty('--push-k');
+        badge.style.removeProperty('--nudge');
+      }
+    },
+
+    // A clean hidden disc, at once (no transition on the badge or its parts).
+    _resetBadge(b) {
+      b.classList.add('is-reset');
+      b.classList.remove('is-on', 'is-pct', 'is-static', 'is-both', 'is-leaving');
+      b.style.width = '';
+      b.style.removeProperty('--push-k');
+      b.style.removeProperty('--nudge');
+      void b.offsetWidth;
+      b.classList.remove('is-reset');
+    },
+
+    // Refit, in place, every focused pill on the page (a resize or a
+    // rotation changes the room beside its ring). A disc needs no fit; a
+    // pill mid-morph uses its target width.
+    _refitFocused() {
+      document.querySelectorAll('.ring-box .ring-badge.is-on').forEach(b => {
+        if (!['is-pct', 'is-both', 'is-static'].some(c => b.classList.contains(c))) return;
+        const w = parseFloat(b.style.width) || b.offsetWidth;
+        b.classList.add('is-reset');
+        this._fitBadge(b, w);
+        void b.offsetWidth;
+        b.classList.remove('is-reset');
+      });
+    },
+
+    _fitBadgeTo(badge, w) {
+      const box = badge.parentElement;
+      if (!box || !w || !badge.isConnected) return;
+      let clip = box.parentElement;
+      while (clip && clip !== document.body && window.getComputedStyle(clip).overflowX === 'visible') clip = clip.parentElement;
+      const br = box.getBoundingClientRect();
+      const sc = box.offsetWidth && br.width ? br.width / box.offsetWidth : 1; // any scale on the way up
+      let lo;
+      let hi;
+      if (clip && clip !== document.body) {
+        const cr = clip.getBoundingClientRect();
+        lo = (cr.left - br.left) / sc + clip.clientLeft;
+        hi = lo + clip.clientWidth;
+      } else {
+        lo = -br.left / sc;
+        hi = lo + (window.innerWidth || 0) / sc;
+      }
+      lo += 4; // a little air inside the edge
+      hi -= 4;
+      const x = parseFloat(badge.style.left) || 0; // the badge's point, in box px
+      const push = parseFloat(badge.style.getPropertyValue('--push')) || 0;
+      const reach = Math.abs(push) * (w / 2 - 14); // the outward growth at k = 1
+      const room = push >= 0 ? hi - (x + w / 2) : (x - w / 2) - lo; // past a centred pill
+      if (reach > 0.5 && room < reach) badge.style.setProperty('--push-k', Math.max(0, room / reach).toFixed(3));
+      if (room < 0) badge.style.setProperty('--nudge', `${(push >= 0 ? room : -room).toFixed(1)}px`);
+    },
+
+    // Wire one ring box: the one hit test for taps (a drawn slice, a small
+    // slice's halo; the hole and the track clear), the button activations
+    // and Escape. The box is replaced with the view on every render, so its
+    // listeners go with it.
+    wire(host) {
+      const box = host && host.box;
+      if (!box || !host.ring || !(host.slices || []).length) return;
+      if (window.Components.Announcer) window.Components.Announcer.ensure();
+      // a focus restored by the render: fit its pill in place, no slide
+      const restored = box.querySelector('.ring-badge.is-on');
+      if (restored && restored.offsetWidth) {
+        restored.classList.add('is-reset');
+        this._fitBadge(restored, restored.offsetWidth);
+        void restored.offsetWidth;
+        restored.classList.remove('is-reset');
+      }
+      // one page-wide listener: a resize or a rotation refits a focused pill
+      if (!this._resizeWired && window.addEventListener) {
+        this._resizeWired = true;
+        window.addEventListener('resize', () => {
+          clearTimeout(this._resizeTimer);
+          this._resizeTimer = setTimeout(() => this._refitFocused(), 120);
+        });
+      }
+      box.addEventListener('click', (e) => {
+        e.stopPropagation(); // a host's own "tap outside the ring" must not see it
+        const btn = e.target && e.target.closest ? e.target.closest('.ring-arc-btn') : null;
+        if (btn) { // keyboard / screen-reader activation
+          this.select(host, btn.dataset.arcId, false);
+          return;
+        }
+        const r = box.getBoundingClientRect();
+        const k = r.width ? r.width / host.ring.box : 1;
+        const g = host.ring.geo;
+        const band = [g.inner - 10 * host.ring.scale, g.outer + 10 * host.ring.scale];
+        const i = this.hitTest(host.ring.zones, (e.clientX - r.left) / k, (e.clientY - r.top) / k, g, band);
+        this.select(host, i >= 0 && i < host.slices.length ? host.slices[i].id : null, true);
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && host.getFocus()) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.select(host, null, false);
+        }
+      });
     }
   },
 
@@ -3237,22 +3499,89 @@ window.Components = {
       });
     },
 
-    // Collapse raw distribution data into top-5 + 'Others' always as last entry
+    // 1.2.2 (HG-8 P2): the shared Others rule (CategoryRing.fold): up to 6
+    // categories each keep a slice; from 7 the 5 biggest do and the rest fold
+    // into Others (always 2 or more — the old top-5 cut made a one-member
+    // Others at exactly 6). Others carries its members' names. The Home
+    // categories widget reads this too.
     _capData(rawData) {
-      if (!rawData || rawData.length <= 5) return rawData || [];
-      const top5 = rawData.slice(0, 5);
-      const rest = rawData.slice(5);
-      const othersAmount = rest.reduce((sum, item) => sum + item.amount, 0);
-      const totalAmount = rawData.reduce((sum, item) => sum + item.amount, 0);
-      top5.push({
-        id: '__others__',
-        name: window.I18n.t('charts.others'),
-        amount: othersAmount,
-        icon: 'more-horizontal',
-        percentage: totalAmount > 0 ? (othersAmount / totalAmount) * 100 : 0,
-        isOthers: true
-      });
-      return top5;
+      const raw = rawData || [];
+      const f = window.Components.CategoryRing.fold(raw.map(it => ({ id: it.id, value: it.amount, item: it })));
+      const out = f.named.map(x => x.item);
+      if (f.others) {
+        const total = raw.reduce((sum, it) => sum + it.amount, 0);
+        out.push({
+          id: '__others__',
+          name: window.I18n.t('charts.others'),
+          amount: f.others.value,
+          icon: 'more-horizontal',
+          percentage: total > 0 ? (f.others.value / total) * 100 : 0,
+          isOthers: true,
+          members: f.others.members.map(m => m.item.name)
+        });
+      }
+      return out;
+    },
+
+    // ── 1.2.2 (HG-8 P2): tap-to-focus on the Analytics ring ────────────────
+    // The Goals controller (CategoryRing.select / wire) with this ring's
+    // words: the share is of the period's spending (or income). The focus
+    // lives on the singleton like _expandedCatId: { type, id } | null.
+    _focus: null,
+    _ringTimers: [],
+    _ringPass: null,
+
+    _ringPct(value) {
+      const total = this._ringPass ? this._ringPass.total : 0;
+      return window.Store.formatPercent(total > 0 ? (value / total) * 100 : 0, { digits: 0, maxDigits: 1 });
+    },
+
+    // plain = raw params for the live region; markup gets them escaped.
+    _ringAria(sl, plain) {
+      const e = plain ? (v) => v : (v) => this._esc(v);
+      const income = this._currentType === 'income';
+      const money = window.Store.formatCurrency(sl.value, this._currency);
+      const pct = this._ringPct(sl.value);
+      return sl.members
+        ? window.I18n.t(income ? 'charts.ring.othersAriaIncome' : 'budget.ring.othersAria', { count: sl.members.length, names: e(sl.members.join(', ')), amount: e(money), pct: e(pct) })
+        : window.I18n.t(income ? 'charts.ring.arcAriaIncome' : 'budget.ring.arcAria', { name: e(sl.name), amount: e(money), pct: e(pct) });
+    },
+
+    _ringReadout(sl, big) {
+      const income = this._currentType === 'income';
+      const total = window.Store.formatCurrency(this._ringPass ? this._ringPass.total : 0, this._currency);
+      const pct = this._ringPct(sl.value);
+      return {
+        name: sl.name,
+        amount: window.Store.formatCurrency(sl.value, this._currency),
+        caption: big
+          ? window.I18n.t(income ? 'charts.ring.pctOfIncome' : 'budget.ring.pctOfSpent', { pct, amount: total })
+          : window.I18n.t(income ? 'charts.ring.ofIncome' : 'budget.ring.ofSpent', { amount: total })
+      };
+    },
+
+    _ringHost(box) {
+      const pass = this._ringPass;
+      if (!box || !pass || !pass.ring) return null;
+      return {
+        box,
+        ring: pass.ring,
+        slices: pass.slices,
+        timers: this._ringTimers,
+        chart: () => this._chartInstance,
+        getFocus: () => (this._focus ? this._focus.id : null),
+        setFocus: (id) => { this._focus = id ? { type: this._currentType, id } : null; },
+        readout: (sl) => this._ringReadout(sl, box.classList.contains('ring--big-text')),
+        announce: (sl) => this._ringAria(sl, true),
+        cleared: window.I18n.t('charts.ring.cleared')
+      };
+    },
+
+    // Leaving Analytics (AnalyticsView.destroy) or switching the type.
+    dropFocus() {
+      this._focus = null;
+      window.Components.CategoryRing.clearTimers(this._ringTimers);
+      if (this._chartInstance) window.Components.CategoryRing.stop(this._chartInstance);
     },
 
     // 1.0.2 (BUG-63): `currency` (optional, last) = the selection's currency;
@@ -3267,6 +3596,32 @@ window.Components = {
       const hasData = data && data.length > 0;
       const totalAmount = rawData.reduce((sum, item) => sum + item.amount, 0);
 
+      // 1.2.2 (HG-8 P2): the slices (Others named "Others (n)" in the
+      // readout), a focus kept only while its slice is still here under this
+      // type, and the 220 px ring's geometry for the overlay and the hit test.
+      const CR = window.Components.CategoryRing;
+      const slices = (data || []).map(d => ({
+        id: d.id,
+        name: d.isOthers ? window.I18n.t('budget.ring.othersLabel', { count: (d.members || []).length }) : d.name,
+        icon: d.icon,
+        value: d.amount,
+        color: d._color,
+        members: d.isOthers ? (d.members || []) : undefined
+      }));
+      const focus = this._focus && this._focus.type === type && slices.some(sl => sl.id === this._focus.id) ? this._focus.id : null;
+      if (!focus) this._focus = null;
+      const ring = slices.length ? CR.layout(slices, null, 220) : null;
+      this._ringPass = { slices, ring, total: totalAmount, type };
+      const big = CR.bigText();
+      const focused = slices.find(sl => sl.id === focus) || null;
+      const overlay = ring ? CR.overlayHtml(ring, slices, {
+        focus,
+        groupLabel: window.I18n.t('charts.ring.groupAria'),
+        ariaOf: (sl) => this._ringAria(sl, false),
+        pctOf: (sl) => this._ringPct(sl.value)
+      }) : '';
+      const readout = CR.readoutHtml(focused ? this._ringReadout(focused, big) : null, big);
+
       let contentHtml = '';
       if (!hasData) {
         contentHtml = `
@@ -3278,13 +3633,15 @@ window.Components = {
       } else {
         contentHtml = `
           <div class="donut-chart-layout">
-            <div class="donut-chart-container">
-              <canvas id="categoryDonutChart"></canvas>
+            <div class="donut-chart-container ring-box ring-box--lg${focused ? ' is-focused' : ''}${big ? ' ring--big-text' : ''}" id="analytics-ring-box">
+              <canvas id="categoryDonutChart" aria-hidden="true"></canvas>
               <div class="donut-chart-center">
                 <div class="donut-total-label">${window.I18n.t('charts.total')}</div>
                 <div class="donut-total-value">${window.Store.formatCurrency(totalAmount, this._currency)}</div>
               </div>
-            </div>
+              ${big ? '' : readout}
+              ${overlay}
+            </div>${big ? readout : ''}
             <div class="donut-legend">
               ${data.map(item => {
                 const esc = (v) => this._esc(v);
@@ -3319,7 +3676,7 @@ window.Components = {
       }
 
       return `
-        <div class="card card-elevated" style="padding: var(--space-5); margin-top: var(--space-4); border-radius: var(--radius-2xl); position: relative; overflow: hidden;">
+        <div class="card card-elevated category-donut-card" style="padding: var(--space-5); margin-top: var(--space-4); border-radius: var(--radius-2xl); position: relative; overflow: hidden;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6); position: relative; z-index: 1;">
             <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">${window.I18n.t('charts.distribution')}</p>
             
@@ -3339,7 +3696,11 @@ window.Components = {
     attachEvents(container, filters, currency, opts) {
       const animate = !!(opts && opts.animate);
       const canvas = container.querySelector('#categoryDonutChart');
-      const toggleBtns = container.querySelectorAll('.chart-toggle-btn');
+      // 1.2.2 (HG-8 P2 review): only the donut's own Expenses / Income buttons —
+      // the bare class also caught Analytics' Today / period-end chips, so a
+      // balance tap dropped the ring focus and stacked a listener per toggle.
+      const donutCard = container.querySelector('.category-donut-card');
+      const toggleBtns = donutCard ? donutCard.querySelectorAll('.chart-toggle-btn[data-type]') : [];
       if (currency !== undefined) this._currency = currency; // 1.0.2 (BUG-63)
       const ccy = this._currency; // captured per mount for the chart callbacks
 
@@ -3348,22 +3709,23 @@ window.Components = {
         // v0.85: an expense category's tag breakdown means nothing under the
         // income lens — collapse rather than restore something stale.
         this._expandedCatId = null;
+        this.dropFocus(); // 1.2.2 (HG-8 P2): and the ring focus with it
         const newData = window.Store.computeCategoryDistribution(filters, type);
 
-        const card = container.querySelector('.donut-chart-layout') || container.querySelector('[style*="height: 200px"]');
-        if (card) {
-          const outerCard = container.querySelector('.donut-chart-layout')?.closest('.card') || container.querySelector('[style*="height: 200px"]')?.closest('.card');
-          if (outerCard) {
-            outerCard.outerHTML = this.render(newData, type, ccy); // 1.0.2 (BUG-63): same currency
-            this.attachEvents(container, filters, ccy, { animate: false });
-          }
+        // 1.2.2 (HG-8 P2 review): the donut's own card. The old inline-style
+        // fallback ([style*="height: 200px"]) matched the Net Flow chart first
+        // when the donut had no data, and the toggle replaced that card.
+        const outerCard = container.querySelector('.category-donut-card');
+        if (outerCard) {
+          outerCard.outerHTML = this.render(newData, type, ccy); // 1.0.2 (BUG-63): same currency
+          this.attachEvents(container, filters, ccy, { animate: false });
         }
       };
 
       toggleBtns.forEach(btn => {
         btn.addEventListener('click', () => {
           const type = btn.dataset.type;
-          if (type === this._currentType) return;
+          if ((type !== 'expense' && type !== 'income') || type === this._currentType) return;
           updateChart(type);
         });
       });
@@ -3459,67 +3821,51 @@ window.Components = {
 
       if (!canvas || !window.Chart) return;
 
-      const rawData = window.Store.computeCategoryDistribution(filters, this._currentType);
-      const rawCapped = this._capData(rawData);
-      const data = this._assignColors(rawCapped);
-      if (data.length === 0) return;
+      // 1.2.2 (HG-8 P2): the slices render() just laid out (same pass)
+      const pass = this._ringPass;
+      if (!pass || !pass.ring || !pass.slices.length) return;
+      const CR = window.Components.CategoryRing;
 
       if (this._chartInstance) {
+        CR.stop(this._chartInstance);
         this._chartInstance.destroy();
       }
 
-      const isDark = (window.Store && window.Store.state && window.Store.state.activeTheme === 'dark');
-      const tooltipBg = isDark ? '#161e2e' : '#ffffff';
-      const tooltipTitle = isDark ? '#94a3b8' : '#64748b';
-      const tooltipBody = isDark ? '#f8fafc' : '#334155';
-      const tooltipBorder = isDark ? 'rgba(51, 65, 85, 0.8)' : '#e2e8f0';
-
       // 1.2.0 (UX-7): the shared ring look; the sweep plays on the Analytics
       // entry render only (v0.93's animation: false stays the rule for every
-      // other mount). 1.2.2 (HG-5): no icon badges — the legend carries them.
+      // other mount). 1.2.2 (HG-8 P2): no tooltip and no Chart.js events —
+      // the box's one hit test owns taps (tap-to-focus, as on Goals); a
+      // square 220 px box, padding 7, hoverOffset 0, and the focus plugin.
       this._chartInstance = new window.Chart(canvas, window.Components.RingChart.config({
         type: 'doughnut',
         data: {
-          labels: data.map(d => d.name),
+          labels: pass.slices.map(sl => sl.name),
           datasets: [{
-            data: data.map(d => d.amount),
-            backgroundColor: data.map(d => d._color),
-            hoverBackgroundColor: data.map(d => d._hoverColor),
-            hoverBorderColor: 'transparent',
-            hoverOffset: 8
+            data: pass.slices.map(sl => sl.value),
+            backgroundColor: pass.slices.map(sl => sl.color),
+            hoverOffset: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: tooltipBg,
-              titleColor: tooltipTitle,
-              titleFont: { size: 11, weight: '600' },
-              bodyColor: tooltipBody,
-              bodyFont: { family: 'Manrope', size: 13, weight: '800' },
-              borderColor: tooltipBorder,
-              borderWidth: 1,
-              padding: 12,
-              displayColors: true,
-              boxPadding: 6,
-              callbacks: {
-                label: (ctx) => {
-                  const val = ctx.parsed;
-                  const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                  const pct = window.Store.formatPercent(total > 0 ? (val / total) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
-                  return `  ${window.Store.formatCurrency(val, ccy)} (${pct})`; // 1.0.2 (BUG-63)
-                }
-              }
-            }
-          }
-        }
+          events: [],
+          layout: { padding: 7 },
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        },
+        plugins: [CR.plugin()]
       }, {
         animate,
         delay: 250 // past the view-transition snapshot
       }));
+
+      // A focus restored by a re-render: final state, no tween.
+      if (this._focus) {
+        const idx = pass.slices.findIndex(sl => sl.id === this._focus.id);
+        if (idx >= 0) CR.focus(this._chartInstance, pass.ring.count, idx, true, pass.ring.scale);
+      }
+      const box = container.querySelector('#analytics-ring-box');
+      if (box) CR.wire(this._ringHost(box));
     }
   },
 

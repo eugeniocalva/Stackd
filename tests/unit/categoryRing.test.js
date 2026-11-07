@@ -228,6 +228,92 @@ describe('CategoryRing.fold, geometry and tap zones', () => {
   });
 });
 
+// 1.2.2 (HG-8 review C3/C5/C7): a focused pill is fitted to the card that
+// clips it — the outward growth is scaled down (--push-k) to the room there,
+// and a pill that would cross the edge even centred is nudged back in.
+describe('CategoryRing._fitBadge and the large-text cutoff', () => {
+  beforeEach(boot);
+
+  // a 300 px card (clips), a 220 px ring box at boxLeft inside it, one badge
+  // border: the card's border width (clientLeft); scale: a transform on the
+  // way up (rects scaled, offset/client sizes not)
+  const mk = ({ left, push, cardW = 300, boxLeft = 40, border = 0, scale = 1 }) => {
+    const clip = document.createElement('div');
+    clip.style.overflowX = 'hidden';
+    const box = document.createElement('div');
+    const badge = document.createElement('span');
+    badge.style.left = `${left}px`;
+    badge.style.setProperty('--push', String(push));
+    box.appendChild(badge);
+    clip.appendChild(box);
+    document.body.appendChild(clip);
+    clip.getBoundingClientRect = () => ({ left: 0, right: cardW * scale, width: cardW * scale });
+    Object.defineProperty(clip, 'clientLeft', { value: border });
+    Object.defineProperty(clip, 'clientWidth', { value: cardW - 2 * border });
+    box.getBoundingClientRect = () => ({ left: boxLeft * scale, width: 220 * scale });
+    Object.defineProperty(box, 'offsetWidth', { value: 220 });
+    return badge;
+  };
+  const k = (b) => b.style.getPropertyValue('--push-k');
+  const nudge = (b) => b.style.getPropertyValue('--nudge');
+  beforeEach(() => { global.window.getComputedStyle = (el) => globalThis.getComputedStyle(el); });
+
+  it('a pill with room grows all the way out', () => {
+    // 3 o'clock, 74 px pill: needs 37 + 23 px right of its point; the card leaves 23 + 37
+    const b = mk({ left: 196, push: 1 });
+    C().CategoryRing._fitBadge(b, 74);
+    expect(k(b)).toBe('');
+    expect(nudge(b)).toBe('');
+  });
+
+  it('a pill near the card edge grows out only as far as the room (both sides)', () => {
+    const right = mk({ left: 196, push: 1, cardW: 280 }); // 3 px past a centred pill
+    C().CategoryRing._fitBadge(right, 74);
+    expect(k(right)).toBe((3 / 23).toFixed(3));
+    expect(nudge(right)).toBe('');
+    const leftSide = mk({ left: 24, push: -1, boxLeft: 20 });
+    C().CategoryRing._fitBadge(leftSide, 74);
+    expect(k(leftSide)).toBe((3 / 23).toFixed(3));
+  });
+
+  it('a pill that crosses the edge even centred is centred and nudged back in', () => {
+    const b = mk({ left: 196, push: 1, cardW: 270 });
+    C().CategoryRing._fitBadge(b, 74);
+    expect(k(b)).toBe('0.000');
+    expect(nudge(b)).toBe('-7.0px');
+    const l = mk({ left: 24, push: -1, boxLeft: 2 });
+    C().CategoryRing._fitBadge(l, 74);
+    expect(nudge(l)).toBe('15.0px');
+  });
+
+  it("measures inside the card's border, in unscaled px", () => {
+    const bordered = mk({ left: 196, push: 1, border: 10 }); // padding box 10..290
+    C().CategoryRing._fitBadge(bordered, 74);
+    expect(k(bordered)).toBe((13 / 23).toFixed(3));
+    const scaled = mk({ left: 196, push: 1, cardW: 280, scale: 2 });
+    C().CategoryRing._fitBadge(scaled, 74);
+    expect(k(scaled)).toBe((3 / 23).toFixed(3)); // as unscaled
+  });
+
+  it('a refit starts clean, and a failed layout read leaves the pill unfitted', () => {
+    const b = mk({ left: 196, push: 1, cardW: 270 });
+    C().CategoryRing._fitBadge(b, 74);
+    expect(nudge(b)).not.toBe('');
+    global.window.getComputedStyle = () => { throw new Error('no layout'); };
+    C().CategoryRing._fitBadge(b, 74);
+    expect(k(b)).toBe('');
+    expect(nudge(b)).toBe('');
+  });
+
+  it('large text from a 20 px root: Android 115 % (18.4 px) keeps the hole, 130 % (20.8 px) moves the readout below', () => {
+    const at = (fontSize) => { global.window.getComputedStyle = () => ({ fontSize }); return C().CategoryRing.bigText(); };
+    expect(at('16px')).toBe(false);
+    expect(at('18.4px')).toBe(false);
+    expect(at('20px')).toBe(true);
+    expect(at('20.8px')).toBe(true);
+  });
+});
+
 describe('the Goals ring', () => {
   beforeEach(() => {
     boot();
@@ -314,8 +400,16 @@ describe('the Goals ring', () => {
     vi.advanceTimersByTime(60);
     expect(badge.classList.contains('is-on')).toBe(true);
     expect(badge.classList.contains('is-pct')).toBe(false);
+    // review C9: the pill is measured with the icon and the share inside
+    // (max-content), the disc width is committed, then it grows to the
+    // measured width — max-content alone cannot animate
+    const reads = [];
+    Object.defineProperty(badge, 'offsetWidth', { configurable: true, get() { reads.push(badge.style.width); return badge.style.width === 'max-content' ? 66.4 : 28; } });
     vi.advanceTimersByTime(900);
     expect(badge.classList.contains('is-pct')).toBe(true);
+    expect(reads).toEqual(['max-content', '28px']);
+    expect(badge.style.width).toBe('67px');
+    expect(badge.querySelector('.ring-badge-icon [data-lucide], .ring-badge-icon svg')).not.toBeNull();
     expect(badge.querySelector('.ring-badge-pct').textContent).toBe('19.7%');
     expect(document.getElementById('sr-announcer').textContent).toMatch(/^Groceries: .*300\.00, 19\.7% of spending$/);
     expect(dispatch).not.toHaveBeenCalled();
@@ -404,11 +498,58 @@ describe('the Goals ring', () => {
     reduce = true;
     seven();
     render(false);
+    const fit = vi.spyOn(C().CategoryRing, '_fitBadge');
     tapSlice('cat_rent');
     const badge = box().querySelector('.ring-badge[data-arc-id="cat_rent"]');
     expect([...badge.classList]).toEqual(expect.arrayContaining(['is-on', 'is-both']));
+    expect(fit).toHaveBeenCalledWith(badge, expect.any(Number)); // fitted to its card
     vi.advanceTimersByTime(70); // the live region's message
     expect(vi.getTimerCount()).toBe(0); // no badge timers at all
+  });
+
+  it('every pill is fitted to its card: on the morph, on a restore and on a resize', () => {
+    seven();
+    render(false);
+    const CR = C().CategoryRing;
+    const fit = vi.spyOn(CR, '_fitBadge');
+    tapSlice('cat_dining');
+    const badge = () => box().querySelector('.ring-badge[data-arc-id="cat_dining"]');
+    vi.advanceTimersByTime(960);
+    expect(fit).toHaveBeenCalledWith(badge(), 64); // the measured width (jsdom: none → 64)
+    fit.mockClear();
+    const ow = Object.getOwnPropertyDescriptor(global.HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(global.HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return this.classList && this.classList.contains('ring-badge') ? 70 : 0; } });
+    try {
+      render(false); // a re-render restores the pill: fitted in place
+      expect(fit).toHaveBeenCalledWith(badge(), 70);
+      expect(badge().classList.contains('is-reset')).toBe(false);
+      fit.mockClear();
+      CR._refitFocused(); // what a resize runs
+      expect(fit).toHaveBeenCalledWith(badge(), 70);
+    } finally {
+      if (ow) Object.defineProperty(global.HTMLElement.prototype, 'offsetWidth', ow);
+    }
+  });
+
+  it('the pill that loses the focus fades out where it is; a re-tap starts it as a clean disc', () => {
+    seven();
+    render(false);
+    tapSlice('cat_dining');
+    vi.advanceTimersByTime(960);
+    const badge = box().querySelector('.ring-badge[data-arc-id="cat_dining"]');
+    badge.style.setProperty('--push-k', '0.5'); // as a fit would
+    const width = badge.style.width;
+    tapSlice('cat_rent'); // the focus moves
+    expect(badge.classList.contains('is-on')).toBe(false);
+    expect([...badge.classList]).toEqual(expect.arrayContaining(['is-leaving', 'is-pct'])); // same pill, fading
+    expect(badge.style.width).toBe(width);
+    expect(badge.style.getPropertyValue('--push-k')).toBe('0.5');
+    tapSlice('cat_dining'); // back, while it may still be fading
+    ['is-leaving', 'is-pct', 'is-static', 'is-both', 'is-reset', 'is-on'].forEach(c => expect(badge.classList.contains(c), c).toBe(false));
+    expect(badge.style.width).toBe('');
+    expect(badge.style.getPropertyValue('--push-k')).toBe('');
+    vi.advanceTimersByTime(60);
+    expect(badge.classList.contains('is-on')).toBe(true); // then pops in as the disc
   });
 
   it('an overspent month: the slices fill the circle, the centre still reads Overspent, and slices stay tappable', () => {
@@ -469,5 +610,150 @@ describe('the Goals ring', () => {
     expect(rv().querySelector('img')).toBeNull(); // nothing was injected anywhere
     expect(rv().querySelector('.ring-arc-btn').getAttribute('aria-label')).toContain('<img src=x onerror=alert(1)>');
     expect(rv().querySelector('.ring-badge-pct').textContent).toBe('100%');
+  });
+});
+
+// 1.2.2 (HG-8 P2): the Analytics donut shares the fold and the tap-to-focus.
+describe('the Analytics ring', () => {
+  beforeEach(() => {
+    boot();
+    S().dispatch('SET_VIEW', 'analytics');
+    const D = C().CategoryDonutChart;
+    D._focus = null;
+    D._currentType = 'expense';
+    D._expandedCatId = null;
+  });
+
+  const A = () => global.window.Views.AnalyticsView;
+  const D = () => C().CategoryDonutChart;
+  const render = (isEntry) => {
+    rv().innerHTML = A().render(S().getState());
+    A().attachEvents(rv(), S().getState(), isEntry);
+    return charts.filter(c => c.config.type === 'doughnut').pop();
+  };
+  const seven = () => {
+    [['cat_rent', 900], ['cat_groceries', 300], ['cat_dining', 120], ['cat_transport', 80], ['cat_utilities', 60], ['cat_health', 40], ['cat_shopping', 20]]
+      .forEach(([c, a]) => spend(a, c));
+  };
+  const abox = () => rv().querySelector('#analytics-ring-box');
+  const tap = (id) => {
+    const pass = D()._ringPass;
+    const i = pass.slices.findIndex(s => s.id === id);
+    const p = C().CategoryRing.point(pass.ring.geo, pass.ring.geo.arcs[i].mid, (pass.ring.geo.outer + pass.ring.geo.inner) / 2);
+    abox().dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: p.x, clientY: p.y }));
+  };
+
+  it('7 categories: 5 slices + Others (never one member at 6); no tooltip, no Chart.js events, the focus plugin, a 220 px ring', () => {
+    seven();
+    const chart = render(false);
+    const ds = chart.config.data.datasets[0];
+    expect(ds.data).toEqual([900, 300, 120, 80, 60, 60]);
+    expect(ds.backgroundColor).toEqual(['#3b82f6', '#059669', '#ea580c', '#0891b2', '#a16207', '#64748b']);
+    expect(ds.hoverOffset).toBe(0);
+    expect(chart.config.options.events).toEqual([]);
+    expect(chart.config.options.plugins.tooltip).toEqual({ enabled: false });
+    expect(chart.config.plugins.map(p => p.id)).toEqual(['stackdRingFocus']);
+    expect(abox().classList.contains('ring-box--lg')).toBe(true);
+    expect(D()._ringPass.ring.geo.outer).toBe(102); // (220 - 14 - 2) / 2
+    expect(rv().querySelectorAll('#analytics-ring-box .ring-arc-btn')).toHaveLength(6);
+    expect(rv().querySelector('.ring-arc-group').getAttribute('aria-label')).toBe('Categories. Choose one to see its share.');
+    // the legend keeps its rows; Others lists last, slate
+    const legend = [...rv().querySelectorAll('.donut-legend-item')].map(r => r.dataset.catId);
+    expect(legend).toEqual(['cat_rent', 'cat_groceries', 'cat_dining', 'cat_transport', 'cat_utilities', '__others__']);
+  });
+
+  it('a tap focuses the slice: the readout (share of spending), the badge, the live region; the centre keeps its TOTAL markup', () => {
+    seven();
+    render(false);
+    global.window.Components.Announcer.ensure();
+    tap('cat_groceries');
+    expect(abox().classList.contains('is-focused')).toBe(true);
+    expect(abox().querySelector('.ring-focus-name').textContent).toBe('Groceries');
+    expect(abox().querySelector('.ring-focus-caption').textContent).toMatch(/^of .*1,520\.00 spent$/);
+    expect(abox().querySelector('.donut-total-label').textContent).toBe('Total');
+    vi.advanceTimersByTime(1000);
+    const badge = abox().querySelector('.ring-badge[data-arc-id="cat_groceries"]');
+    expect(badge.classList.contains('is-pct')).toBe(true);
+    expect(badge.querySelector('.ring-badge-pct').textContent).toBe('19.7%');
+    expect(document.getElementById('sr-announcer').textContent).toMatch(/^Groceries: .*300\.00, 19\.7% of spending$/);
+    // Others: its count in the readout, its members in the button name
+    tap('__others__');
+    expect(abox().querySelector('.ring-focus-name').textContent).toBe('Others (2)');
+    expect(abox().querySelector('.ring-arc-btn[data-arc-id="__others__"]').getAttribute('aria-label')).toMatch(/^Others \(2: Health, Shopping\)/);
+  });
+
+  it('income speaks of income; the type toggle drops the focus', () => {
+    seven();
+    S().dispatch('ADD_TRANSACTION', { type: 'income', amount: 2000, accountId: acc(), categoryId: 'cat_salary', date: '2026-10-03' });
+    render(false);
+    tap('cat_rent');
+    expect(D()._focus).toEqual({ type: 'expense', id: 'cat_rent' });
+    rv().querySelector('.chart-toggle-btn[data-type="income"]').click();
+    expect(D()._focus).toBeNull();
+    const btn = rv().querySelector('#analytics-ring-box .ring-arc-btn');
+    expect(btn.getAttribute('aria-label')).toMatch(/^Salary: .*2,000\.00, 100% of income$/);
+    btn.click();
+    expect(abox().querySelector('.ring-focus-caption').textContent).toMatch(/^of .*2,000\.00 received$/);
+  });
+
+  it('a re-render restores the focus in its final state; leaving Analytics drops it and its timers', () => {
+    seven();
+    render(false);
+    tap('cat_dining');
+    vi.advanceTimersByTime(1000);
+    render(false);
+    expect(abox().classList.contains('is-focused')).toBe(true);
+    expect([...abox().querySelector('.ring-badge[data-arc-id="cat_dining"]').classList]).toEqual(expect.arrayContaining(['is-on', 'is-pct', 'is-static']));
+    tap('cat_rent');
+    A().destroy();
+    expect(D()._focus).toBeNull();
+    vi.advanceTimersByTime(70); // the live region's own message
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('the Today / period-end chips leave the ring alone (the donut binds only its own Expenses / Income buttons)', () => {
+    seven();
+    render(false);
+    tap('cat_groceries');
+    const chips = [...rv().querySelectorAll('#balance-mode-toggle .chart-toggle-btn')];
+    expect(chips.length).toBe(2);
+    const before = charts.filter(c => c.config.type === 'doughnut').length;
+    chips.find(c => c.classList.contains('active')).click();
+    expect(D()._focus).toEqual({ type: 'expense', id: 'cat_groceries' });
+    expect(charts.filter(c => c.config.type === 'doughnut').length).toBe(before); // no donut rebuild
+  });
+
+  it('switching type from a donut with no data replaces the donut card, never the Net Flow card', () => {
+    S().dispatch('ADD_TRANSACTION', { type: 'income', amount: 2000, accountId: acc(), categoryId: 'cat_salary', date: '2026-10-03' });
+    render(false); // no expenses: the donut shows its empty state
+    const netFlowCard = rv().querySelector('.category-donut-card').previousElementSibling;
+    rv().querySelector('.category-donut-card .chart-toggle-btn[data-type="income"]').click();
+    expect(rv().querySelectorAll('.category-donut-card')).toHaveLength(1);
+    expect(rv().querySelector('#analytics-ring-box')).not.toBeNull();
+    if (netFlowCard) expect(netFlowCard.isConnected).toBe(true);
+  });
+
+  it('large text: the readout sits under the ring', () => {
+    seven();
+    const spy = vi.spyOn(C().CategoryRing, 'bigText').mockReturnValue(true);
+    render(false);
+    tap('cat_rent');
+    const below = abox().nextElementSibling;
+    expect(below.classList.contains('ring-focus-readout--below')).toBe(true);
+    expect(below.querySelector('.ring-focus-caption').textContent).toMatch(/^59\.2% of .*1,520\.00 spent$/);
+    spy.mockRestore();
+  });
+
+  it('the hole clears; a legend row still opens its tag breakdown, independently of the ring', () => {
+    seven();
+    render(false);
+    tap('cat_rent');
+    const g = D()._ringPass.ring.geo;
+    abox().dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: g.cx, clientY: g.cy }));
+    expect(D()._focus).toBeNull();
+    const row = rv().querySelector('.donut-legend-item[data-cat-id="cat_groceries"]');
+    row.click();
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(D()._focus).toBeNull();
   });
 });

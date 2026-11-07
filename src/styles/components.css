@@ -1684,24 +1684,9 @@ a:focus-visible,
   transform: scale(0.95);
 }
 
-@media (min-width: 480px) {
-  .donut-chart-layout {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-6);
-  }
-  
-  .donut-chart-container {
-    flex: 0 0 200px;
-    height: 200px;
-    padding-right: var(--space-4);
-  }
-  
-  .donut-legend {
-    flex: 1;
-    padding-left: var(--space-2);
-  }
-}
+/* 1.2.2 (HG-8): the donut no longer sits beside its legend on wide screens —
+   the ring is always stacked above the legend (see the HG-8 block at the
+   end of this file). */
 
 /* Swipe-to-close Modal Sheet */
 .sheet-modal {
@@ -4683,7 +4668,11 @@ a:focus-visible,
   position: absolute;
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* the pill's own layout, already in the disc: the icon sits 6 px in (2 px
+     border + 4 px padding = centred in 28 px) and the share waits beside it,
+     so going back to the disc moves nothing (review C2) */
+  justify-content: flex-start;
+  padding: 0 0 0 4px;
   gap: 4px;
   width: 28px;
   height: 28px;
@@ -4694,15 +4683,20 @@ a:focus-visible,
   box-sizing: border-box;
   overflow: hidden;
   opacity: 0;
-  transform: translate(-50%, -50%) scale(0.6);
+  /* centred on its point as a 28 px disc; as a pill it grows away from the
+     ring's centre (--push = sin of the slice angle; the end nearer the centre
+     stays exactly put at 3 and 9 o'clock): -50% + push × k × (50% - 14px) is
+     -50% for the disc at any push. --push-k (≤ 1) and --nudge are set per
+     focus by CategoryRing._fitBadge so the pill stays inside its card. */
+  transform: translate(calc(-50% + var(--push, 0) * var(--push-k, 1) * (50% - 14px) + var(--nudge, 0px)), -50%) scale(0.6);
   pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-    width 0.24s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.24s ease;
+    width 0.24s ease-out, background-color 0.24s ease, color 0.24s ease;
 }
 
 .ring-badge.is-on {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(calc(-50% + var(--push, 0) * var(--push-k, 1) * (50% - 14px) + var(--nudge, 0px)), -50%) scale(1);
 }
 
 .ring-badge-icon {
@@ -4718,42 +4712,72 @@ a:focus-visible,
 
 .ring-badge-pct {
   position: absolute;
+  left: 24px; /* its place in the pill: 4 px padding + 16 px icon + 4 px gap */
   font-size: 0.75rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--text-primary);
   opacity: 0;
-  transition: opacity 0.14s ease 0.1s;
+  /* in only once the pill has (nearly) reached its width: earlier, its end
+     showed cut by the pill's edge (re-verify). A leaving pill fades as a
+     whole, so this runs on the way in only. */
+  transition: opacity 0.12s ease 0.17s;
 }
 
-/* the morph: the disc becomes a pill with the share of spending */
-.ring-badge.is-pct { background: var(--bg-surface); }
-.ring-badge.is-pct .ring-badge-icon { opacity: 0; position: absolute; }
-.ring-badge.is-pct .ring-badge-pct { opacity: 1; }
-
-/* restored by a re-render: the final pill, sized by its text */
-.ring-badge.is-static {
-  width: auto;
-  padding: 0 8px;
-}
-
-.ring-badge.is-static .ring-badge-pct { position: static; }
-
-/* reduced motion: one pill with the icon and the share, at once */
+/* 1.2.2 (HG-8): one end state on every path — the morph (is-pct), a
+   re-render's restore (is-static) and reduced motion (is-both): the disc
+   becomes a pill with the slice-coloured icon AND the share of spending.
+   Inside the pill the icon keeps the disc's 6 px inset and the share follows
+   it; on the left half of the ring the pill grows leftward, so the icon
+   moves out with its left end. */
+.ring-badge.is-pct,
 .ring-badge.is-both {
-  width: auto;
-  padding: 0 8px 0 5px;
+  padding-right: 8px;
   background: var(--bg-surface);
   color: var(--slice);
 }
 
+/* the colours swap on the frame the pill starts: transitioned in opposite
+   directions they crossed (white icon → slice, slice fill → surface) and the
+   light-theme pill went blank for ~50 ms (review C1) */
+.ring-badge.is-pct { transition-property: opacity, transform, width; }
+
+/* the pill (or disc) that loses the focus fades out where it is: same
+   layout, width, colours and fit, no shrink (re-verify: a restored pill's
+   max-content width snapped to 28 px, the icon slid, the colours crossed and
+   the fit was dropped mid-fade). CategoryRing._resetBadge makes it a clean
+   hidden disc the next time its slice is focused. */
+.ring-badge.is-leaving {
+  opacity: 0;
+  transform: translate(calc(-50% + var(--push, 0) * var(--push-k, 1) * (50% - 14px) + var(--nudge, 0px)), -50%) scale(1);
+  transition: opacity 0.14s ease;
+}
+
+/* a reset (or a refit) happens at once — no transition on the badge or its
+   parts, so nothing of its last state plays on a re-shown disc */
+.ring-badge.is-reset,
+.ring-badge.is-reset > * { transition: none; }
+
+.ring-badge.is-pct .ring-badge-pct,
 .ring-badge.is-both .ring-badge-pct {
   position: static;
   opacity: 1;
 }
 
-/* 200 % text: no badge; the share moves into the centre caption */
+/* restored by a re-render, or shown at once: sized by its content. An
+   absolute box with width:auto shrinks to the room left before the ring
+   box's right edge, which squeezed the icon to 0 px on the slices on the
+   right of the ring (a share-only pill there, icon + share on the left):
+   max-content, and neither part may shrink. */
+.ring-badge.is-static,
+.ring-badge.is-both { width: max-content; }
+
+.ring-badge-icon,
+.ring-badge-pct { flex-shrink: 0; }
+
+/* large text (root ≥ 20 px, CategoryRing.bigText): no badge; the share moves
+   into the readout under the ring */
 .ring-box.ring--big-text .ring-badge { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4790,3 +4814,40 @@ a:focus-visible,
 }
 
 .ring-focus-readout--below .ring-focus-amount { overflow-wrap: anywhere; }
+
+/* HG-8 P2: the Analytics ring — a square 220 px box (the hit test and the
+   focus plugin need a known square); its canvas no longer sits above the
+   badges and buttons */
+.ring-box.ring-box--lg {
+  width: 220px;
+  height: 220px;
+  margin: 0 auto;
+}
+
+.ring-box canvas { z-index: auto; }
+
+.ring-box--lg .ring-focus-readout { padding: 0 56px; }
+
+/* HG-8 P2: inside the donut layout the ring stays a 220 px square, not the
+   old container's full-width 220 px-high flex item */
+.donut-chart-layout .ring-box.ring-box--lg {
+  flex: 0 0 220px;
+  width: 220px;
+  height: 220px;
+  padding: 0;
+}
+
+/* HG-8 badge follow-up: how far a pill grows outward is fitted per focus in
+   JS (CategoryRing._fitBadge), not by a breakpoint — the room beside the ring
+   depends on the viewport and on the text size (rem gutters, the share's
+   width), and the card clips. */
+
+/* HG-8 badge follow-up: the ring always sits above its legend. The app
+   column stops at 600 px, so the old side-by-side layout (560-600 px only)
+   left the legend ~276 px — large amounts overflowed — and the focused
+   pill, which grows away from the ring's centre, ran into the legend or out
+   of the card. Stacked, the 220 px ring is centred with room on both sides. */
+
+/* HG-8 P2 review (WCAG 2.4.11): a focused slice clears the sticky header,
+   which grows with the text size */
+.ring-arc-btn:focus-visible { scroll-margin-top: calc(64px + 5rem); }

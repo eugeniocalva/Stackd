@@ -198,6 +198,12 @@ window.I18n.dicts.en = {
   'charts.expenses': 'Expenses',
   'charts.total': 'Total',
   'charts.others': 'Others',
+  'charts.ring.groupAria': 'Categories. Choose one to see its share.', // 1.2.2 (HG-8 P2): the Analytics ring tap-to-focus
+  'charts.ring.arcAriaIncome': '{name}: {amount}, {pct} of income',
+  'charts.ring.othersAriaIncome': 'Others ({count}: {names}): {amount}, {pct} of income',
+  'charts.ring.ofIncome': 'of {amount} received',
+  'charts.ring.pctOfIncome': '{pct} of {amount} received',
+  'charts.ring.cleared': 'Showing every category',
   'charts.noData': 'No data for the selected period.',
   'charts.noExpenseData': 'No expense data for this period.',
   'charts.noIncomeData': 'No income data for this period.',

@@ -3,12 +3,13 @@ import { test, expect } from '@playwright/test';
 // 1.2.2 (HG-8, docs/category-rings-plan.md): the Goals ring on a real canvas.
 // 7 budgeted categories with spending fold into 5 slices + Others; a tap on
 // a slice thickens it, the centre shows the slice, a badge shows its icon and
-// then its share of spending; a second tap clears. Keyboard: Tab to a slice
-// button, Enter toggles, Escape clears. Reduced motion: one pill at once.
+// then the icon beside its share of spending; a second tap clears. Keyboard:
+// Tab to a slice button, Enter toggles, Escape clears. Reduced motion: the
+// same pill at once.
 test.describe('Goals ring: tap to focus', () => {
   const SEVEN = [['cat_rent', 617.84, 600], ['cat_groceries', 210, 300], ['cat_dining', 96, 150], ['cat_transport', 64, 100],
     ['cat_utilities', 48, 80], ['cat_health', 30, 60], ['cat_shopping', 22, 80]];
-  const bootstrap = async (page, { reducedMotion, rows = SEVEN, fontSize = '' } = {}) => {
+  const bootstrap = async (page, { reducedMotion, rows = SEVEN, fontSize = '', lang = '' } = {}) => {
     // the suite emulates reduced motion by default (playwright.config): the
     // animated path needs it off
     await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' });
@@ -23,9 +24,10 @@ test.describe('Goals ring: tap to focus', () => {
     await page.waitForSelector('#bottom-nav');
     await page.waitForFunction(() => !!window.Store && !!window.Components && !!window.Components.CategoryRing);
     await page.waitForSelector('#splash-screen', { state: 'detached' });
-    await page.evaluate(({ seed, size }) => {
+    await page.evaluate(({ seed, size, lang }) => {
       const S = window.Store;
       S.dispatch('SET_CURRENCY', 'EUR');
+      if (lang) S.dispatch('SET_LANGUAGE', lang);
       S.batch(() => {
         S.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 9000, openingDate: '2020-01-01' });
         const acc = S.getState().accounts[0].id;
@@ -36,7 +38,7 @@ test.describe('Goals ring: tap to focus', () => {
       });
       if (size) document.documentElement.style.fontSize = size;
       location.hash = '#budget';
-    }, { seed: rows, size: fontSize });
+    }, { seed: rows, size: fontSize, lang });
     await page.waitForSelector('#budget-ring-box .ring-arc-btn');
     // with motion on, the view slides in and the ring sweeps (250 ms + 700 ms):
     // wait until the box stops moving before aiming at a slice
@@ -62,6 +64,36 @@ test.describe('Goals ring: tap to focus', () => {
     await page.mouse.click(box.x + pt.x, box.y + pt.y);
   };
 
+  // The badge's end state on every path (the morph, a re-render, reduced
+  // motion): the icon is visible, the share sits to its right, the pill
+  // holds both, stays off the centre readout and inside its card. (A phone showed a share-only pill after the
+  // morph and icon + share elsewhere.)
+  const expectIconAndShare = async (badge) => {
+    await expect.poll(() => badge.evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const icon = b.querySelector('.ring-badge-icon');
+      const pct = b.querySelector('.ring-badge-pct');
+      const glyph = icon.querySelector('svg') || icon;
+      const ir = glyph.getBoundingClientRect();
+      const pr = pct.getBoundingClientRect();
+      const op = (el) => parseFloat(getComputedStyle(el).opacity);
+      // and clear of the centre readout's text (name, amount, caption)
+      const box = b.closest('.ring-box');
+      const clear = [...box.querySelectorAll('.ring-focus-readout div')].every((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return [...range.getClientRects()].every(t => t.right <= r.left || t.left >= r.right || t.bottom <= r.top || t.top >= r.bottom);
+      });
+      // and not clipped by the card (the nearest box that clips)
+      let el = b.parentElement;
+      while (el && el !== document.body && getComputedStyle(el).overflowX === 'visible') el = el.parentElement;
+      const c = el && el !== document.body ? el.getBoundingClientRect() : { left: 0, right: innerWidth };
+      const inside = r.left >= c.left - 0.5 && r.right <= c.right + 0.5;
+      return op(b) === 1 && op(icon) === 1 && op(pct) === 1 && ir.width >= 14 && pr.width > 0
+        && ir.left >= r.left - 0.5 && ir.right <= pr.left + 0.5 && pr.right <= r.right + 0.5 && clear && inside;
+    }), { timeout: 3000 }).toBe(true);
+  };
+
   test('5 slices + Others; a tap shows the slice, then its share; a second tap goes back', async ({ page }) => {
     await bootstrap(page);
     await expect(page.locator('.ring-arc-btn')).toHaveCount(6);
@@ -76,6 +108,26 @@ test.describe('Goals ring: tap to focus', () => {
     await expect(badge).toHaveClass(/is-on/);
     await expect(badge).toHaveClass(/is-pct/, { timeout: 3000 });
     await expect(badge.locator('.ring-badge-pct')).toHaveText('19.3%');
+    await expectIconAndShare(badge);
+    // review C1: the icon and fill colours are not transitioned into the
+    // pill — crossing, they left a blank light-theme pill for ~50 ms
+    await expect(badge).toHaveCSS('transition-property', 'opacity, transform, width');
+    // review C2 / re-verify: a pill that loses the focus fades out where it is
+    // — the icon and the share keep their places on screen while it fades
+    const leave = await badge.evaluate(async (b) => {
+      const at = () => [b.querySelector('.ring-badge-icon'), b.querySelector('.ring-badge-pct')].map(e => e.getBoundingClientRect().left);
+      const before = at();
+      document.querySelector('#budget-ring-box .ring-arc-btn[data-arc-id="cat_rent"]').click(); // focus moves to Rent
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const after = at();
+      return { moved: Math.max(...after.map((x, i) => Math.abs(x - before[i]))), leaving: b.classList.contains('is-leaving') };
+    });
+    expect(leave.leaving).toBe(true);
+    expect(leave.moved).toBeLessThan(0.5);
+    await expect(badge).toHaveCSS('opacity', '0');
+    await page.locator('#budget-ring-box .ring-arc-btn[data-arc-id="cat_groceries"]').evaluate(e => e.click()); // and back
+    await expect(badge).toHaveClass(/is-pct/, { timeout: 3000 });
+    await expectIconAndShare(badge);
     await expect(page.locator('#sr-announcer')).toHaveText('Groceries: €210.00, 19.3% of spending');
     // the tap rebuilt nothing: the same Chart instance on the same canvas
     expect(await page.evaluate(() => window.Views.BudgetView._budgetChart === window.__c && document.getElementById('budgetChart') === window.__cv)).toBe(true);
@@ -164,12 +216,128 @@ test.describe('Goals ring: tap to focus', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   });
 
+  // 1.2.2 (HG-8 P2): the Analytics donut, same controller on a 220 px ring
+  test('Analytics: 5 slices + Others, a tap shows the slice and its share; the plugin scales with the ring', async ({ page }) => {
+    await bootstrap(page);
+    await page.evaluate(() => { location.hash = '#analytics'; });
+    await page.waitForSelector('#analytics-ring-box .ring-arc-btn');
+    await page.waitForTimeout(1300); // the entry slide and sweep
+    await expect(page.locator('#analytics-ring-box .ring-arc-btn')).toHaveCount(6);
+    await page.locator('#analytics-ring-box').scrollIntoViewIfNeeded(); // the ring sits below the fold
+    await page.waitForTimeout(300);
+    const pt = await page.evaluate(() => {
+      const pass = window.Components.CategoryDonutChart._ringPass;
+      const i = pass.slices.findIndex(s => s.id === 'cat_groceries');
+      return window.Components.CategoryRing.point(pass.ring.geo, pass.ring.geo.arcs[i].mid, (pass.ring.geo.outer + pass.ring.geo.inner) / 2);
+    });
+    const box = await page.locator('#analytics-ring-box').boundingBox();
+    expect(Math.round(box.width)).toBe(220);
+    await page.mouse.click(box.x + pt.x, box.y + pt.y);
+    const ring = page.locator('#analytics-ring-box');
+    await expect(ring).toHaveClass(/is-focused/);
+    await expect(ring.locator('.ring-focus-name')).toHaveText('Groceries');
+    await expect(ring.locator('.ring-focus-caption')).toHaveText('of €1,087.84 spent');
+    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"]')).toHaveClass(/is-pct/, { timeout: 3000 });
+    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"] .ring-badge-pct')).toHaveText('19.3%');
+    await expectIconAndShare(ring.locator('.ring-badge[data-arc-id="cat_groceries"]'));
+    const radii = await page.evaluate(() => {
+      const ch = window.Components.CategoryDonutChart._chartInstance;
+      const list = ch.config.plugins || (ch.config._config && ch.config._config.plugins) || [];
+      const p = list.find(x => x.id === 'stackdRingFocus');
+      const r1 = (v) => Math.round(v * 10) / 10;
+      let seen = null;
+      const orig = p.afterDatasetDraw;
+      p.afterDatasetDraw = (chart, args) => { seen = args.meta.data.map(e => [r1(e.outerRadius), r1(e.innerRadius)]); return orig(chart, args); };
+      ch.draw();
+      p.afterDatasetDraw = orig;
+      return { seen, after: ch.getDatasetMeta(0).data.map(e => [r1(e.outerRadius), r1(e.innerRadius)]) };
+    });
+    // resting 102 / 67.3; ×(102 / 82): focused +7.5 / -5, the others -2.5 / +5
+    expect(radii.after[0]).toEqual([102, 67.3]);
+    expect(radii.seen[1]).toEqual([109.5, 62.3]);
+    expect(radii.seen[0]).toEqual([99.5, 72.3]);
+    // the legend is untouched by the focus
+    await expect(page.locator('.donut-legend-item')).toHaveCount(6);
+    // a re-render restores the pill, fitted, with the icon and the share
+    await page.evaluate(() => window.Store.emit());
+    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"]')).toHaveClass(/is-static/);
+    await expectIconAndShare(ring.locator('.ring-badge[data-arc-id="cat_groceries"]'));
+  });
+
+  test('a rotation or resize refits a focused pill to its card', async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 800 });
+    await bootstrap(page, { reducedMotion: true, lang: 'fr', fontSize: '18.4px' });
+    await page.evaluate(() => { location.hash = '#analytics'; });
+    await page.waitForSelector('#analytics-ring-box .ring-arc-btn');
+    await page.locator('#analytics-ring-box .ring-arc-btn[data-arc-id="cat_rent"]').evaluate(e => e.click());
+    const badge = page.locator('#analytics-ring-box .ring-badge[data-arc-id="cat_rent"]');
+    await expectIconAndShare(badge);
+    await page.setViewportSize({ width: 320, height: 720 });
+    await expectIconAndShare(badge);
+  });
+
   test('reduced motion: the icon and the share appear together at once', async ({ page }) => {
     await bootstrap(page, { reducedMotion: true });
     await tapSlice(page, 'cat_rent');
     const badge = page.locator('.ring-badge[data-arc-id="cat_rent"]');
     await expect(badge).toHaveClass(/is-both/);
     await expect(badge.locator('.ring-badge-pct')).toHaveText('56.8%');
+    await expectIconAndShare(badge);
+  });
+
+  // A device check: slices on the right of the ring showed a share-only pill
+  // (an auto-width absolute pill shrank against the box edge and squeezed the
+  // icon to 0 px), slices on the left showed icon + share. On the narrowest
+  // phone (320 px) and in French ("56,8 %", the widest share).
+  // Also at Android's 115 % text (18.4 px root): the room beside the ring
+  // shrinks with the text, so each pill is fitted to its card (review C5).
+  for (const { reducedMotion, fontSize } of [{ reducedMotion: false }, { reducedMotion: true }, { reducedMotion: false, fontSize: '18.4px' }]) {
+    test(`every slice, Goals and Analytics, ends with its icon beside its share (${reducedMotion ? 'reduced motion' : 'motion on'}${fontSize ? `, root ${fontSize}` : ''})`, async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 720 });
+      await bootstrap(page, { reducedMotion, lang: 'fr', fontSize });
+      const ids = await page.evaluate(() => window.Views.BudgetView._passTotals.slices.map(sl => sl.id));
+      expect(ids).toHaveLength(6);
+      for (const id of ids) {
+        await tapSlice(page, id);
+        const badge = page.locator(`#budget-ring-box .ring-badge[data-arc-id="${id}"]`);
+        await expect(badge).toHaveClass(reducedMotion ? /is-both/ : /is-pct/, { timeout: 3000 });
+        await expectIconAndShare(badge);
+      }
+      // the restore after a re-render, on a slice on the right of the ring
+      await tapSlice(page, ids[0]);
+      await page.evaluate(() => window.Store.emit());
+      await expect(page.locator(`#budget-ring-box .ring-badge[data-arc-id="${ids[0]}"]`)).toHaveClass(reducedMotion ? /is-both/ : /is-static/);
+      await expectIconAndShare(page.locator(`#budget-ring-box .ring-badge[data-arc-id="${ids[0]}"]`));
+
+      await page.evaluate(() => { location.hash = '#analytics'; });
+      await page.waitForSelector('#analytics-ring-box .ring-arc-btn');
+      await page.waitForTimeout(reducedMotion ? 100 : 1300);
+      await page.locator('#analytics-ring-box').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      const aIds = await page.evaluate(() => window.Components.CategoryDonutChart._ringPass.slices.map(sl => sl.id));
+      expect(aIds).toHaveLength(6);
+      for (const id of aIds) {
+        const pt = await page.evaluate((arcId) => {
+          const pass = window.Components.CategoryDonutChart._ringPass;
+          const i = pass.slices.findIndex(sl => sl.id === arcId);
+          return window.Components.CategoryRing.point(pass.ring.geo, pass.ring.geo.arcs[i].mid, (pass.ring.geo.outer + pass.ring.geo.inner) / 2);
+        }, id);
+        const box = await page.locator('#analytics-ring-box').boundingBox();
+        await page.mouse.click(box.x + pt.x, box.y + pt.y);
+        const badge = page.locator(`#analytics-ring-box .ring-badge[data-arc-id="${id}"]`);
+        await expect(badge).toHaveClass(reducedMotion ? /is-both/ : /is-pct/, { timeout: 3000 });
+        await expectIconAndShare(badge);
+      }
+    });
+  }
+
+  test('Android 130 % text (20.8 px root): the readout moves under the ring and the badges hide', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await bootstrap(page, { reducedMotion: true, lang: 'fr', fontSize: '20.8px' });
+    await expect(page.locator('#budget-ring-box')).toHaveClass(/ring--big-text/);
+    await tapSlice(page, 'cat_groceries');
+    await expect(page.locator('.ring-focus-readout--below')).toBeVisible();
+    await expect(page.locator('.ring-badge[data-arc-id="cat_groceries"]')).toBeHidden();
   });
 
   test('a re-render keeps the focus in its final state; switching to Income drops it', async ({ page }) => {
@@ -178,6 +346,7 @@ test.describe('Goals ring: tap to focus', () => {
     await page.evaluate(() => window.Store.emit());
     await expect(page.locator('#budget-ring-box')).toHaveClass(/is-focused/);
     await expect(page.locator('.ring-badge[data-arc-id="cat_dining"]')).toHaveClass(/is-static/);
+    await expectIconAndShare(page.locator('.ring-badge[data-arc-id="cat_dining"]'));
     await page.locator('#bdg-toggle-income').click();
     await expect(page.locator('#budget-ring-box')).not.toHaveClass(/is-focused/);
   });

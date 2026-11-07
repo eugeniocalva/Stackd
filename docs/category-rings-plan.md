@@ -1,7 +1,8 @@
 # Category rings: an Others cap and tap-to-focus — plan (1.2.2, HG-8)
 
-Status: **P1 BUILT 2026-11-07 (§11): the palette everywhere, the Others fold and
-tap-to-focus on the Goals ring. P2 (Analytics) and P3 (Home, Insights) to do.** Comment tag:
+Status: **P1 + P2 BUILT 2026-11-07 (§11): the palette everywhere, the Others fold,
+tap-to-focus on the Goals and Analytics rings (one shared controller). P3 (Home
+widget tooltip, Insights colours) to do.** Comment tag:
 `// 1.2.2 (HG-8)`. Research: a workflow of four code readers, three
 independent designs (minimal, coherent, accessibility-first) and a judge
 (2026-11-06). This plan is the judge's winner with the best ideas of the
@@ -118,7 +119,8 @@ replaces `_CATEGORY_COLORS` and `_FALLBACK_PALETTE`:
      "of €667.84 spent";
    - a 28 px disc in the slice colour, with the white category icon,
      pops onto the arc;
-   - at 0.9 s it morphs into a pill showing the percentage, e.g. "92.5%";
+   - at 0.9 s it grows into a pill with the icon (now in the slice colour)
+     and the percentage, e.g. "92.5%" — the same pill on every path;
    - native builds tick a light haptic.
 3. **Tap another slice:** the thickness moves straight across and the badge
    swaps.
@@ -253,7 +255,7 @@ findings; all 8 are fixed (§11).
   - The tab toggles and `destroy()` drop the focus and its timers.
   - An overspent month draws the slices over total spent.
 - **After the review:**
-  - At root ≥ 24 px the readout renders under the ring, in normal flow
+  - At root ≥ 24 px (20 px since the badge follow-up review) the readout renders under the ring, in normal flow
     (`.ring-focus-readout--below`), and the hole keeps the resting centre.
   - The focus ring paints above the badge (`isolation` on the box, z-index).
 - **Riders:**
@@ -273,3 +275,134 @@ findings; all 8 are fixed (§11).
 - **Not yet:** P2 (the Analytics donut: the same fold and focus) and P3 (the
   Home categories widget's tooltip; the Smart Insights split bar still uses
   the stored colours until then).
+
+### P2 · The Analytics donut (2026-11-07)
+
+- **One controller for both rings.** The Goals tap-to-focus moved into
+  `Components.CategoryRing`:
+  - `layout(slices, track, box)` returns `{ geo, zones, count, hasTrack,
+    box, scale }`;
+  - `bigText()`, `overlayHtml(ring, slices, o)`, `readoutHtml(r, below)` and
+    `clearTimers`;
+  - `select(host, id, viaPointer)` and `wire(host)`, where a host is
+    `{ box, ring, slices, timers, chart(), getFocus(), setFocus(), readout(),
+    announce(), cleared }`.
+  - `focus()` takes a scale (the outer radius ÷ 82), so the thickening
+    grows with the ring.
+  - `BudgetView` keeps only its words: `_ringReadout`, `_ringHost` and
+    `_ringAria`. Its behaviour is unchanged, and its tests pass as they were.
+- **`CategoryDonutChart`:**
+  - `_capData` is `CategoryRing.fold`, so 6 categories show no one-member
+    Others. Others carries its member names. The Home categories widget
+    follows.
+  - The ring is a square 220 px box, `#analytics-ring-box`
+    (`.donut-chart-container.ring-box.ring-box--lg`). It keeps the "TOTAL"
+    centre markup exactly.
+  - No tooltip and no Chart.js events (`hoverOffset 0`, padding 7); the
+    focus plugin is passed in, as on Goals.
+  - The focus is `_focus {type, id}` on the singleton. The Expenses/Income
+    toggle and `AnalyticsView.destroy()` call `dropFocus()`.
+  - Expense words reuse `budget.ring.*`. Income uses 6 new `charts.ring.*`
+    keys ("{pct} of income", "of €X received").
+  - The legend accordion (tag drilldown) works as before, independently of
+    the ring.
+- **Review fixes** (4 lenses, 5 issues confirmed and fixed):
+  - The donut's type listener is scoped to its own card
+    (`.category-donut-card .chart-toggle-btn[data-type]`). The bare class
+    also caught the Today / period-end chips, so a balance tap dropped the
+    focus and stacked listeners.
+  - The type toggle replaces `.category-donut-card` directly. The old
+    `[style*="height: 200px"]` fallback matched the Net Flow card when the
+    donut had no data, and replaced it (a bug that predates HG-8).
+  - At large text the donut layout stays stacked
+    (`.donut-chart-layout--stack`), so the readout sits under the ring.
+  - The ring sits beside its legend only from 560 px (was 480 px), where the
+    220 px square and the amounts both fit.
+  - (Both superseded by the badge follow-up below: the ring is now always
+    stacked above its legend.)
+  - A focused slice button clears the sticky header at any text size
+    (`scroll-margin-top: calc(64px + 5rem)`).
+- **Tests:**
+  - unit: `categoryRing.test.js` gains an Analytics describe: the fold,
+    config, tap and readout, income words, the toggle, re-render, destroy,
+    the legend, the balance chips, the no-data toggle and large text.
+    `mixedCurrencyViews` now reads the currency from the slice name and the
+    readout; `categoryDonutChart` covers 6 vs 7.
+  - e2e: `ring_focus.spec.js` gains an Analytics tap, plus the plugin radii
+    at 220 px inside a real Chart.js draw (109.5 / 62.3 focused, 99.5 / 72.3
+    the others, 102 / 67.3 at rest).
+- **Badge follow-up (device check, 2026-11-07):** a phone showed some slices
+  as a percentage-only pill and others as icon + percentage. Two causes:
+  - the morph ended as a percentage-only pill, while reduced motion showed
+    the icon and the percentage;
+  - a pill sized `width: auto` (reduced motion, a re-render's restore) is
+    an absolute box: it shrinks to the room left before the ring box's right
+    edge, so on the slices on the right of the ring the icon collapsed to
+    0 px.
+
+  Every path now ends in one pill, the slice-coloured icon then the share
+  (`.is-pct`, `.is-static` and `.is-both` share the CSS), sized
+  `max-content` with neither part allowed to shrink. `select()` measures
+  the whole pill before it grows.
+
+  The wider pill touched the centre amount at 3 and 9 o'clock, so it now
+  grows away from the centre: `--push` (the sine of the slice angle) keeps
+  the disc's end where the disc popped up. With that, the Analytics ring no
+  longer sits beside its legend on wide screens (the 560 px row layout and
+  `.donut-chart-layout--stack` are gone): the app column stops at 600 px, the
+  legend had ~276 px and overflowed with large amounts, and an outward pill
+  ran into the legend or out of the card. The ring is always stacked above
+  the legend, as on phones.
+
+  The e2e taps every slice on both rings at 320 px in French, with motion on
+  and reduced, and checks the icon and the share side by side, unclipped,
+  clear of the centre readout and inside the card.
+- **Review of the follow-up** (4 lenses, 10 findings, all confirmed, all
+  fixed):
+  - Each focused pill is fitted to the card that clips it
+    (`CategoryRing._fitBadge`, on the morph, under reduced motion and on a
+    restore): `--push-k` scales the outward growth to the room there and
+    `--nudge` moves a pill that would cross the edge even centred. The room
+    depends on the text size too, so a fixed breakpoint (an earlier
+    `max-width: 359px` rule) could not hold at 18–23 px roots.
+  - Large text starts at a 20 px root, not 24 px (`bigText()`): from ~21 px
+    a French caption wraps out of the hole. Android 115 % (18.4 px) keeps the
+    hole and the badge; 130 % (20.8 px) moves the readout below the ring.
+  - The pill's colours swap on its first frame (`.is-pct` transitions only
+    opacity, transform and width): crossing transitions left a blank
+    light-theme pill for ~50 ms.
+  - The disc already has the pill's layout (icon 6 px in, the share parked
+    at `left: 24px`), so going back to the disc moves nothing; before, the
+    share landed on the icon while the pill faded.
+  - The width eases out (it was a front-loaded curve that jumped the icon
+    ~20 px in one frame on the left half of the ring).
+  - Tests: the measure → disc → grow order (unit), the fit maths and the
+    20 px cutoff (unit), the colour swap and the still layout on unfocus,
+    every slice at 18.4 px, and 20.8 px going below (e2e).
+- **Re-verification** (4 checkers, Chromium and WebKit): the entry fixes
+  held; the way out did not. Fixed:
+  - A pill that loses the focus fades out where it is (`.is-leaving`: same
+    layout, width, colours and fit, opacity only). Before, a restored pill's
+    `max-content` width snapped to 28 px (the icon jumped up to 39 px), the
+    icon slid on the left half, the colours crossed and the fit was dropped
+    mid-fade.
+  - `CategoryRing._resetBadge` makes the newly focused badge a clean hidden
+    disc at once (`.is-reset`: no transition on the badge or its parts), so
+    a quick re-tap no longer brings back an off-centre disc with the old
+    share.
+  - The share fades in after 0.17 s, once the pill is nearly at its width
+    (with the ease-out width its end showed cut by the pill's edge).
+  - A resize or rotation refits a focused pill (one page-wide listener,
+    `CategoryRing._refitFocused`).
+  - Tests: the card border and a scale in the fit maths, every fit call site
+    (morph, reduced motion, restore, resize), the leave and the re-tap reset
+    (unit); the leaving pill holding still, the Analytics restore and a
+    430 → 320 px resize (e2e).
+  - **Accepted limits:** at 320 px with an 18.4–19.5 px root and amounts of
+    six figures or more, a pill fitted inside the Analytics card can overlap
+    the end of the readout's amount by a few px (before, it was clipped by
+    the card instead). At those roots the Goals readout's first line can
+    reach a few px past the hole's circle at its corners; no glyph reaches a
+    drawn arc.
+- **P3 left:** the Home categories widget (its tooltip) and the Smart Insights
+  split bar's colours.

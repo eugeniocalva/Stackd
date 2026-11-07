@@ -40,10 +40,15 @@ describe('CategoryDonutChart Distinct Colors', () => {
       { id: 'cat_transport', name: 'Transport', amount: 20, icon: 'car', percentage: 2 }
     ];
 
+    // 1.2.2 (HG-8 P2): 6 categories each keep a slice (no one-member Others);
+    // a 7th folds the two smallest into Others
+    expect(global.window.Components.CategoryDonutChart._capData(rawData).some(d => d.isOthers)).toBe(false);
+    rawData.push({ id: 'cat_health', name: 'Health', amount: 10, icon: 'hospital', percentage: 1 });
     const capped = global.window.Components.CategoryDonutChart._capData(rawData);
     const assigned = global.window.Components.CategoryDonutChart._assignColors(capped);
 
     expect(assigned.length).toBe(6); // 5 top + Others
+    expect(assigned[5].members).toEqual(['Transport', 'Health']);
 
     const colors = assigned.map(item => item._color);
     const top5Colors = colors.slice(0, 5);

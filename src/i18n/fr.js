@@ -193,6 +193,12 @@ window.I18n.dicts.fr = {
   'charts.expenses': 'Dépenses',
   'charts.total': 'Total',
   'charts.others': 'Autres',
+  'charts.ring.groupAria': 'Catégories. Choisissez-en une pour voir sa part.', // 1.2.2 (HG-8 P2): the Analytics ring tap-to-focus
+  'charts.ring.arcAriaIncome': '{name} : {amount}, {pct} des revenus',
+  'charts.ring.othersAriaIncome': 'Autres ({count} : {names}) : {amount}, {pct} des revenus',
+  'charts.ring.ofIncome': 'sur {amount} reçus',
+  'charts.ring.pctOfIncome': '{pct} de {amount} reçus',
+  'charts.ring.cleared': 'Toutes les catégories sont affichées',
   'charts.noData': 'Aucune donnée pour la période sélectionnée.',
   'charts.noExpenseData': 'Aucune dépense sur cette période.',
   'charts.noIncomeData': 'Aucun revenu sur cette période.',

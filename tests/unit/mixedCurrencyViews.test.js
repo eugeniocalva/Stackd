@@ -187,7 +187,14 @@ describe('Mixed-currency selections on screen (1.0.2 BUG-36 / BUG-63)', () => {
     const donut = calls.find(c => c.type === 'doughnut');
     expect(bar.options.plugins.tooltip.callbacks.label({ parsed: { y: -40 } })).toBe(' -$40.00'); // 1.2.2 (HG-6): no English "Net:" prefix
     expect(bar.options.scales.y.ticks.callback(100)).toBe('$100');
-    expect(donut.options.plugins.tooltip.callbacks.label({ parsed: 40, dataset: { data: [40] } })).toContain('$40.00');
+    // 1.2.2 (HG-8 P2): the donut has no tooltip; its slices speak through the
+    // slice buttons and the tap readout, in the selection's currency
+    expect(donut.options.plugins.tooltip).toEqual({ enabled: false });
+    const btn = container.querySelector('#analytics-ring-box .ring-arc-btn');
+    expect(btn.getAttribute('aria-label')).toContain('$40.00');
+    btn.click();
+    expect(container.querySelector('#analytics-ring-box .ring-focus-amount').textContent).toBe('$40.00');
+    expect(container.querySelector('#analytics-ring-box .ring-focus-caption').textContent).toBe('of $40.00 spent');
     view.destroy();
   });
 
