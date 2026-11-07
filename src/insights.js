@@ -231,11 +231,37 @@ window.Insights = {
   },
 
   // Split-bar data for the highlight card: the top three and the rest.
-  _split(parts) {
+  // restColor: the categories' "everything else" is the rings' Others slate.
+  _split(parts, restColor) {
     const top = parts.slice(0, 3).map(p => ({ label: p.name, pct: p.pct, color: p.color || '#94a3b8' }));
     const rest = parts.slice(3).reduce((s, p) => s + p.pct, 0);
-    if (rest > 0.5) top.push({ label: '', pct: rest, color: 'var(--text-tertiary)' });
+    if (rest > 0.5) top.push({ label: '', pct: rest, color: restColor || 'var(--text-tertiary)' });
     return { type: 'split', parts: top };
+  },
+
+  // 1.2.2 (HG-8 P3): a category wears the colour its ring gives it. A Home
+  // categories widget on all accounts in Top mode folds and colours the same
+  // month-to-date distribution through CategoryDonutChart (CategoryPalette:
+  // unique per ring, stable for a set of categories), so the split bar
+  // matches it. The parts follow the ring's order (CategoryRing.fold: amount,
+  // then palette priority, then id), so the split's top three are the ring's
+  // first slices — a tie never names a category the ring folds into Others.
+  // Stored category colours are not read.
+  _categoryParts(dist) {
+    const C = window.Components || {};
+    const donut = C.CategoryDonutChart;
+    const others = C.CategoryPalette ? C.CategoryPalette.OTHERS : null;
+    const ordered = C.CategoryRing
+      ? C.CategoryRing.fold(dist.map(d => ({ id: d.id, value: d.amount, item: d })), Infinity).named.map(x => x.item)
+      : dist;
+    const colours = {};
+    if (donut) donut._assignColors(donut._capData(ordered)).forEach(d => { colours[String(d.id)] = d._color; });
+    return ordered.map(d => ({ id: d.id, name: d.name, pct: d.percentage, color: colours[String(d.id)] || others || d.color }));
+  },
+
+  _categoryRest() {
+    const C = window.Components || {};
+    return C.CategoryPalette ? C.CategoryPalette.OTHERS : undefined;
   },
 
   // Daily offset 0–8 (FNV-1a of id + day): stable all day, varies by day.
@@ -373,7 +399,7 @@ window.Insights = {
         const dist = window.Store.computeCategoryDistribution(window.Widgets._monthToDateFilters({}), 'expense');
         if (!dist.length || !(dist[0].amount > 0)) return null;
         const I = window.Insights;
-        const parts = dist.map(d => ({ id: d.id, name: d.name, pct: d.percentage, color: d.color }));
+        const parts = I._categoryParts(dist);
         const top = parts[0];
         return {
           score: top.pct >= 40 ? 50 : 35,
@@ -383,7 +409,7 @@ window.Insights = {
           body: I._rest(parts.slice(1, 3), 'insight.topSpending.only'),
           href: '#transactions',
           filters: I._historyFilters(top.id),
-          viz: parts.length > 1 ? I._split(parts) : null,
+          viz: parts.length > 1 ? I._split(parts, I._categoryRest()) : null,
           params: { name: top.name, pct: top.pct }
         };
       }
@@ -399,7 +425,7 @@ window.Insights = {
         const dist = window.Store.computeCategoryDistribution(window.Widgets._monthToDateFilters({}), 'income');
         if (!dist.length || !(dist[0].amount > 0)) return null;
         const I = window.Insights;
-        const parts = dist.map(d => ({ id: d.id, name: d.name, pct: d.percentage, color: d.color }));
+        const parts = I._categoryParts(dist);
         const top = parts[0];
         if (Math.round(top.pct) < 50) return null;
         return {
@@ -410,7 +436,7 @@ window.Insights = {
           body: I._rest(parts.slice(1, 3), 'insight.income.only'),
           href: '#transactions',
           filters: I._historyFilters(top.id),
-          viz: parts.length > 1 ? I._split(parts) : null,
+          viz: parts.length > 1 ? I._split(parts, I._categoryRest()) : null,
           params: { name: top.name, pct: top.pct }
         };
       }

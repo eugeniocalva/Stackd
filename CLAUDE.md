@@ -473,7 +473,13 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   from `Components.CategoryPalette` (8 slots ≥ 3:1 on both themes, no red —
   red means over budget; default categories fixed, other ids hashed; `assign()`
   is unique per ring and stable per set of categories; stored category colours
-  are not read). `_assignColors` wraps it, so Analytics and Home follow.
+  are not read). `_assignColors` wraps it, so Analytics and Home follow; the
+  Smart Insights split bar takes the colours (and order) of a Home categories
+  ring on all accounts in Top mode through `Insights._categoryParts` (P3).
+  Colours are unique per ring, so a category sharing a slot (Rent / Loan
+  Payment…) can differ between rings over different sets — accepted. The
+  Home categories ring has no tooltip and no Chart.js events (a tap opens
+  Analytics).
   `CategoryRing.fold` caps a ring at 6 slices (5 + Others from 7, Others
   slate `#64748b`, never one member). The Goals ring: slices biggest first,
   then the remaining track (none when overspent — the red OVERSPENT centre

@@ -186,6 +186,91 @@ describe('the six kept rules (whole sentences, formatters, deep links)', () => {
     expect(c.viz.type).toBe('split');
   });
 
+  // 1.2.2 (HG-8 P3): one colour per category on every screen — the split bar
+  // wears the colours the Home categories ring gives the same month-to-date
+  // categories, the rest is the rings' Others slate, stored colours unread.
+  it('top spending: the split bar wears the ring colours, the rest is slate', () => {
+    const id = addAccount('Main', 9000);
+    [['cat_groceries', 500], ['cat_dining', 300], ['cat_transport', 200], ['cat_utilities', 120], ['cat_health', 90], ['cat_shopping', 60], ['cat_entertainment', 30]]
+      .forEach(([c, a]) => addTx({ amount: a, categoryId: c, accountId: id }));
+    state().categories.find(c => c.id === 'cat_groceries').color = '#ff0000'; // a stored colour: never read
+    const C = global.window.Components;
+    const W = global.window.Widgets;
+    W._passMemo = {};
+    const ring = W.registry.categories._data({ id: 'w1', type: 'categories', size: 'large', config: {} });
+    const ringColour = Object.fromEntries(ring.map(d => [d.id, d._color]));
+    const split = byId().topSpending.viz;
+    expect(split.parts.map(x => x.label)).toEqual(['Groceries', 'Dining Out', 'Transport', '']);
+    expect(split.parts.slice(0, 3).map(x => x.color)).toEqual(['cat_groceries', 'cat_dining', 'cat_transport'].map(c => ringColour[c]));
+    expect(split.parts[3].color).toBe(C.CategoryPalette.OTHERS);
+    split.parts.forEach(x => expect(x.color).not.toBe('#ff0000'));
+    // and so does the rendered bar and legend
+    const html = Insights()._renderViz(split);
+    expect(html).toContain(`background: ${ringColour.cat_groceries};`);
+    expect(html).toContain(`background: ${C.CategoryPalette.OTHERS};`);
+  });
+
+  it('top spending: the split colours follow the ring when slots collide across the fold', () => {
+    const id = addAccount('Main', 9000);
+    // Rent (slot 0, first in priority) keeps a slice and pushes Loan Payment
+    // (also slot 0) on; Entertainment (slot 2) folds into Others and must not
+    // take a slot
+    [['cat_debt', 500], ['cat_groceries', 300], ['cat_dining', 200], ['cat_rent', 100], ['cat_transport', 90], ['cat_entertainment', 50], ['cat_health', 10]]
+      .forEach(([c, a]) => addTx({ amount: a, categoryId: c, accountId: id }));
+    const W = global.window.Widgets;
+    W._passMemo = {};
+    const ring = W.registry.categories._data({ id: 'w3', type: 'categories', size: 'large', config: {} });
+    const ringColour = Object.fromEntries(ring.map(d => [d.id, d._color]));
+    const split = byId().topSpending.viz;
+    expect(split.parts.map(x => x.label)).toEqual(['Loan Payment', 'Groceries', 'Dining Out', '']);
+    expect(split.parts.slice(0, 3).map(x => x.color)).toEqual(['cat_debt', 'cat_groceries', 'cat_dining'].map(c => ringColour[c]));
+    expect(ringColour.cat_debt).toBe(global.window.Components.CategoryPalette.SLOTS[2]); // not its own slot 0
+  });
+
+  it('top spending: a tie follows the ring order, so the split never names a category folded into Others', () => {
+    const id = addAccount('Main', 9000);
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 3000, accountId: id });
+    addTx({ amount: 200, categoryId: 'cat_groceries', accountId: id, date: june(2) });
+    // eight categories tied at 25, the last added (newest) first in the ledger
+    ['cat_dining', 'cat_transport', 'cat_utilities', 'cat_health', 'cat_shopping', 'cat_entertainment', 'cat_debt', 'cat_other']
+      .forEach((c, i) => addTx({ amount: 25, categoryId: c, accountId: id, date: june(3 + i) }));
+    const C = global.window.Components;
+    const W = global.window.Widgets;
+    W._passMemo = {};
+    const ring = W.registry.categories._data({ id: 'w4', type: 'categories', size: 'large', config: {} });
+    const named = ring.filter(d => d.id !== '__others__').map(d => d.id);
+    const c = byId().topSpending;
+    const split = c.viz;
+    expect(split.parts.slice(0, 3).map(x => x.label)).toEqual(['Groceries', 'Dining Out', 'Transport']);
+    split.parts.slice(0, 3).forEach(x => expect(x.color).not.toBe(C.CategoryPalette.OTHERS));
+    expect(named.slice(0, 3)).toEqual(['cat_groceries', 'cat_dining', 'cat_transport']);
+    expect(c.body).toBe('Then Dining Out (6%) and Transport (6%).');
+  });
+
+  it('income source: the split bar wears the ring colours of the income categories', () => {
+    const id = addAccount('Main', 100);
+    for (let i = 0; i < 4; i++) addTx({ accountId: id, date: june(2 + i) });
+    addTx({ type: 'income', categoryId: 'cat_salary', amount: 600, accountId: id });
+    addTx({ type: 'income', categoryId: 'cat_freelance', amount: 400, accountId: id });
+    const W = global.window.Widgets;
+    W._passMemo = {};
+    const ring = W.registry.categories._data({ id: 'w2', type: 'categories', size: 'large', config: { direction: 'income' } });
+    const split = byId().incomeSource.viz;
+    expect(split.parts.map(x => x.color)).toEqual(['cat_salary', 'cat_freelance'].map(c => ring.find(d => d.id === c)._color));
+  });
+
+  it('account mix keeps the account colours and its neutral rest', () => {
+    const a = addAccount('A', 500);
+    addAccount('B', 300);
+    addAccount('C', 100);
+    addAccount('D', 100);
+    for (let i = 0; i < 5; i++) addTx({ accountId: a, date: june(2 + i), amount: 1 });
+    const split = byId().accountMix.viz;
+    const stored = state().accounts.find(x => x.id === a).color;
+    expect(split.parts[0].color).toBe(Store().normalizeAccountColor(stored) || stored); // the account's own colour, not a category slot
+    expect(split.parts[split.parts.length - 1].color).toBe('var(--text-tertiary)');
+  });
+
   it('income source fires only when one source brings in at least half', () => {
     const id = addAccount('Main', 100);
     for (let i = 0; i < 4; i++) addTx({ accountId: id, date: june(2 + i) });
@@ -905,5 +990,34 @@ describe('batch 2 rules (P4)', () => {
     const groups = Insights().rules.map(r => r.group);
     expect(groups.every(Boolean)).toBe(true);
     expect([...new Set(groups)].sort()).toEqual(['balance', 'bank', 'budgets', 'cashflow', 'data', 'loans', 'seasonal', 'spending', 'unpaid', 'upcoming']);
+  });
+});
+
+// 1.2.2 (HG-8 P3): the Home categories ring is too small for the focus
+// badge — no tooltip and no Chart.js events; a tap on the card opens
+// Analytics, where the ring has tap-to-focus.
+describe('the Home categories ring (HG-8 P3)', () => {
+  beforeEach(() => boot());
+
+  it('has no tooltip, no hover and no chart events; a tap still opens Analytics', () => {
+    const id = addAccount('Main', 1000);
+    addTx({ amount: 50, categoryId: 'cat_groceries', accountId: id });
+    addTx({ amount: 20, categoryId: 'cat_dining', accountId: id });
+    const W = global.window.Widgets;
+    W._passMemo = {};
+    const made = [];
+    global.window.Chart = function (canvas, config) { this.config = config; this.destroy = () => {}; made.push(this); };
+    global.window.Chart.getChart = () => null;
+    const instance = { id: 'home-cats', type: 'categories', size: 'small', config: {} };
+    W.registry.categories.render(instance, state());
+    const listeners = {};
+    const card = { addEventListener: (t, fn) => { listeners[t] = fn; }, querySelector: () => document.createElement('canvas') };
+    W.registry.categories.attach(instance, card, state());
+    const cfg = made[made.length - 1].config;
+    expect(cfg.options.events).toEqual([]);
+    expect(cfg.options.plugins.tooltip).toEqual({ enabled: false });
+    expect(cfg.data.datasets[0].hoverOffset).toBe(0);
+    listeners.click();
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#analytics');
   });
 });

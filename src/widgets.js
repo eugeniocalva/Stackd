@@ -678,11 +678,13 @@ window.Widgets = {
         if (!canvas) return;
         const data = this._data(instance);
         if (data.length === 0) return;
-        const theme = window.Components.NetFlowChart._themeColors();
-        const ccy = window.Store.aggregateSelection(W._cfg(instance).accountIds || []).currency; // 1.0.2 (BUG-63)
 
         // 1.2.0 (UX-7): the shared ring look; the sweep only on a Home entry
         // render (W._entryPass). 1.2.2 (HG-5): no icon badges on the ring.
+        // 1.2.2 (HG-8 P3): no tooltip and no Chart.js events — the ring is too
+        // small for the focus badge, a tap opens Analytics (whose ring has tap
+        // to focus) and a long press starts the widget drag. The large card's
+        // legend carries the names and shares.
         const config = window.Components.RingChart.config({
           type: 'doughnut',
           data: {
@@ -690,31 +692,16 @@ window.Widgets = {
             datasets: [{
               data: data.map(d => d.amount),
               backgroundColor: data.map(d => d._color),
-              hoverBackgroundColor: data.map(d => d._hoverColor),
-              hoverOffset: 6
+              hoverOffset: 0
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            events: [],
             plugins: {
               legend: { display: false },
-              tooltip: {
-                backgroundColor: theme.tooltipBg,
-                titleColor: theme.tooltipTitle,
-                bodyColor: theme.tooltipBody,
-                borderColor: theme.tooltipBorder,
-                borderWidth: 1,
-                padding: 10,
-                bodyFont: { family: 'Manrope', size: 12, weight: '700' },
-                callbacks: {
-                  label: (ctx) => {
-                    const totalVal = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                    const pct = window.Store.formatPercent(totalVal > 0 ? (ctx.parsed / totalVal) * 100 : 0, { digits: 1 }); // 1.0.1 (BUG-09)
-                    return `  ${window.Store.formatCurrency(ctx.parsed, ccy)} (${pct})`;
-                  }
-                }
-              }
+              tooltip: { enabled: false }
             }
           }
         }, {

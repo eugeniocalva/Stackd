@@ -301,17 +301,18 @@ describe('widget percentages follow the UI language (1.0.1 BUG-09)', () => {
     expect(savings).toContain(' vs ');
   });
 
-  it('the categories doughnut tooltip uses the locale percent', () => {
+  // 1.2.2 (HG-8 P3): the doughnut lost its tooltip; its shares are the large
+  // card's legend, which formats through formatPercent
+  it('the categories doughnut has no tooltip; the large legend uses the locale percent', () => {
     W()._passMemo = {};
-    const instance = instanceFor('categories', 'small', {});
-    W().registry.categories.render(instance, Store().getState());
+    const instance = instanceFor('categories', 'large', {});
+    const html = W().registry.categories.render(instance, Store().getState());
     const card = { addEventListener: () => {}, querySelector: () => ({ id: 'c' }) };
     W().registry.categories.attach(instance, card, Store().getState());
     const chart = global.window.Chart._created[global.window.Chart._created.length - 1];
-    const label = chart.config.options.plugins.tooltip.callbacks.label;
-    const out = label({ parsed: 1, dataset: { data: [1, 2] } });
-    expect(out).toContain('33,3');
-    expect(out).not.toContain('33.3');
+    expect(chart.config.options.plugins.tooltip).toEqual({ enabled: false });
+    const pcts = [...html.matchAll(/class="widget-legend-pct">([^<]*)</g)].map(m => m[1]);
+    expect(pcts).toEqual(['43,3%', '28,7%', '16,2%', '11,8%']); // one decimal, comma, it-IT
   });
 
   it('budgets show the Italian "of … budgeted" line and plural overflow', () => {

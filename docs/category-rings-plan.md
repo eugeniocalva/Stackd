@@ -1,8 +1,9 @@
 # Category rings: an Others cap and tap-to-focus — plan (1.2.2, HG-8)
 
-Status: **P1 + P2 BUILT 2026-11-07 (§11): the palette everywhere, the Others fold,
-tap-to-focus on the Goals and Analytics rings (one shared controller). P3 (Home
-widget tooltip, Insights colours) to do.** Comment tag:
+Status: **P1 + P2 + P3 BUILT 2026-11-07 (§11): the palette everywhere, the Others
+fold, tap-to-focus on the Goals and Analytics rings (one shared controller), no
+tooltip on the Home categories ring, and the Smart Insights split bar in the
+ring colours.** Comment tag:
 `// 1.2.2 (HG-8)`. Research: a workflow of four code readers, three
 independent designs (minimal, coherent, accessibility-first) and a judge
 (2026-11-06). This plan is the judge's winner with the best ideas of the
@@ -404,5 +405,41 @@ findings; all 8 are fixed (§11).
     the card instead). At those roots the Goals readout's first line can
     reach a few px past the hole's circle at its corners; no glyph reaches a
     drawn arc.
-- **P3 left:** the Home categories widget (its tooltip) and the Smart Insights
-  split bar's colours.
+
+### P3 · Home and Insights (2026-11-07)
+
+- **The Home categories ring** (`Widgets.registry.categories`) has no
+  tooltip and no Chart.js events (`events: []`, `tooltip.enabled: false`,
+  `hoverOffset: 0`). The ring is too small for the focus badge, a long press
+  starts the widget drag, and a tap on the card still opens Analytics, where
+  the ring has tap-to-focus. The large card's legend carries the names and
+  shares (`formatPercent`).
+- **The Smart Insights split bar** (Top spending, Income source) wears the
+  ring colours: `Insights._categoryParts` folds and colours the same
+  month-to-date distribution through `CategoryDonutChart._capData` +
+  `_assignColors`, exactly as a Home categories widget on all accounts in
+  Top mode does (Expense for Top spending, Income for Income source), so a
+  category has the same colour on both. The parts follow the ring's order
+  (`CategoryRing.fold`), so a tie never names a category the ring folds into
+  Others. The bar's "everything else" segment is the Others slate
+  (`_split(parts, restColor)`). Stored category colours are not read. The
+  Account mix split keeps the account colours and its neutral rest.
+- **Accepted limit (from P1's rule, §4):** colours are unique per ring and
+  stable for a set of categories, and 14 default categories share 8 slots
+  (s0 Rent / Loan Payment / Freelance, s1 Groceries / Salary, s2
+  Entertainment / Investments, s4 Transport / Adjustment, s6 Utilities /
+  Other). Two rings over different sets can settle a shared slot
+  differently: Goals counts the month's budgeted categories, a Home widget
+  can be filtered by account or set to Selected categories, Analytics has
+  its own period. So Loan Payment can be blue on Home and violet on Goals in
+  the same month, when Rent is on the Goals ring. One colour per category on
+  every ring would need a slot per category or give up uniqueness on a ring
+  — a design change, not a P3 fix.
+- **Tests:** `insights.test.js` pins the split colours to the Home ring's
+  (expense and income, and a slot collision across the fold), the tie
+  order, the slate rest, the unread stored colour, the account split, and
+  the Home ring's config and tap (`#analytics`); `widgetsI18nGuard` checks
+  the large legend's exact Italian percents instead of the removed tooltip.
+- **Review** (3 lenses, 5 findings confirmed, none a regression): the tie
+  order (fixed), two loose tests (tightened, mutation-checked) and the
+  overstated "same colour on every screen" wording (this limit, above).
