@@ -559,6 +559,17 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   icon on a colour fill, a colour square or a dot; a new account list must
   follow.
 
+- **Period picker (HG-10, in progress, `docs/period-picker-plan.md` §0).**
+  History and Analytics move to one `‹ November 2026 ▾ ›` pill + a Month · Year
+  sheet with a custom-range calendar (P3). P1 (model): month/year periods are
+  anchored on their first day (`Store._anchorPeriod`, BUG-64); ‹ › go through
+  `Store.stepPeriod` (a new object; a custom range steps by its length, whole
+  months by months); a replace keeps the saved sort; the Analytics bar tap
+  opens the bar's own month/year and never sends a sort; hand-offs go
+  through `UPDATE_FILTERS` (never write `historyFilters` directly); History
+  prunes its selection to listed rows; `Store.periodLabel` /
+  `currentPeriodLike` name the period and the back-to-now target.
+
 ## Working conventions in this repo
 
 - **Markup safety (1.0.2 BUG-24).** Every stored or imported text placed in markup goes through `I18n.esc` (aliases: views.js `esc`/`escapeAttr`, `Components.esc`, `Widgets._esc`, `Insights._esc`). Escape `t()` params, never `t()` output. Account colours (palette, `Store.normalizeAccountColor`) and icons (`Store.isSafeIcon`) are validated on write; icons are also healed at boot and re-sanitized in memory whenever accounts/categories are reloaded from disk. Every id read from a file goes through `Store.fileId`; `ADD_ACCOUNT`, `ADD_CATEGORY` and `BATCH_IMPORT_TRANSACTIONS` never keep an unsafe id. **Never add a top-level `esc`/`escapeAttr` binding to another src file** — the scripts share one global scope, so it throws a redeclaration SyntaxError only in the `defer` build, which unit tests cannot see. `tests/unit/markupSafety.test.js` and `escapeGuard.test.js` fail on any raw sink.

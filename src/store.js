@@ -1567,6 +1567,115 @@ window.Store = {
     return view === 'transactions' ? 'history' : (view === 'analytics' ? 'analytics' : null);
   },
 
+  // 1.2.2 (HG-10, BUG-64) a month period is anchored on its 1st and a year on
+  // its 1 January. An anchor on today's 29th-31st made ‹ stall (31 Oct − 1
+  // month = 1 Oct, still October), › skip February (31 Jan + 1 = 3 Mar) and
+  // "vs last month" compare a month with itself. Returns a new object (or the
+  // period itself when there is nothing to anchor).
+  _anchorPeriod(period) {
+    if (!period || typeof period !== 'object' || typeof period.value !== 'string') return period;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(period.value)) return period;
+    if (period.type === 'month') {
+      const value = period.value.slice(0, 7) + '-01';
+      return value === period.value ? period : { ...period, value };
+    }
+    if (period.type === 'year') {
+      const value = period.value.slice(0, 4) + '-01-01';
+      return value === period.value ? period : { ...period, value };
+    }
+    return period;
+  },
+
+  // 1.2.2 (HG-10) the period one step before (dir < 0) or after (dir > 0) —
+  // always a new object. A month or a year steps by one; the legacy day and
+  // week by 1 / 7 days; a custom range by its own length, and a range of
+  // whole months (1st to a last day) by whole months, so Oct 1 – Dec 31 steps
+  // to Jan 1 – Mar 31. Local, noon-free date math (setDate/setMonth on local
+  // midnight never drifts a day across DST).
+  stepPeriod(period, dir) {
+    if (!period) return period;
+    const n = dir < 0 ? -1 : 1;
+    const fmt = (dt) => this._localYMD(dt);
+    if (period.type === 'custom') {
+      if (!period.start || !period.end) return { ...period };
+      const s0 = new Date(period.start + 'T00:00:00');
+      const e0 = new Date(period.end + 'T00:00:00');
+      const lastOf = (y, m) => new Date(y, m + 1, 0);
+      const wholeMonths = s0.getDate() === 1 && e0.getDate() === lastOf(e0.getFullYear(), e0.getMonth()).getDate();
+      if (wholeMonths) {
+        const months = (e0.getFullYear() - s0.getFullYear()) * 12 + (e0.getMonth() - s0.getMonth()) + 1;
+        const start = new Date(s0.getFullYear(), s0.getMonth() + n * months, 1);
+        const end = lastOf(start.getFullYear(), start.getMonth() + months - 1);
+        return { ...period, start: fmt(start), end: fmt(end) };
+      }
+      if (n < 0) {
+        const prev = this._getPreviousPeriod(period);
+        return { ...period, start: prev.start, end: prev.end };
+      }
+      const days = Math.round((e0 - s0) / 86400000) + 1; // 1.0.2 (BUG-67) DST days are 23/25 h
+      const start = new Date(e0); start.setDate(start.getDate() + 1);
+      const end = new Date(start); end.setDate(end.getDate() + days - 1);
+      return { ...period, start: fmt(start), end: fmt(end) };
+    }
+    const anchored = this._anchorPeriod(period);
+    const d = new Date(anchored.value + 'T00:00:00');
+    if (isNaN(d)) return { ...period };
+    if (anchored.type === 'today') d.setDate(d.getDate() + n);
+    else if (anchored.type === 'week') d.setDate(d.getDate() + n * 7);
+    else if (anchored.type === 'year') d.setFullYear(d.getFullYear() + n);
+    else d.setMonth(d.getMonth() + n); // month (from the 1st: never overflows)
+    return { ...anchored, value: fmt(d) };
+  },
+
+  // 1.2.2 (HG-10) the absolute name of a period, as the period pill shows it:
+  // "November 2026", "2026", "Oct 9 – 23, 2026" (a range always names its
+  // year), "Nov 2 – 8, 2026" (legacy week), "Nov 7, 2026" (legacy day).
+  periodLabel(period) {
+    if (!period) return '';
+    const loc = this.getLocale();
+    const day = (s) => new Date(s + 'T12:00:00');
+    const range = (a, b) => {
+      if (a === b) return day(a).toLocaleDateString(loc, { month: 'short', day: 'numeric', year: 'numeric' });
+      const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+      try {
+        const f = new Intl.DateTimeFormat(loc, opts);
+        if (typeof f.formatRange === 'function') return f.formatRange(day(a), day(b));
+      } catch (e) { /* older engines: the manual form below */ }
+      return `${day(a).toLocaleDateString(loc, opts)} – ${day(b).toLocaleDateString(loc, opts)}`;
+    };
+    if (period.type === 'custom') {
+      if (!period.start || !period.end) return window.I18n.t('period.customRange');
+      return range(period.start, period.end);
+    }
+    if (!period.value) return '';
+    const b = this._getPeriodBounds(period.type, period.value);
+    if (period.type === 'month') return day(b.start).toLocaleDateString(loc, { month: 'long', year: 'numeric' });
+    if (period.type === 'year') return b.start.slice(0, 4);
+    return range(b.start, b.end);
+  },
+
+  // 1.2.2 (HG-10) where the "back to now" chip goes: the period of the same
+  // unit that contains today (a year stays a year; a month, a custom range or
+  // a legacy day/week becomes this month). null when the period shown
+  // already contains today — no chip.
+  currentPeriodLike(period) {
+    const today = this._todayYMD();
+    if (period && this.isDateInPeriod(today, period)) return null;
+    if (period && period.type === 'year') return { type: 'year', value: today.slice(0, 4) + '-01-01', start: '', end: '' };
+    return { type: 'month', value: today.slice(0, 7) + '-01', start: '', end: '' };
+  },
+
+  // 1.2.2 (HG-10) a selection holds only rows History lists: a period or
+  // filter change while selecting dropped hidden rows from view but kept them
+  // selected, and Delete (N) would delete them.
+  _pruneHistorySelection() {
+    const sel = this.state.selectedTransactionIds;
+    if (!Array.isArray(sel) || !sel.length) return;
+    const listed = new Set(this.getFilteredTransactions('history', null, { keepBeforeOpening: true }).map(t => t.id));
+    const kept = sel.filter(id => listed.has(id));
+    if (kept.length !== sel.length) this.state.selectedTransactionIds = kept;
+  },
+
   _getPeriodBounds(type, anchorDateStr) {
     // v0.93: pure function, memoized — hot callers used to re-derive identical
     // bounds thousands of times per render. Key space stays tiny (period type ×
@@ -4070,9 +4179,17 @@ window.Store = {
         // the other page reconciles, and the result is judged against today.
         this._rollLivePeriods(page);
         
+        // 1.2.2 (HG-10) a page steps through stepPeriod: anchored months and
+        // years (BUG-64), a custom range by its length, a new object.
+        if (page === 'history' || page === 'analytics') {
+          const key = page === 'history' ? 'historyFilters' : 'analyticsFilters';
+          this.state[key] = { ...this.state[key], period: this.stepPeriod(this.state[key].period, offset) };
+          if (page === 'history') this._pruneHistorySelection();
+          changed = true;
+          break;
+        }
+
         let periodRef = this.state.activePeriod;
-        if (page === 'history') periodRef = this.state.historyFilters.period;
-        else if (page === 'analytics') periodRef = this.state.analyticsFilters.period;
         
         const type = periodRef.type;
         const currentVal = periodRef.value;
@@ -4116,17 +4233,20 @@ window.Store = {
         // period/type/tag filters were left behind broke that promise.
         let base = this.state[key];
         if (replace) {
-          const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
           base = {
-            period: { type: 'month', value: fmt(new Date()), start: '', end: '' },
+            period: { type: 'month', value: this._todayYMD().slice(0, 7) + '-01', start: '', end: '' },
             types: [],
             accounts: [],
             categories: [],
             tags: [],
-            sortOrder: page === 'history' ? 'asc' : 'desc'
+            // 1.2.2 (HG-10) the sort is a preference, not a filter: a replace
+            // (the ?account= deep link) keeps the one the user saved
+            sortOrder: (this.state[key] && this.state[key].sortOrder) || (page === 'history' ? 'asc' : 'desc')
           };
         }
         this.state[key] = { ...base, ...filters };
+        // 1.2.2 (HG-10, BUG-64) month/year periods anchored on their first day
+        if (this.state[key].period) this.state[key].period = this._anchorPeriod(this.state[key].period);
         // 1.0.2 (BUG-29): never keep an account id that names no account. A
         // stale #transactions?account=<deleted> entry (web Back/Forward,
         // reload, bookmark; Router.handleRouteChange) or another tab's filter
@@ -4140,6 +4260,7 @@ window.Store = {
         if (page === 'history' && filters.sortOrder !== undefined) {
           window.StackdDB.save('historyFilterSortOrder', this.state.historyFilters.sortOrder);
         }
+        if (page === 'history') this._pruneHistorySelection(); // 1.2.2 (HG-10)
         changed = true;
         break;
       }
@@ -4152,7 +4273,7 @@ window.Store = {
         // History defaults to Oldest First; analytics stays Newest First
         const defaultSort = page === 'history' ? 'asc' : 'desc';
         this.state[key] = {
-          period: { type: 'month', value: fmt(new Date()), start: '', end: '' },
+          period: { type: 'month', value: fmt(new Date()).slice(0, 7) + '-01', start: '', end: '' }, // 1.2.2 (HG-10, BUG-64)
           types: [],
           accounts: [],
           categories: [],
@@ -4161,6 +4282,7 @@ window.Store = {
         };
         if (page === 'history') {
           window.StackdDB.save('historyFilterSortOrder', defaultSort);
+          this._pruneHistorySelection(); // 1.2.2 (HG-10)
         }
         changed = true;
         break;
@@ -5622,7 +5744,8 @@ window.Store = {
         buckets.push({
           label: d.toLocaleDateString(this.getLocale(), { month: 'short', year: '2-digit' }),
           start: fmt(d),
-          end: fmt(last)
+          end: fmt(last),
+          kind: 'month' // 1.2.2 (HG-10) a tap opens History on this month
         });
       }
     } else if (type === 'year') {
@@ -5633,12 +5756,14 @@ window.Store = {
       buckets.push({
         label: priorYear.toString(),
         start: `${priorYear}-01-01`,
-        end: `${priorYear}-12-31`
+        end: `${priorYear}-12-31`,
+        kind: 'year'
       });
       buckets.push({
         label: yearSelection.toString(),
         start: `${yearSelection}-01-01`,
-        end: `${yearSelection}-12-31`
+        end: `${yearSelection}-12-31`,
+        kind: 'year'
       });
     }
 
@@ -5670,6 +5795,7 @@ window.Store = {
         label: b.label,
         start: b.start,
         end: b.end,
+        kind: b.kind, // 1.2.2 (HG-10) month / year: what a tap opens
         net: income - expense,
         income,
         expense

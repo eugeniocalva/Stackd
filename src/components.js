@@ -2473,18 +2473,19 @@ window.Components = {
               const bucket = data[index];
               if (!bucket) return;
 
-              // Clone filters and update for History view
+              // 1.2.2 (HG-10) History opens on the bar's own month or year
+              // (its arrows then work); a day/week bar keeps its fixed range.
+              // The filters come along, tags are cleared, and History's saved
+              // sort is left alone (Analytics' sort silently replaced it).
+              const period = bucket.kind === 'month' || bucket.kind === 'year'
+                ? { type: bucket.kind, value: bucket.start, start: '', end: '' }
+                : { type: 'custom', start: bucket.start, end: bucket.end, value: bucket.start };
               const newHistoryFilters = {
-                period: {
-                  type: 'custom',
-                  start: bucket.start,
-                  end: bucket.end,
-                  value: bucket.start
-                },
+                period,
                 types: [...filters.types],
                 accounts: [...filters.accounts],
                 categories: [...filters.categories],
-                sortOrder: filters.sortOrder
+                tags: []
               };
 
               // Update Store and Navigate
@@ -3734,17 +3735,21 @@ window.Components = {
       // Hand off to History exactly the way the category tap always did
       // (copy the analytics period/accounts, pin the category and type), plus
       // the chosen tag. Passing null tags = the whole category.
+      // 1.2.2 (HG-10) through UPDATE_FILTERS (it wrote the state and emitted),
+      // so the hand-off gets the live-period roll, the account-id check and
+      // the selection pruning like every other filter change.
       const openInHistory = (catId, tag) => {
         const aFilters = window.Store.state.analyticsFilters;
-        const hFilters = window.Store.state.historyFilters;
-
-        hFilters.period = { ...aFilters.period };
-        hFilters.accounts = [...aFilters.accounts];
-        hFilters.categories = [catId];
-        hFilters.types = [this._currentType];
-        hFilters.tags = tag ? [tag] : [];
-
-        window.Store.emit();
+        window.Store.dispatch('UPDATE_FILTERS', {
+          page: 'history',
+          filters: {
+            period: { ...aFilters.period },
+            accounts: [...aFilters.accounts],
+            categories: [catId],
+            types: [this._currentType],
+            tags: tag ? [tag] : []
+          }
+        });
         if (window.Router) window.Router.navigate('#transactions');
       };
 

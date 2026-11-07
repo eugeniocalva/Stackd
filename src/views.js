@@ -4816,13 +4816,11 @@ Object.assign(window.Views, {
           const last = dates.length ? dates[dates.length - 1] : todayStr;
           const end = last > todayStr ? last : todayStr;
 
-          const hFilters = window.Store.state.historyFilters;
-          hFilters.period = { type: 'custom', value: '', start, end };
-          hFilters.categories = [];
-          hFilters.types = [];
-          hFilters.accounts = [];
-          hFilters.tags = [tag];
-          window.Store.emit();
+          // 1.2.2 (HG-10) through UPDATE_FILTERS, not a direct state write
+          window.Store.dispatch('UPDATE_FILTERS', {
+            page: 'history',
+            filters: { period: { type: 'custom', value: '', start, end }, categories: [], types: [], accounts: [], tags: [tag] }
+          });
           window.Router.navigate('#transactions');
         });
       });

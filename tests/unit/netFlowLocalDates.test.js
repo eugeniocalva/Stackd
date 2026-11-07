@@ -180,7 +180,12 @@ describe('Net-flow buckets use local days (1.0.2 BUG-28, Europe/Rome)', () => {
     const call = spy.mock.calls.find((c) => c[0] === 'UPDATE_FILTERS');
     expect(call).toBeTruthy();
     expect(call[1].page).toBe('history');
-    expect(call[1].filters.period).toMatchObject({ type: 'custom', start: '2026-10-01', end: '2026-10-31' });
+    // 1.2.2 (HG-10) October itself (its arrows then work), not a fixed range;
+    // tags cleared, History's saved sort left alone
+    expect(call[1].filters.period).toMatchObject({ type: 'month', value: '2026-10-01' });
+    expect(call[1].filters.tags).toEqual([]);
+    expect(call[1].filters).not.toHaveProperty('sortOrder');
+    expect(S.getFilteredTransactions('history').every(t => t.date >= '2026-10-01' && t.date <= '2026-10-31')).toBe(true);
   });
 
   // Guard (passes on the F0 base too; F0's localYMD.test.js owns the full
