@@ -2389,17 +2389,10 @@ window.Components = {
 
     // 1.0.2 (BUG-63): `currency` (optional, last) = the selection's currency
     // (Store.aggregateSelection); stored so attachEvents can default to it.
+    // 1.2.2 (HG-10 P2) isCustom is ignored: a custom range has bars now
+    // (Store._customNetFlowBuckets) instead of "Chart not available".
     render(data, isCustom = false, currency) {
       this._currency = currency;
-      if (isCustom) {
-        return `
-          <div class="card card-elevated" style="padding: var(--space-6); margin-top: var(--space-4); text-align: center; border-radius: var(--radius-2xl); border: 2px dashed var(--border-color); background: var(--bg-surface-sunken);">
-            <div style="font-size: 2.5rem; margin-bottom: var(--space-3); opacity: 0.5;">📊</div>
-            <p style="color: var(--text-secondary); font-weight: 500;">${window.I18n.t('charts.customRangeUnavailable')}</p>
-            <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: var(--space-4); font-style: italic;">${window.I18n.t('charts.customRangeNote')}</p>
-          </div>
-        `;
-      }
 
       if (!data || data.length === 0) {
         return `

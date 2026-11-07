@@ -1,6 +1,6 @@
 # Period picker for History and Analytics — plan (1.2.2, HG-10)
 
-Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1 BUILT (§0 "P1 as built"); P2–P5 to do.**
+Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1 + P2 BUILT (§0 "as built"); P3–P5 to do.**
 Comment tag `// 1.2.2 (HG-10)`. Research: a workflow of two code readers,
 four industry researchers (budgeting apps, banks, expense trackers, design
 guidance), three independent designs (minimal, fast switching,
@@ -105,6 +105,27 @@ quick ranges** — any other span is picked in the calendar (Q3).
   funnel in P3.
 - Tests: `periodModelHg10.test.js` (14); `netFlowLocalDates` now expects the
   real month.
+
+### P2 as built (2026-11-07)
+
+- `Store._customNetFlowBuckets(start, end)`: a custom range gets bars — a day
+  each up to 31 days, Monday–Sunday weeks up to 93 days (end weeks clipped),
+  calendar months up to 36 months, years beyond. Buckets carry `kind`
+  ('day' / 'range' / 'month' / 'year'); the same aggregate rules and the
+  today clamp as the unit bars. `computeNetFlowData` returns null only for
+  an empty or reversed range.
+- `NetFlowChart.render` no longer has the "Chart not available" branch (its
+  `isCustom` argument is ignored), and `AnalyticsView.attachEvents` mounts
+  the chart whenever there are bars (it skipped custom ranges).
+- The bar tap: a whole month/year bucket opens that month/year; any other
+  bucket its own dates (P1's rule, now for range buckets too).
+- The % badge: `analytics.vsPeriod` "vs {label}" with
+  `Store.comparisonLabel(window)` — "vs Oct 1 – Oct 7" (this month so far),
+  "vs September 2026" (a whole month), "vs Sep 24 – Oct 8" (the window before
+  a custom range); the label is escaped (`I18n.esc`). The old
+  `analytics.vsLast.*` / `vsLastToDate.*` and `charts.customRange*` keys are
+  unused; they are deleted in P5.
+- Tests: `analyticsRangesHg10.test.js` (11).
 
 ## Part 1 — What is wrong today
 

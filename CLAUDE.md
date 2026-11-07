@@ -568,7 +568,11 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   opens the bar's own month/year and never sends a sort; hand-offs go
   through `UPDATE_FILTERS` (never write `historyFilters` directly); History
   prunes its selection to listed rows; `Store.periodLabel` /
-  `currentPeriodLike` name the period and the back-to-now target.
+  `currentPeriodLike` name the period and the back-to-now target. P2
+  (Analytics): a custom range draws bars (`Store._customNetFlowBuckets`:
+  daily ≤ 31 days, weekly ≤ 93, monthly ≤ 36 months, yearly; buckets carry
+  `kind`), and the % badge names the compared window
+  (`analytics.vsPeriod` + `Store.comparisonLabel`).
 
 ## Working conventions in this repo
 

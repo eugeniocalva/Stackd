@@ -168,6 +168,7 @@ window.I18n.dicts.pt = {
   'form.createCategory': 'Criar categoria',
 
   // ── Analytics (P8d) ──────────────────────────────────────────────────────
+  'analytics.vsPeriod': 'vs {label}', // 1.2.2 (HG-10 P2) {label}: the compared window's name or dates
   'analytics.vsLast.custom': 'vs período anterior',
   'analytics.vsLast.today': 'vs dia anterior',
   'analytics.vsLast.week': 'vs semana anterior',

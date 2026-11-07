@@ -276,10 +276,14 @@ window.Views = {
       const textColor = !hasBasis ? 'var(--text-secondary)' : (pctPositive ? 'var(--color-income-text)' : 'var(--color-expense)');
       const noBasisAttr = hasBasis ? '' : ` title="${window.I18n.t('analytics.noComparison')}" aria-label="${window.I18n.t('analytics.noComparison')}"`;
       
-      const deltaLabel = window.I18n.t(`analytics.${clampToToday ? 'vsLastToDate' : 'vsLast'}.${activePeriod.type}`);
+      // 1.2.2 (HG-10 P2) the badge names the window it compares with — the
+      // same days last month so far ("vs Oct 1 – 7"), a whole month or year
+      // ("vs September 2026"), the window before a custom range — one key for
+      // every period (was 'vs last month to date' / 'vs last period'…).
+      const deltaLabel = window.I18n.t('analytics.vsPeriod', { label: window.I18n.esc(window.Store.comparisonLabel(prevCompareFilters.period)) });
 
       const chartData = window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
-      const chartHtml = window.Components.NetFlowChart.render(chartData, activePeriod.type === 'custom', aggSel.currency); // 1.0.2 (BUG-63)
+      const chartHtml = window.Components.NetFlowChart.render(chartData, false, aggSel.currency); // 1.0.2 (BUG-63); 1.2.2 (HG-10 P2) custom ranges have bars
 
       // v0.93: attachEvents runs right after render in the same synchronous
       // pass and needs the same context + bar-chart series — stash, don't
@@ -398,7 +402,8 @@ window.Views = {
         : window.Store.computeNetFlowData(filters, ctx.chartClampEnd);
       // 1.0.2 (BUG-63): the charts format in the selection's currency
       const currency = (pass && pass.currency) || window.Store.aggregateSelection(filters.accounts).currency;
-      if (filters.period.type !== 'custom') {
+      // 1.2.2 (HG-10 P2) a custom range has bars too (it skipped the mount)
+      if (chartData && chartData.length) {
         window.Components.NetFlowChart.attachEvents(container, chartData, filters, currency);
       }
 

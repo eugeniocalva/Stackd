@@ -5693,15 +5693,75 @@ window.Store = {
 
   // v0.64 - clampEnd (YYYY-MM-DD) caps every bucket at that date so "as of today" mode
   // excludes future-dated transactions from the current bucket.
+  // 1.2.2 (HG-10 P2) the bars of a custom range, by its span: a bar a day up
+  // to 31 days, a Monday–Sunday week up to 93 days, a calendar month up to 36
+  // months, a year beyond. The first and last bar are clipped to the range.
+  // kind tells the bar tap what to open: 'month' / 'year' for a whole one,
+  // otherwise its own dates ('day' / 'range'). Local dates only.
+  _customNetFlowBuckets(start, end) {
+    const s = new Date(start + 'T00:00:00');
+    const e = new Date(end + 'T00:00:00');
+    if (!start || !end || isNaN(s) || isNaN(e) || s > e) return [];
+    const loc = this.getLocale();
+    const fmt = (d) => this._localYMD(d);
+    const clip = (a, b) => ({ start: a < start ? start : a, end: b > end ? end : b });
+    const days = Math.round((e - s) / 86400000) + 1; // 1.0.2 (BUG-67) DST days are 23/25 h
+    const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
+    const out = [];
+    if (days <= 31) {
+      for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+        out.push({ label: d.toLocaleDateString(loc, { month: 'short', day: 'numeric' }), start: fmt(d), end: fmt(d), kind: 'day' });
+      }
+    } else if (days <= 93) {
+      const ws = new Date(s);
+      ws.setDate(ws.getDate() - ((ws.getDay() + 6) % 7)); // back to Monday
+      for (; ws <= e; ws.setDate(ws.getDate() + 7)) {
+        const we = new Date(ws); we.setDate(we.getDate() + 6);
+        const c = clip(fmt(ws), fmt(we));
+        out.push({ label: new Date(c.start + 'T12:00:00').toLocaleDateString(loc, { month: 'short', day: 'numeric' }), start: c.start, end: c.end, kind: 'range' });
+      }
+    } else if (months <= 36) {
+      for (let m = 0; m < months; m++) {
+        const first = new Date(s.getFullYear(), s.getMonth() + m, 1);
+        const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+        const c = clip(fmt(first), fmt(last));
+        const whole = c.start === fmt(first) && c.end === fmt(last);
+        out.push({ label: first.toLocaleDateString(loc, { month: 'short', year: '2-digit' }), start: c.start, end: c.end, kind: whole ? 'month' : 'range' });
+      }
+    } else {
+      for (let y = s.getFullYear(); y <= e.getFullYear(); y++) {
+        const c = clip(`${y}-01-01`, `${y}-12-31`);
+        const whole = c.start === `${y}-01-01` && c.end === `${y}-12-31`;
+        out.push({ label: String(y), start: c.start, end: c.end, kind: whole ? 'year' : 'range' });
+      }
+    }
+    return out;
+  },
+
+  // 1.2.2 (HG-10 P2) how the Analytics % badge names the window it compares
+  // with: a month or a year by name ("September 2026", "2025"), any other
+  // window by its dates ("Oct 1 – 7", "Oct 1"; the year only when it is not
+  // the current one).
+  comparisonLabel(period) {
+    if (!period) return '';
+    if (period.type === 'month' || period.type === 'year') return this.periodLabel(period);
+    const b = period.type === 'custom' ? { start: period.start, end: period.end } : this._getPeriodBounds(period.type, period.value);
+    if (!b.start || !b.end) return '';
+    if (b.start !== b.end) return this._formatRangeLabel(b.start, b.end);
+    const thisYear = b.start.slice(0, 4) === this._todayYMD().slice(0, 4);
+    return new Date(b.start + 'T12:00:00').toLocaleDateString(this.getLocale(),
+      thisYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  },
+
   computeNetFlowData(filters, clampEnd = null) {
     const { period, accounts, categories } = filters;
     const { type, value } = period;
-    
-    // Ignore Custom Range
-    if (type === 'custom') return null;
 
+    // 1.2.2 (HG-10 P2) a custom range gets bars too (it showed "Chart not
+    // available"): sized by its span — _customNetFlowBuckets.
+    const buckets = type === 'custom' ? this._customNetFlowBuckets(period.start, period.end) : []; // { label, start, end, kind? }
+    if (type === 'custom' && !buckets.length) return null;
     const anchorDt = new Date(value + 'T00:00:00');
-    const buckets = []; // { label, start, end }
 
     if (type === 'today') {
       // Sliding 7-day window ending at anchorDt
