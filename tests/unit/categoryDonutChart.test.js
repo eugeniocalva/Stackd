@@ -52,9 +52,9 @@ describe('CategoryDonutChart Distinct Colors', () => {
     // Ensure all 5 top category colors are distinct from each other
     expect(uniqueTop5Colors.size).toBe(5);
 
-    // Ensure Others category (index 5) gets slate color #94a3b8
+    // 1.2.2 (HG-8): Others is slate #64748b (CategoryPalette.OTHERS)
     expect(assigned[5].isOthers).toBe(true);
-    expect(assigned[5]._color).toBe('#94a3b8');
+    expect(assigned[5]._color).toBe('#64748b');
   });
 
   it('renders matching legend indicator colors for assigned category colors', () => {
@@ -66,8 +66,9 @@ describe('CategoryDonutChart Distinct Colors', () => {
     const html = global.window.Components.CategoryDonutChart.render(rawData, 'expense');
     
     // 1.2.2 (HG-5): the colour is on each row's icon (no colour bar)
-    expect(html).toContain('color: #f59e0b;'); // Dining Out amber
-    expect(html).toContain('color: #10b981;'); // Groceries emerald
+    // 1.2.2 (HG-8): the CategoryPalette slots
+    expect(html).toContain('color: #ea580c;'); // Dining Out orange
+    expect(html).toContain('color: #059669;'); // Groceries green
     expect(html).not.toContain('donut-legend-color');
   });
 });

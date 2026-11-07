@@ -291,7 +291,10 @@ describe('Goals summary and ring (1.0.3 BUG-160)', () => {
     renderView();
     expect(summary()).toContain('Overspent');
     expect(summary()).toContain('€0.01');
-    expect(charts[0].config.data.datasets[0].backgroundColor[0]).toBe('#ef4444');
+    // 1.2.2 (HG-8): an overspent month draws its slices over total spent
+    // (no track); the red OVERSPENT centre carries the alarm.
+    expect(charts[0].config.data.datasets[0].data).toEqual([100.01]);
+    expect(charts[0].config.data.datasets[0].backgroundColor).toEqual(['#059669']);
   });
 
   it('the ring sums the rows the summary sums: no deleted-budget spend, no other tab', () => {

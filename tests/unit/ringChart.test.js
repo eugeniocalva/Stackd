@@ -221,14 +221,14 @@ describe('Analytics donut', () => {
     const donut = doughnuts()[0];
     expect(donut.config.options.animation).toMatchObject({ animateRotate: true, delay: 250 });
     expect(donut.config.options.cutout).toBe('66%');
-    expect(donut.config.data.datasets[0].backgroundColor).toEqual(['#10b981', '#f59e0b']);
+    expect(donut.config.data.datasets[0].backgroundColor).toEqual(['#059669', '#ea580c']); // 1.2.2 (HG-8) palette
   });
 
   it('each legend row tints its icon in the arc colour, with no colour bar (1.2.2 HG-5)', () => {
     render(false);
     const rows = [...rv().querySelectorAll('.donut-legend-item')];
     expect(rows).toHaveLength(2);
-    expect(rows.map(r => r.querySelector('.list-item-icon').style.color)).toEqual(['#10b981', '#f59e0b'].map(hexToRgb));
+    expect(rows.map(r => r.querySelector('.list-item-icon').style.color)).toEqual(['#059669', '#ea580c'].map(hexToRgb));
     expect(rv().querySelector('.donut-legend-color')).toBeNull();
   });
 
@@ -262,7 +262,7 @@ describe('Goals ring and row rings', () => {
   const budget = (cat, amount) =>
     S().dispatch('SAVE_BUDGET', { categoryId: cat, amount, startDate: '', endDate: null, isCumulative: false });
 
-  it('one arc per budgeted category with spending, in its colour, then the remaining track', () => {
+  it('one arc per budgeted category with spending, biggest first, in its palette colour, then the remaining track', () => {
     budget('cat_groceries', 100);
     budget('cat_dining', 100);
     budget('cat_transport', 100); // budgeted, nothing spent: no arc
@@ -270,23 +270,25 @@ describe('Goals ring and row rings', () => {
     spend(30, 'cat_dining');
     const ring = render(false);
     const ds = ring.config.data.datasets[0];
-    // displayed order: budgeted first, alphabetical (Dining Out, Groceries, Transport)
-    expect(ds.data).toEqual([30, 50, 220]);
-    expect(ds.backgroundColor).toEqual(['#f59e0b', '#10b981', '#e2e8f0']);
-    // 1.2.2 (HG-5): each row's icon wears its arc's colour (one map per pass)
+    // 1.2.2 (HG-8): biggest first (Groceries, Dining Out), then the track
+    expect(ds.data).toEqual([50, 30, 220]);
+    expect(ds.backgroundColor).toEqual(['#059669', '#ea580c', '#e2e8f0']);
+    // each row's icon wears its arc's colour (one map per pass); a row with
+    // no arc has none — a colour always means 'this is your slice'
     const iconColor = (id) => rv().querySelector(`.budget-cat-row[data-id="${id}"] .list-item-icon`).style.color;
-    expect(iconColor('cat_dining')).toBe(hexToRgb('#f59e0b'));
-    expect(iconColor('cat_groceries')).toBe(hexToRgb('#10b981'));
-    expect(iconColor('cat_transport')).not.toBe(''); // no arc yet, still its own colour
+    expect(iconColor('cat_dining')).toBe(hexToRgb('#ea580c'));
+    expect(iconColor('cat_groceries')).toBe(hexToRgb('#059669'));
+    expect(iconColor('cat_transport')).toBe('');
   });
 
-  it('overspent stays the full red ring', () => {
+  it('overspent draws the slices over total spent, no track (1.2.2 HG-8)', () => {
     budget('cat_groceries', 100);
     spend(150, 'cat_groceries');
     const ring = render(false);
     const ds = ring.config.data.datasets[0];
-    expect(ds.data).toEqual([1, 0]);
-    expect(ds.backgroundColor[0]).toBe('#ef4444');
+    expect(ds.data).toEqual([150]);
+    expect(ds.backgroundColor).toEqual(['#059669']);
+    expect(rv().querySelector('.donut-chart-center').textContent).toContain('Overspent');
   });
 
   it('nothing budgeted is an empty track', () => {

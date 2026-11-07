@@ -462,11 +462,31 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   bridge grants it silently). iOS Safari gives motion only on https.
 - **Rings and legends (HG-5).** `RingChart.config` only sets cutout 66 %,
   spacing 2, radius 6, no border, and the entry sweep — no plugin, nothing
-  painted over Chart.js. Legends carry the colour on the category icon (like
+  painted over Chart.js. (HG-8: the Goals ring passes its own
+  `CategoryRing.plugin()`, which only moves arc radii while drawing — keep it.)
+  Legends carry the colour on the category icon (like
   the Home account tiles): Analytics rows (`.list-item-icon` `color`), the
   large categories widget (`.widget-legend-icon`) and Budget rows, whose icon
   and ring arc read one map per pass (`_passTotals.ringColors`). No colour bars
   or dots.
+- **Category rings (HG-8, `docs/category-rings-plan.md`).** Colours come only
+  from `Components.CategoryPalette` (8 slots ≥ 3:1 on both themes, no red —
+  red means over budget; default categories fixed, other ids hashed; `assign()`
+  is unique per ring and stable per set of categories; stored category colours
+  are not read). `_assignColors` wraps it, so Analytics and Home follow.
+  `CategoryRing.fold` caps a ring at 6 slices (5 + Others from 7, Others
+  slate `#64748b`, never one member). The Goals ring: slices biggest first,
+  then the remaining track (none when overspent — the red OVERSPENT centre
+  carries it); row icons wear their slice colour, slate inside Others, none
+  off the ring. Tap-to-focus lives on `BudgetView._ringFocus` (never
+  dispatched): Chart.js `events: []`, `hoverOffset: 0`, padding 7 (resting
+  size unchanged), one hit test on `#budget-ring-box` over `CategoryRing.hitZones`
+  (a drawn slice always answers for itself; a slice under 24° also gets a halo over the track), real `.ring-arc-btn` buttons (pointer-events none) for
+  keyboard/screen readers, a badge (icon, then the share of spending at 0.9 s;
+  one pill under reduced motion), `Components.Announcer` for pointer taps only.
+  A re-render restores the focus in its final state; the tab switch and
+  `destroy()` drop it and its timers. E2E: `ring_focus.spec.js` (it turns the
+  suite's reduced motion off and waits for the entry slide).
 - **One bar look (HG-6).** Every bar chart uses Home's monthly-net style
   through `NetFlowChart.barStyle(values, {emphasizeLast})` / `barFill(v, pal)`:
   solid fills in the theme trend pair at 0.9, radius 6, no outline (Home keeps

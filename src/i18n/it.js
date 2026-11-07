@@ -208,6 +208,13 @@ window.I18n.dicts.it = {
   'budget.currentMonthAria': 'Mese di budget attuale: {month}. Tocca per cambiare.',
   'budget.overspent': 'Superato',
   'budget.allocated': 'Allocato',
+  'budget.ring.groupAria': 'Spese per categoria. Scegline una per vederne la quota.', // 1.2.2 (HG-8): the Goals ring tap-to-focus
+  'budget.ring.arcAria': '{name}: {amount}, {pct} delle spese',
+  'budget.ring.othersLabel': 'Altri ({count})',
+  'budget.ring.othersAria': 'Altri ({count}: {names}): {amount}, {pct} delle spese',
+  'budget.ring.ofSpent': 'su {amount} spesi',
+  'budget.ring.pctOfSpent': '{pct} di {amount} spesi',
+  'budget.ring.cleared': 'Ora vedi tutto il budget',
   'budget.totalSpent': 'Totale speso',
   'budget.remaining': 'Rimanente',
   'budget.noCategories': 'Nessuna categoria in questa vista.',

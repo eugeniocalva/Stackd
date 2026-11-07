@@ -2610,7 +2610,9 @@ window.Components = {
     tick() { this._call('selectionChanged'); },
     end() { this._call('selectionEnd'); },
     // 1.2.2 (HG-4): one firm tap — a shake flipped hidden balances
-    impact() { this._call('impact', { style: 'MEDIUM' }); }
+    impact() { this._call('impact', { style: 'MEDIUM' }); },
+    // 1.2.2 (HG-8): a light tap — a ring slice took the focus
+    light() { this._call('impact', { style: 'LIGHT' }); }
   },
 
   // 1.2.2 (HG-4): shake to hide balances on Home. Listens to devicemotion
@@ -2921,6 +2923,288 @@ window.Components = {
     }
   },
 
+  // 1.2.2 (HG-8, docs/category-rings-plan.md §4): one stable, accessible
+  // colour per category for every ring (Goals, Analytics, the Home widgets,
+  // Smart Insights). 8 slots, each at least 3:1 against both cards and both
+  // icon discs (WCAG 1.4.11); red is not a slot, it means "over budget".
+  // Default categories have fixed slots; any other id hashes (FNV-1a) to one.
+  // assign() walks one ring's categories in a fixed priority order and gives
+  // each its slot or the next free one: no two slices on a ring share a
+  // colour, and the same set of categories always gets the same colours
+  // (month, tab, amounts and language do not matter). Stored category colours
+  // are not read by rings. Nothing is saved.
+  CategoryPalette: {
+    SLOTS: ['#3b82f6', '#059669', '#8b5cf6', '#ea580c', '#0891b2', '#db2777', '#a16207', '#c026d3'],
+    OTHERS: '#64748b',
+    DEFAULT_SLOTS: {
+      cat_rent: 0, cat_debt: 0, cat_freelance: 0,
+      cat_groceries: 1, cat_salary: 1,
+      cat_entertainment: 2, cat_investments: 2,
+      cat_dining: 3,
+      cat_transport: 4, cat_balance: 4,
+      cat_shopping: 5,
+      cat_utilities: 6, cat_other: 6,
+      cat_health: 7
+    },
+    PRIORITY: ['cat_rent', 'cat_groceries', 'cat_dining', 'cat_transport', 'cat_utilities', 'cat_health', 'cat_shopping',
+      'cat_entertainment', 'cat_salary', 'cat_freelance', 'cat_investments', 'cat_debt', 'cat_other', 'cat_balance'],
+
+    slotOf(id) {
+      const s = String(id == null ? '' : id);
+      if (Object.prototype.hasOwnProperty.call(this.DEFAULT_SLOTS, s)) return this.DEFAULT_SLOTS[s];
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0) % this.SLOTS.length;
+    },
+
+    _rank(id) {
+      const i = this.PRIORITY.indexOf(id);
+      return i === -1 ? this.PRIORITY.length : i;
+    },
+
+    // ids → { id: '#rrggbb' }, unique among up to 8 ids.
+    assign(ids) {
+      const uniq = [...new Set((ids || []).filter(id => id != null && id !== '__others__').map(String))];
+      uniq.sort((a, b) => (this._rank(a) - this._rank(b)) || (a < b ? -1 : (a > b ? 1 : 0)));
+      const used = new Set();
+      const out = {};
+      uniq.forEach(id => {
+        let slot = this.slotOf(id);
+        for (let k = 0; k < this.SLOTS.length && used.has(slot); k++) slot = (slot + 1) % this.SLOTS.length;
+        used.add(slot);
+        out[id] = this.SLOTS[slot];
+      });
+      return out;
+    }
+  },
+
+  // 1.2.2 (HG-8, docs/category-rings-plan.md §3, §5): the shared category-ring
+  // rules — the Others fold, the ring geometry and tap zones, and the
+  // tap-to-focus drawing (the tapped arc thickens, the others thin).
+  CategoryRing: {
+    MAX: 6, // slices on one ring; from 7 categories: the 5 biggest + Others
+    MIN_ZONE: (24 / 180) * Math.PI, // 24°: a 24 × 24 px target fits at these radii (WCAG 2.5.8)
+    // Focus deltas (px) on the resting ring of the 180 px box (outer 82,
+    // inner 54.12): the focused arc grows to 88 / 50.12, every other arc
+    // (the track too) thins to 80 / 58.12.
+    FOCUS_IN: { dOut: 6, dIn: -4 },
+    FOCUS_OUT: { dOut: -2, dIn: 4 },
+    DUR_IN: 240,
+    DUR_OUT: 200,
+
+    // items: [{ id, value, … }] → { named: biggest first, others: null |
+    // { id: '__others__', value, members } }. Up to MAX items each keep a
+    // slice; past that the MAX - 1 biggest do and the rest fold into Others
+    // (always 2 or more). Ties: palette priority, then id — never the name,
+    // so the order does not change with the language.
+    fold(items, max) {
+      const n = max || this.MAX;
+      const P = window.Components.CategoryPalette;
+      const sorted = (items || []).filter(it => it && it.value > 0).slice().sort((a, b) =>
+        (b.value - a.value) || (P._rank(String(a.id)) - P._rank(String(b.id))) ||
+        (String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0)));
+      if (sorted.length <= n) return { named: sorted, others: null };
+      const members = sorted.slice(n - 1);
+      return {
+        named: sorted.slice(0, n - 1),
+        others: { id: '__others__', value: members.reduce((s, m) => s + m.value, 0), members }
+      };
+    },
+
+    // Chart.js 4.4.2 doughnut geometry for a square box: the radius is
+    // (box - 2·padding - (maxBorderWidth + maxOffset + spacing)) / 2. Goals
+    // passes hoverOffset 0 and padding 7, so its resting ring keeps the
+    // 1.2.0 size (outer 82, inner 54.12) and the 6 px the hover pop used
+    // to reserve is the room for the focused arc.
+    geometry(values, opts) {
+      const o = Object.assign({ box: 180, padding: 7, spacing: 2, offset: 0, cutout: 0.66 }, opts || {});
+      const outer = (o.box - 2 * o.padding - (o.offset + o.spacing)) / 2;
+      const total = (values || []).reduce((s, v) => s + Math.max(0, v), 0);
+      let a = 0;
+      const arcs = (values || []).map(v => {
+        const span = total > 0 ? (Math.max(0, v) / total) * 2 * Math.PI : 0;
+        const arc = { start: a, end: a + span, mid: a + span / 2, span };
+        a += span;
+        return arc;
+      });
+      return { cx: o.box / 2, cy: o.box / 2, outer, inner: outer * o.cutout, arcs };
+    },
+
+    // Tap zones (angles from 12 o'clock, clockwise). Correctness first: a tap
+    // on a slice as drawn is always that slice (hitTest checks the painted
+    // arcs before anything else), so a tap can never select a neighbour.
+    // A slice narrower than MIN_ZONE then gains a halo over the track next
+    // to it (the remaining budget, which is not a target), up to MIN_ZONE in
+    // all and never more than half of that track, so its target reaches 24°
+    // where there is room (WCAG 2.5.8). A halo never covers another slice:
+    // several tiny slices side by side keep their painted size (the keyboard
+    // and screen-reader buttons stay the full path). Each zone: { start, end
+    // (with the halo), mid (the painted mid), painted: {start, end}, tappable }.
+    hitZones(arcs, tappable) {
+      const n = arcs.length;
+      if (!n) return [];
+      const MIN = this.MIN_ZONE;
+      const trackSide = (j) => j >= 0 && j < n && !tappable[j];
+      return arcs.map((a, i) => {
+        const z = { start: a.start, end: a.end, mid: a.mid, painted: { start: a.start, end: a.end }, tappable: !!tappable[i] };
+        if (!z.tappable || a.span >= MIN || n < 2) return z;
+        const prev = (i - 1 + n) % n;
+        const next = (i + 1) % n;
+        const need = MIN - a.span;
+        const before = trackSide(prev) ? arcs[prev].span / 2 : 0;
+        const after = trackSide(next) ? arcs[next].span / 2 : 0;
+        if (prev === next) { // one slice and the track: the track is on both sides
+          const each = Math.min(need / 2, arcs[next].span / 4);
+          z.start -= each;
+          z.end += each;
+          return z;
+        }
+        let takeBefore = 0;
+        let takeAfter = 0;
+        if (before && after) {
+          takeBefore = Math.min(need / 2, before);
+          takeAfter = Math.min(need - takeBefore, after);
+          takeBefore = Math.min(need - takeAfter, before);
+        } else if (after) {
+          takeAfter = Math.min(need, after);
+        } else if (before) {
+          takeBefore = Math.min(need, before);
+        }
+        z.start -= takeBefore;
+        z.end += takeAfter;
+        return z;
+      });
+    },
+
+    // The arc under a point of the box (px from its top-left), or -1 for the
+    // hole / outside. band: [inner, outer] px. Order: a slice as drawn, then a
+    // small slice's halo, then the track (not a target: the caller clears).
+    hitTest(zones, x, y, geo, band) {
+      const dx = x - geo.cx;
+      const dy = y - geo.cy;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const [rin, rout] = band || [geo.inner - 8, geo.outer + 8];
+      if (r < rin || r > rout) return -1;
+      let theta = Math.atan2(dx, -dy); // 0 at 12 o'clock, clockwise
+      if (theta < 0) theta += 2 * Math.PI;
+      const inside = (s, e) => [theta, theta + 2 * Math.PI, theta - 2 * Math.PI].some(t => t >= s && t < e);
+      for (let i = 0; i < zones.length; i++) {
+        const z = zones[i];
+        if (z.tappable && inside(z.painted.start, z.painted.end)) return i;
+      }
+      for (let i = 0; i < zones.length; i++) {
+        const z = zones[i];
+        if (z.tappable && inside(z.start, z.end)) return i;
+      }
+      for (let i = 0; i < zones.length; i++) {
+        if (inside(zones[i].painted.start, zones[i].painted.end)) return i;
+      }
+      return -1;
+    },
+
+    // A point on the ring: angle from 12 o'clock, clockwise.
+    point(geo, angle, radius) {
+      return { x: geo.cx + radius * Math.sin(angle), y: geo.cy - radius * Math.cos(angle) };
+    },
+
+    _ease(t) { return 1 - Math.pow(1 - t, 4); }, // easeOutQuart, the entry sweep's curve
+
+    _targets(count, index) {
+      const out = [];
+      for (let i = 0; i < count; i++) {
+        if (index < 0) out.push({ dOut: 0, dIn: 0 });
+        else out.push(i === index ? this.FOCUS_IN : this.FOCUS_OUT);
+      }
+      return out;
+    },
+
+    _deltas(f) {
+      const e = this._ease(Math.max(0, Math.min(1, f.t)));
+      return f.to.map((to, i) => {
+        const from = f.from[i] || { dOut: 0, dIn: 0 };
+        return { dOut: from.dOut + (to.dOut - from.dOut) * e, dIn: from.dIn + (to.dIn - from.dIn) * e };
+      });
+    },
+
+    // The caller-supplied Chart.js plugin (RingChart.config stays
+    // plugin-free, HG-5): it only moves each arc's radii while the dataset
+    // draws and puts them back right after. Nothing is cancelled or copied.
+    plugin() {
+      const CR = this;
+      return {
+        id: 'stackdRingFocus',
+        beforeDatasetDraw(chart, args) {
+          const f = chart.$ringFocus;
+          const meta = args && args.meta;
+          if (!f || !meta || !Array.isArray(meta.data)) return;
+          const d = CR._deltas(f);
+          chart.$ringSaved = meta.data.map((el, i) => {
+            const saved = [el.outerRadius, el.innerRadius];
+            const k = d[i] || { dOut: 0, dIn: 0 };
+            el.outerRadius = Math.max(0, el.outerRadius + k.dOut);
+            el.innerRadius = Math.max(0, el.innerRadius + k.dIn);
+            return saved;
+          });
+        },
+        afterDatasetDraw(chart, args) {
+          const saved = chart.$ringSaved;
+          const meta = args && args.meta;
+          if (!saved || !meta || !Array.isArray(meta.data)) return;
+          meta.data.forEach((el, i) => {
+            if (saved[i]) { el.outerRadius = saved[i][0]; el.innerRadius = saved[i][1]; }
+          });
+          chart.$ringSaved = null;
+        }
+      };
+    },
+
+    // Focus arc `index` (-1 = none) on a chart built with plugin(). Tweens
+    // from wherever the arcs are now; `instant` (re-render restore, reduced
+    // motion) jumps to the end. A timeout finishes the tween where
+    // requestAnimationFrame is suspended (hidden documents).
+    focus(chart, count, index, instant) {
+      if (!chart) return;
+      const prev = chart.$ringFocus;
+      const from = prev ? this._deltas(prev) : this._targets(count, -1);
+      const to = this._targets(count, index);
+      if (chart.$ringRaf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(chart.$ringRaf);
+      clearTimeout(chart.$ringSnap);
+      const canDraw = () => typeof chart.draw === 'function' && chart.canvas && chart.canvas.isConnected !== false && chart.ctx;
+      const draw = () => { if (canDraw()) { try { chart.draw(); } catch (e) { /* a destroyed chart */ } } };
+      const reduced = window.Components.RingChart._reduced();
+      if (instant || reduced) {
+        chart.$ringFocus = { from: to, to, t: 1 };
+        draw();
+        return;
+      }
+      const dur = index < 0 ? this.DUR_OUT : this.DUR_IN;
+      chart.$ringFocus = { from, to, t: 0 };
+      const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const step = (now) => {
+        const f = chart.$ringFocus;
+        if (!f || f.to !== to) return;
+        f.t = Math.min(1, ((now || t0 + dur) - t0) / dur);
+        draw();
+        if (f.t < 1 && typeof requestAnimationFrame === 'function') chart.$ringRaf = requestAnimationFrame(step);
+      };
+      if (typeof requestAnimationFrame === 'function') chart.$ringRaf = requestAnimationFrame(step);
+      chart.$ringSnap = setTimeout(() => {
+        const f = chart.$ringFocus;
+        if (f && f.to === to && f.t < 1) { f.t = 1; draw(); }
+      }, dur + 40);
+    },
+
+    stop(chart) {
+      if (!chart) return;
+      if (chart.$ringRaf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(chart.$ringRaf);
+      clearTimeout(chart.$ringSnap);
+      chart.$ringRaf = null;
+    }
+  },
+
   CategoryDonutChart: {
     _chartInstance: null,
     _currentType: 'expense',
@@ -2938,65 +3222,18 @@ window.Components = {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
-    _CATEGORY_COLORS: {
-      'cat_dining': { color: '#f59e0b', hover: '#d97706' },        // Amber
-      'cat_entertainment': { color: '#8b5cf6', hover: '#7c3aed' }, // Violet
-      'cat_groceries': { color: '#10b981', hover: '#059669' },     // Emerald
-      'cat_health': { color: '#ef4444', hover: '#dc2626' },        // Coral Red
-      'cat_rent': { color: '#3b82f6', hover: '#2563eb' },          // Royal Blue
-      'cat_shopping': { color: '#ec4899', hover: '#db2777' },      // Pink
-      'cat_transport': { color: '#06b6d4', hover: '#0891b2' },     // Cyan
-      'cat_utilities': { color: '#eab308', hover: '#ca8a04' },     // Gold
-      'cat_salary': { color: '#10b981', hover: '#059669' },        // Emerald
-      'cat_freelance': { color: '#6366f1', hover: '#4f46e5' },     // Indigo
-      'cat_investments': { color: '#00c9a7', hover: '#009e82' },   // Mint
-      'cat_other': { color: '#64748b', hover: '#475569' }          // Slate
-    },
-
-    _FALLBACK_PALETTE: [
-      { color: '#6366f1', hover: '#4f46e5' }, // Indigo
-      { color: '#f59e0b', hover: '#d97706' }, // Amber
-      { color: '#06b6d4', hover: '#0891b2' }, // Cyan
-      { color: '#ec4899', hover: '#db2777' }, // Pink
-      { color: '#8b5cf6', hover: '#7c3aed' }, // Violet
-      { color: '#10b981', hover: '#059669' }, // Emerald
-      { color: '#3b82f6', hover: '#2563eb' }, // Blue
-      { color: '#f43f5e', hover: '#e11d48' }, // Rose
-      { color: '#eab308', hover: '#ca8a04' }, // Gold
-      { color: '#00c9a7', hover: '#009e82' }  // Mint
-    ],
-
+    // 1.2.2 (HG-8): colours come from Components.CategoryPalette — stable
+    // per category, unique on the ring; Others is slate. Stored category
+    // colours are not read (the old _CATEGORY_COLORS / _FALLBACK_PALETTE
+    // repeated after 12 and moved with the order). _hoverColor = the colour.
     _assignColors(data) {
       if (!data) return [];
-      const usedColors = new Set();
-      return data.map((item, idx) => {
-        if (item.isOthers || item.id === '__others__') {
-          return {
-            ...item,
-            _color: '#94a3b8',
-            _hoverColor: '#64748b'
-          };
-        }
-
-        let assigned = null;
-        if (item.color && item.color !== '#94a3b8' && !usedColors.has(item.color)) {
-          assigned = { color: item.color, hover: item.hoverColor || item.color };
-        } else if (this._CATEGORY_COLORS[item.id] && !usedColors.has(this._CATEGORY_COLORS[item.id].color)) {
-          assigned = this._CATEGORY_COLORS[item.id];
-        }
-
-        if (!assigned) {
-          const fallback = this._FALLBACK_PALETTE.find(p => !usedColors.has(p.color)) ||
-                           this._FALLBACK_PALETTE[idx % this._FALLBACK_PALETTE.length];
-          assigned = fallback;
-        }
-
-        usedColors.add(assigned.color);
-        return {
-          ...item,
-          _color: assigned.color,
-          _hoverColor: assigned.hover
-        };
+      const P = window.Components.CategoryPalette;
+      const isOthers = (it) => !!(it && (it.isOthers || it.id === '__others__'));
+      const map = P.assign(data.filter(it => !isOthers(it)).map(it => it.id));
+      return data.map(item => {
+        const c = isOthers(item) ? P.OTHERS : (map[String(item.id)] || P.OTHERS);
+        return { ...item, _color: c, _hoverColor: c };
       });
     },
 

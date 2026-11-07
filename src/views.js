@@ -3998,14 +3998,36 @@ Object.assign(window.Views, {
         return window.Store.compareAlpha(a, b);
       });
 
-      // 1.2.2 (HG-5): one colour per category for this pass — the row icon
-      // and the ring arc read the same map, so they always match.
+      // 1.2.2 (HG-8, docs/category-rings-plan.md): the ring holds at most 6
+      // slices (the 5 biggest + Others from 7 categories), biggest first, in
+      // the stable CategoryPalette colours. A row icon wears its slice's
+      // colour, slate when it sits inside Others, and no colour when it is
+      // not on the ring (no budget or nothing spent): a colour always means
+      // "this is your slice". One budget lookup per category for the pass.
+      const bdgOf = new Map(displayedCategories.map(c => [c.id, window.Store.getBudgetForMonth(c.id, selectedMonth)]));
+      const CR = window.Components.CategoryRing;
+      const CP = window.Components.CategoryPalette;
+      const folded = CR.fold(displayedCategories
+        .filter(c => bdgOf.get(c.id).allocated > 0 && Math.round(bdgOf.get(c.id).spent * 100) > 0)
+        .map(c => ({ id: c.id, value: bdgOf.get(c.id).spent, cat: c })));
+      const sliceColors = CP.assign(folded.named.map(it => it.id));
       const ringColors = {};
-      window.Components.CategoryDonutChart._assignColors(displayedCategories.map(c => ({ id: c.id, name: c.name, color: c.color, icon: c.icon })))
-        .forEach(p => { ringColors[p.id] = p._color; });
+      folded.named.forEach(it => { ringColors[it.id] = sliceColors[it.id]; });
+      if (folded.others) folded.others.members.forEach(m => { ringColors[m.id] = CP.OTHERS; });
+      const slices = folded.named.map(it => ({ id: it.id, name: it.cat.name, icon: it.cat.icon, value: it.value, color: sliceColors[it.id] }));
+      if (folded.others) {
+        slices.push({
+          id: '__others__',
+          name: window.I18n.t('budget.ring.othersLabel', { count: folded.others.members.length }),
+          icon: 'more-horizontal',
+          value: folded.others.value,
+          color: CP.OTHERS,
+          members: folded.others.members.map(m => m.cat.name)
+        });
+      }
 
       const categoryCards = displayedCategories.map(cat => {
-        const bdg = window.Store.getBudgetForMonth(cat.id, selectedMonth);
+        const bdg = bdgOf.get(cat.id);
         const hasBudget = bdg.allocated > 0;
 
         if (hasBudget) {
@@ -4051,7 +4073,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.editForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${cat.icon}"></i></div>
+                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${escapeAttr(cat.icon)}"></i></div>
                   <div>
                     <div class="list-item-title">${esc(cat.name)}${carryOverBadge}</div>
                     <div class="list-item-subtitle">${spentFormatted} <span style="color: var(--text-tertiary);">${window.I18n.t('budget.ofLimit', { limit: limitFormatted })}</span>${overByHtml}</div>
@@ -4072,7 +4094,7 @@ Object.assign(window.Views, {
             <div class="list-item budget-cat-row touch-target" data-id="${cat.id}" style="cursor: pointer; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; width: 100%; box-sizing: border-box; opacity: 0.5;" tabindex="0" role="button" aria-label="${window.I18n.t('budget.setForAria', { name: esc(cat.name) })}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${cat.icon}"></i></div>
+                  <div class="list-item-icon" style="color: ${escapeAttr(ringColors[cat.id] || '')};"><i data-lucide="${escapeAttr(cat.icon)}"></i></div>
                   <div>
                     <div class="list-item-title">${esc(cat.name)}</div>
                     <div class="list-item-subtitle" style="color: var(--text-tertiary);">${window.I18n.t('budget.noLimit')}</div>
@@ -4095,7 +4117,23 @@ Object.assign(window.Views, {
       const overC = Math.round((totalSpent - totalAllocated) * 100);
       const overspent = overC > 0;
       const remC = -overC;
-      this._passTotals = { totalAllocated, totalSpent, overspent, segments, ringColors };
+      // 1.2.2 (HG-8): the ring is the slices, then (unless overspent) the
+      // remaining budget as the track; an overspent month shows the slices
+      // over total spent and keeps the red OVERSPENT centre. Geometry and tap
+      // zones are pure maths (CategoryRing), so the buttons and badges are
+      // written here already where their arcs are. A focus survives any
+      // re-render while its slice is still on this tab's ring.
+      const trackValue = overspent ? null : Math.max(totalAllocated - totalSpent, 0);
+      const ringValues = slices.map(sl => sl.value).concat(trackValue === null ? [] : [trackValue]);
+      const geo = CR.geometry(ringValues);
+      const zones = CR.hitZones(geo.arcs, ringValues.map((v, i) => i < slices.length));
+      const focus = this._ringFocus && this._ringFocus.tab === this.currentBudgetFilter &&
+        slices.some(sl => sl.id === this._ringFocus.id) ? this._ringFocus.id : null;
+      if (!focus) this._ringFocus = null;
+      this._passTotals = {
+        totalAllocated, totalSpent, overspent, segments, ringColors, slices,
+        ring: { geo, zones, count: ringValues.length, hasTrack: trackValue !== null }
+      };
 
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -4123,14 +4161,8 @@ Object.assign(window.Views, {
           </div>
 
           <!-- Chart Area -->
-          <div class="card card-elevated" style="margin-top: var(--space-6); margin-bottom: var(--space-6); padding: var(--space-5); text-align: center;">
-            <div style="position: relative; width: 180px; height: 180px; margin: 0 auto; margin-bottom: var(--space-5);">
-              <canvas id="budgetChart"></canvas>
-              <div class="donut-chart-center">
-                <div class="donut-total-label">${overspent ? window.I18n.t('budget.overspent') : window.I18n.t('budget.allocated')}</div>
-                <div class="donut-total-value" style="font-size: 1.2rem; ${overspent ? 'color: var(--color-expense-val);' : ''}">${window.Store.formatCurrency(overspent ? overC / 100 : totalAllocated)}</div>
-              </div>
-            </div>
+          <div class="card card-elevated" id="budget-summary-card" style="margin-top: var(--space-6); margin-bottom: var(--space-6); padding: var(--space-5); text-align: center;">
+            ${this._ringHtml({ slices, geo, zones, focus, totalSpent, totalAllocated, overspent, overC })}
             <div style="display: flex; justify-content: space-between; font-size: var(--text-sm);">
               <div style="text-align: left;">
                 <span style="color: var(--text-secondary);">${window.I18n.t('budget.totalSpent')}</span><br>
@@ -4404,10 +4436,13 @@ Object.assign(window.Views, {
           });
         }
 
+        // 1.2.2 (HG-8): switching tab drops the ring focus
         const toggleExpense = document.getElementById('bdg-toggle-expense');
         if (toggleExpense) {
           toggleExpense.addEventListener('click', () => {
             this.currentBudgetFilter = 'expense';
+            this._ringFocus = null;
+            this._ringClearTimers();
             window.Store.emit();
           });
         }
@@ -4415,6 +4450,8 @@ Object.assign(window.Views, {
         if (toggleIncome) {
           toggleIncome.addEventListener('click', () => {
             this.currentBudgetFilter = 'income';
+            this._ringFocus = null;
+            this._ringClearTimers();
             window.Store.emit();
           });
         }
@@ -4436,54 +4473,98 @@ Object.assign(window.Views, {
         if (ctx) {
           // 1.0.3 (BUG-160) the summary's own totals (renderList, same pass):
           // the budgeted rows of this tab only, over decided in cents.
-          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false, segments: [] };
-          const { totalAllocated, totalSpent, overspent } = totals;
+          const totals = this._passTotals || { totalAllocated: 0, totalSpent: 0, overspent: false, segments: [], slices: [] };
+          const { totalAllocated, totalSpent } = totals;
+          const slices = totals.slices || [];
           const isDark = state.activeTheme === 'dark';
           const trackColor = isDark ? '#1f293d' : '#e2e8f0';
 
-          // 1.2.0 (UX-7): one arc per budgeted category that has spending (in
-          // its category colour, the Analytics/Home assignment), then the
-          // remaining budget as the track. An over ring is drawn full red;
-          // nothing budgeted is an empty track.
+          // 1.2.2 (HG-8): the slices (5 biggest + Others at most, biggest
+          // first, palette colours), then the remaining budget as the track —
+          // except in an overspent month, whose slices fill the circle over
+          // total spent (the red OVERSPENT centre carries the alarm). Nothing
+          // budgeted, or nothing spent yet, is the bare track.
           let chartData;
           let colors;
-          if (overspent) {
-            chartData = [1, 0];
-            colors = isDark ? ['#f87171', trackColor] : ['#ef4444', trackColor];
-          } else if (totalAllocated === 0 && totalSpent === 0) {
+          if (!slices.length) {
             chartData = [1];
             colors = [trackColor];
           } else {
-            const spentSegs = (totals.segments || []).filter(sg => Math.round(sg.spent * 100) > 0);
-            // 1.2.2 (HG-5): the rows' colour map (renderList, same pass)
-            const ringColors = totals.ringColors || {};
-            chartData = spentSegs.map(sg => sg.spent).concat([Math.max(totalAllocated - totalSpent, 0)]);
-            colors = spentSegs.map(sg => ringColors[sg.cat.id] || '#94a3b8').concat([trackColor]);
+            chartData = slices.map(sl => sl.value);
+            colors = slices.map(sl => sl.color);
+            if (totals.ring && totals.ring.hasTrack) {
+              chartData.push(Math.max(totalAllocated - totalSpent, 0));
+              colors.push(trackColor);
+            }
           }
           // v0.80: tracked + destroy-before-create — a bare `new Chart` here
           // leaked one instance per dispatch while on #budget (see the
           // dashboard balance chart note for the failure mode).
           if (this._budgetChart) {
+            window.Components.CategoryRing.stop(this._budgetChart);
             try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
             this._budgetChart = null;
           }
           // The sweep plays on the Goals entry render only; every other
-          // mount stays animation-free (v0.93).
+          // mount stays animation-free (v0.93). 1.2.2 (HG-8): no Chart.js
+          // events (the box's one hit test owns taps), hoverOffset 0 and
+          // padding 7 keep the 1.2.0 resting size (outer 82, inner 54.12) and
+          // leave room for the focused arc; the focus plugin only moves radii.
           this._budgetChart = new window.Chart(ctx, window.Components.RingChart.config({
             type: 'doughnut',
             data: {
               datasets: [{
                 data: chartData,
                 backgroundColor: colors,
-                hoverOffset: 6
+                hoverOffset: 0
               }]
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              events: [],
+              layout: { padding: 7 },
               plugins: { tooltip: { enabled: false }, legend: { display: false } }
-            }
+            },
+            plugins: [window.Components.CategoryRing.plugin()]
           }, { animate: !!isEntry, delay: 250 }));
+
+          // A focus restored by a re-render: final state, no tween.
+          const ring = totals.ring;
+          if (ring && this._ringFocus) {
+            const idx = slices.findIndex(sl => sl.id === this._ringFocus.id);
+            if (idx >= 0) window.Components.CategoryRing.focus(this._budgetChart, chartData.length, idx, true);
+          }
+
+          const box = container.querySelector('#budget-ring-box');
+          if (box && ring && slices.length) {
+            if (window.Components.Announcer) window.Components.Announcer.ensure();
+            box.addEventListener('click', (e) => {
+              e.stopPropagation(); // the card's own "tap outside the ring" must not see it
+              const btn = e.target && e.target.closest ? e.target.closest('.ring-arc-btn') : null;
+              if (btn) { // keyboard / screen-reader activation
+                this._ringSelect(container, btn.dataset.arcId, false);
+                return;
+              }
+              const r = box.getBoundingClientRect();
+              const scale = r.width ? r.width / 180 : 1;
+              const i = window.Components.CategoryRing.hitTest(ring.zones, (e.clientX - r.left) / scale, (e.clientY - r.top) / scale, ring.geo, [44, 92]);
+              this._ringSelect(container, i >= 0 && i < slices.length ? slices[i].id : null, true);
+            });
+            box.addEventListener('keydown', (e) => {
+              if (e.key === 'Escape' && this._ringFocus) {
+                e.preventDefault();
+                e.stopPropagation();
+                this._ringSelect(container, null, false);
+              }
+            });
+            const card = container.querySelector('#budget-summary-card');
+            if (card) {
+              card.addEventListener('click', () => {
+                if (this._ringFocus) this._ringSelect(container, null, true);
+              });
+            }
+          }
         }
 
         // 1.2.0 (UX-7): the row rings sweep in with the summary ring (CSS,
@@ -4500,8 +4581,152 @@ Object.assign(window.Views, {
       }
     },
 
+    // ── 1.2.2 (HG-8, docs/category-rings-plan.md §5): tap-to-focus ────────
+    // The focus lives on the view (never dispatched): { tab, id } | null.
+    _ringFocus: null,
+    _ringTimers: [],
+
+    _ringBigText() {
+      try {
+        return parseFloat(window.getComputedStyle(document.documentElement).fontSize) >= 24;
+      } catch (e) {
+        return false;
+      }
+    },
+
+    _ringPct(value, totalSpent) {
+      return window.Store.formatPercent(totalSpent > 0 ? (value / totalSpent) * 100 : 0, { digits: 0, maxDigits: 1 });
+    },
+
+    // The slice's accessible name. `plain` keeps the params raw for a
+    // textContent sink (the live region); markup gets them escaped.
+    _ringAria(s, totalSpent, plain) {
+      const e = plain ? (v) => v : esc;
+      const money = window.Store.formatCurrency(s.value);
+      const pct = this._ringPct(s.value, totalSpent);
+      return s.members
+        ? window.I18n.t('budget.ring.othersAria', { count: s.members.length, names: e(s.members.join(', ')), amount: e(money), pct: e(pct) })
+        : window.I18n.t('budget.ring.arcAria', { name: e(s.name), amount: e(money), pct: e(pct) });
+    },
+
+    // The summary ring's box: the canvas (aria-hidden), the resting centre,
+    // the focused readout, one real button per slice — the keyboard and
+    // screen-reader path (WCAG 2.1.1, 4.1.2): transparent 24 px targets at
+    // the tap zones, pointer-events none so a finger always goes through the
+    // one hit test — and one badge per slice (the icon, then the share of
+    // spending). A focus is written in its final state: no replay.
+    _ringHtml(p) {
+      const t = (k, x) => window.I18n.t(k, x);
+      const S = window.Store;
+      const CR = window.Components.CategoryRing;
+      const reduced = window.Components.RingChart._reduced();
+      const big = this._ringBigText();
+      const focused = p.slices.find(sl => sl.id === p.focus) || null;
+      const buttons = p.slices.map((sl, i) => {
+        const pt = CR.point(p.geo, p.zones[i].mid, 68);
+        return `<button type="button" class="ring-arc-btn" data-arc-id="${escapeAttr(sl.id)}" aria-pressed="${sl.id === p.focus}" aria-label="${this._ringAria(sl, p.totalSpent)}" style="left: ${pt.x.toFixed(1)}px; top: ${pt.y.toFixed(1)}px;"></button>`;
+      }).join('');
+      const badges = p.slices.map((sl, i) => {
+        const pt = CR.point(p.geo, p.geo.arcs[i].mid, 69);
+        const on = sl.id === p.focus ? (reduced ? ' is-on is-both' : ' is-on is-pct is-static') : '';
+        return `<span class="ring-badge${on}" data-arc-id="${escapeAttr(sl.id)}" aria-hidden="true" style="left: ${pt.x.toFixed(1)}px; top: ${pt.y.toFixed(1)}px; --slice: ${escapeAttr(sl.color)};"><span class="ring-badge-icon"><i data-lucide="${escapeAttr(sl.icon)}"></i></span><span class="ring-badge-pct">${esc(this._ringPct(sl.value, p.totalSpent))}</span></span>`;
+      }).join('');
+      const caption = !focused ? ''
+        : (big
+          ? t('budget.ring.pctOfSpent', { pct: esc(this._ringPct(focused.value, p.totalSpent)), amount: esc(S.formatCurrency(p.totalSpent)) })
+          : t('budget.ring.ofSpent', { amount: esc(S.formatCurrency(p.totalSpent)) }));
+      // At large text (root ≥ 24 px) the readout leaves the 108 px hole and
+      // sits under the ring in normal flow (WCAG 1.4.4): name, amount and
+      // the share all wrap there; the hole keeps the resting centre.
+      const readout = `
+              <div class="ring-focus-readout${big ? ' ring-focus-readout--below' : ''}" aria-hidden="true">
+                <div class="ring-focus-name">${focused ? esc(focused.name) : ''}</div>
+                <div class="ring-focus-amount">${focused ? esc(S.formatCurrency(focused.value)) : ''}</div>
+                <div class="ring-focus-caption">${caption}</div>
+              </div>`;
+      return `
+            <div class="ring-box${focused ? ' is-focused' : ''}${big ? ' ring--big-text' : ''}" id="budget-ring-box">
+              <canvas id="budgetChart" aria-hidden="true"></canvas>
+              <div class="donut-chart-center">
+                <div class="donut-total-label">${p.overspent ? t('budget.overspent') : t('budget.allocated')}</div>
+                <div class="donut-total-value" style="font-size: 1.2rem; ${p.overspent ? 'color: var(--color-expense-val);' : ''}">${S.formatCurrency(p.overspent ? p.overC / 100 : p.totalAllocated)}</div>
+              </div>
+              ${big ? '' : readout}
+              ${p.slices.length ? `<div class="ring-arc-group" role="group" aria-label="${t('budget.ring.groupAria')}">${buttons}</div>` : ''}
+              ${badges}
+            </div>${big ? readout : ''}`;
+    },
+
+    _ringClearTimers() {
+      (this._ringTimers || []).forEach(id => clearTimeout(id));
+      this._ringTimers = [];
+    },
+
+    // Focus a slice (id), or clear (null / the focused id again). `viaPointer`
+    // adds the haptic and the live-region message; a button activation is
+    // already announced through its aria-pressed change (WCAG 4.1.3).
+    _ringSelect(root, id, viaPointer) {
+      const box = root && root.querySelector ? root.querySelector('#budget-ring-box') : null;
+      const totals = this._passTotals;
+      if (!box || !totals || !totals.ring) return;
+      const slices = totals.slices || [];
+      const cur = this._ringFocus ? this._ringFocus.id : null;
+      const next = id && id !== cur && slices.some(sl => sl.id === id) ? id : null;
+      if (next === cur) return;
+      this._ringFocus = next ? { tab: this.currentBudgetFilter, id: next } : null;
+      this._ringClearTimers();
+      const idx = next ? slices.findIndex(sl => sl.id === next) : -1;
+      window.Components.CategoryRing.focus(this._budgetChart, totals.ring.count, idx, false);
+
+      box.querySelectorAll('.ring-arc-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.arcId === next)));
+      box.classList.toggle('is-focused', !!next);
+      const slice = next ? slices[idx] : null;
+      if (slice) {
+        const S = window.Store;
+        const big = box.classList.contains('ring--big-text');
+        const pct = this._ringPct(slice.value, totals.totalSpent);
+        root.querySelector('.ring-focus-name').textContent = slice.name;
+        root.querySelector('.ring-focus-amount').textContent = S.formatCurrency(slice.value);
+        root.querySelector('.ring-focus-caption').textContent = big
+          ? window.I18n.t('budget.ring.pctOfSpent', { pct, amount: S.formatCurrency(totals.totalSpent) })
+          : window.I18n.t('budget.ring.ofSpent', { amount: S.formatCurrency(totals.totalSpent) });
+      }
+
+      box.querySelectorAll('.ring-badge').forEach(b => {
+        b.classList.remove('is-on', 'is-pct', 'is-static', 'is-both');
+        b.style.width = '';
+      });
+      const badge = slice ? [...box.querySelectorAll('.ring-badge')].find(b => b.dataset.arcId === next) : null;
+      if (badge) {
+        if (window.Components.RingChart._reduced()) {
+          // no timed swap: one pill with the icon and the share, at once
+          badge.classList.add('is-on', 'is-both');
+        } else {
+          this._ringTimers.push(setTimeout(() => { if (badge.isConnected) badge.classList.add('is-on'); }, 60));
+          this._ringTimers.push(setTimeout(() => {
+            if (!badge.isConnected) return;
+            const pctEl = badge.querySelector('.ring-badge-pct');
+            const w = Math.ceil((pctEl && (pctEl.scrollWidth || pctEl.offsetWidth)) || 30) + 20;
+            badge.style.width = `${w}px`;
+            badge.classList.add('is-pct');
+          }, 900));
+        }
+      }
+
+      if (viaPointer) {
+        if (slice && window.Components.Haptics) window.Components.Haptics.light();
+        if (window.Components.Announcer) {
+          window.Components.Announcer.say(slice ? this._ringAria(slice, totals.totalSpent, true) : window.I18n.t('budget.ring.cleared'));
+        }
+      }
+    },
+
     // v0.80: release the doughnut on view exit (same rule as DashboardView).
     destroy() {
+      // 1.2.2 (HG-8): leaving Goals drops the focus and its timers
+      this._ringFocus = null;
+      this._ringClearTimers();
+      if (this._budgetChart) window.Components.CategoryRing.stop(this._budgetChart);
       if (this._budgetChart) {
         try { this._budgetChart.destroy(); } catch (e) { /* already gone */ }
         this._budgetChart = null;

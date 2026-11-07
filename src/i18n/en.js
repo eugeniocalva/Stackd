@@ -213,6 +213,13 @@ window.I18n.dicts.en = {
   'budget.currentMonthAria': 'Current budget month: {month}. Tap to change.',
   'budget.overspent': 'Overspent',
   'budget.allocated': 'Allocated',
+  'budget.ring.groupAria': 'Spending by category. Choose one to see its share.', // 1.2.2 (HG-8): the Goals ring tap-to-focus
+  'budget.ring.arcAria': '{name}: {amount}, {pct} of spending',
+  'budget.ring.othersLabel': 'Others ({count})',
+  'budget.ring.othersAria': 'Others ({count}: {names}): {amount}, {pct} of spending',
+  'budget.ring.ofSpent': 'of {amount} spent',
+  'budget.ring.pctOfSpent': '{pct} of {amount} spent',
+  'budget.ring.cleared': 'Showing the whole budget',
   'budget.totalSpent': 'Total Spent',
   'budget.remaining': 'Remaining',
   'budget.noCategories': 'No categories in this view.',

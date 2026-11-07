@@ -208,6 +208,13 @@ window.I18n.dicts.fr = {
   'budget.currentMonthAria': 'Mois budgétaire actuel : {month}. Toucher pour changer.',
   'budget.overspent': 'Dépassé',
   'budget.allocated': 'Alloué',
+  'budget.ring.groupAria': 'Dépenses par catégorie. Choisissez-en une pour voir sa part.', // 1.2.2 (HG-8): the Goals ring tap-to-focus
+  'budget.ring.arcAria': '{name} : {amount}, {pct} des dépenses',
+  'budget.ring.othersLabel': 'Autres ({count})',
+  'budget.ring.othersAria': 'Autres ({count} : {names}) : {amount}, {pct} des dépenses',
+  'budget.ring.ofSpent': 'sur {amount} dépensés',
+  'budget.ring.pctOfSpent': '{pct} de {amount} dépensés',
+  'budget.ring.cleared': 'Tout le budget est affiché',
   'budget.totalSpent': 'Total dépensé',
   'budget.remaining': 'Restant',
   'budget.noCategories': 'Aucune catégorie dans cette vue.',
