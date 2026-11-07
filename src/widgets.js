@@ -390,9 +390,11 @@ window.Widgets = {
           // unknown type (views.js wallets rail does the same) — escape it.
           const label = W._esc(S.accountTypeLabel(g.type));
           const sub = g.inScope > 0 ? money(g.subtotal, data.currency) : '—';
+          // 1.2.2 (HG-9): the icon in the account colour on the neutral
+          // circle, as on the Home tiles (was a white icon on a colour fill)
           const rows = g.rows.map(({ acc, balance }) => `
               <div class="widget-balances-row" data-account-id="${W._esc(acc.id)}" role="button" tabindex="0">
-                <span class="widget-balances-icon"${acc.color ? ` style="background: ${W._esc(acc.color)}; color: #ffffff;"` : ''}><i data-lucide="${W._esc(acc.icon || 'wallet')}"></i></span>
+                <span class="widget-balances-icon"${acc.color ? ` style="color: ${W._esc(acc.color)};"` : ''}><i data-lucide="${W._esc(acc.icon || 'wallet')}"></i></span>
                 <span class="widget-balances-name">${W._esc(acc.name)}</span>
                 <span class="widget-balances-value ${signClass(balance)}">${money(balance, acc.currency)}</span>
               </div>`).join('');

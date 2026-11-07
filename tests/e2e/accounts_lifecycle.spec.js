@@ -71,6 +71,19 @@ test.describe('Accounts lifecycle (1.0.2)', () => {
     await page.click('#chart-card-container');
     await expect(page.locator('#expanded-graph-modal')).toBeVisible();
     await page.click('#egm-filter');
+    // 1.2.2 (HG-9): each account is keyed by its icon in its line colour
+    const keyed = await page.evaluate((id) => {
+      const acc = window.Store.getState().accounts.find(a => a.id === id);
+      const key = document.querySelector(`.egm-acc-checkbox[data-acc-id="${id}"]`).parentElement.querySelector('.account-icon');
+      const probe = document.createElement('span');
+      probe.style.color = acc.color;
+      document.body.appendChild(probe);
+      const want = getComputedStyle(probe).color;
+      probe.remove();
+      return { svg: !!(key && key.querySelector('svg')), color: key && getComputedStyle(key).color, want };
+    }, mainId);
+    expect(keyed.svg).toBe(true);
+    expect(keyed.color).toBe(keyed.want);
     await page.click(`.egm-acc-checkbox[data-acc-id="${mainId}"]`);
     await page.click(`.egm-acc-checkbox[data-acc-id="${holidayId}"]`);
     await page.click('#egm-save-filters');

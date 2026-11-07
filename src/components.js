@@ -4584,10 +4584,11 @@ window.Components = {
                       </button>
                     </div>
                     <div class="filter-checkbox-grid">
+                      ${/* 1.2.2 (HG-9): the account's icon in its line colour (was a dot) */ ''}
                       ${accounts.map(acc => `
                         <label class="filter-checkbox-label">
                           <input type="checkbox" class="egm-acc-checkbox" data-acc-id="${acc.id}" ${selectedAccountIds.includes(acc.id) ? 'checked' : ''} />
-                          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${window.Components.esc(acc.color || '#64748B')}; display: inline-block; flex-shrink: 0;"></span>
+                          <span class="account-icon account-icon--sm" style="color: ${window.Components.esc(acc.color || '#64748B')};" aria-hidden="true"><i data-lucide="${window.Components.esc(acc.icon || 'wallet')}"></i></span>
                           <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${window.Components.esc(acc.name)}</span>
                         </label>
                       `).join('')}

@@ -551,6 +551,13 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   preposition before a placeholder value (*il {pct}*, *de {name}*,
   *a {date}*). E2E per destination: `insights_destinations.spec.js` (clock
   pinned).
+- **Account icons (HG-9).** Every account list wears the Home tiles' look
+  (`.wallet-card-icon-box`): the account's icon in its colour on the neutral
+  circle — the Account balances widget (`.widget-balances-icon`), Settings →
+  Manage accounts (`.account-icon`) and the expanded graph's account filter
+  (`.account-icon--sm`, also the key to that account's line). Never a white
+  icon on a colour fill, a colour square or a dot; a new account list must
+  follow.
 
 ## Working conventions in this repo
 

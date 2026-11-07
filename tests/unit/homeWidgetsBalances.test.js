@@ -216,6 +216,18 @@ describe('accountBalances — grouping and totals', () => {
   it('shows the empty state without accounts', () => {
     expect(render().html).toContain('No accounts yet');
   });
+
+  // 1.2.2 (HG-9): the Home tiles' look — the icon in the account colour on
+  // the neutral circle, never a white icon on a colour fill
+  it('wears each account icon in the account colour, on the neutral circle', () => {
+    account('Main', 5);
+    const acc = Store().getState().accounts[0];
+    const icon = textOf(render().html).querySelector('.widget-balances-icon');
+    const style = icon.getAttribute('style');
+    expect(style).toBe(`color: ${acc.color};`);
+    expect(style).not.toMatch(/background|#ffffff/);
+    expect(icon.querySelector(`[data-lucide="${acc.icon || 'wallet'}"]`)).not.toBeNull();
+  });
 });
 
 describe('accountBalances — interaction and config', () => {

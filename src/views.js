@@ -5467,12 +5467,14 @@ Object.assign(window.Views, {
       const btnManageAccounts = document.getElementById('btn-manage-accounts');
       if (btnManageAccounts) {
         btnManageAccounts.addEventListener('click', () => {
+          // 1.2.2 (HG-9): each account wears its icon in its colour, as on the
+          // Home tiles (was a colour square)
           let accountsListHtml = [...state.accounts]
             .sort((a, b) => window.Store.compareAlpha(a, b))
             .map(acc => `
               <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.editAccountAria', { name: esc(acc.name) })}">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 12px; height: 12px; border-radius: 4px; background-color: ${escapeAttr(acc.color)}; flex-shrink: 0;"></div>
+                  <span class="account-icon"${acc.color ? ` style="color: ${escapeAttr(acc.color)};"` : ''} aria-hidden="true"><i data-lucide="${escapeAttr(acc.icon || 'wallet')}"></i></span>
                   <strong>${esc(acc.name)}</strong>
                 </div>
                 <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
