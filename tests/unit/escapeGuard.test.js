@@ -395,13 +395,11 @@ describe('Escape guard: the sink crawl (1.0.2 BUG-24)', () => {
       TransactionItem: () => document.body.insertAdjacentHTML('beforeend', C.TransactionItem.render(c.imported,
         S().getState().categories.find(x => x.id === c.imported.categoryId), S().getState().accounts.find(a => a.id === c.imported.accountId), {})),
       AccountCard: () => document.body.insertAdjacentHTML('beforeend', C.AccountCard.render(S().getState().accounts[0], 10)),
-      AdvancedFilterBar: () => document.body.insertAdjacentHTML('beforeend', C.AdvancedFilterBar.render('transactions', S().getState().historyFilters)),
       // 1.2.2 (HG-10 P3) the period pill with an account, category and tag chip, and both steps of the Period sheet
       PeriodBar: () => { const st = S().getState(); const f = { ...st.historyFilters, accounts: st.accounts.slice(0, 1).map(a => a.id), categories: [c.cat.id], tags: [P('tag')] }; document.body.insertAdjacentHTML('beforeend', C.PeriodBar.render('history', f, st) + C.PeriodBar.filterButton('history', f, st)); },
       PeriodSheet: () => { C.PeriodSheet.show('history'); const b = document.querySelector('#period-sheet [data-k="custom"]'); if (b) b.click(); },
       'FilterModal:history': () => C.FilterModal.show('history'),
       'FilterModal:analytics': () => C.FilterModal.show('analytics'),
-      CustomRangeModal: () => C.CustomRangeModal.show('transactions'),
       CategorySelectionModal: () => C.CategorySelectionModal.show({ type: 'expense', selectedId: c.cat.id, onSelect() {} }),
       ExpandedGraphModal: () => { C.ExpandedGraphModal.show(S().getState()); const b = document.getElementById('egm-filter'); if (b) b.click(); },
       TagPickerSheet: () => C.TagPickerSheet.show({ selectedTags: [P('tag')], categoryId: c.cat.id, onApply() {} }), // 1.2.0 (UX-9): replaced TagsModal
@@ -420,7 +418,6 @@ describe('Escape guard: the sink crawl (1.0.2 BUG-24)', () => {
       'RecurringUpdateModal:schedule': () => C.RecurringUpdateModal.show({ transaction: c.series, scheduleChanged: true, paidNote: 'rebuild', onSelection() {} }),
       'RecurringUpdateModal:date': () => C.RecurringUpdateModal.show({ transaction: c.oldSeries, dateChanged: true, paidNote: 'paid', onSelection() {} }),
       FrequencyPicker: () => C.FrequencyPicker.show({ onSelect() {} }),
-      PeriodPicker: () => C.PeriodPicker.show({ type: 'month', initialValue: '2026-10', onSelect() {} }),
       MonthPicker: () => C.MonthPicker.show({ initialValue: '2026-10', onSelect() {} }),
       BankSettingsModal: () => C.BankSettingsModal.show(),
       BankManageModal: () => { C.BankManageModal.show({ ref: 'r1' }); document.querySelectorAll('#modal-container button').forEach(b => b.click()); },

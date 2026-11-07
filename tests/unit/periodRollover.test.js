@@ -338,32 +338,34 @@ describe('Sheets and buttons that must not undo a roll (1.0.2 BUG-69)', () => {
     expect(window.Store.state.historyFilters.period.value).toBe('2026-11-01');
   });
 
-  it("History's Today rolls a stale period, then scrolls after the re-render; on the same day it scrolls at once", () => {
+  // 1.2.2 (HG-10 P5) the Today pill became the period bar's back chip; a stale
+  // screen reaches it through PeriodBar.goNow (the chip's handler)
+  it("History's back-to-now rolls a stale period, then scrolls after the re-render; on the same day it scrolls at once", () => {
     const container = document.getElementById('router-view');
-    container.innerHTML = window.Components.AdvancedFilterBar.render('history', window.Store.state.historyFilters);
-    window.Components.AdvancedFilterBar.attachEvents(container, 'history');
+    container.innerHTML = window.Components.PeriodBar.render('history', window.Store.state.historyFilters, window.Store.state);
+    window.Components.PeriodBar.attachEvents(container, 'history');
     const spy = vi.spyOn(window, 'dispatchEvent');
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout'] });
     at('2026-11-01T00:05:00+01:00');
-    container.querySelector('#btn-today-history').click();
+    window.Components.PeriodBar.goNow(container, 'history');
     expect(window.Store.state.historyFilters.period.value).toBe('2026-11-01');
     expect(window.Views.TransactionsView.scrollToToday).not.toHaveBeenCalled();
     vi.advanceTimersByTime(150);
     expect(spy.mock.calls.some((c) => c[0] && c[0].type === 'scroll-history-to-today')).toBe(true);
 
-    container.querySelector('#btn-today-history').click(); // same day now: plain scroll, as before
+    window.Components.PeriodBar.goNow(container, 'history'); // same day now: plain scroll, as before
     expect(window.Views.TransactionsView.scrollToToday).toHaveBeenCalledWith(container);
     spy.mockRestore();
   });
 
-  it("History's Today on a range that does not roll, while only Analytics rolls, scrolls at once with no re-render after it (round-1 review)", async () => {
+  it("History's back-to-now on a range that does not roll, while only Analytics rolls, scrolls at once with no re-render after it (round-1 review)", async () => {
     const S = window.Store;
     // 1.0.3 (BUG-115): a range WITHOUT today now moves to this month, so the
     // range here holds today (1 Nov) to keep testing the no-re-render path.
     S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type: 'custom', start: '2026-10-25', end: '2026-11-05', value: '' } } });
     const container = document.getElementById('router-view');
-    container.innerHTML = window.Components.AdvancedFilterBar.render('history', S.state.historyFilters);
-    window.Components.AdvancedFilterBar.attachEvents(container, 'history');
+    container.innerHTML = window.Components.PeriodBar.render('history', S.state.historyFilters, S.state);
+    window.Components.PeriodBar.attachEvents(container, 'history');
     await flush();
     // A re-render after the synchronous scroll would detach its target
     // (scrollToToday reads offsetTop in a later animation frame).
@@ -373,7 +375,7 @@ describe('Sheets and buttons that must not undo a roll (1.0.2 BUG-69)', () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout'] });
     at('2026-11-01T00:05:00+01:00');
-    container.querySelector('#btn-today-history').click();
+    window.Components.PeriodBar.goNow(container, 'history');
     await new Promise((r) => queueMicrotask(r)); // a queued emit would flush here
     expect(S.state.analyticsFilters.period.value).toBe('2026-11-01'); // Analytics still rolled
     expect(S.state.historyFilters.period).toMatchObject({ type: 'custom', start: '2026-10-25', end: '2026-11-05' });

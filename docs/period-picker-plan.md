@@ -1,6 +1,6 @@
 # Period picker for History and Analytics — plan (1.2.2, HG-10)
 
-Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1–P4 BUILT (§0 "as built"); P5 (cleanup, verification) to do.**
+Status: **BUILT 2026-11-07 — P1–P5 on main (§0 "as built"). Device check on the phone still to do.**
 Comment tag `// 1.2.2 (HG-10)`. Research: a workflow of two code readers,
 four industry researchers (budgeting apps, banks, expense trackers, design
 guidance), three independent designs (minimal, fast switching,
@@ -189,6 +189,30 @@ quick ranges** — any other span is picked in the calendar (Q3).
 - Keys `filterModal.reset` / `accounts` / `order` in 5 languages.
 - Tests: `filterSheetHg10.test.js` (5); `touchTargets` no longer expects the
   Settings toggle.
+
+### P5 as built (2026-11-07)
+
+- Deleted from `components.js`: `AdvancedFilterBar`, `CustomRangeModal` and the
+  long-dead `PeriodPicker` (≈ 470 lines).
+- Their unit tests moved to the new controls:
+  `customRangePresets.test.js` → `periodSheetCalendar.test.js` (the local-day
+  guarantees in Rome and Martinique, 30 days across the 25 Oct DST change,
+  BUG-68's browse arrows and in-order picks; the preset cases went with the
+  presets); `homeResume103` / `periodRollover` / `todayNavigation` drive
+  `PeriodBar.goNow` (the back chip's handler; a year returns to this year, a
+  legacy day/week to this month); `liveCheckFixes` checks the calendar's
+  start/end day names; `escapeGuard` drops the old entries.
+- 39 keys nothing reads any more were removed from all five dictionaries
+  (`filter.day/week/prevPeriod/nextPeriod/clearAll/calendarRange`,
+  `range.*` except `startDate` / `apply`, `analytics.vsLast.*`,
+  `analytics.vsLastToDate.*`, `charts.customRange*`,
+  `history.sortedBy/partialAccounts*/clearAccountTitle/clearTagTitle`,
+  `others.sortOrder*`, `filterModal.showAll/sortOrder`).
+- Checked: lint; 2,382 unit; 168 e2e; light and dark renders of History, the
+  Period sheet and Analytics in WebKit at 390 px.
+- **Left (owner):** a pass on the phone. Accepted: `historySortOrder` /
+  `SET_HISTORY_SORT_ORDER` and the legacy `activePeriod` actions stay internal
+  (no UI).
 
 ## Part 1 — What is wrong today
 

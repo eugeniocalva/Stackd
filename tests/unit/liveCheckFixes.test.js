@@ -199,18 +199,19 @@ describe('1.0.2 live-check fixes', () => {
   });
 
   // ── live-U4-U4-N1 ──────────────────────────────────────────────────────────
-  it('live-U4-N1: each custom-range calendar is labelled Start / End', () => {
-    S().dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type: 'custom', start: '2026-09-01', end: '2026-09-30' } } });
-    global.window.Components.CustomRangeModal.show('history');
-    const labels = (id) => $(id).querySelector('.crm-calendar-label');
-    expect(labels('calendar-container-start').textContent).toBe(en('range.startDate'));
-    expect(labels('calendar-container-end').textContent).toBe(en('range.endDate'));
-    // still there after a month arrow re-renders the calendars
-    $('calendar-container-end').querySelector('.btn-month-nav[data-offset="-1"]').click();
-    expect(labels('calendar-container-end').textContent).toBe(en('range.endDate'));
+  // 1.2.2 (HG-10 P5) one calendar now (the Period sheet's custom step): its
+  // day buttons carry the full date, and ", start" / ", end" on the range ends
+  it('live-U4-N1: the custom-range calendar names the start and end days', () => {
+    S().dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: { type: 'custom', value: '', start: '2026-10-05', end: '2026-10-09' } } });
+    global.window.Components.PeriodSheet.show('history');
+    document.querySelector('#period-sheet [data-k="custom"]').click();
+    const lab = (d) => document.querySelector(`#period-sheet [data-day="${d}"]`).getAttribute('aria-label');
+    expect(lab('2026-10-05')).toMatch(/October.*2026, start$/);
+    expect(lab('2026-10-09')).toMatch(/, end$/);
+    expect(lab('2026-10-07')).not.toMatch(/start|end/);
+    document.getElementById('period-sheet').remove();
   });
 
-  // ── live-U6-U6-N1 ──────────────────────────────────────────────────────────
   it('live-U6-N1: an uncategorised row restores uncategorised, with no new category', () => {
     S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 19.9, accountId: accId('Main'), categoryId: '', date: '2026-10-02', comment: 'Bank row' });
     global.window.StackdExport.exportTransactions(S().getState());

@@ -88,13 +88,8 @@ window.I18n.dicts.en = {
   'history.netChange': 'Net Change',
   'history.emptyPeriod': 'No transactions for this period.',
   'history.daySum': 'sum: {amount}',
-  'history.partialAccounts': 'Partial accounts shown',
-  'history.partialAccountsTitle': 'Only {shown} of {total} accounts included',
   'history.noTag': 'No tag',
-  'history.clearTagTitle': 'Tap to clear the tag filter',
-  'history.clearAccountTitle': 'Tap to clear the account filter',
   'history.backToTop': 'Back to top',
-  'history.sortedBy': 'Sorted: {order}',
   'history.oldestFirst': 'Oldest First',
   'history.newestFirst': 'Newest First',
   'history.bulkDelete.title.one': 'Delete Transaction?',
@@ -111,14 +106,8 @@ window.I18n.dicts.en = {
 
   // ── Filter bar (P8c) ─────────────────────────────────────────────────────
   'filter.today': 'Today',
-  'filter.day': 'Day',
-  'filter.week': 'Week',
   'filter.month': 'Month',
   'filter.year': 'Year',
-  'filter.prevPeriod': 'Previous period',
-  'filter.nextPeriod': 'Next period',
-  'filter.clearAll': 'Clear all filters',
-  'filter.calendarRange': 'Calendar range',
   'filter.filterAndSort': 'Filter and Sort',
 
   // ── New/Edit Log form (P8c) ──────────────────────────────────────────────
@@ -205,16 +194,6 @@ window.I18n.dicts.en = {
   'filters.activeAria.one': 'Filters, 1 active',
   'filters.activeAria.other': 'Filters, {count} active',
   'filters.openAria': 'Filters',
-  'analytics.vsLast.custom': 'vs last period',
-  'analytics.vsLast.today': 'vs last day',
-  'analytics.vsLast.week': 'vs last week',
-  'analytics.vsLast.month': 'vs last month',
-  'analytics.vsLast.year': 'vs last year',
-  'analytics.vsLastToDate.custom': 'vs last period to date',
-  'analytics.vsLastToDate.today': 'vs last day to date',
-  'analytics.vsLastToDate.week': 'vs last week to date',
-  'analytics.vsLastToDate.month': 'vs last month to date',
-  'analytics.vsLastToDate.year': 'vs last year to date',
   'analytics.upcomingIncluded.one': 'Includes {count} upcoming transaction ({net})',
   'analytics.upcomingIncluded.other': 'Includes {count} upcoming transactions ({net})',
   'analytics.upcomingExcluded.one': 'Excludes {count} upcoming transaction ({net})',
@@ -239,8 +218,6 @@ window.I18n.dicts.en = {
   'charts.noData': 'No data for the selected period.',
   'charts.noExpenseData': 'No expense data for this period.',
   'charts.noIncomeData': 'No income data for this period.',
-  'charts.customRangeUnavailable': 'Chart not available for custom ranges.',
-  'charts.customRangeNote': 'Note: Custom date ranges do not apply to this view',
   'charts.incomeMinusExpenses': 'INCOME - EXPENSES',
 
   // ── Budget / Goals (P8d) ─────────────────────────────────────────────────
@@ -424,8 +401,6 @@ window.I18n.dicts.en = {
   'others.chooseLanguage': 'Choose Language',
   'others.chooseLanguageAria': 'Choose language',
   'others.dataVisualization': 'Data Visualization',
-  'others.sortOrder': 'History Sort Order',
-  'others.sortOrderDesc': 'Direction of transactions list',
   'others.enableTimeInput': 'Enable transaction time input',
   'others.enableTimeInputDesc': 'Show manual time field when creating transactions',
   'others.appearance': 'Appearance',
@@ -646,24 +621,10 @@ window.I18n.dicts.en = {
   'modal.cancelAria': 'Cancel and close modal',
 
   // Custom range picker
-  'range.title': 'Custom Range',
   'range.apply': 'Apply',
-  'range.quickPresets': 'Quick Presets',
-  'range.lastDays': 'Last {count} Days',
-  'range.months': '{count} Months',
-  'range.years.one': '{count} Year',
-  'range.years.other': '{count} Years',
-  'range.allTime': 'All Time',
-  'range.summary': 'Summary',
-  'range.pickDates': 'Pick start and end dates',
-  'range.dayCount.one': '({count} day)',
-  'range.dayCount.other': '({count} days)',
   'range.startDate': 'Start Date',
-  'range.endDate': 'End Date',
 
   // Filter & sort modal
-  'filterModal.showAll': 'Show All',
-  'filterModal.sortOrder': 'Sort Order',
   'filterModal.txType': 'Transaction Type',
   // 1.2.2 (HG-10 P4) the Filter sheet
   'filterModal.reset': 'Reset',

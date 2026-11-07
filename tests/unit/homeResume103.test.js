@@ -152,7 +152,11 @@ describe('main.js midnight timer (1.0.3 BUG-142, D6)', () => {
   });
 });
 
-describe("History's Today on a period without today (1.0.3 BUG-115)", () => {
+// 1.2.2 (HG-10 P5) the Today pill became the period bar's back chip
+// (#period-now-history, PeriodBar.goNow): shown only when the period does not
+// hold today; it returns to this month (this year from a year) and keeps the
+// BUG-115 roll → move → scroll-after-the-re-render sequence.
+describe("History's back-to-now on a period without today (1.0.3 BUG-115)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     at('2026-10-15T12:00:00+02:00');
@@ -183,11 +187,12 @@ describe("History's Today on a period without today (1.0.3 BUG-115)", () => {
     const S = window.Store;
     S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period } });
     const container = document.getElementById('router-view');
-    container.innerHTML = window.Components.AdvancedFilterBar.render('history', S.state.historyFilters);
-    window.Components.AdvancedFilterBar.attachEvents(container, 'history');
+    container.innerHTML = window.Components.PeriodBar.render('history', S.state.historyFilters, S.state);
+    window.Components.PeriodBar.attachEvents(container, 'history');
     const spy = vi.spyOn(window, 'dispatchEvent');
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout'] });
-    container.querySelector('#btn-today-history').click();
+    const chip = container.querySelector('#period-now-history');
+    if (chip) chip.click(); else window.Components.PeriodBar.goNow(container, 'history'); // no chip on a period holding today
     const scrolledAtOnce = window.Views.TransactionsView.scrollToToday.mock.calls.length > 0;
     vi.advanceTimersByTime(150);
     const scrolledLater = spy.mock.calls.some((c) => c[0] && c[0].type === 'scroll-history-to-today');
@@ -202,10 +207,21 @@ describe("History's Today on a period without today (1.0.3 BUG-115)", () => {
     expect(r.scrolledLater).toBe(true);
   });
 
-  it('a past week, day or year moves to today\'s', () => {
-    expect(tapToday({ type: 'week', value: '2026-09-02', start: '', end: '' }).period).toMatchObject({ type: 'week', value: '2026-10-15' });
-    expect(tapToday({ type: 'today', value: '2026-10-02', start: '', end: '' }).period).toMatchObject({ type: 'today', value: '2026-10-15' });
+  it('a past year moves to this year; a legacy week or day to this month', () => {
     expect(tapToday({ type: 'year', value: '2025-03-01', start: '', end: '' }).period).toMatchObject({ type: 'year', value: '2026-01-01' });
+    expect(tapToday({ type: 'week', value: '2026-09-02', start: '', end: '' }).period).toMatchObject({ type: 'month', value: '2026-10-01' });
+    expect(tapToday({ type: 'today', value: '2026-10-02', start: '', end: '' }).period).toMatchObject({ type: 'month', value: '2026-10-01' });
+  });
+
+  it('the chip shows only when the period does not hold today', () => {
+    const S = window.Store;
+    const html = (period) => {
+      S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period } });
+      return window.Components.PeriodBar.render('history', S.state.historyFilters, S.state);
+    };
+    expect(html({ type: 'month', value: '2026-10-01', start: '', end: '' })).not.toContain('period-now-history');
+    expect(html({ type: 'month', value: '2026-09-01', start: '', end: '' })).toContain('This month');
+    expect(html({ type: 'year', value: '2025-01-01', start: '', end: '' })).toContain('This year');
   });
 
   it('a custom range without today becomes this month', () => {

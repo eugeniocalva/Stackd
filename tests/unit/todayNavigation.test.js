@@ -47,7 +47,9 @@ describe('Today Navigation in History View', () => {
     vi.useRealTimers();
   });
 
-  it('clicking Today button in History filter bar maintains period filters and calls scrollToToday', () => {
+  // 1.2.2 (HG-10 P5) the Today pill became the period bar's back chip; its
+  // handler (PeriodBar.goNow) on a period that holds today keeps it and scrolls
+  it('back-to-now on a month that holds today keeps the period and calls scrollToToday', () => {
     // Set initial historyFilters period to month
     global.window.Store.dispatch('UPDATE_FILTERS', {
       page: 'history',
@@ -56,22 +58,8 @@ describe('Today Navigation in History View', () => {
 
     const scrollToTodaySpy = vi.spyOn(global.window.Views.TransactionsView, 'scrollToToday').mockImplementation(() => {});
 
-    // Create a mock container with btn-today-history
-    const btnToday = { addEventListener: vi.fn() };
-    const mockContainer = {
-      querySelector: (selector) => {
-        if (selector === '#btn-today-history') return btnToday;
-        return null;
-      },
-      querySelectorAll: () => []
-    };
-
-    global.window.Components.AdvancedFilterBar.attachEvents(mockContainer, 'history');
-
-    // Trigger click on btnToday
-    expect(btnToday.addEventListener).toHaveBeenCalledWith('click', expect.any(Function));
-    const clickHandler = btnToday.addEventListener.mock.calls.find(c => c[0] === 'click')[1];
-    clickHandler();
+    const mockContainer = { querySelector: () => null, querySelectorAll: () => [] };
+    global.window.Components.PeriodBar.goNow(mockContainer, 'history');
 
     // Verify period filter remains 'month' and scrollToToday was called
     const state = global.window.Store.getState();
