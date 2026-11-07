@@ -654,6 +654,10 @@ window.I18n.dicts.fr = {
   'filterModal.showAll': 'Tout afficher',
   'filterModal.sortOrder': 'Ordre de tri',
   'filterModal.txType': "Type d'opération",
+  // 1.2.2 (HG-10 P4) the Filter sheet
+  'filterModal.reset': 'Réinitialiser',
+  'filterModal.accounts': 'Comptes',
+  'filterModal.order': 'Ordre',
   'filterModal.removeTagAria': 'Retirer le filtre de tag',
   'recCreate.title': 'Portée initiale des tags',
   'recCreate.body': 'Vous ajoutez des tags à une nouvelle opération récurrente. Les opérations générées ensuite doivent-elles aussi porter ces tags ?',

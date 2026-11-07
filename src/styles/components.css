@@ -5086,3 +5086,16 @@ a:focus-visible,
 .history-header-sticky > .page-header:has(> .page-header-actions) { align-items: flex-start; }
 #history-sticky-header > .page-header:not(.contextual-header-bar) { align-items: flex-start; }
 .page-header > .page-header-actions { margin-top: -8px; margin-bottom: -8px; }
+
+/* HG-10 P4: the Filter sheet's Reset (was a SHOW ALL pill) */
+.afm-reset {
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}

@@ -1,6 +1,6 @@
 # Period picker for History and Analytics — plan (1.2.2, HG-10)
 
-Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1–P3 BUILT (§0 "as built"); P4 (Filter and sort sheet) and P5 (cleanup, verification) to do.**
+Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1–P4 BUILT (§0 "as built"); P5 (cleanup, verification) to do.**
 Comment tag `// 1.2.2 (HG-10)`. Research: a workflow of two code readers,
 four industry researchers (budgeting apps, banks, expense trackers, design
 guidance), three independent designs (minimal, fast switching,
@@ -172,6 +172,23 @@ quick ranges** — any other span is picked in the calendar (Q3).
   `wallet_account_filter`, `accounts_lifecycle` and `page_titles` moved to
   the new controls; `accountFilterIndicator` / `mixedCurrencyViews` check the
   accounts chip; `escapeGuard` covers PeriodBar and PeriodSheet.
+
+### P4 as built (2026-11-07)
+
+- `Components.FilterModal`: History's sheet is "Filter and sort" with **Order**
+  at the top (Oldest first · Newest first, saved as before); Analytics' sheet
+  is "Filters" with no Order, and its Apply sends no `sortOrder` (nor the
+  period, as before). "Reset" (was "SHOW ALL") clears types, accounts,
+  categories and tags and keeps the order. "Wallets" became "Accounts".
+- The sheet is a dialog (`role="dialog"`, `aria-modal`, `aria-labelledby`),
+  its chips carry `aria-pressed`, focus starts on Cancel and returns to
+  `#btn-filter-<page>`; a backdrop tap and Escape close it without a change.
+- Settings → Data visualization lost the History sort row (`#btn-sort-desc` /
+  `#btn-sort-asc`): it wrote `historySortOrder`, which History never read.
+  The key and `SET_HISTORY_SORT_ORDER` stay internal (P5 may retire them).
+- Keys `filterModal.reset` / `accounts` / `order` in 5 languages.
+- Tests: `filterSheetHg10.test.js` (5); `touchTargets` no longer expects the
+  Settings toggle.
 
 ## Part 1 — What is wrong today
 

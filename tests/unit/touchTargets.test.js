@@ -85,9 +85,11 @@ describe('Compact controls carry the hit target (BUG-22)', () => {
     return root;
   };
 
-  it('Others: theme and history-sort toggles', () => {
+  // 1.2.2 (HG-10 P4) the history-sort toggle left Settings (the order is in History's Filter and sort sheet)
+  it('Others: theme toggles', () => {
     const root = renderInto(window.Views.OthersView.render(window.Store.getState()));
-    ['btn-theme-light', 'btn-theme-dark', 'btn-theme-system', 'btn-sort-desc', 'btn-sort-asc'].forEach(id => {
+    expect(root.querySelector('#btn-sort-desc')).toBeNull();
+    ['btn-theme-light', 'btn-theme-dark', 'btn-theme-system'].forEach(id => {
       const el = root.querySelector('#' + id);
       expect(el, id).not.toBeNull();
       expect(el.classList.contains('hit-target'), id).toBe(true);

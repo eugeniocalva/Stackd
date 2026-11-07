@@ -654,6 +654,10 @@ window.I18n.dicts.it = {
   'filterModal.showAll': 'Mostra tutto',
   'filterModal.sortOrder': 'Ordinamento',
   'filterModal.txType': 'Tipo di movimento',
+  // 1.2.2 (HG-10 P4) the Filter sheet
+  'filterModal.reset': 'Reimposta',
+  'filterModal.accounts': 'Conti',
+  'filterModal.order': 'Ordine',
   'filterModal.removeTagAria': 'Rimuovi il filtro tag',
   'recCreate.title': 'Ambito iniziale dei tag',
   'recCreate.body': 'Stai aggiungendo tag a un nuovo movimento ricorrente. Anche i movimenti generati in futuro devono avere questi tag?',

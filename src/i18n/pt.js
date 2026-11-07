@@ -654,6 +654,10 @@ window.I18n.dicts.pt = {
   'filterModal.showAll': 'Mostrar tudo',
   'filterModal.sortOrder': 'Ordenação',
   'filterModal.txType': 'Tipo de movimento',
+  // 1.2.2 (HG-10 P4) the Filter sheet
+  'filterModal.reset': 'Repor',
+  'filterModal.accounts': 'Contas',
+  'filterModal.order': 'Ordem',
   'filterModal.removeTagAria': 'Remover o filtro de etiqueta',
   'recCreate.title': 'Âmbito inicial das etiquetas',
   'recCreate.body': 'Está a adicionar etiquetas a um novo movimento recorrente. Os movimentos gerados no futuro também devem tê-las?',

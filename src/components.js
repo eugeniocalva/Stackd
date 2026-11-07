@@ -1799,37 +1799,44 @@ window.Components = {
       const div = document.createElement('div');
       div.className = 'modal-backdrop';
       div.id = 'filter-advanced-modal';
+      // 1.2.2 (HG-10 P4) a real dialog: named, modal, focus in and back out
+      div.setAttribute('role', 'dialog');
+      div.setAttribute('aria-modal', 'true');
+      div.setAttribute('aria-labelledby', 'afm-title');
+      const isHistory = pageKey === 'history';
+      const pressed = (on) => `aria-pressed="${on ? 'true' : 'false'}"`;
       
       const renderContent = () => {
         div.innerHTML = `
           <div class="modal-content" style="padding: 0; display: flex; flex-direction: column;">
             <div class="modal-top-bar">
               <button class="modal-btn-top modal-btn-close" id="afm-close">${window.I18n.t('common.cancel')}</button>
-              <h3 style="font-weight: 800; font-size: 1rem;">${window.I18n.t('filter.filterAndSort')}</h3>
+              <h3 id="afm-title" style="font-weight: 800; font-size: 1rem;">${window.I18n.t(isHistory ? 'filter.filterAndSort' : 'filters.openAria')}</h3>
               <button class="modal-btn-top" id="afm-apply">${window.I18n.t('range.apply')}</button>
             </div>
-            
+
             <div class="modal-body" style="padding: var(--space-4) var(--space-5) 40px;">
-              <div style="margin-bottom: var(--space-6); display: flex; justify-content: flex-end;">
-                <button id="afm-show-all" style="background: var(--bg-surface-sunken); border: none; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; color: var(--color-primary); cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s ease;">${window.I18n.t('filterModal.showAll')}</button>
+              <div style="margin-bottom: var(--space-4); display: flex; justify-content: flex-end;">
+                <button id="afm-show-all" class="afm-reset">${window.I18n.t('filterModal.reset')}</button>
               </div>
 
-              <div class="filter-group-title" style="margin-top: 0;">${window.I18n.t('filterModal.sortOrder')}</div>
+              ${isHistory ? `
+              <div class="filter-group-title" style="margin-top: 0;">${window.I18n.t('filterModal.order')}</div>
+              <div class="multi-select-row" role="group" aria-label="${window.I18n.t('filterModal.order')}">
+                <button class="multi-select-chip ${currentFilters.sortOrder === 'asc' ? 'active' : ''}" data-sort="asc" ${pressed(currentFilters.sortOrder === 'asc')}>${window.I18n.t('history.oldestFirst')}</button>
+                <button class="multi-select-chip ${currentFilters.sortOrder === 'desc' ? 'active' : ''}" data-sort="desc" ${pressed(currentFilters.sortOrder === 'desc')}>${window.I18n.t('history.newestFirst')}</button>
+              </div>` : ''}
+
+              <div class="filter-group-title"${isHistory ? '' : ' style="margin-top: 0;"'}>${window.I18n.t('filterModal.txType')}</div>
               <div class="multi-select-row">
-                <button class="multi-select-chip ${currentFilters.sortOrder === 'desc' ? 'active' : ''}" data-sort="desc">${window.I18n.t('history.newestFirst')}</button>
-                <button class="multi-select-chip ${currentFilters.sortOrder === 'asc' ? 'active' : ''}" data-sort="asc">${window.I18n.t('history.oldestFirst')}</button>
+                <button class="multi-select-chip ${currentFilters.types.includes('income') ? 'active' : ''}" data-type="income" ${pressed(currentFilters.types.includes('income'))}>${window.I18n.t('form.income')}</button>
+                <button class="multi-select-chip ${currentFilters.types.includes('expense') ? 'active' : ''}" data-type="expense" ${pressed(currentFilters.types.includes('expense'))}>${window.I18n.t('form.expense')}</button>
               </div>
 
-              <div class="filter-group-title">${window.I18n.t('filterModal.txType')}</div>
-              <div class="multi-select-row">
-                <button class="multi-select-chip ${currentFilters.types.includes('income') ? 'active' : ''}" data-type="income">${window.I18n.t('form.income')}</button>
-                <button class="multi-select-chip ${currentFilters.types.includes('expense') ? 'active' : ''}" data-type="expense">${window.I18n.t('form.expense')}</button>
-              </div>
-
-              <div class="filter-group-title">${window.I18n.t('dash.wallets')}</div>
+              <div class="filter-group-title">${window.I18n.t('filterModal.accounts')}</div>
               <div class="multi-select-row">
                 ${accounts.map(acc => `
-                  <button class="multi-select-chip ${currentFilters.accounts.includes(acc.id) ? 'active' : ''}" data-acc="${acc.id}">
+                  <button class="multi-select-chip ${currentFilters.accounts.includes(acc.id) ? 'active' : ''}" data-acc="${esc(acc.id)}" ${pressed(currentFilters.accounts.includes(acc.id))}>
                     ${esc(acc.name)}
                   </button>
                 `).join('')}
@@ -1838,7 +1845,7 @@ window.Components = {
               <div class="filter-group-title">${window.I18n.t('others.categories')}</div>
               <div class="multi-select-row">
                 ${categories.map(cat => `
-                  <button class="multi-select-chip ${currentFilters.categories.includes(cat.id) ? 'active' : ''}" data-cat="${cat.id}">
+                  <button class="multi-select-chip ${currentFilters.categories.includes(cat.id) ? 'active' : ''}" data-cat="${esc(cat.id)}" ${pressed(currentFilters.categories.includes(cat.id))}>
                     ${esc(cat.name)}
                   </button>
                 `).join('')}
@@ -1862,9 +1869,9 @@ window.Components = {
         div.querySelector('#afm-close').onclick = close;
         div.querySelector('#afm-apply').onclick = apply;
         
+        // 1.2.2 (HG-10 P4) Reset (was SHOW ALL) clears the filters only — the
+        // order is a preference and stays
         div.querySelector('#afm-show-all').onclick = () => {
-          // History defaults to Oldest First; analytics defaults to Newest First
-          currentFilters.sortOrder = pageKey === 'history' ? 'asc' : 'desc';
           currentFilters.types = [];
           currentFilters.accounts = [];
           currentFilters.categories = [];
@@ -1917,22 +1924,35 @@ window.Components = {
       const apply = () => {
         // 1.0.2 (BUG-69) this sheet never edits the period: sending back the
         // snapshot taken at open would undo a roll that happened meanwhile.
-        const { period: _period, ...rest } = currentFilters;
+        // 1.2.2 (HG-10 P4) Analytics has no order, so it sends none either.
+        const { period: _period, sortOrder: _sort, ...rest } = currentFilters;
         window.Store.dispatch('UPDATE_FILTERS', {
           page: pageKey,
-          filters: rest
+          filters: isHistory ? { ...rest, sortOrder: currentFilters.sortOrder } : rest
         });
         close();
       };
 
+      const onKey = (e) => {
+        if (e.key === 'Escape' && div.isConnected) { e.preventDefault(); e.stopPropagation(); close(); }
+      };
       const close = () => {
         div.classList.remove('open');
+        document.removeEventListener('keydown', onKey, true);
         setTimeout(() => div.remove(), 300);
+        const back = document.getElementById(`btn-filter-${pageKey}`);
+        if (back) back.focus({ preventScroll: true });
       };
 
       renderContent();
+      // 1.2.2 (HG-10 P4) a backdrop tap and Escape close it (no change), like
+      // the Period sheet; focus starts on Cancel
+      div.addEventListener('click', (e) => { if (e.target === div) close(); });
+      document.addEventListener('keydown', onKey, true);
       container.appendChild(div);
       requestAnimationFrame(() => div.classList.add('open'));
+      const first = div.querySelector('#afm-close');
+      if (first) first.focus({ preventScroll: true });
     }
   },
 

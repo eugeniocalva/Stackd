@@ -665,6 +665,10 @@ window.I18n.dicts.en = {
   'filterModal.showAll': 'Show All',
   'filterModal.sortOrder': 'Sort Order',
   'filterModal.txType': 'Transaction Type',
+  // 1.2.2 (HG-10 P4) the Filter sheet
+  'filterModal.reset': 'Reset',
+  'filterModal.accounts': 'Accounts',
+  'filterModal.order': 'Order',
   'filterModal.removeTagAria': 'Remove tag filter',
 
   // Recurring: creation / delete / update / settings

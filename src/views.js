@@ -5032,20 +5032,9 @@ Object.assign(window.Views, {
 
           <div class="section-title">${window.I18n.t('others.dataVisualization')}</div>
           <div class="card card-elevated" style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-5);">
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4); margin-bottom: var(--space-4);">
-              <div style="display: flex; align-items: center; gap: var(--space-3);">
-                <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="arrow-up-down"></i></div>
-                <div>
-                  <div class="list-item-title" id="label-sort-order">${window.I18n.t('others.sortOrder')}</div>
-                  <div class="list-item-subtitle">${window.I18n.t('others.sortOrderDesc')}</div>
-                </div>
-              </div>
-              <div style="display: flex; background: var(--bg-surface-sunken); border-radius: 20px; padding: 2px;" role="group" aria-labelledby="label-sort-order">
-                <button id="btn-sort-desc" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'desc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'desc'}">DESC</button>
-                <button id="btn-sort-asc" class="btn hit-target" style="padding: 4px 12px; font-size: 11px; min-height: 0; height: 28px; border-radius: 18px; ${state.historySortOrder === 'asc' ? 'background: var(--color-accent); color: white;' : 'background: transparent; color: var(--text-secondary);'}" aria-pressed="${state.historySortOrder === 'asc'}">ASC</button>
-              </div>
-            </div>
-
+            <!-- 1.2.2 (HG-10 P4) the History sort row left Settings: it wrote
+                 historySortOrder, which History never read. The order lives
+                 at the top of History's Filter and sort sheet. -->
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: var(--space-3);">
                 <div class="list-item-icon" style="margin: 0;" aria-hidden="true"><i data-lucide="clock"></i></div>
@@ -5407,19 +5396,6 @@ Object.assign(window.Views, {
         btnLanguage.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLanguagePicker(); } });
       }
 
-      // History Sort Toggle
-      const sortDescBtn = document.getElementById('btn-sort-desc');
-      if (sortDescBtn) {
-        sortDescBtn.addEventListener('click', () => {
-          window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'desc');
-        });
-      }
-      const sortAscBtn = document.getElementById('btn-sort-asc');
-      if (sortAscBtn) {
-        sortAscBtn.addEventListener('click', () => {
-          window.Store.dispatch('SET_HISTORY_SORT_ORDER', 'asc');
-        });
-      }
       
       // Manage Accounts — navigate to EditAccountView for each account row
       const btnManageAccounts = document.getElementById('btn-manage-accounts');

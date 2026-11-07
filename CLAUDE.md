@@ -567,7 +567,9 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   (Month · Year grid + a custom-range calendar step whose "‹ Period" carries
   `[data-back-dismiss]`). `main.js` restores focus by `[data-focus-key]` after
   a re-render. The old `AdvancedFilterBar` / `CustomRangeModal` /
-  `PeriodPicker` are unused until P5 deletes them. P1 (model): month/year periods are
+  `PeriodPicker` are unused until P5 deletes them. P4: `FilterModal` is a
+  dialog; History's has Order at the top, Analytics' has none and sends no
+  sort; Reset keeps the order; Settings has no History sort row. P1 (model): month/year periods are
   anchored on their first day (`Store._anchorPeriod`, BUG-64); ‹ › go through
   `Store.stepPeriod` (a new object; a custom range steps by its length, whole
   months by months); a replace keeps the saved sort; the Analytics bar tap
