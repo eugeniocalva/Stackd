@@ -111,11 +111,12 @@ test.describe('i18n core chrome (Italian)', () => {
     await page.click('#afm-close');
 
     // Calendar month names come from Intl, not the dictionary.
-    await page.click('#btn-calendar-history');
-    await expect(page.locator('text=Intervallo personalizzato')).toBeVisible();
-    await expect(page.locator('text=Scorciatoie')).toBeVisible();
-    await expect(page.locator('.multi-select-chip:has-text("Ultimi 7 giorni")')).toBeVisible();
-    const navTitle = await page.locator('.calendar-nav-title').first().textContent();
+    // 1.2.2 (HG-10 P3) the Period sheet and its custom-range calendar
+    await page.click('#period-label-history');
+    await expect(page.locator('#period-sheet .period-sheet-title')).toHaveText('Periodo');
+    await page.click('#period-sheet [data-k="custom"]');
+    await expect(page.locator('#period-sheet .period-sheet-title')).toHaveText('Intervallo personalizzato');
+    const navTitle = await page.locator('#period-sheet .period-nav-title').first().textContent();
     const expected = new Date().toLocaleDateString('it-IT', { month: 'long' });
     expect(navTitle.toLowerCase()).toContain(expected.toLowerCase());
   });

@@ -207,8 +207,8 @@ window.Views = {
     render(state) {
       const ctx = this._getBalanceModeContext(state);
       const { filters, activePeriod, rangeStart, rangeEnd, todayStr, straddlesToday, balanceMode, clampToToday, effectiveEnd, effectiveFilters } = ctx;
-      const periodLabel = window.Store._getPeriodLabel(activePeriod);
-      const filterBarHtml = window.Components.AdvancedFilterBar.render('analytics', filters);
+      // 1.2.2 (HG-10 P3) the period pill + context row (was AdvancedFilterBar)
+      const filterBarHtml = window.Components.PeriodBar.render('analytics', filters, state);
 
       const currentBalance = window.Store.getBalanceAtDate(effectiveEnd, filters.accounts);
       const summary = window.Store.computeAnalyticalSummary(effectiveFilters);
@@ -312,14 +312,12 @@ window.Views = {
       const statFontSize = window.Components.fitNumericFontSize([deltaStr, prevStr], 1.05, 0.65, statWidth);
       const statValueStyle = `font-weight: 700; font-size: ${statFontSize}; white-space: nowrap; font-variant-numeric: tabular-nums;`;
 
-      const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
-      // 1.0.2 (BUG-36): the Partial label AND the caption — a mixed explicit
-      // selection leaves accounts out too (v1.02 captioned only []).
-      const accountFilterIndicatorHtml = (hasAccountFilter
-        ? `<div style="font-size: 0.72rem; font-weight: 600; color: var(--color-expense); opacity: 0.95; text-align: right; margin-top: 2px;" title="${window.I18n.t('history.partialAccountsTitle', { shown: filters.accounts.length, total: state.accounts.length })}">${window.I18n.t('history.partialAccounts')}</div>`
-        : '') + (aggSel.excluded > 0 // v1.02
-          ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); text-align: right; margin-top: 2px;">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</div>`
-          : '');
+      // 1.2.2 (HG-10 P3) the red "Partial accounts shown" became the accounts
+      // chip of the period bar; the other-currency caption (1.0.2 BUG-36: a
+      // mixed explicit selection leaves accounts out too) heads the hero card.
+      const otherCcyCaptionHtml = aggSel.excluded > 0 // v1.02
+        ? `<p class="period-hero-note">${window.I18n.t('common.otherCurrencyExcluded', { count: aggSel.excluded })}</p>`
+        : '';
 
       // v0.64 - Projection caveat + Today/period-end toggle
       const endShortLabel = new Date(rangeEnd + 'T00:00:00').toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
@@ -343,17 +341,13 @@ window.Views = {
           <div class="history-header-sticky">
             <div class="page-header">
               <h1 class="page-header-title">${window.I18n.t('nav.analytics')}</h1>
-              <div style="text-align: right;">
-                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
-                ${accountFilterIndicatorHtml}
-              </div>
+              <div class="page-header-actions">${window.Components.PeriodBar.filterButton('analytics', filters, state)}</div>
             </div>
-
-            <!-- New Filter Bar -->
             ${filterBarHtml}
           </div>
 
           <div class="card card-elevated" style="padding: var(--space-8); text-align: center; border-radius: var(--radius-2xl); margin-top: var(--space-6); position: relative; overflow: hidden;">
+            ${otherCcyCaptionHtml}
             <!-- DECORATIVE BACKGROUND GRADIENT -->
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--color-primary); opacity: 0.05; border-radius: 30px; filter: blur(40px);"></div>
             
@@ -390,7 +384,7 @@ window.Views = {
     // 1.2.0 (UX-7): isEntry (main.js render loop) = the first render of an
     // Analytics visit — the one render whose donut sweeps in.
     attachEvents(container, state, isEntry) {
-      window.Components.AdvancedFilterBar.attachEvents(container, 'analytics');
+      window.Components.PeriodBar.attachEvents(container, 'analytics'); // 1.2.2 (HG-10 P3)
 
       // v0.64 - Use the same today/period-end basis as render() so chart interactions match.
       // v0.93: render() stashed both moments ago in this same pass — reuse them.
@@ -1445,7 +1439,6 @@ window.Views = {
 
     render(state) {
       const filters = state.historyFilters;
-      const periodLabel = window.Store._getPeriodLabel(filters.period);
       // 1.0.3 (BUG-41, D2): rows dated before their account's opening date are
       // listed (dimmed, "not counted"), never summed — see signedRowAmount.
       const visibleTx = window.Store.getFilteredTransactions('history', null, { keepBeforeOpening: true });
@@ -1456,7 +1449,8 @@ window.Views = {
       const visibleTxIds = visibleTx.map(t => t.id);
       const allVisibleSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
 
-      const filterBarHtml = window.Components.AdvancedFilterBar.render('history', filters);
+      // 1.2.2 (HG-10 P3) the period pill + context row (was AdvancedFilterBar)
+      const filterBarHtml = window.Components.PeriodBar.render('history', filters, state);
 
       const bounds = window.Store._getPeriodBounds(filters.period.type, filters.period.value);
       // For custom, bounds might be empty, so we use start/end from period
@@ -1647,30 +1641,9 @@ window.Views = {
         });
       }
 
-      const hasAccountFilter = filters.accounts && filters.accounts.length > 0 && filters.accounts.length < state.accounts.length;
-      // v0.94: same treatment as the tag chip below — the wallet-tile deep
-      // link filters by account, and an invisible filter reads as "my
-      // transactions disappeared". Shows the account names, tap to clear.
-      const accountFilterIndicatorHtml = hasAccountFilter
-        ? `<div id="history-account-filter-chip" role="button" tabindex="0" title="${window.I18n.t('history.clearAccountTitle')}"
-                style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface-sunken); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
-             ${filters.accounts.map(id => { const a = state.accounts.find(x => x.id === id); return escapeAttr(a ? a.name : id); }).join(', ')} <span aria-hidden="true">✕</span>
-           </div>`
-        : '';
-
-      // v0.85: a tag filter usually arrives from a drilldown, so say so — an
-      // invisible filter reads as "my transactions disappeared". Tap to clear.
-      const activeTags = Array.isArray(filters.tags) ? filters.tags : [];
-      const tagFilterIndicatorHtml = activeTags.length
-        ? `<div id="history-tag-filter-chip" role="button" tabindex="0" title="${window.I18n.t('history.clearTagTitle')}"
-                style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface-sunken); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
-             ${activeTags.map(t => t === '__untagged__' ? window.I18n.t('history.noTag') : '#' + escapeAttr(t)).join(', ')} <span aria-hidden="true">✕</span>
-           </div>`
-        : '';
-
-      const sortLabel = isAsc ? window.I18n.t('history.oldestFirst') : window.I18n.t('history.newestFirst');
-      const sortIndicatorHtml = `<div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); opacity: 0.85; text-align: right; margin-top: 2px;">${window.I18n.t('history.sortedBy', { order: sortLabel })}</div>`;
-
+      // 1.2.2 (HG-10 P3) the account, tag and sort lines left the header: the
+      // filters are chips of the period bar, the order lives in the Filter
+      // and sort sheet.
       const headerContentHtml = isSelectionMode
         ? `
             <div class="page-header contextual-header-bar" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: 0 4px 14px rgba(15,23,42,0.06); width: 100%; box-sizing: border-box; overflow: hidden; gap: 6px;">
@@ -1693,14 +1666,11 @@ window.Views = {
         : `
             <div class="page-header">
               <h1 class="page-header-title">${window.I18n.t('history.title')}</h1>
-              <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                <button id="btn-start-selection-mode" class="btn-selection-action" aria-label="${window.I18n.t('history.selectAria')}">
+              <div class="page-header-actions">
+                <button id="btn-start-selection-mode" class="btn-selection-action" data-focus-key="history-select" aria-label="${window.I18n.t('history.selectAria')}">
                   ${window.I18n.t('history.select')}
                 </button>
-                <div style="font-family: var(--font-family-display); font-weight: 700; font-size: 0.9rem; color: var(--color-primary);">${periodLabel}</div>
-                ${accountFilterIndicatorHtml}
-                ${tagFilterIndicatorHtml}
-                ${sortIndicatorHtml}
+                ${window.Components.PeriodBar.filterButton('history', filters, state)}
               </div>
             </div>
           `;
@@ -1710,7 +1680,6 @@ window.Views = {
           <!-- FIXED STICKY HEADER -->
           <div class="history-header-sticky" id="history-sticky-header">
             ${headerContentHtml}
-            <!-- New Filter Bar -->
             ${filterBarHtml}
           </div>
 
@@ -1732,23 +1701,9 @@ window.Views = {
     attachEvents(container, state, isEntry) {
       window.StackdHydrateIcons();
 
-      window.Components.AdvancedFilterBar.attachEvents(container, 'history', state);
-
-      // v0.85: the tag-filter chip clears the drilled-in tag in place.
-      const tagChip = container.querySelector('#history-tag-filter-chip');
-      if (tagChip) {
-        tagChip.addEventListener('click', () => {
-          window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { tags: [] } });
-        });
-      }
-
-      // v0.94: the account chip clears the wallet-tile drilldown in place.
-      const accChip = container.querySelector('#history-account-filter-chip');
-      if (accChip) {
-        accChip.addEventListener('click', () => {
-          window.Store.dispatch('UPDATE_FILTERS', { page: 'history', filters: { accounts: [] } });
-        });
-      }
+      // 1.2.2 (HG-10 P3) the period pill, its context chips and the Filter
+      // button (the account and tag chips are context chips now)
+      window.Components.PeriodBar.attachEvents(container, 'history');
 
       // v0.94: back-to-top — native smooth scroll on the app's only scroller
       // (never ScrollUtils' multi-target sweep). Fresh node per render, so a

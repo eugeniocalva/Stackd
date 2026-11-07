@@ -111,13 +111,13 @@ test.describe('Accounts lifecycle (1.0.2)', () => {
     // History opens unfiltered: no raw-id chip, the Main row is listed.
     await page.click('a[data-view="transactions"]');
     await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    await expect(page.locator('#history-account-filter-chip')).toHaveCount(0);
+    await expect(page.locator('.period-bar [data-filter-kind="accounts"]')).toHaveCount(0);
     await expect(page.locator('.list-item[data-id]', { hasText: '42.50' })).toHaveCount(1);
 
     // A stale deep link to the deleted account (web Back/Forward, bookmark).
     await page.evaluate((id) => { location.hash = '#transactions?account=' + id; }, savingsId);
     await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    await expect(page.locator('#history-account-filter-chip')).toHaveCount(0);
+    await expect(page.locator('.period-bar [data-filter-kind="accounts"]')).toHaveCount(0);
     await expect(page.locator('.list-item[data-id]', { hasText: '42.50' })).toHaveCount(1);
     expect(await page.evaluate(() => window.Store.getState().historyFilters.accounts)).toEqual([]);
 

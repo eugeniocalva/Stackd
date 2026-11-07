@@ -68,7 +68,7 @@ test.describe('Wallet tile → History account filter', () => {
 
     // Only TR rows are listed, and the tap-to-clear chip names the account.
     await expect(page.locator('.list-item[data-id]')).toHaveCount(1);
-    const chip = page.locator('#history-account-filter-chip');
+    const chip = page.locator('.period-bar [data-filter-kind="accounts"]'); // 1.2.2 (HG-10 P3)
     await expect(chip).toBeVisible();
     await expect(chip).toContainText('TR');
 

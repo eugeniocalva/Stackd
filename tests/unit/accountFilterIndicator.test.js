@@ -21,7 +21,6 @@ describe('AnalyticsView Account Filter Indicator', () => {
     };
     global.localStorage = global.window.localStorage;
     global.window.Components = {
-      AdvancedFilterBar: { render: () => '<div>FilterBar</div>', attachEvents: vi.fn() },
       NetFlowChart: { render: () => '<div>Chart</div>' },
       CategoryDonutChart: { render: () => '<div>Donut</div>' },
       TransactionItem: { render: () => '<div>Item</div>' },
@@ -32,12 +31,17 @@ describe('AnalyticsView Account Filter Indicator', () => {
     executeFile('i18n.js');
     executeFile('i18n/en.js');
     executeFile('store.js');
+    // 1.2.2 (HG-10 P3) the real PeriodBar (its accounts chip replaced the red
+    // "Partial accounts shown" line); the charts stay stubbed
+    const stubs = global.window.Components;
+    executeFile('components.js');
+    global.window.Components = { ...global.window.Components, ...stubs };
     executeFile('views.js');
 
     global.window.Store.init();
   });
 
-  it('renders "Partial accounts shown" when a subset of accounts is selected', () => {
+  it('shows the accounts chip when a subset of accounts is selected', () => {
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Bank 1', openingBalance: 100 });
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Bank 2', openingBalance: 200 });
     
@@ -55,10 +59,12 @@ describe('AnalyticsView Account Filter Indicator', () => {
     const state = global.window.Store.getState();
     const html = global.window.Views.AnalyticsView.render(state);
 
-    expect(html).toContain('Partial accounts shown');
+    expect(html).toMatch(/data-filter-kind="accounts"[^>]*aria-label="Remove filter: Bank 1"/);
+    expect(html).toContain('aria-label="Filters, 1 active"');
+    expect(html).not.toContain('Partial accounts shown');
   });
 
-  it('does NOT render "Partial accounts shown" when all accounts are selected or filters.accounts is empty', () => {
+  it('shows no accounts chip when every account is shown (filters.accounts empty)', () => {
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Bank 1', openingBalance: 100 });
     global.window.Store.dispatch('ADD_ACCOUNT', { name: 'Bank 2', openingBalance: 200 });
 
@@ -73,6 +79,7 @@ describe('AnalyticsView Account Filter Indicator', () => {
     const state = global.window.Store.getState();
     const html = global.window.Views.AnalyticsView.render(state);
 
+    expect(html).not.toContain('data-filter-kind="accounts"');
     expect(html).not.toContain('Partial accounts shown');
   });
 });

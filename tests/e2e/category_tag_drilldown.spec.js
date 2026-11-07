@@ -74,10 +74,11 @@ test.describe('Category → tag drilldown', () => {
     await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(1);
 
     // The active tag filter is visible and clears in place.
-    const chip = page.locator('#history-tag-filter-chip');
+    // 1.2.2 (HG-10 P3) a removable chip of the period bar
+    const chip = page.locator('.period-bar [data-filter-kind="tags"]');
     await expect(chip).toContainText('#electricity');
     await chip.click();
-    await expect(page.locator('#history-tag-filter-chip')).toHaveCount(0);
+    await expect(page.locator('.period-bar [data-filter-kind="tags"]')).toHaveCount(0);
     await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(3); // whole category
   });
 

@@ -80,17 +80,21 @@ test.describe('Local dates in aggregates (1.0.2 U4)', () => {
     await expect(card).not.toContainText('€2,000.00');
   });
 
-  // BUG-67: 'Last 7 Days' covered 8 days.
-  test("History's 'Last 7 Days' covers exactly 7 days ending today", async ({ page }) => {
+  // BUG-67: a 7-day range counted 8 days. 1.2.2 (HG-10 P3): picked in the
+  // Period sheet's calendar (the presets are gone), across a month edge.
+  test("History's custom range Sep 27 – Oct 3 covers exactly 7 days", async ({ page }) => {
     await boot(page, '2026-10-03T12:00:00+02:00');
     await seedOctober(page);
     await go(page, '#transactions', 'transactions');
-    await page.click('#btn-calendar-history');
-    await page.click('#custom-range-modal [data-days="7"]');
-    await expect(page.locator('#crm-range-summary')).toContainText('Sep 27, 2026 - Oct 3, 2026');
-    await expect(page.locator('#crm-range-summary')).toContainText('(7 days)');
-    await page.click('#crm-apply');
-    await expect(page.locator('#router-view')).toContainText('Sep 27 – Oct 3');
+    await page.click('#period-label-history');
+    await page.click('#period-sheet [data-k="custom"]');
+    await page.click('#period-sheet [data-k="c-prev"]');
+    await page.click('#period-sheet [data-day="2026-09-27"]');
+    await page.click('#period-sheet [data-k="c-next"]');
+    await page.click('#period-sheet [data-day="2026-10-03"]');
+    await expect(page.locator('#period-sheet .period-cal-status')).toContainText('7 days');
+    await page.click('#period-sheet [data-k="done"]');
+    await expect(page.locator('#period-label-history')).toContainText(/Sep 27\s?[–-]\s?Oct 3, 2026/);
     expect(await page.evaluate(() => window.Store.state.historyFilters.period))
       .toMatchObject({ type: 'custom', start: '2026-09-27', end: '2026-10-03' });
   });
@@ -101,7 +105,7 @@ test.describe('Local dates in aggregates (1.0.2 U4)', () => {
     await boot(page, '2026-10-31T23:58:00+01:00');
     await seedOctober(page, { rent: true });
     await go(page, '#transactions', 'transactions');
-    await expect(page.locator('#router-view')).toContainText('This Month');
+    await expect(page.locator('#period-label-history')).toContainText('October 2026'); // 1.2.2 (HG-10 P3) absolute
     await expect(page.locator('#router-view')).toContainText('45.30');
     expect(await historyPeriod(page)).toBe('2026-10-01');
 
@@ -142,15 +146,18 @@ test.describe('Local dates in aggregates (1.0.2 U4)', () => {
     await expect(netChangeTile(page)).toContainText('-€12.00');
   });
 
-  // BUG-69 (Today): History's Today button on a stale period lands on today.
-  test("History's Today after midnight moves to the new month", async ({ page }) => {
+  // BUG-69: a stale screen after midnight still reaches the new month. 1.2.2
+  // (HG-10 P3): the Period sheet marks the current month (it was the Today
+  // button); picking it rolls first, then lands on November.
+  test("History's current month after midnight is the new month", async ({ page }) => {
     await boot(page, '2026-10-31T23:58:00+01:00');
     await seedOctober(page, { nov1: 12 });
     await go(page, '#transactions', 'transactions');
     await expect(page.locator('#router-view')).not.toContainText('12.00');
 
     await page.clock.fastForward('05:00');
-    await page.click('#btn-today-history');
+    await page.click('#period-label-history');
+    await page.click('#period-sheet .period-cell.is-current');
 
     await page.waitForFunction(() => window.Store.state.historyFilters.period.value === '2026-11-01');
     await expect(page.locator('#router-view')).toContainText('12.00');

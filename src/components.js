@@ -1192,6 +1192,380 @@ window.Components = {
     }
   },
 
+  // 1.2.2 (HG-10 P3, docs/period-picker-plan.md §0): the period control of
+  // History and Analytics — one ‹ November 2026 ▾ › pill (Goals' look) under
+  // the title, and a context row that appears only when there is something
+  // to say: a "↺ This month" chip when the period shown does not contain
+  // today, one removable chip per active filter kind, "Clear all" at 2+.
+  // The pill's name opens Components.PeriodSheet. Replaces the scrolling
+  // AdvancedFilterBar (‹ Today › · funnel · Day…Year · calendar · sliders).
+  PeriodBar: {
+    _esc(v) { return window.I18n.esc(v); },
+
+    // One chip per active filter kind: { kind, label }. Labels are raw text
+    // (escaped by the caller). Accounts: a strict subset of the accounts;
+    // types: one of the two.
+    chips(filters, state) {
+      const t = (k, p) => window.I18n.t(k, p);
+      const st = state || window.Store.getState();
+      const out = [];
+      const accs = Array.isArray(filters.accounts) ? filters.accounts : [];
+      const allAccs = st.accounts || [];
+      if (accs.length > 0 && accs.length < allAccs.length) {
+        const names = accs.map(id => { const a = allAccs.find(x => x.id === id); return a ? a.name : id; });
+        out.push({ kind: 'accounts', label: names.length <= 2 ? names.join(', ') : t('filters.accountsShown', { shown: names.length, total: allAccs.length }) });
+      }
+      const types = Array.isArray(filters.types) ? filters.types : [];
+      if (types.length === 1) out.push({ kind: 'types', label: t(types[0] === 'income' ? 'form.income' : 'form.expense') });
+      const cats = Array.isArray(filters.categories) ? filters.categories : [];
+      if (cats.length) {
+        const names = cats.map(id => { const c = (st.categories || []).find(x => x.id === id); return c ? c.name : id; });
+        out.push({ kind: 'categories', label: names.length <= 2 ? names.join(', ') : t('filters.categoriesCount', { count: names.length }) });
+      }
+      const tags = Array.isArray(filters.tags) ? filters.tags : [];
+      if (tags.length) {
+        const names = tags.map(x => (x === '__untagged__' ? t('history.noTag') : '#' + x));
+        out.push({ kind: 'tags', label: names.length <= 2 ? names.join(', ') : t('filters.tagsCount', { count: names.length }) });
+      }
+      return out;
+    },
+
+    // The title-row Filter button (History: "Filter and sort"), with a badge
+    // counting the active filter kinds. Keeps the old id (#btn-filter-<page>).
+    filterButton(pageKey, filters, state) {
+      const n = this.chips(filters, state).length;
+      const aria = n ? window.I18n.t('filters.activeAria', { count: n }) : window.I18n.t(pageKey === 'history' ? 'filter.filterAndSort' : 'filters.openAria');
+      return `<button type="button" class="period-filter-btn" id="btn-filter-${pageKey}" data-focus-key="period-filter-${pageKey}" aria-label="${aria}" aria-haspopup="dialog">
+          <i data-lucide="sliders-horizontal" aria-hidden="true"></i>${n ? `<span class="period-filter-badge" aria-hidden="true">${n}</span>` : ''}
+        </button>`;
+    },
+
+    render(pageKey, filters, state) {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (v) => this._esc(v);
+      const p = filters.period;
+      const label = S.periodLabel(p);
+      const prev = S.periodLabel(S.stepPeriod(p, -1));
+      const next = S.periodLabel(S.stepPeriod(p, 1));
+      const back = S.currentPeriodLike(p);
+      const chips = this.chips(filters, state);
+      const backHtml = back
+        ? `<button type="button" class="period-chip period-chip--now" id="period-now-${pageKey}" data-focus-key="period-now-${pageKey}">
+             <i data-lucide="rotate-ccw" aria-hidden="true"></i>${t(back.type === 'year' ? 'period.backYear' : 'period.backMonth')}
+           </button>`
+        : '';
+      const chipsHtml = chips.map(c => `<button type="button" class="period-chip" data-filter-kind="${c.kind}" data-focus-key="period-chip-${pageKey}-${c.kind}" aria-label="${t('filters.remove', { name: esc(c.label) })}">
+             <span class="period-chip-label">${esc(c.label)}</span><i data-lucide="x" aria-hidden="true"></i>
+           </button>`).join('');
+      const clearHtml = chips.length >= 2
+        ? `<button type="button" class="period-chip period-chip--clear" id="period-clear-${pageKey}" data-focus-key="period-clear-${pageKey}">${t('filters.clearAll')}</button>`
+        : '';
+      const context = backHtml || chipsHtml
+        ? `<div class="period-context">${backHtml}${chipsHtml}${clearHtml}</div>`
+        : '';
+      return `
+        <div class="period-bar" data-page="${pageKey}">
+          <div class="period-pill">
+            <button type="button" class="period-arrow" id="period-prev-${pageKey}" data-focus-key="period-prev-${pageKey}" aria-label="${t('period.prevAria', { label: esc(prev) })}">
+              <i data-lucide="chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="period-label" id="period-label-${pageKey}" data-focus-key="period-label-${pageKey}" aria-haspopup="dialog" aria-label="${t('period.change', { label: esc(label) })}">
+              <span class="period-label-text">${esc(label)}</span><i data-lucide="chevron-down" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="period-arrow" id="period-next-${pageKey}" data-focus-key="period-next-${pageKey}" aria-label="${t('period.nextAria', { label: esc(next) })}">
+              <i data-lucide="chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+          ${context}
+        </div>`;
+    },
+
+    // "November 2026. 23 transactions" (History) / "November 2026" — read
+    // after the period moved (Announcer delays past the coalesced render).
+    announce(pageKey) {
+      const S = window.Store;
+      const A = window.Components.Announcer;
+      if (!A) return;
+      const f = pageKey === 'history' ? S.state.historyFilters : S.state.analyticsFilters;
+      const label = S.periodLabel(f.period);
+      if (pageKey !== 'history') { A.say(label); return; }
+      const n = S.getFilteredTransactions('history', null, { keepBeforeOpening: true }).length;
+      A.say(window.I18n.t('period.announce', { label, count: n }));
+    },
+
+    // Back to the period containing today. History keeps its BUG-115 /
+    // BUG-69 sequence: roll first, move, then scroll to today after the
+    // re-render (or at once when nothing re-renders).
+    goNow(container, pageKey) {
+      const S = window.Store;
+      if (pageKey === 'history') {
+        const before = S.state.historyFilters;
+        S.dispatch('ROLL_PERIODS');
+        const target = S.currentPeriodLike(S.state.historyFilters.period);
+        if (target) S.dispatch('UPDATE_FILTERS', { page: 'history', filters: { period: target } });
+        if (S.state.historyFilters !== before) {
+          setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-history-to-today')), 100);
+        } else if (window.Views && window.Views.TransactionsView) {
+          window.Views.TransactionsView.scrollToToday(container);
+        }
+      } else {
+        const target = S.currentPeriodLike(S.state.analyticsFilters.period);
+        if (target) S.dispatch('UPDATE_FILTERS', { page: pageKey, filters: { period: target } });
+      }
+      this.announce(pageKey);
+    },
+
+    attachEvents(container, pageKey) {
+      const S = window.Store;
+      const q = (sel) => container.querySelector(sel);
+      const step = (dir) => { S.dispatch('NAVIGATE_PERIOD', { offset: dir, page: pageKey }); this.announce(pageKey); };
+      const prev = q(`#period-prev-${pageKey}`);
+      const next = q(`#period-next-${pageKey}`);
+      const label = q(`#period-label-${pageKey}`);
+      const now = q(`#period-now-${pageKey}`);
+      const clear = q(`#period-clear-${pageKey}`);
+      const filterBtn = q(`#btn-filter-${pageKey}`);
+      if (prev) prev.addEventListener('click', () => step(-1));
+      if (next) next.addEventListener('click', () => step(1));
+      if (label) label.addEventListener('click', () => window.Components.PeriodSheet.show(pageKey));
+      if (now) now.addEventListener('click', () => this.goNow(container, pageKey));
+      container.querySelectorAll(`.period-bar[data-page="${pageKey}"] [data-filter-kind]`).forEach(chip => {
+        chip.addEventListener('click', () => {
+          S.dispatch('UPDATE_FILTERS', { page: pageKey, filters: { [chip.dataset.filterKind]: [] } });
+        });
+      });
+      // Clear all never touches the period or the sort
+      if (clear) clear.addEventListener('click', () => {
+        S.dispatch('UPDATE_FILTERS', { page: pageKey, filters: { types: [], accounts: [], categories: [], tags: [] } });
+      });
+      if (filterBtn) filterBtn.addEventListener('click', () => window.Components.FilterModal.show(pageKey));
+    }
+  },
+
+  // 1.2.2 (HG-10 P3) one bottom sheet for the period: a Month · Year switch
+  // over a grid that opens where you are, and "Custom range…" — a one-month
+  // range calendar in the same sheet (tap the start, tap the end, Done). A
+  // tap on a month or a year applies it and closes. Back from the calendar
+  // returns to the grid ([data-back-dismiss] on "‹ Period"); Back, ✕, Escape
+  // or a backdrop tap on the grid closes without a change.
+  PeriodSheet: {
+    show(pageKey) {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (v) => window.I18n.esc(v);
+      const loc = S.getLocale();
+      const container = document.getElementById('modal-container');
+      if (!container) return;
+      const old = document.getElementById('period-sheet');
+      if (old) old.remove();
+
+      const filters = pageKey === 'history' ? S.state.historyFilters : S.state.analyticsFilters;
+      const shown = filters.period;
+      const today = S._todayYMD();
+      const bounds = shown.type === 'custom' ? { start: shown.start, end: shown.end } : S._getPeriodBounds(shown.type, shown.value);
+      const anchor = S.isDateInPeriod(today, shown) ? today : (bounds.start || today);
+      const thisYear = Number(today.slice(0, 4));
+      const ymd = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+      const st = {
+        step: 'grid',
+        unit: shown.type === 'year' ? 'year' : 'month',
+        gridYear: Number(anchor.slice(0, 4)),
+        yearEnd: Math.max(thisYear, Number(anchor.slice(0, 4))),
+        selStart: bounds.start || '',
+        selEnd: bounds.end || '',
+        fresh: true, // the next day tap starts a new range
+        calY: Number((bounds.start || today).slice(0, 4)),
+        calM: Number((bounds.start || today).slice(5, 7)) - 1
+      };
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'modal-backdrop';
+      wrapper.id = 'period-sheet';
+      wrapper.setAttribute('role', 'dialog');
+      wrapper.setAttribute('aria-modal', 'true');
+      wrapper.setAttribute('aria-labelledby', 'ps-title');
+
+      const close = () => {
+        wrapper.classList.remove('open');
+        document.removeEventListener('keydown', onKey, true);
+        setTimeout(() => wrapper.remove(), 300);
+        const lab = document.getElementById(`period-label-${pageKey}`);
+        if (lab) lab.focus({ preventScroll: true });
+      };
+      const apply = (period) => {
+        S.dispatch('UPDATE_FILTERS', { page: pageKey, filters: { period } });
+        close();
+        window.Components.PeriodBar.announce(pageKey);
+      };
+
+      const isShown = (type, value) => shown.type === type && shown.value === value;
+      const monthNames = window.I18n.monthNames('short');
+      const monthLong = window.I18n.monthNames('long');
+
+      const gridHtml = () => {
+        let nav;
+        let cells;
+        if (st.unit === 'month') {
+          nav = `<button type="button" class="period-nav-btn" data-k="g-prev" aria-label="${t('monthPicker.prevYear')}"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                 <span class="period-nav-title">${st.gridYear}</span>
+                 <button type="button" class="period-nav-btn" data-k="g-next" aria-label="${t('monthPicker.nextYear')}"><i data-lucide="chevron-right" aria-hidden="true"></i></button>`;
+          cells = monthNames.map((m, i) => {
+            const value = ymd(st.gridYear, i, 1);
+            const sel = isShown('month', value);
+            const cur = today.slice(0, 7) === value.slice(0, 7);
+            return `<button type="button" class="period-cell${sel ? ' is-selected' : ''}${cur ? ' is-current' : ''}" data-k="m-${i}" data-type="month" data-value="${value}" aria-pressed="${sel}"${cur ? ' aria-current="date"' : ''} aria-label="${esc(monthLong[i])} ${st.gridYear}">${esc(m)}</button>`;
+          }).join('');
+        } else {
+          const first = st.yearEnd - 11;
+          nav = `<button type="button" class="period-nav-btn" data-k="y-prev" aria-label="${t('period.yearsPrev')}"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                 <span class="period-nav-title">${first} – ${st.yearEnd}</span>
+                 <button type="button" class="period-nav-btn" data-k="y-next" aria-label="${t('period.yearsNext')}"><i data-lucide="chevron-right" aria-hidden="true"></i></button>`;
+          cells = Array.from({ length: 12 }, (_, i) => first + i).map(y => {
+            const value = `${y}-01-01`;
+            const sel = isShown('year', value);
+            const cur = y === thisYear;
+            return `<button type="button" class="period-cell${sel ? ' is-selected' : ''}${cur ? ' is-current' : ''}" data-k="y-${y}" data-type="year" data-value="${value}" aria-pressed="${sel}"${cur ? ' aria-current="date"' : ''}>${y}</button>`;
+          }).join('');
+        }
+        return `
+          <div class="period-sheet-head">
+            <h2 id="ps-title" class="period-sheet-title">${t('period.sheetTitle')}</h2>
+            <button type="button" class="period-sheet-x" data-k="close" data-back-dismiss aria-label="${t('common.close')}"><i data-lucide="x" aria-hidden="true"></i></button>
+          </div>
+          <div class="period-seg" role="radiogroup" aria-label="${t('period.unitAria')}">
+            <button type="button" role="radio" class="period-seg-btn" data-k="u-month" data-unit="month" aria-checked="${st.unit === 'month'}" tabindex="${st.unit === 'month' ? 0 : -1}">${t('filter.month')}</button>
+            <button type="button" role="radio" class="period-seg-btn" data-k="u-year" data-unit="year" aria-checked="${st.unit === 'year'}" tabindex="${st.unit === 'year' ? 0 : -1}">${t('filter.year')}</button>
+          </div>
+          <div class="period-nav">${nav}</div>
+          <div class="period-grid" role="group" aria-label="${t('period.sheetTitle')}">${cells}</div>
+          <button type="button" class="period-custom-row" data-k="custom">
+            <span>${t('period.customRow')}</span><i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>`;
+      };
+
+      const calHtml = () => {
+        const first = new Date(st.calY, st.calM, 1);
+        const lead = (first.getDay() + 6) % 7; // Monday first
+        const days = new Date(st.calY, st.calM + 1, 0).getDate();
+        const a = st.selStart;
+        const b = st.selEnd || st.selStart;
+        const lo = a && b ? (a < b ? a : b) : '';
+        const hi = a && b ? (a < b ? b : a) : '';
+        const heads = window.I18n.weekdayInitials().map(w => `<span class="period-cal-head" aria-hidden="true">${esc(w)}</span>`).join('');
+        let cells = '';
+        for (let i = 0; i < lead; i++) cells += '<span class="period-cal-pad" aria-hidden="true"></span>';
+        for (let d = 1; d <= days; d++) {
+          const v = ymd(st.calY, st.calM, d);
+          const isLo = v === lo;
+          const isHi = v === hi;
+          const inside = lo && v > lo && v < hi;
+          const name = new Date(v + 'T12:00:00').toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+          const mark = isLo && isHi ? '' : (isLo ? t('period.custom.startMark') : (isHi ? t('period.custom.endMark') : ''));
+          const cls = ['period-day'];
+          if (isLo || isHi) cls.push('is-end');
+          if (isLo && hi && lo !== hi) cls.push('is-lo');
+          if (isHi && lo && lo !== hi) cls.push('is-hi');
+          if (inside) cls.push('is-in');
+          if (v === today) cls.push('is-today');
+          cells += `<button type="button" class="${cls.join(' ')}" data-k="d-${v}" data-day="${v}" aria-pressed="${isLo || isHi || !!inside}" aria-label="${esc(name)}${mark ? ', ' + mark : ''}">${d}</button>`;
+        }
+        let status;
+        if (!st.selStart) status = t('period.custom.pickStart');
+        else if (!st.selEnd) status = t('period.custom.pickEnd');
+        else {
+          const n = Math.round((new Date(hi + 'T12:00:00') - new Date(lo + 'T12:00:00')) / 86400000) + 1;
+          status = t('period.custom.days', { range: esc(S.periodLabel({ type: 'custom', start: lo, end: hi })), count: n });
+        }
+        const title = new Date(st.calY, st.calM, 15).toLocaleDateString(loc, { month: 'long', year: 'numeric' });
+        return `
+          <div class="period-sheet-head">
+            <button type="button" class="period-sheet-back" data-k="back" data-back-dismiss><i data-lucide="chevron-left" aria-hidden="true"></i>${t('period.sheetTitle')}</button>
+            <h2 id="ps-title" class="period-sheet-title">${t('period.custom.title')}</h2>
+            <button type="button" class="period-sheet-x modal-btn-close" data-k="close2" aria-label="${t('common.close')}"><i data-lucide="x" aria-hidden="true"></i></button>
+          </div>
+          <div class="period-nav">
+            <button type="button" class="period-nav-btn" data-k="c-prev" aria-label="${t('budget.prevMonth')}"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+            <span class="period-nav-title">${esc(title)}</span>
+            <button type="button" class="period-nav-btn" data-k="c-next" aria-label="${t('budget.nextMonth')}"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+          </div>
+          <div class="period-cal">${heads}${cells}</div>
+          <p class="period-cal-status" role="status">${status}</p>
+          <button type="button" class="btn btn-primary period-done" data-k="done"${st.selStart ? '' : ' disabled'}>${t('common.done')}</button>`;
+      };
+
+      const paint = (focusKey) => {
+        wrapper.innerHTML = `<div class="modal-content period-sheet">${st.step === 'grid' ? gridHtml() : calHtml()}</div>`;
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(wrapper);
+        const el = (focusKey && wrapper.querySelector(`[data-k="${focusKey}"]`))
+          || wrapper.querySelector('.period-cell.is-selected, .period-day.is-end')
+          || wrapper.querySelector('[data-k]');
+        if (el) el.focus({ preventScroll: true });
+      };
+
+      wrapper.addEventListener('click', (e) => {
+        if (e.target === wrapper) { close(); return; }
+        const btn = e.target.closest && e.target.closest('[data-k]');
+        if (!btn || btn.disabled) return;
+        const k = btn.dataset.k;
+        if (k === 'close' || k === 'close2') { close(); return; }
+        if (k === 'u-month' || k === 'u-year') { st.unit = btn.dataset.unit; paint(k); return; }
+        if (k === 'g-prev' || k === 'g-next') { st.gridYear += k === 'g-prev' ? -1 : 1; paint(k); return; }
+        if (k === 'y-prev' || k === 'y-next') { st.yearEnd += k === 'y-prev' ? -12 : 12; paint(k); return; }
+        if (btn.dataset.type) { apply({ type: btn.dataset.type, value: btn.dataset.value, start: '', end: '' }); return; }
+        if (k === 'custom') { st.step = 'custom'; paint(); return; }
+        if (k === 'back') { st.step = 'grid'; paint('custom'); return; }
+        if (k === 'c-prev' || k === 'c-next') {
+          const d = new Date(st.calY, st.calM + (k === 'c-prev' ? -1 : 1), 1);
+          st.calY = d.getFullYear(); st.calM = d.getMonth();
+          paint(k);
+          return;
+        }
+        if (btn.dataset.day) {
+          const v = btn.dataset.day;
+          if (st.fresh || !st.selStart || st.selEnd) { st.selStart = v; st.selEnd = ''; st.fresh = false; }
+          else { st.selEnd = v; }
+          paint(k);
+          return;
+        }
+        if (k === 'done' && st.selStart) {
+          const a = st.selStart;
+          const b = st.selEnd || st.selStart;
+          apply({ type: 'custom', value: '', start: a < b ? a : b, end: a < b ? b : a }); // 1.0.2 (BUG-68) in order
+        }
+      });
+
+      const onKey = (e) => {
+        if (!wrapper.isConnected) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (st.step === 'custom') { st.step = 'grid'; paint('custom'); } else close();
+          return;
+        }
+        if (e.key === 'Tab') { // focus stays in the sheet
+          const f = [...wrapper.querySelectorAll('button:not([disabled])')];
+          if (!f.length) return;
+          const i = f.indexOf(document.activeElement);
+          if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+          else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+          return;
+        }
+        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement && document.activeElement.getAttribute('role') === 'radio') {
+          e.preventDefault();
+          st.unit = st.unit === 'month' ? 'year' : 'month';
+          paint(st.unit === 'month' ? 'u-month' : 'u-year');
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+
+      container.appendChild(wrapper);
+      paint();
+      requestAnimationFrame(() => wrapper.classList.add('open'));
+    }
+  },
+
   CustomRangeModal: {
     show(pageKey) {
       const filters = pageKey === 'history' ? window.Store.state.historyFilters : window.Store.state.analyticsFilters;

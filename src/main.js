@@ -574,9 +574,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         // while the fresh content lays out, so capture and restore explicitly.
         const preservedScrollTop = isEntry ? null : routerView.scrollTop;
         routerView.classList.toggle('is-scrolled', routerView.scrollTop > 4);
+        // 1.2.2 (HG-10 P3) a control marked [data-focus-key] keeps the focus
+        // across the wholesale re-render (repeated ‹ presses, a removed chip
+        // falls back to the period name). Only keyed controls are touched.
+        const focused = !isEntry && document.activeElement && routerView.contains(document.activeElement)
+          ? document.activeElement.getAttribute('data-focus-key') : null;
         routerView.innerHTML = viewModule.render(state);
         if (viewModule.attachEvents) {
           viewModule.attachEvents(routerView, state, isEntry);
+        }
+        if (focused) {
+          const keyed = [...routerView.querySelectorAll('[data-focus-key]')];
+          const again = keyed.find(el => el.getAttribute('data-focus-key') === focused)
+            || (focused.indexOf('period-') === 0 ? keyed.find(el => /^period-label-/.test(el.getAttribute('data-focus-key'))) : null);
+          if (again) again.focus({ preventScroll: true });
         }
         if (preservedScrollTop !== null) {
           // The browser clamps to the new scrollHeight if content shrank.

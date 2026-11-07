@@ -4889,3 +4889,200 @@ a:focus-visible,
   width: 14px;
   height: 14px;
 }
+
+/* ================================================================
+   1.2.2 (HG-10 P3) the period picker: one ‹ November 2026 ▾ › pill under
+   the title (Goals' look, 44 px targets), a context row of chips, the
+   title-row Filter button and the Period sheet.
+   ================================================================ */
+.page-header-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.period-filter-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.period-filter-btn svg, .period-filter-btn [data-lucide] { width: 18px; height: 18px; }
+.period-filter-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--color-primary);
+  color: var(--text-on-primary, #fff);
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.period-bar { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.period-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  background: var(--bg-surface-sunken);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 2px;
+}
+.period-arrow {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.period-arrow svg, .period-arrow [data-lucide] { width: 18px; height: 18px; }
+.period-label {
+  min-height: 44px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-family-display);
+  font-weight: 800;
+  font-size: 0.98rem;
+  cursor: pointer;
+  text-align: center;
+}
+.period-label-text { overflow-wrap: anywhere; }
+.period-label svg, .period-label [data-lucide] { width: 14px; height: 14px; color: var(--text-secondary); flex-shrink: 0; }
+.period-arrow:focus-visible, .period-label:focus-visible, .period-chip:focus-visible, .period-filter-btn:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.period-context { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; }
+.period-chip {
+  position: relative;
+  min-height: 32px;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.period-chip::after { content: ''; position: absolute; inset: -6px 0; } /* a 44 px tall target */
+.period-chip svg, .period-chip [data-lucide] { width: 14px; height: 14px; flex-shrink: 0; }
+.period-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.period-chip--now { background: var(--color-primary); border-color: var(--color-primary); color: var(--text-on-primary, #fff); }
+.period-chip--clear { background: transparent; border-style: dashed; color: var(--text-secondary); }
+
+.period-hero-note { margin: calc(-1 * var(--space-4)) 0 var(--space-3); font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* the Period sheet */
+.period-sheet { padding: 12px 16px 20px; }
+.period-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); min-height: 44px; }
+.period-sheet-title { margin: 0; font-family: var(--font-family-display); font-weight: 800; font-size: 1.15rem; color: var(--text-primary); }
+.period-sheet-x {
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken); color: var(--text-primary); cursor: pointer;
+}
+.period-sheet-x svg, .period-sheet-x [data-lucide] { width: 18px; height: 18px; }
+.period-sheet-back {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 2px;
+  border: none; background: transparent; color: var(--text-primary);
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; padding: 0 4px;
+}
+.period-sheet-back svg, .period-sheet-back [data-lucide] { width: 18px; height: 18px; }
+.period-seg { display: flex; background: var(--bg-surface-sunken); border-radius: 14px; padding: 3px; margin-bottom: var(--space-3); }
+.period-seg-btn {
+  flex: 1; min-height: 40px; border: none; border-radius: 11px; background: transparent;
+  color: var(--text-secondary); font-weight: 700; font-size: 0.9rem; cursor: pointer;
+}
+.period-seg-btn[aria-checked="true"] { background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+.period-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
+.period-nav-title { font-family: var(--font-family-display); font-weight: 800; font-size: 1.05rem; color: var(--text-primary); text-transform: capitalize; }
+.period-nav-btn {
+  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-full); background: transparent; color: var(--text-primary); cursor: pointer;
+}
+.period-nav-btn svg, .period-nav-btn [data-lucide] { width: 18px; height: 18px; }
+.period-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: var(--space-3); }
+.period-cell {
+  min-height: 44px; border: 1.5px solid transparent; border-radius: 12px;
+  background: var(--bg-surface-sunken); color: var(--text-primary);
+  font-family: var(--font-family-display); font-weight: 600; font-size: 0.9rem; cursor: pointer;
+  text-transform: capitalize;
+}
+.period-cell.is-current { border-color: var(--color-primary); font-weight: 800; }
+.period-cell.is-selected { background: var(--color-primary); color: var(--text-on-primary, #fff); font-weight: 800; }
+.period-custom-row {
+  width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between;
+  border: none; border-top: 1px solid var(--border-color); background: transparent;
+  color: var(--text-primary); font-weight: 700; font-size: 0.95rem; cursor: pointer; padding: var(--space-2) 4px 0;
+}
+.period-custom-row svg, .period-custom-row [data-lucide] { width: 18px; height: 18px; color: var(--text-secondary); }
+.period-cal { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.period-cal-head { text-align: center; font-size: 0.72rem; font-weight: 800; color: var(--text-tertiary); padding-bottom: 4px; }
+.period-day {
+  height: 44px; border: none; background: transparent; color: var(--text-primary);
+  font-weight: 600; font-size: 0.9rem; cursor: pointer; border-radius: 0;
+}
+.period-day.is-in { background: var(--bg-surface-sunken); }
+.period-day.is-lo { background: linear-gradient(90deg, transparent 50%, var(--bg-surface-sunken) 50%); }
+.period-day.is-hi { background: linear-gradient(90deg, var(--bg-surface-sunken) 50%, transparent 50%); }
+.period-day.is-end { color: var(--text-on-primary, #fff); position: relative; z-index: 0; }
+.period-day.is-end::before {
+  content: ''; position: absolute; inset: 2px; margin: auto; width: 40px; height: 40px;
+  border-radius: 50%; background: var(--color-primary); z-index: -1;
+}
+.period-day.is-today:not(.is-end) { text-decoration: underline; text-underline-offset: 3px; font-weight: 800; }
+.period-cal-status { text-align: center; font-size: 0.85rem; font-weight: 700; color: var(--text-secondary); margin: var(--space-2) 0; min-height: 1.3em; }
+.period-done { width: 100%; }
+.period-sheet button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
+
+@media (max-width: 359px) {
+  .period-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* HG-10 P3: History's title row is one line now (Select + Filter), so it
+   takes Analytics' title line instead of stepping only its title down for a
+   tall right column (HG-3); the selection bar keeps its own spacing */
+#history-sticky-header > .page-header:not(.contextual-header-bar) {
+  margin-top: calc(var(--space-8) - var(--space-2));
+  align-items: center;
+}
+
+#history-sticky-header > .page-header:not(.contextual-header-bar) > .page-header-title {
+  margin-top: 0;
+}
+
+/* HG-10 P3: the 44 px title-row buttons must not push the title off the
+   shared 32 px line (HG-3, page_titles.spec): the row aligns to the top and
+   the buttons hang 8 px above it, centred on a one-line title */
+.history-header-sticky > .page-header:has(> .page-header-actions) { align-items: flex-start; }
+#history-sticky-header > .page-header:not(.contextual-header-bar) { align-items: flex-start; }
+.page-header > .page-header-actions { margin-top: -8px; margin-bottom: -8px; }

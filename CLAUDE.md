@@ -560,8 +560,14 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   follow.
 
 - **Period picker (HG-10, in progress, `docs/period-picker-plan.md` §0).**
-  History and Analytics move to one `‹ November 2026 ▾ ›` pill + a Month · Year
-  sheet with a custom-range calendar (P3). P1 (model): month/year periods are
+  History and Analytics show one `‹ November 2026 ▾ ›` pill
+  (`Components.PeriodBar`: `#period-prev/label/next-<page>`, a context row with
+  `#period-now-<page>` and one `[data-filter-kind]` chip per filter kind,
+  `filterButton()` = `#btn-filter-<page>`) and one `Components.PeriodSheet`
+  (Month · Year grid + a custom-range calendar step whose "‹ Period" carries
+  `[data-back-dismiss]`). `main.js` restores focus by `[data-focus-key]` after
+  a re-render. The old `AdvancedFilterBar` / `CustomRangeModal` /
+  `PeriodPicker` are unused until P5 deletes them. P1 (model): month/year periods are
   anchored on their first day (`Store._anchorPeriod`, BUG-64); ‹ › go through
   `Store.stepPeriod` (a new object; a custom range steps by its length, whole
   months by months); a replace keeps the saved sort; the Analytics bar tap

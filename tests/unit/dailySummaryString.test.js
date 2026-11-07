@@ -34,7 +34,7 @@ describe('HistoryView Daily Summary String', () => {
     };
     global.localStorage = global.window.localStorage;
     global.window.Components = {
-      AdvancedFilterBar: { render: () => '<div>FilterBar</div>', attachEvents: vi.fn() },
+      PeriodBar: { render: () => '<div>FilterBar</div>', filterButton: () => '', attachEvents: vi.fn() }, // 1.2.2 (HG-10 P3)
       TransactionItem: { render: (tx) => `<div class="tx-item">${tx.id}</div>` },
       fitNumericFontSize: (values, maxRem) => `${maxRem}rem`
     };

@@ -1,6 +1,6 @@
 # Period picker for History and Analytics — plan (1.2.2, HG-10)
 
-Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1 + P2 BUILT (§0 "as built"); P3–P5 to do.**
+Status: **DECIDED 2026-11-07 (§D answered; §0 is the final design). P1–P3 BUILT (§0 "as built"); P4 (Filter and sort sheet) and P5 (cleanup, verification) to do.**
 Comment tag `// 1.2.2 (HG-10)`. Research: a workflow of two code readers,
 four industry researchers (budgeting apps, banks, expense trackers, design
 guidance), three independent designs (minimal, fast switching,
@@ -126,6 +126,52 @@ quick ranges** — any other span is picked in the calendar (Q3).
   `analytics.vsLast.*` / `vsLastToDate.*` and `charts.customRange*` keys are
   unused; they are deleted in P5.
 - Tests: `analyticsRangesHg10.test.js` (11).
+
+### P3 as built (2026-11-07)
+
+- `Components.PeriodBar` (History and Analytics): `render(page, filters, state)`
+  draws the pill — `#period-prev-<page>` / `#period-label-<page>` /
+  `#period-next-<page>`, 44 px, never disabled, arrows named by their
+  destination ("Previous: August 2026"), the name `aria-haspopup="dialog"` —
+  and a context row only when needed: `#period-now-<page>` ("↺ This month" /
+  "↺ This year", from `Store.currentPeriodLike`), one chip per active filter
+  kind (`[data-filter-kind]`: accounts, types, categories, tags; ✕ clears that
+  kind) and `#period-clear-<page>` "Clear all" at 2+ (filters only, never the
+  period or the sort). `filterButton()` is the title-row `#btn-filter-<page>`
+  (sliders icon, a badge counting the kinds). `goNow()` keeps History's
+  BUG-115 roll → move → scroll sequence; `announce()` reads "October 2026. 23
+  transactions" (History) / the name (Analytics) through
+  `Components.Announcer`.
+- `Components.PeriodSheet.show(page)`: one `#period-sheet` dialog. Grid step: a
+  Month · Year radiogroup (arrow keys) over a 4×3 month grid (‹ year ›) or a
+  12-year page; the shown period `aria-pressed` and filled, the current one
+  `aria-current="date"` and ringed; a tap applies and closes; "Custom range…"
+  opens the calendar step — Monday-first, 44 px day buttons named with the
+  full date (+ start / end), pre-selected on the shown period, first tap
+  starts a range, Done (a start alone = one day), the dates put in order.
+  ✕ / Back / Escape / backdrop close the grid; on the calendar, "‹ Period"
+  carries `[data-back-dismiss]` so Back and Escape step back to the grid
+  first. Focus moves into the sheet, Tab is trapped, and focus returns to the
+  name.
+- Headers: History = title + `[Select] [Filter]`, then the pill; Analytics =
+  title + `[Filter]`, then the pill. Removed from the headers: the period
+  text, the "Sorted:" line, the old account/tag chips and the red "Partial
+  accounts shown" (now the accounts chip). The other-currency caption heads
+  Analytics' hero card. Both title rows keep the shared 32 px title line (the
+  44 px buttons hang 8 px above it).
+- `main.js` restores focus by `[data-focus-key]` across the wholesale
+  re-render (a vanished period control falls back to the name).
+- CSS: the HG-10 block at the end of `components.css`. i18n: `period.*` and
+  `filters.*` keys in 5 languages.
+- Not yet removed (P5, with their unit tests): `AdvancedFilterBar`,
+  `CustomRangeModal`, `PeriodPicker` — nothing renders them now.
+- Tests: `period_picker.spec.js` (7: the month-end ‹, the back chip, the sheet
+  month/year/custom and its Escape chain, a one-day range stepped by ›, chips
+  and Clear all, focus kept on ‹, Analytics bars and comparison, French at
+  360 px); `local_dates`, `i18n_core`, `category_tag_drilldown`,
+  `wallet_account_filter`, `accounts_lifecycle` and `page_titles` moved to
+  the new controls; `accountFilterIndicator` / `mixedCurrencyViews` check the
+  accounts chip; `escapeGuard` covers PeriodBar and PeriodSheet.
 
 ## Part 1 — What is wrong today
 

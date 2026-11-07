@@ -156,13 +156,13 @@ describe('Mixed-currency selections on screen (1.0.2 BUG-36 / BUG-63)', () => {
 
   // ── Analytics ─────────────────────────────────────────────────────────────
 
-  it('Analytics with a partial mixed selection shows the € hero, the Partial label AND the caption', () => {
+  it('Analytics with a partial mixed selection shows the € hero, the accounts chip AND the caption', () => {
     S().dispatch('ADD_ACCOUNT', { name: 'Savings', openingBalance: 300, openingDate: '2026-09-01' });
     S().dispatch('UPDATE_FILTERS', { page: 'analytics', filters: monthFilters([main, us]) });
     const html = global.window.Views.AnalyticsView.render(S().getState());
     expect(html).toContain('€1,950.00');
     expect(html).not.toContain('€2,910.00');
-    expect(html).toContain('Partial accounts shown');
+    expect(html).toContain('data-filter-kind="accounts"'); // 1.2.2 (HG-10 P3) was "Partial accounts shown"
     expect(html).toContain(CAPTION_ONE);
   });
 
