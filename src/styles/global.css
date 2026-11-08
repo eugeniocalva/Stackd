@@ -15,6 +15,12 @@ body {
   background: var(--bg-base);
   color: var(--text-primary);
   min-height: 100vh;
+  /* 1.2.2 (HG-11): never taller than the window. In Safari 100vh is the
+     height with the toolbar hidden, so with the toolbar shown the page
+     itself could scroll a few dozen px, apart from the view's own
+     scroller, and slide the sticky bars (History's selection bar) under
+     the status bar until the list was scrolled back to the top. */
+  min-height: 100dvh;
   /* Disable text selection and pull-to-refresh for an app-like feel */
   user-select: none;
   -webkit-user-select: none;

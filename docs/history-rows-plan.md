@@ -132,3 +132,16 @@ Each phase: lint, the whole unit suite, the e2e suite, `?v=` bumps.
 - Checked: lint, 2,388 unit, 173 e2e (page titles still on their line);
   WebKit renders light + dark at 390 px (History top and scrolled, the
   form's transfer amount).
+
+### Phone check fix (2026-11-08)
+
+- In iPhone Safari the selection bar sat under the status bar once you
+  had selected a row down the list, and it came back only after scrolling
+  to the top. Cause: `body { min-height: 100vh }`. In Safari `100vh` is
+  the height with the toolbar hidden, so with the toolbar shown the page
+  itself could scroll a few dozen px on top of the view's own scroller,
+  and that slid every sticky bar up until the list's scroll chained back
+  to the top. Body is now `min-height: 100dvh` (the native WebView has no
+  toolbar, so it never had the gap). `history_rows.spec.js` checks that
+  the bar stays in full view at the top of a scrolled list while
+  scrolling both ways, and that the page itself never scrolls.

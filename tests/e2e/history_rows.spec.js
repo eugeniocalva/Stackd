@@ -117,6 +117,35 @@ test.describe('History rows (1.2.2 HG-11 P1)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the selection bar sits in full view at the top of a scrolled list, and stays there', async ({ page }) => {
+    await boot(page);
+    const cdp = await cdpOf(page);
+    await hold(page, cdp, await rowPoint(page, 1));
+    expect((await state(page)).on).toBe(true);
+    const where = () => page.evaluate(() => {
+      const view = document.getElementById('router-view').getBoundingClientRect();
+      const bar = document.querySelector('.contextual-header-bar').getBoundingClientRect();
+      return { viewTop: view.top, barTop: bar.top, barBottom: bar.bottom, page: document.scrollingElement.scrollTop, scroll: document.getElementById('router-view').scrollTop };
+    });
+    const a = await where();
+    expect(a.scroll).toBeGreaterThan(300); // still down the list
+    expect(a.page).toBe(0); // the page itself never scrolls, only the view
+    expect(a.barTop).toBeGreaterThanOrEqual(a.viewTop);
+    expect(a.barTop - a.viewTop).toBeLessThan(20);
+    // scrolling on (both ways) keeps it pinned
+    const q = await rowPoint(page, 2);
+    await drag(page, cdp, [q.x, q.y + 80], [q.x, q.y - 200], 8);
+    const b = await where();
+    expect(b.scroll).not.toBe(a.scroll);
+    expect(b.page).toBe(0);
+    expect(Math.abs(b.barTop - a.barTop)).toBeLessThan(1);
+    await drag(page, cdp, [q.x, q.y - 100], [q.x, q.y + 150], 8);
+    const c = await where();
+    expect(c.page).toBe(0);
+    expect(Math.abs(c.barTop - a.barTop)).toBeLessThan(1);
+    await expect(page.locator('#btn-bulk-delete-header')).toBeInViewport();
+  });
+
   test('a plain tap opens the transaction', async ({ page }) => {
     await boot(page);
     const cdp = await cdpOf(page);
