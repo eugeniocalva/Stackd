@@ -1393,6 +1393,11 @@ window.Views = {
     // on, a shake flips hidden balances (with a firm haptic tap). The detector
     // runs only while Home is on screen — destroy() stops it.
     _wirePrivacy(container) {
+      // 1.2.2 (HG-13): the render that follows a hide/show finishes its motion
+      // here, in the same task as innerHTML (before the first paint).
+      const entry = this._privacyEntry;
+      this._privacyEntry = null;
+      if (entry) this._privacyAfter(container, entry);
       const pill = container.querySelector('#privacy-pill');
       if (pill) pill.addEventListener('click', () => window.Components.HiddenBalancesSheet.show());
       const P = window.Components && window.Components.PrivacyShake;
@@ -1400,16 +1405,203 @@ window.Views = {
       if (window.Store.getPrivacy().shake && P.supported()) {
         P.start(() => {
           if (window.Store.getState().activeView !== 'dashboard') return;
-          if (window.Components.Haptics) window.Components.Haptics.impact();
-          window.Store.dispatch('SET_PRIVACY', { hide: !window.Store.getPrivacy().hide });
+          this.setHidden(!window.Store.getPrivacy().hide);
         });
       } else {
         P.stop();
       }
     },
 
+    // 1.2.2 (HG-13, docs/hidden-balances-motion-plan.md): hide / show with
+    // motion while Home is on screen. Hide: four balls pop in left → right
+    // over each amount (the real '•' glyphs, laid exactly where the masked
+    // text will sit) while the digits blur away, cascading top → bottom, with
+    // a light tap per ball and a heavy seal; then SET_PRIVACY re-renders to
+    // the same picture. Show: the balls shrink out right → left, one medium
+    // tap, then the digits sharpen in. DOM-only until the one dispatch;
+    // reduced motion = a short fade. Off Home it is a plain dispatch.
+    _motion: null,
+    _privacyEntry: null,
+    MOTION: { CASCADE: 160, STEP: 60, POP: 200, SHRINK: 120, OUT_STEP: 40, OUT: 150, OUT_CASCADE: 100 },
+    _reducedMotion() {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    },
+    setHidden(hide) {
+      const S = window.Store;
+      hide = !!hide;
+      if (!!S.getPrivacy().hide === hide || this._motion) return;
+      const root = document.getElementById('router-view');
+      const H = window.Components && window.Components.Haptics;
+      if (S.getState().activeView !== 'dashboard' || !root) {
+        S.dispatch('SET_PRIVACY', { hide });
+        return;
+      }
+      const reduce = this._reducedMotion();
+      const M = this.MOTION;
+      const m = this._motion = { timers: [], done: false };
+      const at = (ms, fn) => { m.timers.push(setTimeout(fn, ms)); };
+      m.commit = (leaving) => {
+        if (m.done) return;
+        m.done = true;
+        m.timers.forEach(clearTimeout);
+        if (this._motion === m) this._motion = null;
+        if (!leaving) this._privacyEntry = { hide, reduce };
+        S.dispatch('SET_PRIVACY', { hide });
+        if (window.Components && window.Components.Announcer) {
+          window.Components.Announcer.say(window.I18n.t(hide ? 'privacy.hiddenTitle' : 'privacy.shownAnnounce'));
+        }
+      };
+
+      if (hide) {
+        // a light tap as each of the first figure's balls lands, then the seal
+        const land = Math.round(M.POP * 0.6);
+        if (H) for (let i = 0; i < 4; i++) at(land + i * M.STEP, () => H.light());
+        if (reduce) {
+          if (H) at(land + 4 * M.STEP, () => H.heavy());
+          m.commit();
+          return;
+        }
+        const items = this._cloak(root, 'real').filter(it => it.visible);
+        const maxD = this._cascade(items, M.CASCADE);
+        items.forEach(it => it.el.classList.add('is-covering'));
+        const end = maxD + 3 * M.STEP + M.POP;
+        if (H) at(end, () => H.heavy());
+        at(end, () => {
+          // close each figure's gap so a right-aligned amount slides into place
+          items.forEach(it => {
+            const balls = it.el.querySelector('.money-balls');
+            it.el.style.width = it.el.offsetWidth + 'px';
+            void it.el.offsetWidth;
+            it.el.classList.add('is-shrinking');
+            it.el.style.width = (balls ? balls.offsetWidth : 0) + 'px';
+          });
+        });
+        at(end + M.SHRINK + 10, () => m.commit());
+      } else {
+        if (H) H.impact();
+        if (reduce) { m.commit(); return; }
+        const items = this._cloak(root, 'mask').filter(it => it.visible);
+        const maxD = this._cascade(items, M.OUT_CASCADE);
+        items.forEach(it => it.el.classList.add('is-uncovering'));
+        const row = root.querySelector('.privacy-pill-row');
+        if (row) row.classList.add('is-leaving');
+        // the digits start sharpening while the last balls are still shrinking
+        at(maxD + 3 * M.OUT_STEP + Math.round(M.OUT * 0.5), () => m.commit());
+      }
+    },
+
+    // Called by destroy(): a motion still running lands its dispatch at once,
+    // with no entry animation (Home is going away).
+    _flushMotion() {
+      if (this._motion) this._motion.commit(true);
+      this._privacyEntry = null;
+    },
+
+    // After the re-render: hide → the pill row opens; show → the digits
+    // sharpen in, cascading; reduced motion → a short fade of the amounts.
+    _privacyAfter(container, entry) {
+      const row = container.querySelector('.privacy-pill-row');
+      if (entry.hide) {
+        if (row) row.classList.add(entry.reduce ? 'is-fading' : 'is-entering');
+        if (!entry.reduce) return;
+      }
+      // the wrappers are only for the animation: the text goes back to plain
+      // once it has played (screen readers and tests read the figure itself)
+      const all = this._cloak(container, entry.hide ? 'mask' : 'real', { balls: false });
+      const items = all.filter(it => it.visible);
+      let span = 150;
+      if (entry.reduce) items.forEach(it => it.el.classList.add('is-fading'));
+      else {
+        span = this._cascade(items, this.MOTION.OUT_CASCADE) + 240;
+        items.forEach(it => it.el.classList.add('is-sharpening'));
+      }
+      setTimeout(() => all.forEach(it => this._uncloak(it.el)), span + 20);
+    },
+
+    _uncloak(el) {
+      if (!el || !el.parentNode) return;
+      const parent = el.parentNode;
+      parent.replaceChild(document.createTextNode(el.textContent), el);
+      parent.normalize();
+    },
+
+    // The amounts on screen, top → bottom: mode 'real' = sign? symbol digits
+    // (Store.formatCurrency always puts the symbol first), 'mask' = symbol +
+    // MONEY_MASK. Each figure's number part is wrapped in a .money-cloak:
+    // real → the digits plus an overlay of four balls; mask → the four balls
+    // in flow. Every wrapped figure is returned; `visible` = in the viewport
+    // (only those animate — the rest swap on the re-render). The symbol stays as it is: the masked text keeps it.
+    _cloak(root, mode, opts) {
+      const withBalls = !(opts && opts.balls === false);
+      const mask = window.Store.MONEY_MASK;
+      const re = mode === 'mask'
+        ? /([$\u20ac\u00a5\u00a3])(\u2022{4})/g
+        : /([$\u20ac\u00a5\u00a3])(\d+(?:[.,'\u00a0\u202f\u2009 ]\d{3})*(?:[.,]\d{1,2})?)/g;
+      // NodeFilter's constants, also where a host window does not expose them
+      const NF = window.NodeFilter || { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
+      const nodes = [];
+      const walker = document.createTreeWalker(root, NF.SHOW_TEXT, {
+        acceptNode: (n) => {
+          const p = n.parentElement;
+          if (!p || p.closest('.money-cloak, svg, canvas, script, style, .visually-hidden, [aria-hidden="true"]')) return NF.FILTER_REJECT;
+          re.lastIndex = 0;
+          return re.test(n.nodeValue) ? NF.FILTER_ACCEPT : NF.FILTER_REJECT;
+        }
+      });
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      const balls = (cls) => `<span class="money-balls${cls}" aria-hidden="true">${[0, 1, 2, 3].map(i => `<span class="money-ball" style="--i:${i}">\u2022</span>`).join('')}</span>`;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      const out = [];
+      nodes.forEach(node => {
+        const text = node.nodeValue;
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        const made = [];
+        re.lastIndex = 0;
+        let mt;
+        while ((mt = re.exec(text))) {
+          const start = mt.index + mt[1].length;
+          frag.appendChild(document.createTextNode(text.slice(last, start)));
+          const el = document.createElement('span');
+          el.className = 'money-cloak';
+          if (!withBalls) el.textContent = mt[2];
+          else el.innerHTML = mode === 'mask'
+            ? balls(' money-balls--flow')
+            : `<span class="money-digits">${window.I18n.esc(mt[2])}</span>${balls('')}`;
+          if (withBalls && mode === 'mask') el.setAttribute('aria-label', mask);
+          if (!withBalls && mode === 'real') el.innerHTML = `<span class="money-digits">${window.I18n.esc(mt[2])}</span>`;
+          frag.appendChild(el);
+          made.push(el);
+          last = start + mt[2].length;
+        }
+        frag.appendChild(document.createTextNode(text.slice(last)));
+        node.parentNode.replaceChild(frag, node);
+        made.forEach(el => {
+          const r = el.getBoundingClientRect();
+          out.push({ el, y: r.top, visible: !(vh && (r.bottom < 0 || r.top > vh)) });
+        });
+      });
+      return out;
+    },
+
+    // Delay per figure by its height on screen (top first), spread over at
+    // most `span` ms however many figures there are. Returns the largest.
+    _cascade(items, span) {
+      if (!items.length) return 0;
+      const top = Math.min(...items.map(i => i.y));
+      const vh = window.innerHeight || 800;
+      let max = 0;
+      items.forEach(it => {
+        const d = Math.round(Math.min(1, Math.max(0, (it.y - top) / vh)) * span);
+        it.el.style.setProperty('--d', d + 'ms');
+        if (d > max) max = d;
+      });
+      return max;
+    },
+
     destroy() {
       if (window.Components && window.Components.PrivacyShake) window.Components.PrivacyShake.stop(); // 1.2.2 (HG-4)
+      this._flushMotion(); // 1.2.2 (HG-13)
       if (window.Widgets) window.Widgets.destroyCharts();
       if (this._balanceChart) {
         try { this._balanceChart.destroy(); } catch (e) { /* already gone */ }

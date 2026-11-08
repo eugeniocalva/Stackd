@@ -164,7 +164,7 @@ describe('Home while balances are hidden (HG-4)', () => {
     expect(container.querySelector('#dash-total').textContent).toBe('€4,957.50');
   });
 
-  it('the pill opens the sheet: Done keeps them hidden, Show reveals them', () => {
+  it('the pill opens the sheet: Done keeps them hidden, Show reveals them', async () => {
     boot({ stored: { hide: true } });
     mount();
     container.querySelector('#privacy-pill').click();
@@ -178,7 +178,8 @@ describe('Home while balances are hidden (HG-4)', () => {
     container.querySelector('#privacy-pill').click();
     sheet = document.getElementById('hidden-balances-sheet');
     sheet.querySelector('#hidden-balances-sheet-show').click();
-    expect(S.getPrivacy().hide).toBe(false);
+    // 1.2.2 (HG-13): through Home's reveal motion, one dispatch at its end
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(false));
   });
 });
 
@@ -216,7 +217,7 @@ describe('shake to hide (HG-4)', () => {
     expect(C.PrivacyShake._magnitude({ acceleration: null, accelerationIncludingGravity: { x: 0, y: 9.81, z: 0 } })).toBeLessThan(0.01);
   });
 
-  it('runs on Home only while the pref is on, and a shake flips hide with a haptic tap', () => {
+  it('runs on Home only while the pref is on, and a shake flips hide with a haptic tap', async () => {
     boot({ native: true });
     mount();
     expect(C.PrivacyShake.isRunning()).toBe(false);
@@ -226,8 +227,12 @@ describe('shake to hide (HG-4)', () => {
     expect((listeners.devicemotion || []).length).toBe(1);
     const now = Date.now();
     motion(20, now); motion(-20, now + 200); motion(20, now + 400);
-    expect(S.getPrivacy().hide).toBe(true);
-    expect(haptics.impact).toHaveBeenCalledWith({ style: 'MEDIUM' });
+    // 1.2.2 (HG-13): the balls cover first, then one dispatch; a light tap
+    // per ball and a heavy seal
+    expect(S.getPrivacy().hide).toBe(false);
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(true));
+    expect(haptics.impact.mock.calls.filter(c => c[0].style === 'LIGHT').length).toBe(4);
+    expect(haptics.impact).toHaveBeenCalledWith({ style: 'HEAVY' });
     V.destroy();
     expect(C.PrivacyShake.isRunning()).toBe(false);
     expect((listeners.devicemotion || []).length).toBe(0);

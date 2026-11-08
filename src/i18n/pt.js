@@ -48,6 +48,7 @@ window.I18n.dicts.pt = {
   'privacy.pill': 'Saldos ocultos',
   'privacy.hiddenTitle': 'Saldos ocultos',
   'privacy.hiddenBody': 'Os valores do Início estão ocultos. Toca em Mostrar para os veres de novo.',
+  'privacy.shownAnnounce': 'Saldos visíveis', // 1.2.2 (HG-13)
   'privacy.show': 'Mostrar',
   'privacy.motionDenied': "O acesso ao movimento está desligado, por isso agitar não pode ocultar os saldos. Liga-o para a Stack'd nas definições do telemóvel.",
   'navOrder.section': 'Barra de separadores', // 1.2.2 (HG-7 P2): Settings → Tab bar

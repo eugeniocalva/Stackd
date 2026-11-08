@@ -96,3 +96,43 @@ test('with Shake to hide on, a shake on Home flips the balances both ways', asyn
   await shake();
   await expect(page.locator('#dash-total')).toHaveText('€2,457.50');
 });
+
+// 1.2.2 (HG-13): with motion on, the balls cover the figures before the one
+// dispatch, cascading; a reveal shrinks them out and the digits come back as
+// plain text. Reduced motion (the suite default above) swaps with a fade.
+test('the balls cover the figures, then one dispatch; a reveal brings plain digits back', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await boot(page);
+  await go(page, '#dashboard', '#dash-total');
+  await page.evaluate(() => {
+    window.__privacyDispatches = 0;
+    const d = window.Store.dispatch.bind(window.Store);
+    window.Store.dispatch = (a, p) => { if (a === 'SET_PRIVACY') window.__privacyDispatches++; return d(a, p); };
+  });
+
+  await page.evaluate(() => window.Views.DashboardView.setHidden(true));
+  // mid-motion: still shown in the store, four balls over the total's digits
+  const mid = await page.evaluate(() => ({
+    hide: window.Store.getPrivacy().hide,
+    balls: document.querySelectorAll('#dash-total .money-cloak.is-covering .money-ball').length,
+    delays: Array.from(document.querySelectorAll('.money-cloak.is-covering')).map(el => el.style.getPropertyValue('--d'))
+  }));
+  expect(mid.hide).toBe(false);
+  expect(mid.balls).toBe(4);
+  expect(mid.delays[0]).toBe('0ms');
+  expect(new Set(mid.delays).size).toBeGreaterThan(1); // a cascade, not all at once
+  // a second request while it runs is ignored
+  await page.evaluate(() => window.Views.DashboardView.setHidden(false));
+
+  await expect(page.locator('#dash-total')).toHaveText('€••••');
+  await expect(page.locator('.privacy-pill-row.is-entering')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__privacyDispatches)).toBe(1);
+  await expect(page.locator('#sr-announcer')).toHaveText('Balances hidden');
+
+  await page.evaluate(() => window.Views.DashboardView.setHidden(false));
+  await expect(page.locator('#dash-total .money-cloak.is-uncovering')).toHaveCount(1);
+  await expect(page.locator('#dash-total')).toHaveText('€2,457.50');
+  await expect(page.locator('#privacy-pill')).toHaveCount(0);
+  await expect(page.locator('.money-cloak')).toHaveCount(0); // unwrapped once played
+  expect(await page.evaluate(() => window.__privacyDispatches)).toBe(2);
+});

@@ -48,6 +48,7 @@ window.I18n.dicts.it = {
   'privacy.pill': 'Saldi nascosti',
   'privacy.hiddenTitle': 'Saldi nascosti',
   'privacy.hiddenBody': 'Gli importi nella Home sono nascosti. Tocca Mostra per rivederli.',
+  'privacy.shownAnnounce': 'Saldi visibili', // 1.2.2 (HG-13)
   'privacy.show': 'Mostra',
   'privacy.motionDenied': "L'accesso al movimento è disattivato, quindi scuotere non può nascondere i saldi. Attivalo nelle impostazioni del telefono per Stack'd.",
   'navOrder.section': 'Barra delle schede', // 1.2.2 (HG-7 P2): Settings → Tab bar

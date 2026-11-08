@@ -48,6 +48,7 @@ window.I18n.dicts.es = {
   'privacy.pill': 'Saldos ocultos',
   'privacy.hiddenTitle': 'Saldos ocultos',
   'privacy.hiddenBody': 'Los importes de Inicio están ocultos. Toca Mostrar para verlos de nuevo.',
+  'privacy.shownAnnounce': 'Saldos visibles', // 1.2.2 (HG-13)
   'privacy.show': 'Mostrar',
   'privacy.motionDenied': "El acceso al movimiento está desactivado, así que agitar no puede ocultar tus saldos. Actívalo para Stack'd en los ajustes del teléfono.",
   'navOrder.section': 'Barra de pestañas', // 1.2.2 (HG-7 P2): Settings → Tab bar

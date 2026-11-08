@@ -47,6 +47,7 @@ window.I18n.dicts.en = {
   'privacy.pill': 'Balances hidden',
   'privacy.hiddenTitle': 'Balances hidden',
   'privacy.hiddenBody': 'Amounts on Home are hidden. Tap Show to see them again.',
+  'privacy.shownAnnounce': 'Balances shown', // 1.2.2 (HG-13)
   'privacy.show': 'Show',
   'privacy.motionDenied': "Motion access is off, so a shake can't hide your balances. Turn it on in your phone's settings for Stack'd.",
   'navOrder.section': 'Tab bar', // 1.2.2 (HG-7 P2): Settings → Tab bar

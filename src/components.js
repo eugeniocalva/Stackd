@@ -2567,7 +2567,9 @@ window.Components = {
     // 1.2.2 (HG-4): one firm tap — a shake flipped hidden balances
     impact() { this._call('impact', { style: 'MEDIUM' }); },
     // 1.2.2 (HG-8): a light tap — a ring slice took the focus
-    light() { this._call('impact', { style: 'LIGHT' }); }
+    light() { this._call('impact', { style: 'LIGHT' }); },
+    // 1.2.2 (HG-13): the seal when the last hiding ball lands
+    heavy() { this._call('impact', { style: 'HEAVY' }); }
   },
 
   // 1.2.2 (HG-4): shake to hide balances on Home. Listens to devicemotion
@@ -2713,7 +2715,10 @@ window.Components = {
       backdrop.querySelector(`#${id}-done`).addEventListener('click', close);
       backdrop.querySelector(`#${id}-show`).addEventListener('click', () => {
         close();
-        window.Store.dispatch('SET_PRIVACY', { hide: false });
+        // 1.2.2 (HG-13): through Home's reveal motion when Home is on screen
+        const D = window.Views && window.Views.DashboardView;
+        if (D && typeof D.setHidden === 'function') D.setHidden(false);
+        else window.Store.dispatch('SET_PRIVACY', { hide: false });
       });
       document.addEventListener('keydown', onKey);
       return backdrop;

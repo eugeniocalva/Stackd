@@ -5266,3 +5266,99 @@ a:focus-visible,
 }
 .acc-order-open .list-item-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-order-open:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-radius: 10px; }
+
+/* 1.2.2 (HG-13): hidden balances in motion (docs/hidden-balances-motion-plan.md).
+   A .money-cloak wraps the number part of one amount on Home while it is
+   covered or uncovered; the balls are the real '•' glyphs of MONEY_MASK, so
+   the final frame matches the masked render exactly. --d = cascade delay,
+   --i = ball index. Timings mirror DashboardView.MOTION. */
+.money-cloak {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.money-cloak .money-balls {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.money-cloak .money-balls--flow { position: static; }
+.money-cloak .money-ball {
+  display: inline-block;
+  transform-origin: 50% 60%;
+}
+.money-cloak:not(.is-covering):not(.is-uncovering) .money-balls:not(.money-balls--flow) { visibility: hidden; }
+.money-cloak.is-covering .money-ball {
+  animation: money-ball-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--d, 0ms) + var(--i) * 60ms);
+}
+.money-cloak.is-covering .money-digits {
+  display: inline-block;
+  animation: money-digits-out 320ms ease-in both;
+  animation-delay: calc(var(--d, 0ms) + 40ms);
+}
+.money-cloak.is-shrinking { transition: width 120ms ease-out; }
+.money-cloak.is-uncovering .money-ball {
+  animation: money-ball-out 150ms ease-in both;
+  animation-delay: calc(var(--d, 0ms) + (3 - var(--i)) * 40ms);
+}
+.money-cloak.is-sharpening .money-digits {
+  display: inline-block;
+  animation: money-digits-in 220ms ease-out both;
+  animation-delay: var(--d, 0ms);
+}
+.money-cloak.is-fading { animation: money-fade 150ms ease-out both; }
+
+@keyframes money-ball-pop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes money-ball-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0); opacity: 0; }
+}
+@keyframes money-digits-out {
+  0% { filter: blur(0); opacity: 1; }
+  100% { filter: blur(6px); opacity: 0; }
+}
+@keyframes money-digits-in {
+  0% { filter: blur(6px); opacity: 0; }
+  100% { filter: blur(0); opacity: 1; }
+}
+@keyframes money-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* the "Balances hidden" pill row opens after a hide and closes before a show,
+   so the page below slides instead of jumping */
+.privacy-pill-row.is-entering { animation: privacy-row-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.privacy-pill-row.is-entering .privacy-pill { animation: privacy-pill-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both; }
+.privacy-pill-row.is-leaving { animation: privacy-row-out 220ms ease-in both; overflow: hidden; }
+.privacy-pill-row.is-fading { animation: money-fade 150ms ease-out both; }
+@keyframes privacy-row-in {
+  from { max-height: 0; margin-bottom: 0; opacity: 0; }
+  to { max-height: 60px; margin-bottom: var(--space-4); opacity: 1; }
+}
+@keyframes privacy-pill-in {
+  from { transform: translateY(-12px) scale(0.9); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes privacy-row-out {
+  from { max-height: 60px; margin-bottom: var(--space-4); opacity: 1; }
+  to { max-height: 0; margin-bottom: 0; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .money-cloak.is-covering .money-ball,
+  .money-cloak.is-covering .money-digits,
+  .money-cloak.is-uncovering .money-ball,
+  .money-cloak.is-sharpening .money-digits,
+  .privacy-pill-row.is-entering,
+  .privacy-pill-row.is-entering .privacy-pill,
+  .privacy-pill-row.is-leaving { animation: none; }
+}

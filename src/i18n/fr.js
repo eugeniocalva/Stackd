@@ -48,6 +48,7 @@ window.I18n.dicts.fr = {
   'privacy.pill': 'Soldes masqués',
   'privacy.hiddenTitle': 'Soldes masqués',
   'privacy.hiddenBody': "Les montants de l'Accueil sont masqués. Touchez Afficher pour les revoir.",
+  'privacy.shownAnnounce': 'Soldes affichés', // 1.2.2 (HG-13)
   'privacy.show': 'Afficher',
   'privacy.motionDenied': "L'accès au mouvement est désactivé : secouer ne peut pas masquer vos soldes. Activez-le pour Stack'd dans les réglages du téléphone.",
   'navOrder.section': "Barre d'onglets", // 1.2.2 (HG-7 P2): Settings → Tab bar
