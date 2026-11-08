@@ -2597,9 +2597,44 @@ window.Components = {
       const DME = window.DeviceMotionEvent;
       if (!DME) return 'unsupported';
       if (typeof DME.requestPermission !== 'function') return 'granted';
-      try { return await DME.requestPermission(); } catch (e) { return 'denied'; }
+      try {
+        const answer = await DME.requestPermission();
+        if (answer === 'granted') this._granted = true;
+        return answer;
+      } catch (e) { return 'denied'; }
     },
     isRunning() { return !!this._handler; },
+    // 1.2.2 (HG-13 fix): iOS WebKit sends devicemotion only to a page that
+    // called DeviceMotionEvent.requestPermission() from a user gesture in
+    // THIS page load — the grant is not kept across launches (the Capacitor
+    // shell answers it silently, but the call still has to be made). So
+    // while Shake to hide is on, the first tap after each launch asks again;
+    // nothing to do where requestPermission does not exist (Android, web).
+    _granted: false,
+    _armHandler: null,
+    armPermission() {
+      const DME = window.DeviceMotionEvent;
+      if (this._granted || this._armHandler || !DME || typeof DME.requestPermission !== 'function') return;
+      const doc = window.document;
+      if (!doc || typeof doc.addEventListener !== 'function') return;
+      const handler = () => {
+        this.disarmPermission();
+        this.requestPermission().then(answer => {
+          if (answer === 'granted') this._granted = true;
+        });
+      };
+      this._armHandler = handler;
+      doc.addEventListener('touchend', handler, true);
+      doc.addEventListener('click', handler, true);
+    },
+    disarmPermission() {
+      const doc = window.document;
+      if (this._armHandler && doc) {
+        doc.removeEventListener('touchend', this._armHandler, true);
+        doc.removeEventListener('click', this._armHandler, true);
+      }
+      this._armHandler = null;
+    },
     start(onShake) {
       this._onShake = onShake;
       if (this._handler) return;

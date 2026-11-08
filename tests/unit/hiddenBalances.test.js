@@ -238,6 +238,25 @@ describe('shake to hide (HG-4)', () => {
     expect((listeners.devicemotion || []).length).toBe(0);
   });
 
+  // 1.2.2 (HG-13 fix): iOS keeps the motion grant for one page load only, so
+  // with Shake to hide on, the first tap after a launch asks again — once.
+  it('re-asks iOS for motion access on the first tap after a launch', async () => {
+    boot({ stored: { hide: false, shake: true } });
+    global.window.document = document;
+    const ask = vi.fn(() => Promise.resolve('granted'));
+    global.window.DeviceMotionEvent.requestPermission = ask;
+    mount();
+    expect(ask).not.toHaveBeenCalled(); // no gesture yet
+    document.body.dispatchEvent(new Event('touchend', { bubbles: true }));
+    expect(ask).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(C.PrivacyShake._granted).toBe(true));
+    document.body.click();
+    mount(); // a re-render does not arm it again once granted
+    document.body.click();
+    expect(ask).toHaveBeenCalledTimes(1);
+    C.PrivacyShake.disarmPermission();
+  });
+
   it('asks iOS for motion access and reports a refusal', async () => {
     boot();
     global.window.DeviceMotionEvent.requestPermission = vi.fn(() => Promise.resolve('denied'));

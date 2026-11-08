@@ -1403,6 +1403,9 @@ window.Views = {
       const P = window.Components && window.Components.PrivacyShake;
       if (!P) return;
       if (window.Store.getPrivacy().shake && P.supported()) {
+        // 1.2.2 (HG-13 fix): iOS forgets the motion grant at every launch —
+        // the first tap asks again (silently, the shell grants it)
+        if (typeof P.armPermission === 'function') P.armPermission();
         P.start(() => {
           if (window.Store.getState().activeView !== 'dashboard') return;
           this.setHidden(!window.Store.getPrivacy().hide);
