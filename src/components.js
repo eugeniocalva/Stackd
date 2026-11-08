@@ -1135,13 +1135,17 @@ window.Components = {
         : '';
       return `
         <div class="period-bar" data-page="${pageKey}">
-          <div class="period-pill">
+          <!-- 1.2.2 (HG-10 follow-up): the arrows sit outside the pill as
+               primary buttons; the pill is the label alone, no chevron -->
+          <div class="period-row">
             <button type="button" class="period-arrow" id="period-prev-${pageKey}" data-focus-key="period-prev-${pageKey}" aria-label="${t('period.prevAria', { label: esc(prev) })}">
               <i data-lucide="chevron-left" aria-hidden="true"></i>
             </button>
-            <button type="button" class="period-label" id="period-label-${pageKey}" data-focus-key="period-label-${pageKey}" aria-haspopup="dialog" aria-label="${t('period.change', { label: esc(label) })}">
-              <span class="period-label-text">${esc(label)}</span><i data-lucide="chevron-down" aria-hidden="true"></i>
-            </button>
+            <div class="period-pill">
+              <button type="button" class="period-label" id="period-label-${pageKey}" data-focus-key="period-label-${pageKey}" aria-haspopup="dialog" aria-label="${t('period.change', { label: esc(label) })}">
+                <span class="period-label-text">${esc(label)}</span>
+              </button>
+            </div>
             <button type="button" class="period-arrow" id="period-next-${pageKey}" data-focus-key="period-next-${pageKey}" aria-label="${t('period.nextAria', { label: esc(next) })}">
               <i data-lucide="chevron-right" aria-hidden="true"></i>
             </button>

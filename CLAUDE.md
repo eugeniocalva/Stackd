@@ -560,8 +560,11 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   follow.
 
 - **Period picker (HG-10, `docs/period-picker-plan.md` §0; built 2026-11-07).**
-  History and Analytics show one `‹ November 2026 ▾ ›` pill
-  (`Components.PeriodBar`: `#period-prev/label/next-<page>`, a context row with
+  History and Analytics show one `‹ [November 2026] ›` bar
+  (`Components.PeriodBar`: `#period-prev/label/next-<page>` — since the
+  2026-11-08 phone check the arrows are primary-filled circles outside the
+  pill, the pill is the label alone (no chevron, min-width 176 px so month
+  steps never move the arrows); a context row with
   `#period-now-<page>` and one `[data-filter-kind]` chip per filter kind,
   `filterButton()` = `#btn-filter-<page>`) and one `Components.PeriodSheet`
   (Month · Year grid + a custom-range calendar step whose "‹ Period" carries

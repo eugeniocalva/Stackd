@@ -4929,15 +4929,28 @@ a:focus-visible,
 }
 
 .period-bar { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+/* 1.2.2 (HG-10 follow-up): ‹ [ label ] › — the arrows are primary buttons
+   outside the pill. The pill keeps a minimum width that fits the longest
+   month label, so stepping through months never moves the arrows under
+   the thumb (a longer custom range may still widen it). */
+.period-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+}
 .period-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   max-width: 100%;
+  min-width: 0;
   background: var(--bg-surface-sunken);
   border: 1px solid var(--border-color);
   border-radius: 24px;
-  padding: 2px;
 }
+@media (min-width: 340px) { .period-pill { min-width: 176px; } }
 .period-arrow {
   flex-shrink: 0;
   width: 44px;
@@ -4947,18 +4960,22 @@ a:focus-visible,
   justify-content: center;
   border: none;
   border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--color-primary);
+  color: var(--text-on-primary);
   cursor: pointer;
+  transition: transform 0.12s ease;
 }
-.period-arrow svg, .period-arrow [data-lucide] { width: 18px; height: 18px; }
+.period-arrow:active { transform: scale(0.94); }
+.period-arrow svg, .period-arrow [data-lucide] { width: 20px; height: 20px; stroke-width: 2.4; }
 .period-label {
   min-height: 44px;
+  width: 100%;
   min-width: 0;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 0 6px;
+  padding: 0 18px;
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -4969,7 +4986,6 @@ a:focus-visible,
   text-align: center;
 }
 .period-label-text { overflow-wrap: anywhere; }
-.period-label svg, .period-label [data-lucide] { width: 14px; height: 14px; color: var(--text-secondary); flex-shrink: 0; }
 .period-arrow:focus-visible, .period-label:focus-visible, .period-chip:focus-visible, .period-filter-btn:focus-visible {
   outline: 3px solid var(--color-primary);
   outline-offset: 2px;
