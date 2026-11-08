@@ -2150,7 +2150,7 @@ window.Views = {
         <div class="container" id="ob-panel" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${esc(window.I18n.t('account.openingBalance'))}</h1>
-            <a href="#transactions" data-router-leave aria-label="${escapeAttr(window.I18n.t('common.close'))}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
+            <a href="#transactions" data-router-leave aria-label="${escapeAttr(window.I18n.t('common.close'))}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           <div class="card" style="text-align: center; margin-bottom: var(--space-6);">
             <div class="${Number(tx.amount) < 0 ? 'text-expense' : 'text-balance'}" style="font-family: var(--font-family-display); font-size: var(--text-4xl); font-weight: 800; margin: var(--space-4) 0 var(--space-2);">${esc(amount)}</div>
@@ -2328,7 +2328,7 @@ window.Views = {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${isEdit ? window.I18n.t('form.editLog') : window.I18n.t('form.newLog')}</h1>
-            <a href="#${isEdit ? 'transactions' : 'dashboard'}" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
+            <a href="#${isEdit ? 'transactions' : 'dashboard'}" data-router-leave aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           
           <!-- Type Toggle -->
@@ -3824,7 +3824,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#categories" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+            <a href="#categories" data-router-leave aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -4778,7 +4778,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${window.I18n.t('form.tags')}</h1>
-            <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;">✕</a>
+            <a href="#settings" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           
           <div class="list-group">
@@ -6634,7 +6634,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 160px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#dashboard" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+            <a href="#dashboard" data-router-leave aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-6);">
@@ -7441,7 +7441,7 @@ Object.assign(window.Views, {
         <div id="debt-sim-form" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${title}</h1>
-            <a href="#debt" id="dsim-close" data-router-leave aria-label="${window.I18n.t('debt.closeSimAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+            <a href="#debt" id="dsim-close" data-router-leave aria-label="${window.I18n.t('debt.closeSimAria')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
 
           <div class="amount-input-group">
@@ -8080,7 +8080,7 @@ Object.assign(window.Views, {
             <h1 class="header-title" style="margin: 0; font-size: var(--text-2xl);">${r.name ? S.esc(r.name) : window.I18n.t(t.label)}</h1>
             <div style="display: flex; gap: var(--space-2);">
               ${r.loan ? `<button id="btn-dres-menu" aria-label="${window.I18n.t('common.moreActions')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border: none; border-radius: 10px; cursor: pointer;"><i data-lucide="more-horizontal" style="width: 18px; height: 18px;"></i></button>` : ''}
-              <a href="${backHref}" data-router-leave aria-label="${window.I18n.t('debt.closeResultsAria')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none;">✕</a>
+              <a href="${backHref}" data-router-leave aria-label="${window.I18n.t('debt.closeResultsAria')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
             </div>
           </div>
 
@@ -8510,7 +8510,7 @@ Object.assign(window.Views, {
         <div id="import-map" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-2);">
             <h1 class="header-title" style="margin: 0;">${window.I18n.t('bankImport.mapTitle')}</h1>
-            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.fileInfo', { count: d.analysis.rowsRaw.length, file: esc(d.fileName) })}</div>
           ${d.presetApplied ? `
@@ -8595,7 +8595,7 @@ Object.assign(window.Views, {
         <div id="import-map" class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-2);">
             <h1 class="header-title" style="margin: 0;">${window.I18n.t('bankImport.stmtTitle')}</h1>
-            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+            <a href="#settings" id="imap-close" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           <div style="color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">${window.I18n.t('bankImport.fileInfo', { count: st.entries.length, file: esc(d.fileName) })}</div>
           <div class="card" id="imap-ccy-warn" style="display: ${mismatch ? 'flex' : 'none'}; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--color-warning, var(--text-secondary)); font-size: var(--text-xs); line-height: 1.5;">
@@ -8857,7 +8857,7 @@ Object.assign(window.Views, {
           <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); margin-bottom: var(--space-4);">
             <a href="#import-map" class="touch-target" aria-label="${window.I18n.t('bankImport.mapTitle')}" style="display: flex; align-items: center; color: var(--text-secondary);"><i data-lucide="chevron-left" style="width: 22px; height: 22px;"></i></a>
             <h1 class="header-title" style="margin: 0; flex: 1;">${window.I18n.t('bankImport.previewTitle')}</h1>
-            <a href="#settings" id="iprev-close" aria-label="${window.I18n.t('common.close')}" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px; text-decoration: none; flex-shrink: 0;">✕</a>
+            <a href="#settings" id="iprev-close" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
 
           <div class="card" style="margin-bottom: var(--space-4);">
@@ -9887,7 +9887,7 @@ Object.assign(window.Views, {
       <div class="container" style="padding-bottom: 100px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
           <h1 class="header-title" style="margin: 0;">${isAcc ? t('account.newTitle') : t('form.newCategory')}</h1>
-          <a href="${backHref}" data-router-leave style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+          <a href="${backHref}" data-router-leave aria-label="${t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
         </div>
         <div class="card card-elevated" id="pro-locked" data-feature="${feature}" style="padding: var(--space-6) var(--space-5); text-align: center;">
           <div class="list-item-icon" style="margin: 0 auto var(--space-4); width: 56px; height: 56px;" aria-hidden="true"><i data-lucide="lock" style="width: 26px; height: 26px;"></i></div>
@@ -10030,7 +10030,7 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${t('others.purchases')}</h1>
-            <a href="#settings" style="color: var(--text-secondary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); border-radius: 10px;" aria-label="${t('common.close')}"><i data-lucide="x" style="width: 18px; height: 18px;"></i></a>
+            <a href="#settings" aria-label="${t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           ${bankShipped ? `
           <div id="purchases-tabs" role="tablist" style="display: flex; background: var(--bg-surface-sunken); border-radius: 22px; padding: 3px; margin-bottom: var(--space-6);">

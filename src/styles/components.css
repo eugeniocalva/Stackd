@@ -5232,3 +5232,25 @@ a:focus-visible,
 .history-header-sticky > .page-header:not(.contextual-header-bar) { margin-bottom: var(--space-6); }
 .period-arrow:disabled { opacity: 0.35; cursor: default; }
 .period-arrow:disabled:active { transform: none; }
+
+/* 1.2.2 (phone check 2026-11-08) Every full-screen page's close ✕ is a
+   primary button like the period arrows: a 44 px filled circle. It hangs
+   6 px above and below its 32 px slot, so the title row keeps its height
+   and the title stays on the shared 32 px line (HG-3). */
+.page-close {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin: -6px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+  text-decoration: none;
+  transition: transform 0.12s ease;
+}
+.page-close:active { transform: scale(0.94); }
+.page-close svg, .page-close [data-lucide] { width: 20px; height: 20px; stroke-width: 2.4; }
+.page-close:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
