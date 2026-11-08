@@ -1422,7 +1422,8 @@ window.Views = {
     // a light tap per ball and a heavy seal; then SET_PRIVACY re-renders to
     // the same picture. Show: the balls shrink out right → left, one medium
     // tap, then the digits sharpen in. DOM-only until the one dispatch;
-    // reduced motion = a short fade. Off Home it is a plain dispatch.
+    // Reduce Motion = the same steps and taps, as fades (CSS). Off Home it
+    // is a plain dispatch.
     _motion: null,
     _privacyEntry: null,
     MOTION: { CASCADE: 160, STEP: 60, POP: 200, SHRINK: 120, OUT_STEP: 40, OUT: 150, OUT_CASCADE: 100 },
@@ -1443,6 +1444,10 @@ window.Views = {
       const M = this.MOTION;
       const m = this._motion = { timers: [], done: false };
       const at = (ms, fn) => { m.timers.push(setTimeout(fn, ms)); };
+      // Haptics run on their own timers: the commit clears the motion's timers,
+      // and it must never cancel a tap still to come. (TestFlight 10204: with
+      // Reduce Motion on, the commit came first and every tap was dropped.)
+      const buzz = (ms, fn) => { if (H) setTimeout(fn, ms); };
       m.commit = (leaving) => {
         if (m.done) return;
         m.done = true;
@@ -1458,17 +1463,14 @@ window.Views = {
       if (hide) {
         // a light tap as each of the first figure's balls lands, then the seal
         const land = Math.round(M.POP * 0.6);
-        if (H) for (let i = 0; i < 4; i++) at(land + i * M.STEP, () => H.light());
-        if (reduce) {
-          if (H) at(land + 4 * M.STEP, () => H.heavy());
-          m.commit();
-          return;
-        }
+        for (let i = 0; i < 4; i++) buzz(land + i * M.STEP, () => H.light());
+        // Reduce Motion plays the same sequence; the CSS makes each ball fade
+        // in instead of popping and the digits fade instead of blurring.
         const items = this._cloak(root, 'real').filter(it => it.visible);
         const maxD = this._cascade(items, M.CASCADE);
         items.forEach(it => it.el.classList.add('is-covering'));
         const end = maxD + 3 * M.STEP + M.POP;
-        if (H) at(end, () => H.heavy());
+        buzz(end, () => H.heavy());
         at(end, () => {
           // close each figure's gap so a right-aligned amount slides into place
           items.forEach(it => {
@@ -1481,8 +1483,7 @@ window.Views = {
         });
         at(end + M.SHRINK + 10, () => m.commit());
       } else {
-        if (H) H.impact();
-        if (reduce) { m.commit(); return; }
+        buzz(0, () => H.impact());
         const items = this._cloak(root, 'mask').filter(it => it.visible);
         const maxD = this._cascade(items, M.OUT_CASCADE);
         items.forEach(it => it.el.classList.add('is-uncovering'));
@@ -1501,23 +1502,19 @@ window.Views = {
     },
 
     // After the re-render: hide → the pill row opens; show → the digits
-    // sharpen in, cascading; reduced motion → a short fade of the amounts.
+    // sharpen in, cascading (Reduce Motion: the CSS turns both into fades).
     _privacyAfter(container, entry) {
       const row = container.querySelector('.privacy-pill-row');
       if (entry.hide) {
-        if (row) row.classList.add(entry.reduce ? 'is-fading' : 'is-entering');
-        if (!entry.reduce) return;
+        if (row) row.classList.add('is-entering');
+        return;
       }
       // the wrappers are only for the animation: the text goes back to plain
       // once it has played (screen readers and tests read the figure itself)
-      const all = this._cloak(container, entry.hide ? 'mask' : 'real', { balls: false });
+      const all = this._cloak(container, 'real', { balls: false });
       const items = all.filter(it => it.visible);
-      let span = 150;
-      if (entry.reduce) items.forEach(it => it.el.classList.add('is-fading'));
-      else {
-        span = this._cascade(items, this.MOTION.OUT_CASCADE) + 240;
-        items.forEach(it => it.el.classList.add('is-sharpening'));
-      }
+      const span = this._cascade(items, this.MOTION.OUT_CASCADE) + 240;
+      items.forEach(it => it.el.classList.add('is-sharpening'));
       setTimeout(() => all.forEach(it => this._uncloak(it.el)), span + 20);
     },
 

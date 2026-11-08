@@ -135,8 +135,13 @@ is the design as written:
   then unwraps every cloak back to plain text (`_uncloak`).
 - The pill row opens (`.is-entering`) after a hide and closes
   (`.is-leaving`) before a show, so the page slides instead of jumping.
-- Reduced motion: no balls; the dispatch is immediate and the figures and
-  pill fade in (150 ms); haptics unchanged. `Announcer` says
+- Reduce Motion (changed after TestFlight 10204): the same steps and taps,
+  as fades — each ball fades in, the digits fade out, the pill row fades; no
+  scale, blur or slide. Haptics run on their own timers, never cleared by the
+  commit (10204 dropped every tap with Reduce Motion on: the immediate commit
+  cleared them). 10203 also never received a shake: iOS needs
+  `DeviceMotionEvent.requestPermission()` again after each launch
+  (`PrivacyShake.armPermission`, first tap). `Announcer` says
   `privacy.hiddenTitle` / `privacy.shownAnnounce` (new key, 5 languages).
 - Tests: `hiddenBalances.test.js` (shake → 4 LIGHT + HEAVY, one dispatch after
   the motion), e2e `hidden_balances.spec.js` › *the balls cover the figures…*

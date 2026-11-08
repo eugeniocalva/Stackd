@@ -5354,11 +5354,17 @@ a:focus-visible,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .money-cloak.is-covering .money-ball,
-  .money-cloak.is-covering .money-digits,
-  .money-cloak.is-uncovering .money-ball,
-  .money-cloak.is-sharpening .money-digits,
-  .privacy-pill-row.is-entering,
-  .privacy-pill-row.is-entering .privacy-pill,
-  .privacy-pill-row.is-leaving { animation: none; }
+  /* the same steps, as fades: no scaling, blur or sliding (HG-13) */
+  .money-cloak.is-covering .money-ball { animation-name: money-fade; animation-timing-function: ease-out; }
+  .money-cloak.is-covering .money-digits { animation-name: money-fade-out; }
+  .money-cloak.is-uncovering .money-ball { animation-name: money-fade-out; }
+  .money-cloak.is-sharpening .money-digits { animation-name: money-fade; }
+  .money-cloak.is-shrinking { transition: none; }
+  .privacy-pill-row.is-entering { animation: money-fade 200ms ease-out both; }
+  .privacy-pill-row.is-entering .privacy-pill { animation: none; }
+  .privacy-pill-row.is-leaving { animation: money-fade-out 200ms ease-in both; }
+}
+@keyframes money-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }

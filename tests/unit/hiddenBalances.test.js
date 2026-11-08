@@ -238,6 +238,19 @@ describe('shake to hide (HG-4)', () => {
     expect((listeners.devicemotion || []).length).toBe(0);
   });
 
+  // 1.2.2 (HG-13 fix, TestFlight 10204): with Reduce Motion on, the commit
+  // used to clear the pending taps — the phone hid without a vibration.
+  it('with Reduce Motion on, a shake still plays every tap', async () => {
+    boot({ native: true, stored: { hide: false, shake: true } });
+    global.window.matchMedia = (q) => ({ matches: /reduce/.test(q), addEventListener() {}, addListener() {} });
+    mount();
+    const now = Date.now();
+    motion(20, now); motion(-20, now + 200); motion(20, now + 400);
+    await vi.waitFor(() => expect(haptics.impact).toHaveBeenCalledWith({ style: 'HEAVY' }));
+    expect(haptics.impact.mock.calls.filter(c => c[0].style === 'LIGHT').length).toBe(4);
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(true)); // the seal lands just before the save
+  });
+
   // 1.2.2 (HG-13 fix): iOS keeps the motion grant for one page load only, so
   // with Shake to hide on, the first tap after a launch asks again — once.
   it('re-asks iOS for motion access on the first tap after a launch', async () => {
