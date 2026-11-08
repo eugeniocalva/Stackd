@@ -57,14 +57,20 @@ test('page titles share one top line, and Loans has no back link', async ({ page
       const view = document.getElementById('router-view');
       view.scrollTop = 0;
       const top = view.getBoundingClientRect().top;
-      const title = document.querySelector('.history-header-sticky .page-header-title').getBoundingClientRect();
+      const t = document.querySelector('.history-header-sticky .page-header-title');
+      const cs = getComputedStyle(t);
+      const title = t.getBoundingClientRect();
+      const pad = parseFloat(cs.paddingBottom);
       const bar = document.querySelector('.period-bar').getBoundingClientRect();
       const arrows = [...document.querySelectorAll('.period-row > .period-arrow')].map(a => Math.round(a.getBoundingClientRect().width));
-      return { gap: Math.round(bar.top - title.bottom), bar: Math.round(bar.top - top), arrows };
+      // the gap counts from the text line, not the clip room under it
+      return { gap: Math.round(bar.top - (title.bottom - pad)), bar: Math.round(bar.top - top), arrows, clipRoom: pad / parseFloat(cs.fontSize), overflow: cs.overflow };
     });
   }
   for (const [hash, m] of Object.entries(bars)) {
     expect(Math.abs(m.gap - 24), `${hash} title → period bar = ${m.gap}`).toBeLessThanOrEqual(1);
+    // a clipped title (ellipsis) keeps room for g / y / ç under the baseline
+    if (m.overflow === 'hidden') expect(m.clipRoom, `${hash} descender room`).toBeGreaterThanOrEqual(0.2);
     expect(Math.abs(m.bar - bars['#transactions'].bar), `${hash} bar top`).toBeLessThanOrEqual(1);
     expect(m.arrows, hash).toEqual([44, 44]);
   }

@@ -56,6 +56,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 1.2.2: overflow: hidden clips at the 1.15 line box, which cut the
+     descenders (Budget's g, History's y, Orçamento's ç). The padding gives
+     the clip room under the baseline and the equal negative margin takes
+     it back, so the title line and the space under it do not move. */
+  padding-bottom: 0.25em;
+  margin-bottom: -0.25em;
 }
 
 .section-title {
