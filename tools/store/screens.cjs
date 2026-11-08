@@ -65,10 +65,12 @@ const arg = (name, fallback) => {
 // screenshot with a hard-coded price goes stale in every other storefront.
 // Bank Connect is absent from this build (A-04), so nothing here shows it.
 const SCREENS = [
-  { name: 'home', hash: '#dashboard' },
+  { name: 'home', hash: '#dashboard', drive: 'range6m' },
   { name: 'history', hash: '#transactions', settle: 1200 },
   { name: 'goals', hash: '#budget' },
   { name: 'analytics', hash: '#analytics' },
+  // 1.2.2 (HG-7): the 5th tab.
+  { name: 'insights', hash: '#insights' },
   { name: 'debt', hash: '#debt-sim', drive: 'debt' }
 ];
 
@@ -134,6 +136,12 @@ const SCREENS = [
           await page.fill('#dsim-rate', '4.05');
           await page.click('#btn-dsim-calculate');
           await page.waitForFunction(() => window.Store.getState().activeView === 'debt-results');
+        }
+        if (s.drive === 'range6m') {
+          // The example data spans six months, so 1Y would draw half a year
+          // of flat line before it; 6M fills the chart.
+          await page.click('.home-range-chips [data-range="6m"]');
+          await page.waitForTimeout(400);
         }
         if (s.settle) {
           // History restores its scroll position; start at the top.

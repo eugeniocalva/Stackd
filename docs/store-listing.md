@@ -379,6 +379,16 @@ widget and chip names are the app's own (`widget.balances.title`, `dash.range.*`
 - **es** (479): Nuevo gráfico de inicio: tu saldo como línea de tendencia, de 1S a Máx; deslízalo para ver el neto de cada mes. Nuevo widget Saldos de las cuentas; reordena o quita widgets manteniendo pulsado. Las etiquetas pertenecen a las categorías. Adjunta recibos (foto o PDF) y expórtalos en un solo PDF. Nueva página Copia de seguridad: un archivo, a diario si quieres, que se restaura con un toque. Nuevo Importar y exportar: trae tus datos de MoneyStats, CSV o QIF y exporta para Excel.
 - **pt** (471): Novo gráfico inicial: o seu saldo como linha de tendência, de 1S a Máx; deslize-o para ver o líquido de cada mês. Novo widget Saldos das contas; reorganize ou remova widgets mantendo premido. As etiquetas pertencem às categorias. Anexe recibos (foto ou PDF) e exporte-os num único PDF. Nova página Cópia de segurança: um ficheiro, diariamente se quiser, reposto com um toque. Novo Importar e exportar: traga os seus dados do MoneyStats, CSV ou QIF e exporte para o Excel.
 
+## 1e. What's new — 1.2.2 · paste into both stores
+
+Under 500 characters each (Play's limit). Both stores carry 1.2.0, so this covers only the 1.2.2 round (HG-1…HG-12). Names are the app's own (`nav.insights`, `privacy.*`).
+
+- **en** (424): New Smart Insights tab: tips worked out from your own entries, like a budget at risk or your biggest expense. Drag along the Home charts to read any day or month. Hide the amounts on Home from Settings, or with a shake of the phone. Tap a slice of a ring to see its category and share. A simpler period picker with ‹ › arrows. Put your accounts in your own order with a long press. In History, long-press a row to select it.
+- **fr** (447): Nouvel onglet Astuces intelligentes : des conseils tirés de vos propres saisies, comme un budget menacé ou votre plus grosse dépense. Faites glisser le doigt sur les graphiques de l'Accueil pour lire chaque jour ou mois. Masquez les montants de l'Accueil dans les Réglages, ou en secouant le téléphone. Touchez une part d'anneau pour voir sa catégorie. Un sélecteur de période plus simple. Classez vos comptes dans votre ordre d'un appui prolongé.
+- **it** (415): Nuova scheda Approfondimenti smart: consigli ricavati dalle tue registrazioni, come un budget a rischio o la spesa più grande. Trascina il dito sui grafici della Home per leggere ogni giorno o mese. Nascondi gli importi della Home dalle Impostazioni, o scuotendo il telefono. Tocca una fetta di un anello per vederne la categoria. Un selettore del periodo più semplice. Metti i conti nel tuo ordine tenendo premuto.
+- **es** (404): Nueva pestaña Consejos inteligentes: ideas sacadas de tus propios registros, como un presupuesto en riesgo o tu mayor gasto. Desliza el dedo por los gráficos de Inicio para leer cada día o mes. Oculta los importes de Inicio desde Ajustes, o agitando el teléfono. Toca una porción de un anillo para ver su categoría. Un selector de periodo más sencillo. Ordena tus cuentas a tu manera manteniendo pulsado.
+- **pt** (406): Novo separador Dicas Inteligentes: sugestões tiradas dos seus próprios registos, como um orçamento em risco ou a sua maior despesa. Deslize o dedo pelos gráficos do Início para ler cada dia ou mês. Oculte os valores do Início nas Definições, ou agitando o telemóvel. Toque numa fatia de um anel para ver a categoria. Um seletor de período mais simples. Ordene as suas contas à sua maneira mantendo premido.
+
 ## 2a. Apple — App Privacy for THIS release · answers ready, you enter them
 
 With the feature switched off at build time the app makes no network calls of
@@ -524,7 +534,7 @@ reaches the network, so the privacy answers stay at "Data Not Collected"
 stores require anyway: the first subscription product is reviewed WITH a
 binary. `tests/unit/bankConnectHidden.test.js` pins the shipped default.
 
-## ~~6. Screenshots~~ · **READY — 50 images generated**
+## ~~6. Screenshots~~ · **READY — 90 images generated (1.2.2)**
 
 Generated, not hand-taken: `node tools/store/screens.cjs` (the dev server must
 be running on :3000) writes `tools/store/out/<platform>/<lang>/NN-name.png`,
@@ -537,8 +547,10 @@ commit. `--lang fr` / `--platform apple-6.5` narrow a run.
 | App Store — spare | 1290×2796 | iPhone 6.9" portrait, `out/apple-6.9/`. Kept for a 6.9" slot if the console ever offers one. ~~The only REQUIRED size~~ — the spec page implies it, the console disagreed. |
 | Play | 1080×1920 | Play caps the longest side at twice the shortest, which 1290×2796 (2.17) fails — Play cannot reuse Apple's images. |
 
-Five screens per language, in all five languages: home, history, goals,
-analytics, debt. Dark theme, to match the marketing site's hero and the
+Six screens per language, in all five languages: home (6M range), history,
+goals, analytics, Smart Insights (since 1.2.2), debt. Re-captured for 1.2.2 on
+2026-11-08 — replace every image in both consoles, since the old set shows
+the pre-1.2.2 look and no Smart Insights tab. Dark theme, to match the marketing site's hero and the
 link-preview image (`STACKD_SHOT_THEME=light` switches). All alpha is
 stripped, because both stores refuse an alpha channel and a Playwright PNG
 carries one even when every pixel is opaque.
@@ -594,7 +606,7 @@ here. Everything below is for THIS release, with Bank Connect off.
 | Field | Value |
 |---|---|
 | **Version number** | **`1.0`** — the public version chosen on 2026-09-27. App Store Connect created the record as `1.0`; if it was changed to `1.19.0`, **change it back to `1.0`**. It must match the build's `MARKETING_VERSION` exactly, and `npm run version:sync` now writes `1.0` there (a zero patch is dropped; `package.json` stays `1.0.0`). |
-| Screenshots | **Upload the 6.5" set**: `tools/store/out/apple-6.5/<lang>/01-home` … `05-debt` (**1284×2778**, no alpha), per locale, in numbered order. **Corrected 2026-09-27:** the live record showed ONLY a 6.5" slot and rejected the 6.9" set (1290×2796) as the wrong size, despite the spec page reading as if 6.9" alone suffices. The 6.9" set (`tools/store/out/apple-6.9/`, renamed from `apple/` so the two folders differ by more than a suffix) is kept for a 6.9" slot if the console ever offers one. iPad is not needed (iPhone-only app, D4). Regenerate with `node tools/store/screens.cjs --platform apple-6.5` |
+| Screenshots | **Upload the 6.5" set**: `tools/store/out/apple-6.5/<lang>/01-home` … `06-debt` (**1284×2778**, no alpha), per locale, in numbered order. **Corrected 2026-09-27:** the live record showed ONLY a 6.5" slot and rejected the 6.9" set (1290×2796) as the wrong size, despite the spec page reading as if 6.9" alone suffices. The 6.9" set (`tools/store/out/apple-6.9/`, renamed from `apple/` so the two folders differ by more than a suffix) is kept for a 6.9" slot if the console ever offers one. iPad is not needed (iPhone-only app, D4). Regenerate with `node tools/store/screens.cjs --platform apple-6.5` |
 | Promotional text | per locale, §1b |
 | Description | per locale, §1b (the Bank-Connect-OFF copy — not §1) |
 | Keywords | per locale, §1b (English revised 2026-09-27, see above) |
