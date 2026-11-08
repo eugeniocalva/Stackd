@@ -1,6 +1,7 @@
 # History rows — selection, swipe, colours, density (HG-11)
 
-Status: **DECIDED 2026-11-08. P1 BUILT (see "P1 as built"); P2 to do.**
+Status: **BUILT 2026-11-08 — P1 and P2 on main (see "as built").** Device
+check on the phone still to do.
 Build 10202 round (1.2.2), comment tag `// 1.2.2 (HG-11)`.
 
 ## What the owner saw (phone, 2026-11-08)
@@ -109,3 +110,25 @@ Each phase: lint, the whole unit suite, the e2e suite, `?v=` bumps.
 - Checked: lint, 2,386 unit, 173 e2e (the known load-sensitive
   `storage_full` case passed on its own re-run); WebKit renders light +
   dark at 390 px (rest, mid-flip, selected, open row).
+
+### P2 as built (2026-11-08)
+
+- Tokens (variables.css, both themes): `--color-tx-expense`
+  (= `--text-primary`) and `--color-transfer-val` (`#2f62a8` light,
+  `#8ab4f0` dark). `.tx-amt-expense` colours spending rows in
+  `TransactionItem` (also a negative opening balance), the Latest widget
+  and the Upcoming widget (loan rows too); `.text-expense` is untouched, so
+  the form's expense amount, nets and budgets keep their red.
+  `.text-transfer` is the blue everywhere it is used: list rows, Latest,
+  Upcoming and the New transaction amount on Transfer.
+- History's day sum: green when positive, `--text-secondary` otherwise.
+- `TransactionItem` option `hideDate` (History passes it); the category
+  detail list and the widgets keep their dates. The subtitle cell is left
+  out when it has neither a date nor a paperclip.
+- Compact list, scoped to `.history-list`: card min-height 60 px with
+  10 px padding (was 72 / 12), 2 px between the two lines (was 4), 8 px
+  between cards (was 12), 20 px after a day (was 48), the day header
+  8 px padding and no margins (was 12 px padding + 16 px margins).
+- Checked: lint, 2,388 unit, 173 e2e (page titles still on their line);
+  WebKit renders light + dark at 390 px (History top and scrolled, the
+  form's transfer amount).

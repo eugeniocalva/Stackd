@@ -1627,7 +1627,8 @@ window.Views = {
           // 1.0.1 (BUG-04) same rule as the filtered summary (signedRowAmount)
           const daySum = dayTxs.reduce((sum, tx) => sum + signedRowAmount(tx), 0);
 
-          const sumColor = daySum > 0 ? 'var(--color-income)' : (daySum < 0 ? 'var(--color-expense)' : 'var(--text-secondary)');
+          // 1.2.2 (HG-11 D6): a day that spent reads neutral, like its rows
+          const sumColor = daySum > 0 ? 'var(--color-income)' : 'var(--text-secondary)';
           const formattedSum = window.Store.formatCurrency(daySum, histSel.currency); // 1.0.2 (BUG-36)
 
           txListHtml += `
@@ -1642,6 +1643,7 @@ window.Views = {
                     isSelectionMode,
                     isSelected,
                     flip: flipOf(tx.id),
+                    hideDate: true, // 1.2.2 (HG-11 D8): the day header says it
                     allowSwipeReveal: true,
                     beforeOpening: window.Store._isTxBeforeOpeningDate(tx) // 1.0.3 (BUG-41, D2)
                   });

@@ -288,7 +288,7 @@ window.Widgets = {
           const cat = (state.categories || []).find(c => c.id === tx.categoryId);
           const acc = (state.accounts || []).find(a => a.id === tx.accountId);
           const isExpense = tx.type === 'expense';
-          const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
+          const amountClass = tx.transferRef ? 'text-transfer' : (isExpense ? 'tx-amt-expense' : 'text-income'); // 1.2.2 (HG-11)
           const amount = (isExpense ? '-' : '+') + window.Store.formatCurrency(Math.abs(tx.amount), acc && acc.currency); // v1.02: row currency
           const title = cat ? cat.name : window.I18n.t(tx.transferRef ? 'common.transfer' : 'common.uncategorized'); // 1.0.1 (BUG-08) label, key added by the forms unit
           const dateLabel = new Date(`${tx.date}T12:00:00`).toLocaleDateString(window.Store.getLocale(), { month: 'short', day: 'numeric' });
@@ -1100,13 +1100,13 @@ window.Widgets = {
           if (row.isLoan) {
             icon = debtCat ? debtCat.icon : 'landmark';
             title = row.name;
-            amountHtml = `<span class="widget-row-value text-expense">-${W._esc(window.Store.formatCurrency(row.amount))}</span>`;
+            amountHtml = `<span class="widget-row-value tx-amt-expense">-${W._esc(window.Store.formatCurrency(row.amount))}</span>`;
             sub = isLarge ? window.I18n.t('widget.upcoming.loanSub', { date: dateLabel }) : dateLabel; // 1.0.1 (BUG-09)
           } else {
             const cat = (state.categories || []).find(c => c.id === row.categoryId);
             const acc = (state.accounts || []).find(a => a.id === row.accountId);
             const isExpense = row.type === 'expense';
-            const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'text-expense' : 'text-income');
+            const cls = row.transferRef ? 'text-transfer' : (isExpense ? 'tx-amt-expense' : 'text-income'); // 1.2.2 (HG-11)
             icon = row.transferRef ? 'arrow-up-down' : (cat ? cat.icon : 'receipt');
             title = cat ? cat.name : window.I18n.t(row.transferRef ? 'common.transfer' : 'common.uncategorized'); // 1.0.1 (BUG-08) label
             // 1.0.2 (BUG-36, D-U8-13): each row in its own account's currency (as Latest)

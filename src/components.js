@@ -883,19 +883,26 @@ window.Components = {
       }
 
       // 2. Determine Styling Class
+      // 1.2.2 (HG-11 D5/D7): a ledger is mostly spending, so an expense row
+      // reads in the neutral text colour, a transfer in a calm blue
+      // (.text-transfer, also the form's transfer amount), income stays
+      // green. tx-amt-expense, not .text-expense: that one also colours the
+      // form's amount field and the nets, which keep their red.
       if (transaction.transferRef) {
         amountClass = 'text-transfer';
       } else if (isOpeningBalance) {
-        amountClass = transaction.amount < 0 ? 'text-expense' : 'text-balance';
+        amountClass = transaction.amount < 0 ? 'tx-amt-expense' : 'text-balance';
       } else if (sign === '+') {
         amountClass = 'text-income';
       } else {
-        amountClass = 'text-expense';
+        amountClass = 'tx-amt-expense';
       }
 
       // v1.02: a row belongs to ONE account — format in that account's currency
       const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount), accountData && accountData.currency);
-      const dateStr = window.Components.TransactionItem._fmtDate(transaction.date);
+      // 1.2.2 (HG-11 D8): a list grouped under day headers does not repeat the date
+      const hideDate = !!(options && options.hideDate);
+      const dateStr = hideDate ? '' : window.Components.TransactionItem._fmtDate(transaction.date);
 
       const isSelectionMode = options && options.isSelectionMode === true;
       const isSelected = options && options.isSelected === true;

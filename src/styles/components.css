@@ -304,8 +304,8 @@ input[type="time"]::-webkit-datetime-edit-fields-wrapper {
 .text-expense { color: var(--color-expense-val) !important; }
 .text-income  { color: var(--color-income-val) !important; }
 .text-balance { color: var(--color-balance-val) !important; }
-.text-transfer { color: var(--text-secondary) !important; }
-/* transfer uses default --text-primary (dark) — no class needed in some views, but defining for consistency */
+.text-transfer { color: var(--color-transfer-val) !important; } /* 1.2.2 (HG-11 D7): a calm blue (was --text-secondary) */
+.tx-amt-expense { color: var(--color-tx-expense) !important; } /* 1.2.2 (HG-11 D5): a row's spending reads neutral */
 
 /* Placeholder inherited type colors at high contrast */
 .text-expense::placeholder { color: var(--color-expense-val); opacity: 0.6; }
@@ -5181,3 +5181,22 @@ a:focus-visible,
 }
 
 .tx-face-front.is-dim > * { opacity: 0.55; } /* 1.0.3 (BUG-41) dimming, on the glyph */
+
+/* ── 1.2.2 (HG-11 P2) A compact day list (D8/D9): the date lives in the day
+   header only, so the cards lose the room it took (~60 px, was ~76) and
+   the days sit ~20 px apart (was ~48) ─────────────────────────────────── */
+.history-list .list-item {
+  min-height: 60px;
+  padding: 10px var(--space-4);
+}
+.history-list .list-item .list-item-content > div + div { margin-top: 2px !important; }
+.history-list .swipe-container { margin-bottom: var(--space-2); }
+.history-list .date-group-container { margin-bottom: var(--space-5); }
+.history-list .date-group-header {
+  margin: 0 calc(var(--space-4) * -1);
+  padding: var(--space-2) var(--space-4);
+}
+.history-list .day-summary-footer {
+  margin-top: 0;
+  margin-bottom: 0;
+}

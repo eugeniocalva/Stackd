@@ -37,6 +37,9 @@
   --color-warning-text: #854d0e; /* amber-800 readable on warning-bg */
 
   --color-balance-val: #111111; /* neutral/black */
+  /* 1.2.2 (HG-11) History rows: spending reads neutral, transfers a calm blue */
+  --color-tx-expense: var(--text-primary);
+  --color-transfer-val: #2f62a8; /* 6.1:1 on white */
   --color-balance-bg: #f8fafc;
 
   /* Alias used by list-item-flush swipe backgrounds */
@@ -177,6 +180,8 @@ html.dark {
   --color-warning-text: #fcd34d; /* Amber 300 readable on dark warning-bg */
 
   --color-balance-val: #f8fafc;
+  --color-tx-expense: var(--text-primary);
+  --color-transfer-val: #8ab4f0; /* 7.8:1 on the dark surface */
   --color-balance-bg: #161e2e;
   
   /* Glassmorphism Tokens - Dark Mode */

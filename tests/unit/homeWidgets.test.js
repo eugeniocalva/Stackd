@@ -418,7 +418,9 @@ describe('Home widgets — latest transactions widget', () => {
     ]);
     const html = renderLatest();
     expect(html).toContain('text-income');
-    expect(html).toContain('text-expense');
+    // 1.2.2 (HG-11 D5): a spending row reads neutral, not red
+    expect(html).toContain('tx-amt-expense');
+    expect(html).not.toContain('text-expense');
     expect(html).toContain('+$100.00');
     expect(html).toContain('-$20.00');
   });

@@ -182,6 +182,38 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
     expect(html).not.toContain('swipe-container');
   });
 
+  // 1.2.2 (HG-11 P2, D5–D8)
+  it('row amounts: spending neutral, transfer blue class, income green; the date only where asked', () => {
+    const TI = global.window.Components.TransactionItem;
+    const exp = TI.render({ id: 'e', accountId: 'a', amount: 12, type: 'expense', date: '2026-07-31' }, null, null, { allowSwipeReveal: true });
+    const inc = TI.render({ id: 'i', accountId: 'a', amount: 12, type: 'income', date: '2026-07-31' }, null, null, { allowSwipeReveal: true });
+    const trf = TI.render({ id: 't', accountId: 'a', amount: 12, type: 'expense', transferRef: 'r', date: '2026-07-31' }, null, null, { allowSwipeReveal: true });
+    const neg = TI.render({ id: 'o', accountId: 'a', amount: -12, type: 'opening_balance', date: '2026-07-31' }, null, null, {});
+    expect(exp).toContain('list-item-value tx-amt-expense');
+    expect(exp).not.toContain('text-expense');
+    expect(inc).toContain('list-item-value text-income');
+    expect(trf).toContain('list-item-value text-transfer');
+    expect(neg).toContain('list-item-value tx-amt-expense');
+    expect(exp).toContain('Jul 31');
+    const grouped = TI.render({ id: 'e', accountId: 'a', amount: 12, type: 'expense', date: '2026-07-31' }, null, null, { allowSwipeReveal: true, hideDate: true });
+    expect(grouped).not.toContain('Jul 31');
+  });
+
+  it('History rows carry no date and a spending day sums in grey', () => {
+    const S = global.window.Store;
+    S.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 100, openingDate: '2020-01-01' });
+    const accountId = S.getState().accounts[0].id;
+    const today = S._todayYMD();
+    S.dispatch('ADD_TRANSACTION', { type: 'expense', amount: 5, accountId, categoryId: 'cat_groceries', date: today });
+    const html = global.window.Views.TransactionsView.render(S.getState());
+    const rowDate = global.window.Components.TransactionItem._fmtDate(today);
+    const at = html.indexOf('<div class="swipe-container"');
+    const rowHtml = html.slice(at, html.indexOf('day-summary-footer', at));
+    expect(rowHtml).toContain('tx-amt-expense');
+    expect(rowHtml).not.toContain(`>${rowDate}<`);
+    expect(html).toMatch(/class="day-summary-footer" style="color: var\(--text-secondary\);"/);
+  });
+
   it('History has no Select button (a long press starts selecting)', () => {
     const html = global.window.Views.TransactionsView.render(global.window.Store.getState());
     expect(html).not.toContain('btn-start-selection-mode');

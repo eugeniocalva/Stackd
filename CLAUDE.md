@@ -591,6 +591,11 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   non-passive touchmove that cancels only a sideways drag — without it
   Chromium eats the first tap after a swipe). Swipe actions stay hidden
   until a row opens (`.is-open`); a scroll or a tap outside closes it.
+  Row amounts (P2): spending `.tx-amt-expense` (neutral), transfers
+  `.text-transfer` (blue), income green — in History, Latest and Upcoming;
+  `.text-expense` stays red for nets and the form. History rows pass
+  `hideDate` (the day header carries it) and sit in a compact
+  `.history-list`.
 
 ## Working conventions in this repo
 
