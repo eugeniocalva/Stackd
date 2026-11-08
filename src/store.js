@@ -167,6 +167,10 @@ window.Store = {
     // 1.2.2 (HG-7 P2): the tab bar order after Home (Home is always first
     // and the start screen). Per-device pref, outside the CSV backup.
     navOrder: ['transactions', 'budget', 'analytics', 'insights'],
+    // 1.2.2 (HG-12): the user's account order (ids). [] = none saved yet =
+    // alphabetical (the store order). Per-device pref, outside the CSV
+    // backup. Read through Store.orderedAccounts().
+    accountOrder: [],
     isSelectionMode: false,
     selectedTransactionIds: [],
 
@@ -339,6 +343,7 @@ window.Store = {
     this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); // 1.1.0 (IE-4)
     this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); // 1.2.2 (HG-4)
     this.state.navOrder = this.normalizeNavOrder(window.StackdDB.load('navOrder', null)); // 1.2.2 (HG-7 P2)
+    this.state.accountOrder = this._loadAccountOrder(); // 1.2.2 (HG-12)
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
     // v0.72 Phase 5: Recent Activities left the dashboard when the widget area
     // shipped, so a user who has NEVER configured widgets (key absent — distinct
@@ -634,6 +639,7 @@ window.Store = {
         if (e.key === 'stackd_v1_exportPrefs') { this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); changed = true; } // 1.1.0 (IE-4)
         if (e.key === 'stackd_v1_privacy') { this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); changed = true; } // 1.2.2 (HG-4)
         if (e.key === 'stackd_v1_navOrder') { this.state.navOrder = this.normalizeNavOrder(window.StackdDB.load('navOrder', null)); changed = true; } // 1.2.2 (HG-7 P2)
+        if (e.key === 'stackd_v1_accountOrder') { this.state.accountOrder = this._loadAccountOrder(); changed = true; } // 1.2.2 (HG-12)
         if (e.key === 'stackd_v1_enableTimeInput') { this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false); changed = true; }
         if (e.key === 'stackd_v1_homeWidgets') { this.state.homeWidgets = window.StackdDB.load('homeWidgets', []); changed = true; } // v0.72
         if (e.key === 'stackd_v1_importPresets') { this.state.importPresets = window.StackdDB.load('importPresets', []); changed = true; } // v0.99
@@ -1093,6 +1099,11 @@ window.Store = {
     if (eg && stale(eg.accounts)) {
       this.state.expandedGraphFilters = { ...eg, accounts: live(eg.accounts) };
       window.StackdDB.save('expandedGraphFilters', this.state.expandedGraphFilters);
+    }
+    // 1.2.2 (HG-12): a deleted account leaves the saved order
+    if (stale(this.state.accountOrder)) {
+      this.state.accountOrder = live(this.state.accountOrder);
+      window.StackdDB.save('accountOrder', this.state.accountOrder);
     }
     const ws = this.state.homeWidgets;
     if (Array.isArray(ws) && ws.some(w => w && w.config && stale(w.config.accountIds))) {
@@ -2125,6 +2136,7 @@ window.Store = {
       case 'exportPrefs': s.exportPrefs = L('exportPrefs', null); return true; // 1.1.0 (IE-4)
       case 'privacy': s.privacy = this.normalizePrivacy(L('privacy', null)); return true; // 1.2.2 (HG-4)
       case 'navOrder': s.navOrder = this.normalizeNavOrder(L('navOrder', null)); return true; // 1.2.2 (HG-7 P2)
+      case 'accountOrder': s.accountOrder = this._loadAccountOrder(); return true; // 1.2.2 (HG-12)
       case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
       case 'historyFilterSortOrder': s.historyFilters.sortOrder = L('historyFilterSortOrder', 'asc'); return true;
       case 'defaultAccountId': s.defaultAccountId = L('defaultAccountId', ''); return true;
@@ -2205,9 +2217,17 @@ window.Store = {
           currency: payload.currency || this.state.currency, // v1.02: plan §6
           createdAt: new Date().toISOString()
         };
+        // 1.2.2 (HG-12, D6): a new account goes to the end of the user's
+        // order. With no order saved yet (= alphabetical) the order is first
+        // written as it shows now, so the newcomer does not sort into place.
+        const orderBefore = this.orderedAccounts().map(a => a.id);
         this.state.accounts.push(newAccount);
         this._sortData();
         window.StackdDB.save('accounts', this.state.accounts);
+        if (orderBefore.length) {
+          this.state.accountOrder = orderBefore.concat(newAccount.id);
+          window.StackdDB.save('accountOrder', this.state.accountOrder);
+        }
         // Auto-create opening balance transaction (default time to 00:00) if non-zero opening balance or opening date is provided
         const obAmount = parseFloat(payload.openingBalance) || 0;
         if (obAmount !== 0 || payload.openingDate !== undefined) {
@@ -3784,6 +3804,8 @@ window.Store = {
         window.StackdDB.remove('privacy');
         this.state.navOrder = this.normalizeNavOrder(null); // 1.2.2 (HG-7 P2): the default tab order
         window.StackdDB.remove('navOrder');
+        this.state.accountOrder = []; // 1.2.2 (HG-12): back to alphabetical
+        window.StackdDB.remove('accountOrder');
         // 1.2.0 (UX-9/UX-11): explicit tag links are user data (wiped with the
         // rest); backup prefs/log are device state of the wiped install.
         this.state.tagLinks = {};
@@ -4057,6 +4079,15 @@ window.Store = {
       case 'SET_NAV_ORDER': {
         this.state.navOrder = this.normalizeNavOrder(payload);
         window.StackdDB.save('navOrder', this.state.navOrder);
+        changed = true;
+        break;
+      }
+
+      // 1.2.2 (HG-12): [accountId…] — the user's account order, normalised
+      // (known ids once each; accounts it lacks appended by name).
+      case 'SET_ACCOUNT_ORDER': {
+        this.state.accountOrder = this.normalizeAccountOrder(payload);
+        window.StackdDB.save('accountOrder', this.state.accountOrder);
         changed = true;
         break;
       }
@@ -4864,6 +4895,36 @@ window.Store = {
 
   getNavOrder() {
     return this.normalizeNavOrder(this.state.navOrder);
+  },
+
+  // 1.2.2 (HG-12, docs/account-order-plan.md): the user's account order. The
+  // stored list may hold ids of deleted accounts (another tab, an old file)
+  // and may lack accounts (an import); orderedAccounts keeps the known ids in
+  // the saved order and appends the rest in the store order (alphabetical).
+  // Every account list on screen reads through it; state.accounts itself
+  // stays alphabetical (CSV, import matching).
+  _loadAccountOrder() {
+    const v = window.StackdDB.load('accountOrder', []);
+    return Array.isArray(v) ? v.filter(id => typeof id === 'string') : [];
+  },
+
+  normalizeAccountOrder(ids) {
+    return this.orderedAccounts(this.state.accounts, ids).map(a => a.id);
+  },
+
+  orderedAccounts(list, order) {
+    const accounts = Array.isArray(list) ? list : (this.state.accounts || []);
+    const saved = Array.isArray(order) ? order : (this.state.accountOrder || []);
+    if (!saved.length) return accounts.slice();
+    const rank = new Map();
+    saved.forEach(id => { if (typeof id === 'string' && !rank.has(id)) rank.set(id, rank.size); });
+    const pos = new Map(accounts.map((a, i) => [a, i]));
+    return accounts.slice().sort((a, b) => {
+      const ra = rank.has(a.id) ? rank.get(a.id) : Infinity;
+      const rb = rank.has(b.id) ? rank.get(b.id) : Infinity;
+      if (ra !== rb) return ra < rb ? -1 : 1;
+      return pos.get(a) - pos.get(b);
+    });
   },
 
   // Amounts are masked on Home only, and only while it is the active view:

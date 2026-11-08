@@ -506,25 +506,20 @@ window.Views = {
             // comparator used to recompute full-scan balances O(A·logA) times.
             const balancesById = {};
             state.accounts.forEach(acc => { balancesById[acc.id] = window.Store.getAccountBalance(acc.id); });
-            const sortedAccounts = [...state.accounts].sort((a, b) => {
-              // Priority: Default first, then balance desc
-              if (a.id === state.defaultAccountId) return -1;
-              if (b.id === state.defaultAccountId) return 1;
-              return balancesById[b.id] - balancesById[a.id];
-            });
+            // 1.2.2 (HG-12, D1): the user's order (alphabetical until moved);
+            // a long press drags a tile. No DEFAULT chip (D2).
+            const sortedAccounts = window.Store.orderedAccounts();
 
               return sortedAccounts.map(acc => {
                 const balance = balancesById[acc.id];
                 const formattedBal = window.Store.formatCurrency(balance, acc.currency); // v1.02
-                const isDefault = acc.id === state.defaultAccountId;
                 const balColor = balance > 0 ? 'var(--color-income)' : (balance < 0 ? 'var(--color-expense)' : 'var(--text-primary)');
                 const balClass = balance > 0 ? 'text-income' : (balance < 0 ? 'text-expense' : '');
 
                 return `
-                  <div class="wallet-card ${isDefault ? 'is-default' : ''} touch-target" data-id="${acc.id}" style="--acc-color: ${escapeAttr(acc.color)};">
+                  <div class="wallet-card touch-target" data-id="${acc.id}" style="--acc-color: ${escapeAttr(acc.color)};">
                     <div class="wallet-card-accent-bar"></div>
-                    ${isDefault ? `<div class="wallet-card-default-badge">${window.I18n.t('dash.defaultBadge')}</div>` : ''}
-                    
+
                     <div class="wallet-card-header">
                       <div class="wallet-card-icon-box" style="color: ${escapeAttr(acc.color)};">
                         <i data-lucide="${acc.icon || 'wallet'}" style="width: 20px; height: 20px;"></i>
@@ -677,11 +672,17 @@ window.Views = {
       // the first pass after navigation, so ring charts may play their sweep.
       if (window.Widgets) window.Widgets.attachSection(container, state, { isEntry: !!isEntry });
 
+      // 1.2.2 (HG-12): the tile row keeps its sideways scroll across
+      // re-renders (a drop re-renders Home), and a long press drags a tile
+      this._wireTileDrag(container, isEntry);
+
       // Wallet Card Interactions
       container.querySelectorAll('.wallet-card').forEach(card => {
         card.addEventListener('click', (e) => {
           // If sub-controls (3-dots) were clicked, don't navigate to history
           if (e.target.closest('.account-edit-trigger')) return;
+          // 1.2.2 (HG-12): the click that ends a long press / drag
+          if (this._swallowTileClick && e.detail !== 0) { this._swallowTileClick = false; return; }
           
           const id = card.dataset.id;
           // Navigate with account param — the router resets History filters to
@@ -1422,6 +1423,138 @@ window.Views = {
       this._pane = 0;
       this._balanceMeta = null;
       this._netflowMeta = null;
+      this._tileScrollX = 0; // 1.2.2 (HG-12)
+      this._swallowTileClick = false;
+      if (this._tileDrag) { this._tileDrag(); this._tileDrag = null; }
+    },
+
+    // 1.2.2 (HG-12, docs/account-order-plan.md D3/D8): hold a tile 0.45 s and
+    // drag it sideways to reorder. Until the hold fires the row scrolls
+    // natively (a move past the slop cancels the hold). Once lifted, one
+    // non-passive touchmove cancels the browser's scroll (Chromium would
+    // otherwise run its own gesture), the tile follows the finger, crossing a
+    // neighbour's centre swaps them (the neighbour slides, FLIP), the row
+    // scrolls by itself near its edges, and the release dispatches
+    // SET_ACCOUNT_ORDER once — DOM only until then. Positions are compared in
+    // offset coordinates (the row is position: relative), so transforms in
+    // flight never skew a swap. The click that ends the press is swallowed.
+    _wireTileDrag(container, isEntry) {
+      const row = container.querySelector('.wallets-scroll-wrapper');
+      if (!row) return;
+      const view = this;
+      if (this._tileDrag) { this._tileDrag(); this._tileDrag = null; }
+      // the row keeps its sideways scroll across re-renders (a drop re-renders)
+      if (isEntry) this._tileScrollX = 0;
+      else if (this._tileScrollX) row.scrollLeft = this._tileScrollX;
+      row.addEventListener('scroll', () => { view._tileScrollX = row.scrollLeft; }, { passive: true });
+
+      const HOLD_MS = 450, SLOP = 8, EDGE = 48, SPEED = 10;
+      const H = () => window.Components && window.Components.Haptics;
+      const isNative = () => !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+      const tiles = () => Array.from(row.querySelectorAll('.wallet-card'));
+      let g = null;
+
+      const place = () => {
+        const visual = g.startLeft + (g.x - g.startX) + (row.scrollLeft - g.startScroll);
+        g.visual = visual;
+        g.card.style.transform = `translateX(${visual - g.card.offsetLeft}px) scale(1.04)`;
+      };
+      const swap = () => {
+        const list = tiles();
+        const i = list.indexOf(g.card);
+        const centre = g.visual + g.card.offsetWidth / 2;
+        const mid = (el) => el.offsetLeft + el.offsetWidth / 2;
+        let other = null, before = false;
+        if (list[i - 1] && centre < mid(list[i - 1])) { other = list[i - 1]; before = true; }
+        else if (list[i + 1] && centre > mid(list[i + 1])) { other = list[i + 1]; }
+        if (!other) return;
+        const first = other.offsetLeft;
+        row.insertBefore(g.card, before ? other : other.nextSibling);
+        const dx = first - other.offsetLeft;
+        other.style.transition = 'none';
+        other.style.transform = `translateX(${dx}px)`;
+        void other.offsetWidth; // commit the inverted position
+        other.style.transition = 'transform 0.18s ease';
+        other.style.transform = '';
+        if (isNative() && H()) H().tick();
+        place();
+      };
+      const edgeScroll = () => {
+        if (!g || !g.lifted) return;
+        const r = row.getBoundingClientRect();
+        const step = g.x < r.left + EDGE ? -SPEED : (g.x > r.right - EDGE ? SPEED : 0);
+        if (step) {
+          const was = row.scrollLeft;
+          row.scrollLeft = was + step;
+          if (row.scrollLeft !== was) { place(); swap(); }
+        }
+        g.raf = requestAnimationFrame(edgeScroll);
+      };
+      const lift = () => {
+        if (!g) return;
+        g.lifted = true;
+        view._swallowTileClick = true;
+        g.startLeft = g.card.offsetLeft;
+        g.startX = g.x;
+        g.startScroll = row.scrollLeft;
+        g.card.style.transition = 'none';
+        g.card.classList.add('is-lifted');
+        row.classList.add('is-reordering');
+        try { row.setPointerCapture(g.pointerId); } catch (_) { /* synthetic events */ }
+        if (isNative() && H()) H().light();
+        else if (window.navigator && typeof window.navigator.vibrate === 'function') {
+          try { window.navigator.vibrate(30); } catch (_) { /* optional */ }
+        }
+        place();
+        g.raf = requestAnimationFrame(edgeScroll);
+      };
+      const drop = () => {
+        const d = g;
+        g = null;
+        clearTimeout(d.timer);
+        if (!d.lifted) return;
+        cancelAnimationFrame(d.raf);
+        d.card.classList.remove('is-lifted');
+        row.classList.remove('is-reordering');
+        d.card.style.transition = 'transform 0.2s ease';
+        d.card.style.transform = '';
+        const ids = tiles().map(t => t.dataset.id);
+        const before = window.Store.orderedAccounts().map(a => a.id);
+        if (ids.join('|') !== before.join('|')) window.Store.dispatch('SET_ACCOUNT_ORDER', ids);
+      };
+
+      const onDown = (e) => {
+        if (e.button > 0) return;
+        const card = e.target.closest('.wallet-card');
+        if (!card || e.target.closest('.account-edit-trigger')) return;
+        view._swallowTileClick = false;
+        if (g) drop();
+        g = { card, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, lifted: false };
+        g.timer = setTimeout(lift, HOLD_MS);
+      };
+      const onMove = (e) => {
+        if (!g || e.pointerId !== g.pointerId) return;
+        g.x = e.clientX;
+        if (!g.lifted) {
+          if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > SLOP) { clearTimeout(g.timer); g = null; }
+          return;
+        }
+        place();
+        swap();
+      };
+      const onUp = (e) => { if (g && e.pointerId === g.pointerId) drop(); };
+      const onTouchMove = (e) => { if (g && g.lifted && e.cancelable) e.preventDefault(); };
+      const onMenu = (e) => { if (g) e.preventDefault(); };
+
+      row.addEventListener('pointerdown', onDown);
+      row.addEventListener('pointermove', onMove);
+      row.addEventListener('pointerup', onUp);
+      row.addEventListener('pointercancel', onUp);
+      row.addEventListener('touchmove', onTouchMove, { passive: false });
+      row.addEventListener('contextmenu', onMenu);
+      // teardown for the next render / destroy(): only a pending hold or a
+      // lifted tile outlives the node, and only through its timers
+      this._tileDrag = () => { if (g) { clearTimeout(g.timer); cancelAnimationFrame(g.raf); g = null; } };
     }
   },
 

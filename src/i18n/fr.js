@@ -67,7 +67,6 @@ window.I18n.dicts.fr = {
   'dash.expandGraphAria': 'Agrandir le graphique du solde',
   'dash.wallets': 'Wallets',
   'dash.addWallet': 'Ajouter un wallet',
-  'dash.defaultBadge': 'DÉFAUT',
 
   // ── History (P8c) ────────────────────────────────────────────────────────
   'history.title': 'Historique',

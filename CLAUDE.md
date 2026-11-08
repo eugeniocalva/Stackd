@@ -590,6 +590,14 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   daily ≤ 31 days, weekly ≤ 93, monthly ≤ 36 months, yearly; buckets carry
   `kind`), and the % badge names the compared window
   (`analytics.vsPeriod` + `Store.comparisonLabel`).
+- **Account order (HG-12, `docs/account-order-plan.md`).** The user's
+  order lives in `stackd_v1_accountOrder` (ids; per device, not in the
+  backup; `SET_ACCOUNT_ORDER`, pruned by `_pruneAccountRefs`, cleared by
+  `RESET_APP`). Lists on screen read `Store.orderedAccounts()` (no saved
+  order = alphabetical; `state.accounts` stays alphabetical on disk); a new
+  account goes to the end. Home's tiles have no DEFAULT chip — the default
+  account is only a setting (New Log preselect) — and a 450 ms hold drags a
+  tile (`DashboardView._wireTileDrag`, one dispatch on release).
 - **History rows (HG-11, `docs/history-rows-plan.md`).** No Select button:
   a 450 ms long press selects, and the row's icon turns over to a check
   (`.tx-icon-flip`; `TransactionsView._selRendered` diffs the selection so

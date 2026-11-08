@@ -1120,30 +1120,15 @@ a:focus-visible,
   margin-top: 1px;
 }
 
-.wallet-card.is-default {
-  border-color: var(--color-primary);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
-}
-
-/* Sits in the header band (empty middle, left of the ⋯ trigger) since v0.73:
-   at bottom-right it visually collided with wide balances — a pre-existing
-   overlap the shorter tile made worse. Informational only, so taps fall
-   through to the card. */
-.wallet-card-default-badge {
-  position: absolute;
-  top: 12px;
-  right: 52px;
-  pointer-events: none;
-  z-index: 2;
-  font-size: 8px;
-  font-weight: 900;
-  color: var(--text-on-primary);
-  background: var(--color-primary);
-  padding: 3px 5px;
-  border-radius: 5px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+/* 1.2.2 (HG-12): no DEFAULT chip or outline on the default account's tile
+   (the default is a setting: preselected in New Log). A long press lifts a
+   tile to drag it; the row stops snapping while a tile is held. */
+.wallets-scroll-wrapper { position: relative; }
+.wallets-scroll-wrapper.is-reordering { scroll-snap-type: none; }
+.wallet-card.is-lifted {
+  z-index: 5;
+  cursor: grabbing;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
 }
 
 .account-edit-trigger {

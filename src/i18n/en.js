@@ -66,7 +66,6 @@ window.I18n.dicts.en = {
   'dash.expandGraphAria': 'Expand balance graph',
   'dash.wallets': 'Wallets',
   'dash.addWallet': 'Add Wallet',
-  'dash.defaultBadge': 'DEFAULT',
 
   // ── Shared actions (P8c) ─────────────────────────────────────────────────
   'common.cancel': 'Cancel',
