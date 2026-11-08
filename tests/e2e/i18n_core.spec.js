@@ -91,7 +91,7 @@ test.describe('i18n core chrome (Italian)', () => {
 
     // Goals / Budget
     await page.click('a[href="#budget"]');
-    await expect(page.locator('.page-header-title')).toHaveText('Budget');
+    await expect(page.locator('.page-header-title')).toHaveText('Obiettivi'); // 1.2.2 (UJ): the page is named like its tab
     await expect(page.locator('text=Totale speso')).toBeVisible();
 
     // Debt hub + simulator

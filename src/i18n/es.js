@@ -214,7 +214,7 @@ window.I18n.dicts.es = {
 
   // ── Budget / Goals (P8d) ─────────────────────────────────────────────────
   'common.optional': '(opcional)',
-  'budget.title': 'Presupuesto',
+  'budget.title': 'Objetivos', // 1.2.2 (UJ): the page is named like its tab (was Budget)
   'budget.prevMonth': 'Mes anterior',
   'budget.nextMonth': 'Mes siguiente',
   'budget.currentMonthAria': 'Mes de presupuesto actual: {month}. Toca para cambiar.',

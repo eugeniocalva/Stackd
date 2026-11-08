@@ -1,0 +1,375 @@
+{
+  "generated": "2026-11-08T13:07:16.257Z",
+  "shots": {
+    "n01-welcome": {
+      "step": "N1",
+      "w": 390,
+      "h": 844
+    },
+    "n02-home-empty": {
+      "step": "N2",
+      "w": 390,
+      "h": 844
+    },
+    "n03-menu": {
+      "step": "N3",
+      "w": 390,
+      "h": 844
+    },
+    "n05-home-first-wallet": {
+      "step": "N5",
+      "w": 390,
+      "h": 844
+    },
+    "n07-history-first": {
+      "step": "N7",
+      "w": 390,
+      "h": 844
+    },
+    "n09-home-after-first-log": {
+      "step": "N9",
+      "w": 390,
+      "h": 844
+    },
+    "n10-goals-editor": {
+      "step": "N10",
+      "w": 390,
+      "h": 844
+    },
+    "n11-goals-set": {
+      "step": "N10",
+      "w": 390,
+      "h": 844
+    },
+    "n12-home-two-wallets": {
+      "step": "N11",
+      "w": 390,
+      "h": 844
+    },
+    "n13-pro-lock": {
+      "step": "N12",
+      "w": 390,
+      "h": 844
+    },
+    "n14-purchases": {
+      "step": "N13",
+      "w": 390,
+      "h": 844
+    },
+    "n15-insights-starter": {
+      "step": "N14",
+      "w": 390,
+      "h": 844
+    },
+    "n16-settings": {
+      "step": "N15",
+      "w": 390,
+      "h": 844
+    },
+    "n04-new-account": {
+      "step": "N4",
+      "w": 390,
+      "h": 844
+    },
+    "n06-new-log": {
+      "step": "N6",
+      "w": 390,
+      "h": 844
+    },
+    "m01-home": {
+      "step": "M1",
+      "w": 390,
+      "h": 844
+    },
+    "m02-home-monthly-net": {
+      "step": "M2",
+      "w": 390,
+      "h": 844
+    },
+    "m03-history-account": {
+      "step": "M3",
+      "w": 390,
+      "h": 844
+    },
+    "m04-tag-picker": {
+      "step": "M5",
+      "w": 390,
+      "h": 844
+    },
+    "m05-new-log-tagged": {
+      "step": "M5",
+      "w": 390,
+      "h": 844
+    },
+    "m06-transfer": {
+      "step": "M6",
+      "w": 390,
+      "h": 844
+    },
+    "m09-swipe-left": {
+      "step": "M8",
+      "w": 390,
+      "h": 844
+    },
+    "m10-selection": {
+      "step": "M9",
+      "w": 390,
+      "h": 844
+    },
+    "m11-delete-confirm": {
+      "step": "M9",
+      "w": 390,
+      "h": 844
+    },
+    "m16-goals": {
+      "step": "M12",
+      "w": 390,
+      "h": 844
+    },
+    "m17-analytics": {
+      "step": "M13",
+      "w": 390,
+      "h": 844
+    },
+    "m18-analytics-eom": {
+      "step": "M13",
+      "w": 390,
+      "h": 844
+    },
+    "m19-insights": {
+      "step": "M15",
+      "w": 390,
+      "h": 844
+    },
+    "n08-edit-log": {
+      "step": "N8",
+      "w": 390,
+      "h": 844
+    },
+    "l01-import-export-sheet": {
+      "step": "L1",
+      "w": 390,
+      "h": 844
+    },
+    "l02-import": {
+      "step": "L2",
+      "w": 390,
+      "h": 844
+    },
+    "l03-map-columns": {
+      "step": "L3",
+      "w": 390,
+      "h": 844
+    },
+    "l04-review-import": {
+      "step": "L4",
+      "w": 390,
+      "h": 844
+    },
+    "l05-import-complete": {
+      "step": "L4",
+      "w": 390,
+      "h": 844
+    },
+    "l08-export": {
+      "step": "L7",
+      "w": 390,
+      "h": 844
+    },
+    "l09-export-settings": {
+      "step": "L7",
+      "w": 390,
+      "h": 844
+    },
+    "l10-backup": {
+      "step": "L8",
+      "w": 390,
+      "h": 844
+    },
+    "l12-loans-hub": {
+      "step": "L9",
+      "w": 390,
+      "h": 844
+    },
+    "l20-tile-drag": {
+      "step": "L14",
+      "w": 390,
+      "h": 844
+    },
+    "l22-tab-bar": {
+      "step": "L16",
+      "w": 390,
+      "h": 844
+    },
+    "l23-home-hidden": {
+      "step": "L17",
+      "w": 390,
+      "h": 844
+    },
+    "l25-settings-italian": {
+      "step": "L18",
+      "w": 390,
+      "h": 844
+    },
+    "l29-categories": {
+      "step": "L21",
+      "w": 390,
+      "h": 844
+    },
+    "l30-new-category": {
+      "step": "L21",
+      "w": 390,
+      "h": 844
+    },
+    "l32-tags": {
+      "step": "L22",
+      "w": 390,
+      "h": 844
+    },
+    "m07-repeats-every": {
+      "step": "M7",
+      "w": 390,
+      "h": 844
+    },
+    "m08-new-log-recurring": {
+      "step": "M7",
+      "w": 390,
+      "h": 844
+    },
+    "m20-add-widget": {
+      "step": "M16",
+      "w": 390,
+      "h": 844
+    },
+    "m21-widget-edit-mode": {
+      "step": "M16",
+      "w": 390,
+      "h": 844
+    },
+    "m12-recurring-scope": {
+      "step": "M10",
+      "w": 390,
+      "h": 844
+    },
+    "m13-period-prev": {
+      "step": "M11",
+      "w": 390,
+      "h": 844
+    },
+    "m14-filter-sheet": {
+      "step": "M11",
+      "w": 390,
+      "h": 844
+    },
+    "m15-history-filtered": {
+      "step": "M11",
+      "w": 390,
+      "h": 844
+    },
+    "l06-import-duplicates": {
+      "step": "L5",
+      "w": 390,
+      "h": 844
+    },
+    "l07-import-rules": {
+      "step": "L6",
+      "w": 390,
+      "h": 844
+    },
+    "l11-backup-saved": {
+      "step": "L8",
+      "w": 390,
+      "h": 844
+    },
+    "l13-loan-simulator": {
+      "step": "L10",
+      "w": 390,
+      "h": 844
+    },
+    "l14-loan-details": {
+      "step": "L10",
+      "w": 390,
+      "h": 844
+    },
+    "l15-loan-results": {
+      "step": "L11",
+      "w": 390,
+      "h": 844
+    },
+    "l16-loan-schedule": {
+      "step": "L11",
+      "w": 390,
+      "h": 844
+    },
+    "l21-accounts-sheet": {
+      "step": "L15",
+      "w": 390,
+      "h": 844
+    },
+    "l24-hidden-sheet": {
+      "step": "L17",
+      "w": 390,
+      "h": 844
+    },
+    "l27-period-sheet-custom": {
+      "step": "L20",
+      "w": 390,
+      "h": 844
+    },
+    "l28-analytics-custom": {
+      "step": "L20",
+      "w": 390,
+      "h": 844
+    },
+    "l31-category-detail": {
+      "step": "L21",
+      "w": 390,
+      "h": 844
+    },
+    "l34-delete-account": {
+      "step": "L24",
+      "w": 390,
+      "h": 844
+    },
+    "l35-factory-reset": {
+      "step": "L25",
+      "w": 390,
+      "h": 844
+    },
+    "l36-welcome-again": {
+      "step": "L25",
+      "w": 390,
+      "h": 844
+    },
+    "l17-track-payment": {
+      "step": "L12",
+      "w": 390,
+      "h": 844
+    },
+    "l18-loan-tracked": {
+      "step": "L12",
+      "w": 390,
+      "h": 844
+    },
+    "l26-currency-switch": {
+      "step": "L19",
+      "w": 390,
+      "h": 844
+    },
+    "l33-opening-date-sheet": {
+      "step": "L23",
+      "w": 390,
+      "h": 844
+    },
+    "l19-sync-payments": {
+      "step": "L13",
+      "w": 390,
+      "h": 844
+    }
+  },
+  "warnings": {
+    "nora": [],
+    "marco": [],
+    "lea": []
+  }
+}

@@ -617,6 +617,17 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   `hideDate` (the day header carries it) and sit in a compact
   `.history-list`.
 
+## User journey (UJ, 2026-11-08)
+
+`docs/user-journey-plan.md` is the reference. `docs/user-journey/inventory.md`
+holds every screen and the three persona journeys with stable step ids
+(N/M/L); `tools/journey/capture.cjs` takes the screenshots (dev server on
+:3000), `tools/journey/content.cjs` + `build.cjs` render
+`docs/user-journey/index.html` and `user-journey.pdf` (self-contained, for
+the designer / a claude.ai artifact). `tests/e2e/journey_*.spec.js` drive
+every step through the UI — a new screen or flow should get a row in the
+inventory, a shot in the capture and a step in a journey spec.
+
 ## Working conventions in this repo
 
 - **Markup safety (1.0.2 BUG-24).** Every stored or imported text placed in markup goes through `I18n.esc` (aliases: views.js `esc`/`escapeAttr`, `Components.esc`, `Widgets._esc`, `Insights._esc`). Escape `t()` params, never `t()` output. Account colours (palette, `Store.normalizeAccountColor`) and icons (`Store.isSafeIcon`) are validated on write; icons are also healed at boot and re-sanitized in memory whenever accounts/categories are reloaded from disk. Every id read from a file goes through `Store.fileId`; `ADD_ACCOUNT`, `ADD_CATEGORY` and `BATCH_IMPORT_TRANSACTIONS` never keep an unsafe id. **Never add a top-level `esc`/`escapeAttr` binding to another src file** — the scripts share one global scope, so it throws a redeclaration SyntaxError only in the `defer` build, which unit tests cannot see. `tests/unit/markupSafety.test.js` and `escapeGuard.test.js` fail on any raw sink.
