@@ -141,17 +141,92 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
     expect(global.window.Store.getAccountBalance('acc_bal_1')).toBe(150);
   });
 
-  it('renders TransactionItem with checkbox when in selection mode', () => {
+  // 1.2.2 (HG-11, docs/history-rows-plan.md D2–D4): the icon turns over to a
+  // check — no checkbox column, and the row keeps its swipe structure.
+  it('renders a selected History row with its icon turned to a check', () => {
     const tx = { id: 'tx_demo', accountId: 'acc_1', amount: 15.5, type: 'expense', date: '2026-07-31' };
     const html = global.window.Components.TransactionItem.render(tx, null, null, {
       isSelectionMode: true,
-      isSelected: true
+      isSelected: true,
+      allowSwipeReveal: true,
+      flip: 'in'
     });
 
-    expect(html).toContain('custom-selection-checkbox');
-    expect(html).toContain('tx-select-checkbox');
-    expect(html).toContain('checked');
+    expect(html).not.toContain('custom-selection-checkbox');
+    expect(html).toContain('swipe-container');
+    expect(html).toMatch(/class="list-item-icon tx-icon-flip is-selected tx-flip-in"/);
+    expect(html).toContain('tx-face-back');
+    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('list-item-selected');
+    // the old inline 2 px border grew the row; the look is CSS-only now
+    expect(html).not.toContain('border-width: 2px');
+  });
+
+  it('renders an unpicked row in selection mode with its icon and aria-pressed=false', () => {
+    const tx = { id: 'tx_demo', accountId: 'acc_1', amount: 15.5, type: 'expense', date: '2026-07-31' };
+    const html = global.window.Components.TransactionItem.render(tx, null, null, {
+      isSelectionMode: true, isSelected: false, allowSwipeReveal: true
+    });
+    expect(html).toMatch(/class="list-item-icon tx-icon-flip"/);
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).not.toContain('list-item-selected');
+    // outside selection mode a row carries no aria-pressed
+    const rest = global.window.Components.TransactionItem.render(tx, null, null, { allowSwipeReveal: true });
+    expect(rest).not.toContain('aria-pressed');
+  });
+
+  it('a plain list (no swipe) keeps the single icon box', () => {
+    const tx = { id: 'tx_demo', accountId: 'acc_1', amount: 15.5, type: 'expense', date: '2026-07-31' };
+    const html = global.window.Components.TransactionItem.render(tx, null, null, '');
+    expect(html).not.toContain('tx-icon-flip');
+    expect(html).not.toContain('swipe-container');
+  });
+
+  it('History has no Select button (a long press starts selecting)', () => {
+    const html = global.window.Views.TransactionsView.render(global.window.Store.getState());
+    expect(html).not.toContain('btn-start-selection-mode');
+    expect(html).toContain('id="history-list"');
+  });
+
+  it('only the row whose selection changed flips, and the first render of a visit flips nothing', () => {
+    const S = global.window.Store;
+    const V = global.window.Views.TransactionsView;
+    S.dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 100, openingDate: '2020-01-01' });
+    const accountId = S.getState().accounts[0].id;
+    const today = S._todayYMD();
+    S.dispatch('ADD_TRANSACTION', { type: 'expense', amount: 5, accountId, categoryId: 'cat_groceries', date: today });
+    S.dispatch('ADD_TRANSACTION', { type: 'expense', amount: 7, accountId, categoryId: 'cat_dining', date: today });
+    const [a, b] = S.getState().transactions.filter(t => t.type === 'expense').map(t => t.id);
+    const iconOf = (html, id) => {
+      const at = html.indexOf(`<div class="swipe-container" data-id="${id}"`);
+      const m = html.slice(at).match(/class="list-item-icon tx-icon-flip[^"]*"/);
+      return m[0];
+    };
+
+    V.destroy();
+    S.dispatch('TOGGLE_SELECTION_MODE', { active: true });
+    S.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: a });
+    let html = V.render(S.getState());
+    expect(iconOf(html, a)).toBe('class="list-item-icon tx-icon-flip is-selected"'); // entry: no flip
+
+    S.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: b });
+    html = V.render(S.getState());
+    expect(iconOf(html, b)).toBe('class="list-item-icon tx-icon-flip is-selected tx-flip-in"');
+    expect(iconOf(html, a)).toBe('class="list-item-icon tx-icon-flip is-selected"');
+
+    S.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: a });
+    html = V.render(S.getState());
+    expect(iconOf(html, a)).toBe('class="list-item-icon tx-icon-flip tx-flip-out"');
+    expect(iconOf(html, b)).toBe('class="list-item-icon tx-icon-flip is-selected"');
+
+    // Cancel turns every picked row back
+    S.dispatch('TOGGLE_SELECTION_MODE', { active: false });
+    html = V.render(S.getState());
+    expect(iconOf(html, b)).toBe('class="list-item-icon tx-icon-flip tx-flip-out"');
+
+    // an unrelated re-render flips nothing
+    html = V.render(S.getState());
+    expect(html).not.toContain('tx-flip-');
   });
 
   it('renders TransactionsView with contextual action bar, selected count, cancel button, and delete button', () => {

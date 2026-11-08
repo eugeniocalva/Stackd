@@ -1449,6 +1449,19 @@ window.Views = {
       const visibleTxIds = visibleTx.map(t => t.id);
       const allVisibleSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
 
+      // 1.2.2 (HG-11): a row whose selection changed since the last render
+      // turns its icon over ('in' to the check, 'out' back). The first render
+      // of a visit (_selRendered null, reset by destroy) animates nothing.
+      const prevSel = this._selRendered;
+      const nowSel = new Set(isSelectionMode ? selectedIds : []);
+      this._selRendered = nowSel;
+      const flipOf = (id) => {
+        if (!prevSel) return '';
+        if (nowSel.has(id) && !prevSel.has(id)) return 'in';
+        if (!nowSel.has(id) && prevSel.has(id)) return 'out';
+        return '';
+      };
+
       // 1.2.2 (HG-10 P3) the period pill + context row (was AdvancedFilterBar)
       const filterBarHtml = window.Components.PeriodBar.render('history', filters, state);
 
@@ -1628,6 +1641,7 @@ window.Views = {
                   return window.Components.TransactionItem.render(tx, category, account, {
                     isSelectionMode,
                     isSelected,
+                    flip: flipOf(tx.id),
                     allowSwipeReveal: true,
                     beforeOpening: window.Store._isTxBeforeOpeningDate(tx) // 1.0.3 (BUG-41, D2)
                   });
@@ -1667,9 +1681,8 @@ window.Views = {
             <div class="page-header">
               <h1 class="page-header-title">${window.I18n.t('history.title')}</h1>
               <div class="page-header-actions">
-                <button id="btn-start-selection-mode" class="btn-selection-action" data-focus-key="history-select" aria-label="${window.I18n.t('history.selectAria')}">
-                  ${window.I18n.t('history.select')}
-                </button>
+                <!-- 1.2.2 (HG-11, D1): no Select button — a long press on a
+                     row starts selecting -->
                 ${window.Components.PeriodBar.filterButton('history', filters, state)}
               </div>
             </div>
@@ -1684,7 +1697,7 @@ window.Views = {
           </div>
 
           <!-- Transactions List Container -->
-          <div style="margin-top: var(--space-4);">
+          <div id="history-list" class="history-list${isSelectionMode ? ' is-selecting' : ''}" style="margin-top: var(--space-4);">
             ${txListHtml}
           </div>
 
@@ -1712,13 +1725,6 @@ window.Views = {
       if (toTopBtn) {
         toTopBtn.addEventListener('click', () => {
           container.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-      }
-
-      const btnStartSelectionMode = container.querySelector('#btn-start-selection-mode');
-      if (btnStartSelectionMode) {
-        btnStartSelectionMode.addEventListener('click', () => {
-          window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
         });
       }
 
@@ -1874,161 +1880,21 @@ window.Views = {
         });
       });
 
-      // Bi-directional Swipe Gesture Handler
-      const closeAllSwipes = (exceptContainer = null) => {
-        container.querySelectorAll('.swipe-container').forEach(sc => {
-          if (sc !== exceptContainer) {
-            const content = sc.querySelector('.swipe-content');
-            if (content) content.style.transform = 'translateX(0px)';
-          }
-        });
+      // 1.2.2 (HG-11): one gesture controller for the rows (was a touch
+      // handler per row and a separate long-press timer, which fought).
+      this._wireRows(container);
+      // D10: #router-view outlives the render, so its listeners are swapped
+      // (not stacked) on every attach and removed in destroy()
+      if (container._historyCloseRows) {
+        container.removeEventListener('scroll', container._historyCloseRows);
+        container.removeEventListener('pointerdown', container._historyTapOutside);
+      }
+      container._historyCloseRows = () => { if (this._closeOpenRows) this._closeOpenRows(); };
+      container._historyTapOutside = (e) => {
+        if (!e.target.closest || !e.target.closest('.swipe-container')) container._historyCloseRows();
       };
-
-      container.querySelectorAll('.swipe-container').forEach(swipeContainer => {
-        const swipeContent = swipeContainer.querySelector('.swipe-content');
-        if (!swipeContent) return;
-
-        let startX = 0;
-        let startY = 0;
-        let isDragging = false;
-        let isHorizontal = false;
-        let currentOffset = 0;
-        // 1.0.2 (live-U2-1): an opening balance has no Paid action to reveal.
-        const hasPaid = !!swipeContainer.querySelector('.swipe-action-btn.paid');
-        const maxRight = hasPaid ? 90 : 0;
-
-        const handleStart = (clientX, clientY) => {
-          const storeState = window.Store.getState();
-          if (storeState.isSelectionMode) return;
-
-          startX = clientX;
-          startY = clientY;
-          isDragging = true;
-          isHorizontal = false;
-          swipeContent.style.transition = 'none';
-
-          const match = swipeContent.style.transform.match(/translateX\(([-?\d.]+)px\)/);
-          currentOffset = match ? parseFloat(match[1]) : 0;
-        };
-
-        const handleMove = (clientX, clientY, e) => {
-          if (!isDragging) return;
-
-          const deltaX = clientX - startX;
-          const deltaY = clientY - startY;
-
-          if (!isHorizontal) {
-            if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
-              isHorizontal = true;
-              closeAllSwipes(swipeContainer);
-            } else if (Math.abs(deltaY) > 8) {
-              isDragging = false;
-              return;
-            }
-          }
-
-          if (isHorizontal) {
-            if (e && e.cancelable) e.preventDefault();
-
-            let targetX = currentOffset + deltaX;
-            if (targetX < -130) targetX = -130;
-            if (targetX > maxRight) targetX = maxRight;
-
-            swipeContent.style.transform = `translateX(${targetX}px)`;
-          }
-        };
-
-        const handleEnd = (clientX) => {
-          if (!isDragging) return;
-          isDragging = false;
-          swipeContent.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
-
-          const deltaX = clientX - startX;
-
-          if (isHorizontal) {
-            if (deltaX < -40 || (currentOffset < 0 && deltaX < 20)) {
-              // Swipe Left: reveal Edit & Delete
-              swipeContent.style.transform = 'translateX(-110px)';
-            } else if (hasPaid && (deltaX > 40 || (currentOffset > 0 && deltaX > -20))) {
-              // Swipe Right: reveal Paid
-              swipeContent.style.transform = 'translateX(70px)';
-            } else {
-              swipeContent.style.transform = 'translateX(0px)';
-            }
-          }
-        };
-
-        swipeContainer.addEventListener('touchstart', (e) => {
-          if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY);
-        }, { passive: true });
-
-        swipeContainer.addEventListener('touchmove', (e) => {
-          if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
-        }, { passive: false });
-
-        swipeContainer.addEventListener('touchend', (e) => {
-          const endX = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
-          handleEnd(endX);
-        });
-      });
-
-      // Long press & Click handling on transaction list items
-      let longPressTimer = null;
-
-      const clearLongPress = () => {
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
-      };
-
-      container.querySelectorAll('.list-item[data-id]').forEach(item => {
-        const txId = item.dataset.id;
-        if (!txId) return;
-
-        const startPress = () => {
-          clearLongPress();
-
-          const currentStoreState = window.Store.getState();
-          if (currentStoreState.isSelectionMode) return;
-
-          longPressTimer = setTimeout(() => {
-            if (window.navigator && window.navigator.vibrate) {
-              try { window.navigator.vibrate(40); } catch (_) {}
-            }
-            window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
-            window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
-            clearLongPress();
-          }, 500);
-        };
-
-        item.addEventListener('touchstart', startPress, { passive: true });
-        item.addEventListener('mousedown', startPress);
-
-        item.addEventListener('touchend', clearLongPress);
-        item.addEventListener('touchmove', clearLongPress);
-        item.addEventListener('mouseup', clearLongPress);
-        item.addEventListener('mouseleave', clearLongPress);
-
-        item.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          const currentStoreState = window.Store.getState();
-          if (currentStoreState.isSelectionMode) {
-            window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
-          } else {
-            // Close any swiped items on click if offset
-            const match = item.style.transform.match(/translateX\(([-?\d.]+)px\)/);
-            const currentOffset = match ? parseFloat(match[1]) : 0;
-            if (currentOffset !== 0) {
-              item.style.transform = 'translateX(0px)';
-              return;
-            }
-            window.Router.navigate('#edit?id=' + txId);
-          }
-        });
-      });
+      container.addEventListener('scroll', container._historyCloseRows, { passive: true });
+      container.addEventListener('pointerdown', container._historyTapOutside);
 
       // v0.80: re-tapping the History nav item while already on History fires
       // this router event (it previously had no listener — dead code); it is
@@ -2044,6 +1910,161 @@ window.Views = {
       // unconditional call yanked the list back to today and lost the user's
       // place — main.js now preserves scrollTop across those renders instead.
       if (isEntry !== false) this.scrollToToday(container);
+    },
+
+    // 1.2.2 (HG-11): the row gestures of History — swipe to reveal the
+    // actions, long press to start selecting, tap to open or (while
+    // selecting) to pick. Pointer events on the list, and the rows carry
+    // touch-action: pan-y: a vertical drag is the browser's own scroll (it
+    // sends pointercancel), only a sideways drag is ours. The old per-row
+    // non-passive touchmove made every scroll wait on the main thread, and
+    // the :active scale fought the drag's transform. The action buttons stay
+    // hidden until a row opens (.is-open): a fast scroll showed them through
+    // rows WebKit had not painted yet.
+    _wireRows(container) {
+      const list = container.querySelector('#history-list');
+      if (!list) return;
+      const view = this;
+      const OPEN_LEFT = -110;   // Edit + Delete
+      const OPEN_RIGHT = 70;    // Paid
+      const LIMIT_LEFT = -130;
+      const SLOP = 8;
+      const HOLD_MS = 450;      // D11 (was 500)
+      const FLICK = 0.35;       // px per ms
+      let g = null;             // the gesture in progress
+      let holdTimer = null;
+
+      const contentOf = (row) => row.querySelector('.swipe-content');
+      const offsetOf = (row) => Number(row.dataset.offset || 0);
+      const hasPaid = (row) => !!row.querySelector('.swipe-action-btn.paid');
+      const cancelHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+
+      const setX = (row, x) => {
+        const c = contentOf(row);
+        if (!c) return;
+        c.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+        c.style.transform = x ? `translateX(${x}px)` : '';
+        row.dataset.offset = String(x);
+        if (x) { row.classList.add('is-open'); return; }
+        // closing: the buttons go only once the card covers them again
+        const done = () => { if (offsetOf(row) === 0) row.classList.remove('is-open'); };
+        c.addEventListener('transitionend', done, { once: true });
+        setTimeout(done, 340);
+      };
+      const openRows = () => Array.from(list.querySelectorAll('.swipe-container.is-open'));
+      const closeAll = (except) => openRows().forEach(r => { if (r !== except && offsetOf(r) !== 0) setX(r, 0); });
+      // D10: the list's scroll and a tap outside the rows close an open row
+      // (attachEvents' container listeners call this; a sideways drag never
+      // scrolls, so it cannot close the row it is moving)
+      view._closeOpenRows = () => { if (!g || g.axis !== 'x') closeAll(); };
+
+      list.addEventListener('pointerdown', (e) => {
+        if (!e.isPrimary || e.button !== 0) return;
+        if (e.target.closest('.swipe-action-btn')) return;
+        const content = e.target.closest('.swipe-content');
+        const row = content && content.closest('.swipe-container');
+        if (!row) return;
+        view._swallowClick = false;
+        cancelHold();
+        const selecting = window.Store.getState().isSelectionMode === true;
+        const anyOpen = openRows().some(r => offsetOf(r) !== 0);
+        g = { row, id: row.dataset.id, x0: e.clientX, y0: e.clientY, start: offsetOf(row), x: offsetOf(row),
+              axis: null, pid: e.pointerId, lastX: e.clientX, lastT: e.timeStamp, v: 0, selecting };
+        if (selecting || anyOpen) return;
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          if (!g || g.axis) return;
+          g.held = true;
+          // the click that ends this press must not toggle the row back
+          view._swallowClick = true;
+          const H = window.Components.Haptics;
+          if (H && H._plugin && H._plugin()) H.light();
+          else if (window.navigator && typeof window.navigator.vibrate === 'function') {
+            try { window.navigator.vibrate(30); } catch (_) { /* optional */ }
+          }
+          window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true });
+          window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: g.id });
+        }, HOLD_MS);
+      });
+
+      list.addEventListener('pointermove', (e) => {
+        if (!g || e.pointerId !== g.pid) return;
+        const dx = e.clientX - g.x0;
+        const dy = e.clientY - g.y0;
+        if (!g.axis) {
+          if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+          cancelHold();
+          if (g.selecting || g.held || Math.abs(dy) >= Math.abs(dx)) { g.axis = 'y'; return; }
+          g.axis = 'x';
+          closeAll(g.row);
+          g.row.classList.add('is-open');
+          try { contentOf(g.row).setPointerCapture(e.pointerId); } catch (_) { /* capture is a nicety */ }
+        }
+        if (g.axis !== 'x') return;
+        const maxRight = hasPaid(g.row) ? 90 : 0;
+        let x = g.start + dx;
+        if (x < LIMIT_LEFT) x = LIMIT_LEFT + (x - LIMIT_LEFT) * 0.2;
+        if (x > maxRight) x = maxRight + (x - maxRight) * 0.2;
+        const dt = e.timeStamp - g.lastT;
+        if (dt > 0) g.v = (e.clientX - g.lastX) / dt;
+        g.lastX = e.clientX;
+        g.lastT = e.timeStamp;
+        g.x = x;
+        const c = contentOf(g.row);
+        c.style.transition = 'none';
+        c.style.transform = `translateX(${x}px)`;
+      });
+
+      const finish = (e) => {
+        if (!g || e.pointerId !== g.pid) return;
+        cancelHold();
+        const cur = g;
+        g = null;
+        if (cur.axis !== 'x') return;
+        view._swallowClick = true; // a drag is not a tap
+        const paid = hasPaid(cur.row);
+        let target = 0;
+        if (cur.v < -FLICK) target = cur.start > 0 ? 0 : OPEN_LEFT;
+        else if (cur.v > FLICK) target = cur.start < 0 ? 0 : (paid ? OPEN_RIGHT : 0);
+        else if (cur.x <= OPEN_LEFT / 2) target = OPEN_LEFT;
+        else if (paid && cur.x >= OPEN_RIGHT / 2) target = OPEN_RIGHT;
+        setX(cur.row, target);
+      };
+      list.addEventListener('pointerup', finish);
+      list.addEventListener('pointercancel', finish);
+
+      // Once a drag is sideways, the browser's own gesture is cancelled:
+      // Chromium (Android WebView) otherwise runs it as a scroll that goes
+      // nowhere and then eats the next tap — the first tap on Edit or Delete
+      // after a swipe did nothing. A vertical drag is never cancelled, and
+      // once the browser scrolls, its touchmoves are not blocking anyway.
+      list.addEventListener('touchmove', (e) => {
+        if (g && g.axis === 'x' && e.cancelable) e.preventDefault();
+      }, { passive: false });
+
+      // a press held for selection must not open the browser's menu
+      list.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('.swipe-content') && (holdTimer || view._swallowClick)) e.preventDefault();
+      });
+
+      list.addEventListener('click', (e) => {
+        if (e.target.closest('.swipe-action-btn')) return; // their own handlers
+        const item = e.target.closest('.list-item[data-id]');
+        if (!item) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // e.detail 0 = a keyboard activation (main.js el.click()), never swallowed
+        if (view._swallowClick && e.detail !== 0) { view._swallowClick = false; return; }
+        view._swallowClick = false;
+        const txId = item.dataset.id;
+        if (window.Store.getState().isSelectionMode) {
+          window.Store.dispatch('TOGGLE_TRANSACTION_SELECTION', { id: txId });
+          return;
+        }
+        // a tap while a row is open only closes it
+        if (openRows().some(r => offsetOf(r) !== 0)) { closeAll(); return; }
+        window.Router.navigate('#edit?id=' + txId);
+      });
     },
 
     scrollToToday(container) {
@@ -2072,8 +2093,17 @@ window.Views = {
     },
 
     destroy() {
+      this._selRendered = null; // 1.2.2 (HG-11): no flips on the next visit's first render
+      this._swallowClick = false;
+      this._closeOpenRows = null;
       // Cleanup window-level listeners
       const routerView = document.getElementById('router-view');
+      if (routerView && routerView._historyCloseRows) {
+        routerView.removeEventListener('scroll', routerView._historyCloseRows);
+        routerView.removeEventListener('pointerdown', routerView._historyTapOutside);
+        routerView._historyCloseRows = null;
+        routerView._historyTapOutside = null;
+      }
       if (routerView && routerView._historyReTapHandler) {
         window.removeEventListener('scroll-history-to-today', routerView._historyReTapHandler);
       }

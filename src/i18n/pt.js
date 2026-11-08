@@ -71,8 +71,6 @@ window.I18n.dicts.pt = {
 
   // ── History (P8c) ────────────────────────────────────────────────────────
   'history.title': 'Histórico',
-  'history.select': 'Selecionar',
-  'history.selectAria': 'Ativar a seleção múltipla',
   'history.cancelSelectionAria': 'Cancelar a seleção',
   'history.selectedCount.one': '{count} selecionado',
   'history.selectedCount.other': '{count} selecionados',

@@ -583,6 +583,14 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   daily ≤ 31 days, weekly ≤ 93, monthly ≤ 36 months, yearly; buckets carry
   `kind`), and the % badge names the compared window
   (`analytics.vsPeriod` + `Store.comparisonLabel`).
+- **History rows (HG-11, `docs/history-rows-plan.md`).** No Select button:
+  a 450 ms long press selects, and the row's icon turns over to a check
+  (`.tx-icon-flip`; `TransactionsView._selRendered` diffs the selection so
+  only a changed row flips). Every row gesture lives in
+  `TransactionsView._wireRows` (pointer events, `touch-action: pan-y`, one
+  non-passive touchmove that cancels only a sideways drag — without it
+  Chromium eats the first tap after a swipe). Swipe actions stay hidden
+  until a row opens (`.is-open`); a scroll or a tap outside closes it.
 
 ## Working conventions in this repo
 

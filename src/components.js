@@ -896,18 +896,16 @@ window.Components = {
       // v1.02: a row belongs to ONE account — format in that account's currency
       const formattedAmount = sign + window.Store.formatCurrency(Math.abs(transaction.amount), accountData && accountData.currency);
       const dateStr = window.Components.TransactionItem._fmtDate(transaction.date);
-      
+
       const isSelectionMode = options && options.isSelectionMode === true;
       const isSelected = options && options.isSelected === true;
-
-      const checkboxHtml = isSelectionMode ? `
-        <div class="custom-selection-checkbox tx-select-checkbox ${isSelected ? 'checked' : ''}" data-id="${transaction.id}">
-          ${isSelected ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>` : ''}
-        </div>
-      ` : '';
+      // 1.2.2 (HG-11): selecting turns the category icon over to a check (the
+      // mail-app gesture) — no checkbox column, nothing slides. `flip` is
+      // 'in' / 'out' only on the render right after this row's state changed.
+      const flip = options && (options.flip === 'in' || options.flip === 'out') ? options.flip : '';
 
       const selectedClass = isSelected ? 'list-item-selected' : '';
-      const selectedBgStyle = isSelected ? 'background-color: var(--bg-surface-sunken); border-width: 2px; border-style: solid;' : '';
+      const selectedBgStyle = '';
 
       // v0.82: paid is the default and shows NOTHING (the green chip is gone);
       // the amber left-edge bar is the single indicator, only when unpaid.
@@ -932,12 +930,19 @@ window.Components = {
         ? `<div class="list-item-subtitle tx-before-opening" style="margin-top: 2px; font-size: 0.72rem; ${ELLIPSIS}">${window.I18n.t('history.beforeOpening')}</div>`
         : '';
 
+      const iconName = category ? category.icon : 'receipt';
+      const iconHtml = allowSwipe
+        ? `<div class="list-item-icon tx-icon-flip${isSelected ? ' is-selected' : ''}${flip ? ` tx-flip-${flip}` : ''}" aria-hidden="true">
+          <span class="tx-face tx-face-front${beforeOpening ? ' is-dim' : ''}"><i data-lucide="${iconName}"></i></span>
+          <span class="tx-face tx-face-back"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+        </div>`
+        : `<div class="list-item-icon"${beforeOpening ? ` style="${dimStyle.trim()}"` : ''}>
+          <i data-lucide="${iconName}"></i>
+        </div>`;
+
       const innerContent = `
         ${unpaidBarHtml}
-        ${checkboxHtml}
-        <div class="list-item-icon"${beforeOpening ? ` style="${dimStyle.trim()}"` : ''}>
-          <i data-lucide="${category ? category.icon : 'receipt'}"></i>
-        </div>
+        ${iconHtml}
         <div class="list-item-content" style="min-width: 0;${dimStyle}">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
@@ -956,15 +961,20 @@ window.Components = {
                 <span class="tx-tag-more" style="display: none; ${TAG_PILL_STYLE}"></span>
               </div>` : ''}
             </div>
-            <div class="list-item-subtitle" style="flex-shrink: 0;">${attachCount ? `<span class="tx-attach-badge" role="img" aria-label="${esc(window.I18n.t('tx.attachmentsCount', { count: attachCount }))}"><i data-lucide="paperclip" aria-hidden="true"></i>${attachCount}</span>` : ''}${dateStr}</div>
+            ${(attachCount || dateStr) ? `<div class="list-item-subtitle" style="flex-shrink: 0;">${attachCount ? `<span class="tx-attach-badge" role="img" aria-label="${esc(window.I18n.t('tx.attachmentsCount', { count: attachCount }))}"><i data-lucide="paperclip" aria-hidden="true"></i>${attachCount}</span>` : ''}${dateStr}</div>` : ''}
           </div>
           ${beforeOpeningHtml}
         </div>`;
 
-      // v0.62: Complete branch isolation
-      if (!allowSwipe || isSelectionMode) {
+      // 1.2.2 (HG-11): in selection mode a row says whether it is picked
+      const pressedAttr = isSelectionMode ? ` aria-pressed="${isSelected ? 'true' : 'false'}"` : '';
+
+      // v0.62: Complete branch isolation. 1.2.2 (HG-11): a swipe row keeps its
+      // structure in selection mode (only the gesture is off), so entering it
+      // moves nothing.
+      if (!allowSwipe) {
         return `
-          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
+          <div class="list-item touch-target ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button"${pressedAttr} aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
             ${innerContent}
           </div>`;
       }
@@ -989,7 +999,7 @@ window.Components = {
               <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
             </button>
           </div>
-          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button" aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
+          <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button"${pressedAttr} aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
             ${innerContent}
           </div>
         </div>`;

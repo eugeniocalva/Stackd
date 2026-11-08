@@ -5099,3 +5099,85 @@ a:focus-visible,
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ── 1.2.2 (HG-11 P1) History rows: long press to select, the icon turns
+   over to a check, calm swipe actions (docs/history-rows-plan.md) ────────── */
+
+/* Swipe rows: the browser keeps vertical scrolling, a sideways drag is ours.
+   The action buttons exist only while a row is open — at rest nothing sits
+   behind a card that a fast scroll could show before the card is painted. */
+.history-list .swipe-content {
+  touch-action: pan-y;
+  will-change: auto;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.history-list .swipe-content:active { transform: none; }
+.history-list .swipe-container.is-open .swipe-content { will-change: transform; }
+.history-list .swipe-container .swipe-actions { visibility: hidden; }
+.history-list .swipe-container.is-open .swipe-actions { visibility: visible; }
+
+/* The icon turns over to a check (mail-app style): two faces in the circle,
+   squeezed to an edge and back — a flat flip, no 3D layer per row */
+.tx-icon-flip {
+  position: relative;
+  background: transparent;
+  overflow: visible;
+}
+.tx-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.tx-face-front { background: var(--bg-surface-sunken); color: var(--text-primary); }
+.tx-face-back { background: var(--color-primary); color: var(--text-on-primary); opacity: 0; }
+.tx-icon-flip.is-selected .tx-face-front { opacity: 0; }
+.tx-icon-flip.is-selected .tx-face-back { opacity: 1; }
+
+.tx-icon-flip.tx-flip-in,
+.tx-icon-flip.tx-flip-out { animation: tx-flip 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.tx-icon-flip.tx-flip-in .tx-face-front { animation: tx-face-hide 0.3s linear; }
+.tx-icon-flip.tx-flip-in .tx-face-back { animation: tx-face-show 0.3s linear; }
+.tx-icon-flip.tx-flip-out .tx-face-front { animation: tx-face-show 0.3s linear; }
+.tx-icon-flip.tx-flip-out .tx-face-back { animation: tx-face-hide 0.3s linear; }
+.tx-icon-flip.tx-flip-in .tx-face-back svg { animation: tx-check-pop 0.3s ease-out; }
+
+@keyframes tx-flip {
+  0% { transform: scaleX(1); }
+  50% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+@keyframes tx-face-hide {
+  0%, 49.9% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes tx-face-show {
+  0%, 49.9% { opacity: 0; }
+  50%, 100% { opacity: 1; }
+}
+@keyframes tx-check-pop {
+  0%, 50% { transform: scale(0.4); }
+  80% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tx-icon-flip.tx-flip-in,
+  .tx-icon-flip.tx-flip-out,
+  .tx-icon-flip .tx-face,
+  .tx-icon-flip .tx-face-back svg { animation: none !important; }
+}
+
+/* A picked row keeps its look (grey fill, 2 px dark outline) drawn as the
+   1 px border + a 1 px inner ring: the old inline 2 px border grew the row
+   by 2 px, and an outer ring is clipped by the swipe box */
+.history-list .list-item-selected {
+  border-color: var(--color-primary) !important;
+  box-shadow: inset 0 0 0 1px var(--color-primary) !important;
+}
+
+.tx-face-front.is-dim > * { opacity: 0.55; } /* 1.0.3 (BUG-41) dimming, on the glyph */

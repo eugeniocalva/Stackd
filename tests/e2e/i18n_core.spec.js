@@ -52,11 +52,11 @@ test.describe('i18n core chrome (Italian)', () => {
 
     // Lands on History, translated, with the day sum in Italian
     await expect(page.locator('.page-header-title')).toHaveText('Cronologia');
-    await expect(page.locator('#btn-start-selection-mode')).toHaveText('Seleziona');
     await expect(page.locator('.day-summary-footer').first()).toContainText('somma:');
 
-    // Selection bar plurals
-    await page.click('#btn-start-selection-mode');
+    // Selection bar plurals (1.2.2 HG-11: no Select button, a long press
+    // starts selecting — history_rows.spec drives the gesture)
+    await page.evaluate(() => window.Store.dispatch('TOGGLE_SELECTION_MODE', { active: true }));
     await expect(page.locator('.selection-count-label')).toHaveText('0 selezionati');
     await expect(page.locator('#btn-toggle-select-all')).toHaveText('Seleziona tutto');
     await page.click('#btn-cancel-selection');

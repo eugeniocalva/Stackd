@@ -75,8 +75,6 @@ window.I18n.dicts.en = {
 
   // ── History (P8c) ────────────────────────────────────────────────────────
   'history.title': 'History',
-  'history.select': 'Select',
-  'history.selectAria': 'Enter bulk selection mode',
   'history.cancelSelectionAria': 'Cancel selection',
   'history.selectedCount.one': '{count} Selected',
   'history.selectedCount.other': '{count} Selected',
