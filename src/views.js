@@ -4135,19 +4135,22 @@ Object.assign(window.Views, {
               ${window.Store.foreignAccountCount() > 0 ? `<div style="font-size: 0.72rem; color: var(--text-tertiary);">${window.I18n.t('common.otherCurrencyExcluded', { count: window.Store.foreignAccountCount() })}</div>` : ''}
             </div>
 
-            <!-- Month Switcher (Modern Pill Style) -->
-            <div style="display: flex; justify-content: center; align-items: center; background: var(--bg-surface-sunken); padding: 4px; border-radius: 24px; margin: 0 auto; width: fit-content; gap: 4px; border: 1px solid var(--border-color);">
-              <button id="bdg-prev-month" class="btn-month-pill-arrow" ${!hasPrevMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.prevMonth')}">
-                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
-              </button>
-
-              <div id="bdg-month-picker-btn" class="hit-target" tabindex="0" role="button" aria-label="${window.I18n.t('budget.currentMonthAria', { month: currMonthLabel })}" style="cursor: pointer; align-self: stretch; display: flex; align-items: center; justify-content: center; font-family: var(--font-family-display); font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 0 8px; white-space: nowrap;">
-                ${currMonthLabel}
+            <!-- 1.2.2 (HG-10 follow-up): the month switcher wears History's
+                 and Analytics' period bar — ‹ [label] › with primary arrows -->
+            <div class="period-bar" data-page="budget">
+              <div class="period-row">
+                <button type="button" id="bdg-prev-month" class="period-arrow" data-focus-key="period-prev-budget" ${!hasPrevMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.prevMonth')}">
+                  <i data-lucide="chevron-left" aria-hidden="true"></i>
+                </button>
+                <div class="period-pill">
+                  <div id="bdg-month-picker-btn" class="period-label" tabindex="0" role="button" aria-label="${window.I18n.t('budget.currentMonthAria', { month: currMonthLabel })}">
+                    <span class="period-label-text">${currMonthLabel}</span>
+                  </div>
+                </div>
+                <button type="button" id="bdg-next-month" class="period-arrow" data-focus-key="period-next-budget" ${!hasNextMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.nextMonth')}">
+                  <i data-lucide="chevron-right" aria-hidden="true"></i>
+                </button>
               </div>
-
-              <button id="bdg-next-month" class="btn-month-pill-arrow" ${!hasNextMonth ? 'disabled' : ''} aria-label="${window.I18n.t('budget.nextMonth')}">
-                <i data-lucide="chevron-right" style="width: 18px; height: 18px;"></i>
-              </button>
             </div>
           </div>
 
@@ -4415,6 +4418,7 @@ Object.assign(window.Views, {
           prevBtn.addEventListener('click', () => {
             const prevD = new Date(parseInt(y), parseInt(m) - 2, 1);
             const nextVal = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
+            window.Components.PeriodBar.toTop(); // like History and Analytics
             window.Store.dispatch('SET_MONTH_FILTER', nextVal);
           });
         }
@@ -4423,6 +4427,7 @@ Object.assign(window.Views, {
           nextBtn.addEventListener('click', () => {
             const nextD = new Date(parseInt(y), parseInt(m), 1);
             const nextVal = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}`;
+            window.Components.PeriodBar.toTop();
             window.Store.dispatch('SET_MONTH_FILTER', nextVal);
           });
         }

@@ -564,7 +564,11 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   (`Components.PeriodBar`: `#period-prev/label/next-<page>` — since the
   2026-11-08 phone check the arrows are primary-filled circles outside the
   pill, the pill is the label alone (no chevron, min-width 176 px so month
-  steps never move the arrows); a context row with
+  steps never move the arrows); Budget's month switcher wears the same
+  `.period-row`/`.period-arrow`/`.period-pill` markup (its own ids); every
+  sticky-bar title has 24 px under it (`page_titles.spec` checks the gap and
+  that the three bars line up); ‹ › and a picked period open at the top via
+  `PeriodBar.toTop()`; a context row with
   `#period-now-<page>` and one `[data-filter-kind]` chip per filter kind,
   `filterButton()` = `#btn-filter-<page>`) and one `Components.PeriodSheet`
   (Month · Year grid + a custom-range calendar step whose "‹ Period" carries

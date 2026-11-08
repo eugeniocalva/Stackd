@@ -46,6 +46,29 @@ test('page titles share one top line, and Loans has no back link', async ({ page
     expect(Math.abs(tops[hash] - 32), `${hash} title top = ${tops[hash]}`).toBeLessThanOrEqual(2);
   }
 
+  // 1.2.2 (HG-10 follow-up): History, Budget and Analytics share one period
+  // bar, 24 px under the title, at the same height on each page
+  const bars = {};
+  for (const hash of ['#transactions', '#budget', '#analytics']) {
+    await page.evaluate((h) => { location.hash = h; }, hash);
+    await page.waitForFunction(() => !!document.querySelector('#router-view .period-row') && document.querySelectorAll('#router-view > *').length === 1);
+    await page.waitForTimeout(400);
+    bars[hash] = await page.evaluate(() => {
+      const view = document.getElementById('router-view');
+      view.scrollTop = 0;
+      const top = view.getBoundingClientRect().top;
+      const title = document.querySelector('.history-header-sticky .page-header-title').getBoundingClientRect();
+      const bar = document.querySelector('.period-bar').getBoundingClientRect();
+      const arrows = [...document.querySelectorAll('.period-row > .period-arrow')].map(a => Math.round(a.getBoundingClientRect().width));
+      return { gap: Math.round(bar.top - title.bottom), bar: Math.round(bar.top - top), arrows };
+    });
+  }
+  for (const [hash, m] of Object.entries(bars)) {
+    expect(Math.abs(m.gap - 24), `${hash} title → period bar = ${m.gap}`).toBeLessThanOrEqual(1);
+    expect(Math.abs(m.bar - bars['#transactions'].bar), `${hash} bar top`).toBeLessThanOrEqual(1);
+    expect(m.arrows, hash).toEqual([44, 44]);
+  }
+
   await page.evaluate(() => { location.hash = '#debt'; });
   await page.waitForSelector('#debt-hub');
   await expect(page.locator('#debt-hub a[href="#dashboard"]')).toHaveCount(0);

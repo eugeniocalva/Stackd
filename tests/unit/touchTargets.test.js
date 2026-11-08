@@ -98,12 +98,19 @@ describe('Compact controls carry the hit target (BUG-22)', () => {
     });
   });
 
-  it('Budget: month label stretches to the pill row and has the halo', () => {
+  // 1.2.2 (HG-10 follow-up): Budget wears the shared period bar — a 44 px
+  // label filling the pill and 44 px primary arrows outside it
+  it('Budget: the month switcher is the shared period bar', () => {
     const root = renderInto(window.Views.BudgetView.render(window.Store.getState()));
     const el = root.querySelector('#bdg-month-picker-btn');
     expect(el).not.toBeNull();
-    expect(el.classList.contains('hit-target')).toBe(true);
-    expect(el.style.alignSelf).toBe('stretch');
+    expect(el.classList.contains('period-label')).toBe(true);
+    expect(el.parentElement.classList.contains('period-pill')).toBe(true);
+    ['bdg-prev-month', 'bdg-next-month'].forEach(id => {
+      const b = root.querySelector('#' + id);
+      expect(b.classList.contains('period-arrow'), id).toBe(true);
+      expect(b.parentElement.classList.contains('period-row'), id).toBe(true);
+    });
   });
 
   it('Transaction form: "+ Add custom" grows its box without moving the row', () => {

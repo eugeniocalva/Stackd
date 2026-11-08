@@ -5216,3 +5216,13 @@ a:focus-visible,
   margin-top: 0;
   margin-bottom: 0;
 }
+
+/* 1.2.2 (HG-10 follow-up, phone check 2026-11-08) Room under the title.
+   History, Budget and Analytics put their period bar 12 px under the title
+   (the title's bottom margin and the bar's top margin collapse into one);
+   the other tabs leave ~24 px between title and content. All three take
+   24 px now. The title stays on the shared 32 px line (HG-3); History's
+   selection bar keeps its own spacing. */
+.history-header-sticky > .page-header:not(.contextual-header-bar) { margin-bottom: var(--space-6); }
+.period-arrow:disabled { opacity: 0.35; cursor: default; }
+.period-arrow:disabled:active { transform: none; }
