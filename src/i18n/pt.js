@@ -570,7 +570,9 @@ window.I18n.dicts.pt = {
   'account.negativeHint': 'Use um valor negativo para cartões de crédito, créditos ou dívidas existentes.',
   'account.openingBalanceDate': 'Data do saldo inicial',
   'account.setDefault': 'Definir como wallet predefinido',
-  'account.setDefaultHint': 'Aparece primeiro no painel e é pré-selecionado nos novos movimentos.',
+  'account.setDefaultHint': "É pré-selecionado nos novos movimentos.", // 1.2.2 (HG-12): no longer "shown first on Home"
+  'account.defaultTag': "Wallet predefinido", // 1.2.2 (HG-12): Manage accounts row
+  'account.orderHint': "Esta ordem é usada em toda a app. No painel, mantenha premido um cartão de wallet e arraste-o.",
   'account.saveChanges': 'Guardar alterações',
   'account.createAccount': 'Criar conta',
   'account.deleteAccount': 'Eliminar conta',
@@ -936,6 +938,8 @@ window.I18n.dicts.pt = {
   'manual.accounts.fields.d': 'Nome, tipo (Banco, Cartão de débito, Dinheiro, Poupança, Cartão de crédito, Investimento, Carteira, Conta), ícone, cor, saldo inicial com sinal Positivo / Negativo e data, e um interruptor Definir como wallet predefinido. Ao escolher Cartão de crédito, uma conta nova passa automaticamente a negativo.',
   'manual.accounts.balances.h': 'Saldos',
   'manual.accounts.balances.d': 'Os saldos são sempre calculados a partir dos seus movimentos, por isso mantêm-se sincronizados automaticamente.',
+  'manual.accounts.order.h': "Ordem", // 1.2.2 (HG-12)
+  'manual.accounts.order.d': "As suas contas aparecem pela sua ordem em toda a app. No painel, mantenha premido um cartão de wallet por um momento e arraste-o para o lado; ou abra Outros → Contas e use as setas ou a pega. As contas novas vão para o fim.",
   'manual.accounts.editDelete.h': 'Editar ou eliminar',
   'manual.accounts.editDelete.d': 'Abra a conta através do ⋯ no seu cartão de wallet ou em Outros → Contas. Eliminar uma conta elimina definitivamente todos os seus movimentos.',
   'manual.addTx.title': 'Adicionar movimentos',

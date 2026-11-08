@@ -28,7 +28,7 @@ const makeLocalStorage = (seed) => {
 let uuid = 0;
 const boot = (seed) => {
   uuid = 0;
-  document.body.innerHTML = '<div id="router-view"></div>';
+  document.body.innerHTML = '<div id="router-view"></div><div id="modal-container"></div>';
   global.window = {
     crypto: { randomUUID: () => `uuid-${++uuid}` },
     localStorage: makeLocalStorage(Object.assign({ stackd_v1_homeWidgets: '[]' }, seed || {})),
@@ -129,5 +129,77 @@ describe('Home: the account tiles', () => {
     expect(root.querySelector('.wallet-card-default-badge')).toBeNull();
     expect(root.querySelector('.wallet-card.is-default')).toBeNull();
     expect(html).not.toMatch(/DEFAULT/);
+  });
+});
+
+// P2 (D3/D4): Manage accounts reorders; every account list follows the order
+describe('Manage accounts and the other lists (P2)', () => {
+  beforeEach(() => {
+    boot();
+    ['Alpha', 'Bravo', 'Charlie'].forEach(add);
+    S().dispatch('SET_ACCOUNT_ORDER', ['acc_charlie', 'acc_alpha', 'acc_bravo']);
+  });
+
+  const openSheet = async () => {
+    global.window.Views.OthersView._showAccountsSheet();
+    await new Promise(r => setTimeout(r, 120)); // the sheet wires itself after 100 ms
+    return document.getElementById('acc-order-list');
+  };
+  const rowIds = (list) => Array.from(list.querySelectorAll('.acc-order-row')).map(r => r.dataset.accId);
+
+  it('the sheet lists the accounts in the saved order, the default one says so, ends disabled', async () => {
+    const list = await openSheet();
+    expect(rowIds(list)).toEqual(['acc_charlie', 'acc_alpha', 'acc_bravo']);
+    const alpha = list.querySelector('.acc-order-row[data-acc-id="acc_alpha"]');
+    expect(alpha.textContent).toContain('Default wallet');
+    expect(list.querySelector('.acc-order-row[data-acc-id="acc_charlie"]').textContent).not.toContain('Default wallet');
+    expect(list.querySelector('button[data-acc-move="up"][data-acc-id="acc_charlie"]').disabled).toBe(true);
+    expect(list.querySelector('button[data-acc-move="down"][data-acc-id="acc_bravo"]').disabled).toBe(true);
+    expect(document.body.textContent).toContain('hold a wallet card');
+  });
+
+  it('Move down / Move up reorder, keep the focus on the moved row and announce it', async () => {
+    const list = await openSheet();
+    list.querySelector('button[data-acc-move="down"][data-acc-id="acc_charlie"]').click();
+    expect(names()).toEqual(['Alpha', 'Charlie', 'Bravo']);
+    expect(rowIds(list)).toEqual(['acc_alpha', 'acc_charlie', 'acc_bravo']);
+    expect(document.activeElement.dataset.accId).toBe('acc_charlie');
+    expect(document.activeElement.dataset.accMove).toBe('down');
+    // at the bottom the down button is disabled: focus falls to the up button
+    document.activeElement.click();
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(document.activeElement.dataset.accMove).toBe('up');
+    await new Promise(r => setTimeout(r, 80));
+    expect(document.getElementById('sr-announcer').textContent).toBe('Charlie is now in position 3 of 3.');
+  });
+
+  it('a row opens Edit Account', async () => {
+    const list = await openSheet();
+    list.querySelector('.acc-order-open[data-id="acc_bravo"]').click();
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#edit-account?id=acc_bravo');
+  });
+
+  it('the New Log account pickers, the Filter sheet and the balances widget follow the order', () => {
+    const root = document.getElementById('router-view');
+    root.innerHTML = global.window.Views.AddTransactionView.render(S().getState());
+    const opts = Array.from(root.querySelectorAll('#tx-account option')).map(o => o.value);
+    expect(opts).toEqual(['acc_charlie', 'acc_alpha', 'acc_bravo']);
+    // a new log still starts on the default account
+    expect(root.querySelector('#tx-account').value).toBe('acc_alpha');
+
+    global.window.Components.FilterModal.show('transactions');
+    const chips = Array.from(document.querySelectorAll('.multi-select-chip[data-acc]')).map(b => b.dataset.acc);
+    expect(chips).toEqual(['acc_charlie', 'acc_alpha', 'acc_bravo']);
+
+    const W = global.window.Widgets;
+    const data = W.registry.accountBalances._data({ id: 'w1', type: 'accountBalances', size: 'large', config: {} }, S().getState());
+    expect(data.groups.flatMap(g => g.rows.map(r => r.acc.id))).toEqual(['acc_charlie', 'acc_alpha', 'acc_bravo']);
+  });
+
+  it('with no default account set, a new log starts on the first account of your order', () => {
+    S().dispatch('SET_DEFAULT_ACCOUNT', '');
+    const root = document.getElementById('router-view');
+    root.innerHTML = global.window.Views.AddTransactionView.render(S().getState());
+    expect(root.querySelector('#tx-account').value).toBe('acc_charlie');
   });
 });

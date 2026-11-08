@@ -4900,7 +4900,7 @@ window.Store = {
   // 1.2.2 (HG-12, docs/account-order-plan.md): the user's account order. The
   // stored list may hold ids of deleted accounts (another tab, an old file)
   // and may lack accounts (an import); orderedAccounts keeps the known ids in
-  // the saved order and appends the rest in the store order (alphabetical).
+  // the saved order and appends the rest by name. Works on any subset.
   // Every account list on screen reads through it; state.accounts itself
   // stays alphabetical (CSV, import matching).
   _loadAccountOrder() {
@@ -4915,15 +4915,14 @@ window.Store = {
   orderedAccounts(list, order) {
     const accounts = Array.isArray(list) ? list : (this.state.accounts || []);
     const saved = Array.isArray(order) ? order : (this.state.accountOrder || []);
-    if (!saved.length) return accounts.slice();
+    if (!saved.length) return accounts.slice().sort((a, b) => this.compareAlpha(a, b));
     const rank = new Map();
     saved.forEach(id => { if (typeof id === 'string' && !rank.has(id)) rank.set(id, rank.size); });
-    const pos = new Map(accounts.map((a, i) => [a, i]));
     return accounts.slice().sort((a, b) => {
       const ra = rank.has(a.id) ? rank.get(a.id) : Infinity;
       const rb = rank.has(b.id) ? rank.get(b.id) : Infinity;
       if (ra !== rb) return ra < rb ? -1 : 1;
-      return pos.get(a) - pos.get(b);
+      return this.compareAlpha(a, b);
     });
   },
 

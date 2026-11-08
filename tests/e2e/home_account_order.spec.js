@@ -88,6 +88,23 @@ test.describe('Home account order (1.2.2 HG-12)', () => {
     expect(await saved(page)).toEqual(['acc_bravo', 'acc_charlie', 'acc_delta', 'acc_alpha']);
   });
 
+  test('Settings → Manage accounts: Move down reorders, and Home follows (P2)', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => { location.hash = '#settings'; });
+    await page.click('#btn-manage-accounts');
+    const list = page.locator('#acc-order-list');
+    await expect(list.locator('.acc-order-row')).toHaveCount(4);
+    await expect(list.locator('.acc-order-row').first()).toContainText('Alpha');
+    await expect(list.locator('.acc-order-row').first()).toContainText('Default wallet');
+    await list.locator('button[data-acc-move="down"][data-acc-id="acc_alpha"]').click();
+    await expect(list.locator('.acc-order-row').nth(1)).toContainText('Alpha');
+    expect(await saved(page)).toEqual(['acc_bravo', 'acc_alpha', 'acc_charlie', 'acc_delta']);
+    await page.click('#modal-save-btn');
+    await page.evaluate(() => { location.hash = '#dashboard'; });
+    await page.waitForSelector('.wallet-card[data-id="acc_delta"]');
+    expect(await order(page)).toEqual(['acc_bravo', 'acc_alpha', 'acc_charlie', 'acc_delta']);
+  });
+
   test('a plain tap still opens the account', async ({ page }) => {
     await boot(page);
     const cdp = await page.context().newCDPSession(page);

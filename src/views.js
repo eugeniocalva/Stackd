@@ -115,9 +115,9 @@ function createCategoryOptions(categories, selectedId, includeDefaultOption = tr
   return options;
 }
 
+// 1.2.2 (HG-12): the user's account order (alphabetical until moved)
 function createAccountOptions(accounts, selectedId) {
-  return [...accounts]
-    .sort((a, b) => window.Store.compareAlpha(a, b))
+  return window.Store.orderedAccounts(accounts)
     .map(acc => 
       `<option value="${acc.id}" ${acc.id === selectedId ? 'selected' : ''}>${esc(acc.name)}</option>` // 1.0.2 (BUG-24)
     ).join('');
@@ -2445,13 +2445,14 @@ window.Views = {
       }
 
       // 1.0.2 (BUG-39): a NEW log starts on the Default Wallet; if none is set or
-      // it was deleted, on the first account by name (createAccountOptions' order).
+      // it was deleted, on the first account of the list (createAccountOptions'
+      // order — the user's order since 1.2.2 HG-12).
       // Placed after the draft so the add-category round trip keeps the user's
       // pick. It also repairs a draft or loan prefill carrying a deleted id.
       // The currency prefix and the transfer From/To follow initialAccount.
       if (!isEdit && !state.accounts.some(a => a.id === initialAccount)) {
         const def = state.accounts.find(a => a.id === state.defaultAccountId);
-        const first = [...state.accounts].sort((a, b) => window.Store.compareAlpha(a, b))[0];
+        const first = window.Store.orderedAccounts(state.accounts)[0];
         initialAccount = (def || first).id; // accounts is non-empty here (the empty state returned above)
       }
 
@@ -5117,6 +5118,156 @@ Object.assign(window.Views, {
       });
     },
 
+    // 1.2.2 (HG-12 P2, docs/account-order-plan.md D3): Manage accounts lists
+    // the accounts in the user's order. Each row opens Edit Account; Move up
+    // / Move down (the keyboard and assistive path, WCAG 2.5.7) and a grip
+    // drag reorder them, like Settings → Tab bar. The sheet re-renders its
+    // own list after a move (the view under it re-renders on the dispatch);
+    // focus stays on the moved row's button and the live region says where
+    // it went. The default account says so under its name (D2).
+    _accountRowsHtml() {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const accs = S.orderedAccounts();
+      const def = S.getState().defaultAccountId;
+      return accs.map((acc, i) => `
+              <li class="nav-order-row acc-order-row" data-acc-id="${escapeAttr(acc.id)}">
+                <span class="nav-order-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+                <button type="button" class="acc-order-open others-account-row" data-id="${escapeAttr(acc.id)}" aria-label="${t('others.editAccountAria', { name: esc(acc.name) })}">
+                  <span class="account-icon"${acc.color ? ` style="color: ${escapeAttr(acc.color)};"` : ''} aria-hidden="true"><i data-lucide="${escapeAttr(acc.icon || 'wallet')}"></i></span>
+                  <span class="nav-order-text">
+                    <span class="list-item-title">${esc(acc.name)}</span>
+                    ${acc.id === def ? `<span class="list-item-subtitle">${t('account.defaultTag')}</span>` : ''}
+                  </span>
+                </button>
+                <button type="button" class="nav-order-btn" data-acc-move="up" data-acc-id="${escapeAttr(acc.id)}" aria-label="${t('navOrder.moveUp', { name: esc(acc.name) })}"${i === 0 ? ' disabled' : ''}><i data-lucide="chevron-up"></i></button>
+                <button type="button" class="nav-order-btn" data-acc-move="down" data-acc-id="${escapeAttr(acc.id)}" aria-label="${t('navOrder.moveDown', { name: esc(acc.name) })}"${i === accs.length - 1 ? ' disabled' : ''}><i data-lucide="chevron-down"></i></button>
+              </li>`).join('');
+    },
+
+    _showAccountsSheet() {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const has = S.getState().accounts.length > 0;
+      window.Components.Modal.show({
+        title: t('others.accounts'),
+        content: `
+              ${has
+                ? `<p class="acc-order-hint">${t('account.orderHint')}</p>
+                   <ol class="nav-order-list acc-order-list" id="acc-order-list" aria-label="${t('others.accounts')}">${this._accountRowsHtml()}</ol>`
+                : `<p class="text-secondary text-center">${t('others.noAccounts')}</p>`}
+              <button id="modal-btn-new-account" class="btn btn-primary" style="width: 100%; margin-top: var(--space-5);">${t('others.createNewAccount')}</button>
+            `,
+        saveText: t('common.done'),
+        showCancel: false, // 1.0.1 (BUG-20): dismiss-only, no "Done / Cancel"
+        onSave: (closeModal) => closeModal()
+      });
+
+      // Modal.show inserts the sheet synchronously: wire it at once (a 100 ms
+      // wait left a dead moment where a quick tap on an arrow did nothing)
+      {
+        const innerBtn = document.getElementById('modal-btn-new-account');
+        if (innerBtn) {
+          innerBtn.addEventListener('click', () => {
+            window.Components.Modal.hide();
+            window.Router.navigate('#edit-account');
+          });
+        }
+        const list = document.getElementById('acc-order-list');
+        if (list) this._wireAccountOrder(list);
+      }
+    },
+
+    _wireAccountOrder(list) {
+      const S = window.Store;
+      window.Components.Announcer.ensure();
+      const ids = () => S.orderedAccounts().map(a => a.id);
+      const nameOf = (id) => { const a = S.getState().accounts.find(x => x.id === id); return a ? a.name : ''; };
+      const commit = (order, id, dir) => {
+        S.dispatch('SET_ACCOUNT_ORDER', order);
+        const now = ids();
+        list.innerHTML = this._accountRowsHtml();
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(list);
+        const pick = (d) => Array.from(list.querySelectorAll(`button[data-acc-move="${d}"]`)).find(b => b.dataset.accId === id);
+        const other = dir === 'up' ? 'down' : 'up';
+        const target = [pick(dir), pick(other)].find(b => b && !b.disabled);
+        if (target) target.focus({ preventScroll: true });
+        window.Components.Announcer.say(window.I18n.t('navOrder.moved', { name: nameOf(id), pos: now.indexOf(id) + 1, total: now.length }));
+      };
+
+      list.addEventListener('click', (e) => {
+        const move = e.target.closest('button[data-acc-move]');
+        if (move) {
+          if (move.disabled) return;
+          const order = ids();
+          const id = move.dataset.accId;
+          const from = order.indexOf(id);
+          const to = move.dataset.accMove === 'up' ? from - 1 : from + 1;
+          if (from === -1 || to < 0 || to >= order.length) return;
+          [order[from], order[to]] = [order[to], order[from]];
+          commit(order, id, move.dataset.accMove);
+          return;
+        }
+        const open = e.target.closest('.acc-order-open');
+        if (open) {
+          window.Components.Modal.hide();
+          window.Router.navigate(`#edit-account?id=${open.dataset.id}`);
+        }
+      });
+
+      // Drag by the grip (pointer events), DOM-only until release, then one
+      // dispatch — the Tab bar's gesture.
+      list.addEventListener('pointerdown', (e) => {
+        const grip = e.target.closest('.nav-order-grip');
+        if (!grip || (e.button !== undefined && e.button !== 0)) return;
+        const row = grip.closest('.acc-order-row');
+        const rows = Array.from(list.querySelectorAll('.acc-order-row'));
+        const from = rows.indexOf(row);
+        if (from === -1) return;
+        e.preventDefault();
+        const rects = rows.map(r => r.getBoundingClientRect());
+        const pitch = rects.length > 1 ? rects[1].top - rects[0].top : rects[from].height;
+        const startY = e.clientY;
+        let to = from;
+        if (grip.setPointerCapture) { try { grip.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ } }
+        row.classList.add('is-dragging');
+        list.classList.add('is-dragging');
+        const onMove = (ev) => {
+          const min = rects[0].top - rects[from].top;
+          const max = rects[rects.length - 1].top - rects[from].top;
+          const dy = Math.max(min, Math.min(max, ev.clientY - startY));
+          row.style.transform = `translateY(${dy}px)`;
+          const centre = rects[from].top + rects[from].height / 2 + dy;
+          to = rects.filter((r, i) => i !== from && r.top + r.height / 2 < centre).length;
+          rows.forEach((r, i) => {
+            if (i === from) return;
+            let shift = 0;
+            if (from < to && i > from && i <= to) shift = -pitch;
+            else if (from > to && i >= to && i < from) shift = pitch;
+            r.style.transform = shift ? `translateY(${shift}px)` : '';
+          });
+        };
+        const finish = (ok) => {
+          grip.removeEventListener('pointermove', onMove);
+          grip.removeEventListener('pointerup', onUp);
+          grip.removeEventListener('pointercancel', onCancel);
+          rows.forEach(r => { r.style.transform = ''; });
+          row.classList.remove('is-dragging');
+          list.classList.remove('is-dragging');
+          if (!ok || to === from) return;
+          const order = rows.map(r => r.dataset.accId);
+          const [moved] = order.splice(from, 1);
+          order.splice(to, 0, moved);
+          commit(order, moved, to > from ? 'down' : 'up');
+        };
+        const onUp = () => finish(true);
+        const onCancel = () => finish(false);
+        grip.addEventListener('pointermove', onMove);
+        grip.addEventListener('pointerup', onUp);
+        grip.addEventListener('pointercancel', onCancel);
+      });
+    },
+
     render(state) {
       return `
         <div class="container" style="padding-bottom: 100px;">
@@ -5570,55 +5721,7 @@ Object.assign(window.Views, {
       // Manage Accounts — navigate to EditAccountView for each account row
       const btnManageAccounts = document.getElementById('btn-manage-accounts');
       if (btnManageAccounts) {
-        btnManageAccounts.addEventListener('click', () => {
-          // 1.2.2 (HG-9): each account wears its icon in its colour, as on the
-          // Home tiles (was a colour square)
-          let accountsListHtml = [...state.accounts]
-            .sort((a, b) => window.Store.compareAlpha(a, b))
-            .map(acc => `
-              <div class="list-item others-account-row touch-target" data-id="${acc.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;" tabindex="0" role="button" aria-label="${window.I18n.t('others.editAccountAria', { name: esc(acc.name) })}">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <span class="account-icon"${acc.color ? ` style="color: ${escapeAttr(acc.color)};"` : ''} aria-hidden="true"><i data-lucide="${escapeAttr(acc.icon || 'wallet')}"></i></span>
-                  <strong>${esc(acc.name)}</strong>
-                </div>
-                <div style="color: var(--text-tertiary); font-size: var(--text-sm);">›</div>
-              </div>
-            `).join('');
-
-          if (state.accounts.length === 0) accountsListHtml = `<p class="text-secondary text-center">${window.I18n.t('others.noAccounts')}</p>`;
-
-          window.Components.Modal.show({
-            title: window.I18n.t('others.accounts'),
-            content: `
-              <div class="list-group" style="margin-bottom: 24px;">
-                ${accountsListHtml}
-              </div>
-              <button id="modal-btn-new-account" class="btn btn-primary" style="width: 100%;">${window.I18n.t('others.createNewAccount')}</button>
-            `,
-            saveText: window.I18n.t('common.done'),
-            showCancel: false, // 1.0.1 (BUG-20): dismiss-only, no "Done / Cancel"
-            onSave: (closeModal) => closeModal()
-          });
-
-          setTimeout(() => {
-            // Each account row navigates to the shared EditAccountView
-            document.querySelectorAll('.others-account-row').forEach(row => {
-              row.addEventListener('click', () => {
-                window.Components.Modal.hide();
-                window.Router.navigate(`#edit-account?id=${row.dataset.id}`);
-              });
-            });
-
-            // Create New Account
-            const innerBtn = document.getElementById('modal-btn-new-account');
-            if (innerBtn) {
-              innerBtn.addEventListener('click', () => {
-                window.Components.Modal.hide();
-                window.Router.navigate('#edit-account');
-              });
-            }
-          }, 100);
-        });
+        btnManageAccounts.addEventListener('click', () => this._showAccountsSheet());
       }
       
       // Factory Reset

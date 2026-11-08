@@ -1,6 +1,6 @@
 # Account order on Home (HG-12)
 
-Status: **P1 BUILT 2026-11-08; P2 in progress.** Build 10202 round
+Status: **BUILT 2026-11-08 — P1 and P2 on main.** Phone check pending. Build 10202 round
 (1.2.2), comment tag `// 1.2.2 (HG-12)`.
 
 ## What the owner saw
@@ -154,3 +154,30 @@ Consequences for the build:
   hold + drag saves and survives a reload, the edge scroll carries a tile
   to the end, a tap opens the account, a quick swipe scrolls and moves
   nothing). Lint, 2,396 unit, 179 e2e; WebKit renders light + dark.
+
+### P2 as built (2026-11-08)
+
+- Settings → Manage accounts (`OthersView._showAccountsSheet`): the Tab bar's
+  rows (`.nav-order-row`, grip, Move up / Move down) in the user's order;
+  the name area is a button that opens Edit Account; the default account
+  says "Default wallet" under its name (`account.defaultTag`); a hint line
+  (`account.orderHint`). A move dispatches `SET_ACCOUNT_ORDER`, re-renders
+  the sheet's own list, keeps focus on the moved row's button (the other one
+  at an end) and announces "{name} is now in position {pos} of {total}"
+  (`navOrder.*` strings reused). The sheet wires itself at once (the old
+  100 ms wait left a dead moment for a quick tap).
+- The order everywhere: `createAccountOptions` (New Log account / From / To,
+  the import screens), the new-log fallback when no default is set, the
+  History / Analytics Filter sheet, the expanded graph's account filter,
+  every widget's account chips, and the Account balances widget inside its
+  type groups. `orderedAccounts` sorts unranked accounts by name, so it
+  works on any subset. Bank Connect's mapping keeps its own order.
+- Copy: `account.setDefaultHint` no longer says "shown first on the
+  Dashboard" (now "Preselected for new logs.", 5 languages); a manual entry
+  Accounts → Order (`manual.accounts.order.*`).
+- Tests: `accountOrder.test.js` (+ sheet order, default tag, Move up/down +
+  focus + announcement, row opens Edit Account, pickers / Filter sheet /
+  balances widget order, fallback); `home_account_order.spec.js` (+ Manage
+  accounts Move down → Home follows); `supportProse` count +1 item;
+  `defaultWalletPreselect` fallback now the first of the user's order.
+  Lint, 2,401 unit, 180 e2e; WebKit renders light + dark.

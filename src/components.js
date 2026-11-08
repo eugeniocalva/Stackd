@@ -449,7 +449,7 @@ window.Components = {
     STRUCTURE: [
       { id: 'around',     items: ['bottomBar', 'plusButton', 'settings'] },
       { id: 'home',       items: ['totalBalance', 'balanceChart', 'walletCards'] },
-      { id: 'accounts',   items: ['create', 'fields', 'balances', 'editDelete'] },
+      { id: 'accounts',   items: ['create', 'fields', 'balances', 'order', 'editDelete'] }, // 1.2.2 (HG-12): order
       { id: 'addTx',      items: ['newLog', 'categoryPicker', 'transfers', 'tags', 'notesTime', 'recurring'] },
       { id: 'editTx',     items: ['edit', 'scope', 'delete'] },
       { id: 'history',    items: ['swipe', 'bulk', 'periods', 'customRange', 'filterSort', 'summary'] },
@@ -1458,7 +1458,7 @@ window.Components = {
   FilterModal: {
     show(pageKey) {
       const filters = pageKey === 'history' ? window.Store.state.historyFilters : window.Store.state.analyticsFilters;
-      const accounts = window.Store.state.accounts;
+      const accounts = window.Store.orderedAccounts(); // 1.2.2 (HG-12): the user's order
       const categories = window.Store.state.categories;
       const esc = (v) => String(v == null ? '' : v)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -4460,7 +4460,7 @@ window.Components = {
       modalBackdrop.className = 'modal-backdrop expanded-graph-modal';
       modalBackdrop.id = 'expanded-graph-modal';
 
-      const accounts = (state && state.accounts) ? state.accounts : (window.Store.state ? window.Store.state.accounts : []);
+      const accounts = window.Store.orderedAccounts((state && state.accounts) ? state.accounts : (window.Store.state ? window.Store.state.accounts : [])); // 1.2.2 (HG-12)
       const categories = (state && state.categories) ? state.categories : (window.Store.state ? window.Store.state.categories : []);
 
       const savedFilters = (window.Store.state && window.Store.state.expandedGraphFilters)

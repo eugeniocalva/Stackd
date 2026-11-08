@@ -43,7 +43,7 @@ describe('Support prose (v0.91 P8f)', () => {
       const sections = global.window.Components.ManualModal.SECTIONS;
       expect(sections).toHaveLength(13);
       const strings = sections.flatMap(s => [s.title, ...s.items.flatMap(i => [i.h, i.d])]);
-      expect(strings).toHaveLength(13 + 60 * 2); // 1.1.0 (IE-8): + others.backup
+      expect(strings).toHaveLength(13 + 61 * 2); // 1.1.0 (IE-8): + others.backup; 1.2.2 (HG-12): + accounts.order
       expect(strings.filter(s => /^manual\./.test(s))).toEqual([]);
     });
 

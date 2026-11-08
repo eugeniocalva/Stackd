@@ -598,6 +598,11 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   account goes to the end. Home's tiles have no DEFAULT chip — the default
   account is only a setting (New Log preselect) — and a 450 ms hold drags a
   tile (`DashboardView._wireTileDrag`, one dispatch on release).
+  Settings → Manage accounts reorders with Move up / Move down + a grip
+  (`OthersView._showAccountsSheet`, the Tab bar's rows). Every account list —
+  `createAccountOptions`, the Filter sheet, the graph filter, widget chips,
+  the balances widget inside its type groups — reads `orderedAccounts`; a new
+  account list must too.
 - **History rows (HG-11, `docs/history-rows-plan.md`).** No Select button:
   a 450 ms long press selects, and the row's icon turns over to a check
   (`.tx-icon-flip`; `TransactionsView._selRendered` diffs the selection so

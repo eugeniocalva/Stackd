@@ -347,12 +347,12 @@ window.Widgets = {
           const pick = ids.length ? new Set(ids) : null;
           const inScope = S.aggregatePredicate(ids);
           const sel = S.aggregateSelection(ids);
-          const rows = (state.accounts || [])
+          const rows = S.orderedAccounts(state.accounts || []) // 1.2.2 (HG-12): the user's order inside each type
             .filter(acc => !pick || pick.has(acc.id))
             .map(acc => ({ acc, balance: S.getAccountBalance(acc.id), inScope: !!inScope(acc.id) }));
 
           // Store.ACCOUNT_TYPES order; unknown (older/imported) types appended
-          // alphabetically; accounts keep state order (alphabetical, _sortData).
+          // alphabetically; inside a group, the user's account order (HG-12).
           const order = S.ACCOUNT_TYPES || [];
           const byType = new Map();
           rows.forEach(r => {
@@ -440,7 +440,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -603,7 +603,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -732,7 +732,7 @@ window.Widgets = {
           config.mode === 'selected'
             ? W._configSection(window.I18n.t('others.categories'), W._multiChips('categoryIds', expenseCats, config.categoryIds))
             : '',
-          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds))
+          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds))
         ].join('');
       },
 
@@ -852,7 +852,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -992,7 +992,7 @@ window.Widgets = {
 
       renderConfig(config, state) {
         const W = window.Widgets;
-        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds));
+        return W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds));
       },
 
       attachConfig(root, ctx) {
@@ -1164,7 +1164,7 @@ window.Widgets = {
             { value: '30', label: window.I18n.t('widget.cfg.days', { count: 30 }) },
             { value: '60', label: window.I18n.t('widget.cfg.days', { count: 60 }) }
           ], config.horizonDays)),
-          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', state.accounts || [], config.accountIds))
+          W._configSection(window.I18n.t('others.accounts'), W._multiChips('accountIds', window.Store.orderedAccounts(state.accounts || []), config.accountIds))
         ].join('');
       },
 

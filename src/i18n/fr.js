@@ -570,7 +570,9 @@ window.I18n.dicts.fr = {
   'account.negativeHint': 'Utilisez un montant négatif pour les cartes de crédit, prêts ou dettes existantes.',
   'account.openingBalanceDate': 'Date du solde initial',
   'account.setDefault': 'Définir comme wallet par défaut',
-  'account.setDefaultHint': 'Affiché en premier sur le tableau de bord et présélectionné pour les nouvelles opérations.',
+  'account.setDefaultHint': "Présélectionné pour les nouvelles opérations.", // 1.2.2 (HG-12): no longer "shown first on Home"
+  'account.defaultTag': "Wallet par défaut", // 1.2.2 (HG-12): Manage accounts row
+  'account.orderHint': "Cet ordre s'applique dans toute l'app. Sur le tableau de bord, maintenez une carte de wallet et faites-la glisser.",
   'account.saveChanges': 'Enregistrer',
   'account.createAccount': 'Créer le compte',
   'account.deleteAccount': 'Supprimer le compte',
@@ -936,6 +938,8 @@ window.I18n.dicts.fr = {
   'manual.accounts.fields.d': "Nom, type (Banque, Carte de débit, Espèces, Épargne, Carte de crédit, Investissement, Portefeuille, Compte), icône, couleur, solde initial avec signe Positif / Négatif et date, et un interrupteur Définir comme wallet par défaut. Choisir Carte de crédit bascule automatiquement un nouveau compte en négatif.",
   'manual.accounts.balances.h': 'Soldes',
   'manual.accounts.balances.d': 'Les soldes sont toujours calculés à partir de vos opérations : ils restent donc synchronisés automatiquement.',
+  'manual.accounts.order.h': "Ordre", // 1.2.2 (HG-12)
+  'manual.accounts.order.d': "Vos comptes apparaissent partout dans votre ordre. Sur le tableau de bord, maintenez une carte de wallet un instant et faites-la glisser sur le côté ; ou ouvrez Autres → Comptes et utilisez les flèches ou la poignée. Les nouveaux comptes s'ajoutent à la fin.",
   'manual.accounts.editDelete.h': 'Modifier ou supprimer',
   'manual.accounts.editDelete.d': "Ouvrez le compte via le ⋯ de sa carte de wallet ou Autres → Comptes. Supprimer un compte supprime définitivement toutes ses opérations.",
   'manual.addTx.title': 'Ajouter des opérations',

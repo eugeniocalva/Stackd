@@ -97,9 +97,11 @@ describe('New log preselects the Default Wallet (1.0.2 BUG-39)', () => {
     expect($('tx-account').value).toBe(accId('Main'));
     expect($('currency-symbol').textContent).toBe('€');
 
-    // A deleted / stale default falls back to the first account by name.
+    // A deleted / stale default falls back to the first account of the list
+    // (the user's order since 1.2.2 HG-12 — put Amex first to see it).
     // SET_DEFAULT_ACCOUNT refuses dead ids since 1.0.2 (BUG-34), so plant
     // the stale value the way a 1.0/1.0.1 install stored it.
+    S().dispatch('SET_ACCOUNT_ORDER', [accId('Amex'), accId('Main')]);
     S().state.defaultAccountId = 'gone';
     renderView('AddTransactionView');
     expect($('tx-account').value).toBe(accId('Amex'));

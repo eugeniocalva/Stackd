@@ -577,7 +577,9 @@ window.I18n.dicts.en = {
   'account.negativeHint': 'Use negative for credit cards, loans, or existing debts.',
   'account.openingBalanceDate': 'Opening Balance Date',
   'account.setDefault': 'Set as Default Wallet',
-  'account.setDefaultHint': 'Shown first on the Dashboard and preselected for new logs.',
+  'account.setDefaultHint': "Preselected for new logs.", // 1.2.2 (HG-12): no longer "shown first on Home"
+  'account.defaultTag': "Default wallet", // 1.2.2 (HG-12): Manage accounts row
+  'account.orderHint': "This order is used across the app. On the Dashboard, hold a wallet card and drag it.",
   'account.saveChanges': 'Save Changes',
   'account.createAccount': 'Create Account',
   'account.deleteAccount': 'Delete Account',
@@ -955,6 +957,8 @@ window.I18n.dicts.en = {
   'manual.accounts.fields.d': 'Name, type (Bank, Debit card, Cash, Savings, Credit card, Investment, Wallet, Account), icon, color, opening balance with Positive / Negative sign and date, and a Set as Default Wallet toggle. Choosing Credit card automatically flips a new account to negative.',
   'manual.accounts.balances.h': 'Balances',
   'manual.accounts.balances.d': 'Balances are always computed from your transactions, so they stay in sync automatically.',
+  'manual.accounts.order.h': "Order", // 1.2.2 (HG-12)
+  'manual.accounts.order.d': "Your accounts appear in your own order everywhere. On the Dashboard, hold a wallet card for a moment and drag it sideways; or open Others → Accounts and use the arrows or the grip. New accounts go to the end.",
   'manual.accounts.editDelete.h': 'Edit or delete',
   'manual.accounts.editDelete.d': 'Open the account via the ⋯ on its wallet card or Others → Accounts. Deleting an account permanently deletes all of its transactions.',
   'manual.addTx.title': 'Adding transactions',
