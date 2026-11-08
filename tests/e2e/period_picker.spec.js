@@ -50,6 +50,47 @@ test.describe('Period picker (HG-10)', () => {
     await expect(page.locator('#period-now-history')).toHaveCount(0);
   });
 
+  test('‹ ›, and a month picked in the sheet, open the new period at the top of the page', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 760 });
+    await boot(page);
+    await page.evaluate(() => {
+      const S = window.Store;
+      S.batch(() => {
+        for (let d = 1; d <= 28; d++) {
+          ['2026-08', '2026-09', '2026-10'].forEach(m => S.dispatch('ADD_TRANSACTION', { type: 'expense', amount: d, accountId: 'acc_a', categoryId: 'cat_dining', date: `${m}-${String(d).padStart(2, '0')}` }));
+        }
+      });
+    });
+    await go(page, '#transactions', 'transactions');
+    const view = page.locator('#router-view');
+    const scrollTop = () => view.evaluate(el => el.scrollTop);
+    const scrollDown = async () => {
+      await view.evaluate(el => { el.scrollTop = 900; });
+      await page.waitForTimeout(100);
+      expect(await scrollTop()).toBeGreaterThan(500);
+    };
+    const label = page.locator('#period-label-history');
+
+    await scrollDown();
+    await page.click('#period-prev-history');
+    await expect(label).toContainText('September 2026');
+    await page.waitForTimeout(100);
+    expect(await scrollTop()).toBe(0);
+
+    await scrollDown();
+    await page.click('#period-next-history');
+    await expect(label).toContainText('October 2026');
+    await page.waitForTimeout(100);
+    expect(await scrollTop()).toBe(0);
+
+    await scrollDown();
+    await page.click('#period-label-history');
+    await page.locator('#period-sheet [data-value="2026-08-01"]').click();
+    await expect(label).toContainText('August 2026');
+    await page.waitForTimeout(100);
+    expect(await scrollTop()).toBe(0);
+  });
+
   test('the sheet: a month, a year, and the custom calendar with its Back chain', async ({ page }) => {
     await boot(page);
     await go(page, '#transactions', 'transactions');

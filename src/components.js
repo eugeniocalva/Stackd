@@ -1189,10 +1189,20 @@ window.Components = {
       this.announce(pageKey);
     },
 
+    // 1.2.2 (HG-10 follow-up) a new period opens at the top of the page, not
+    // at the old period's scroll offset. The same-view re-render keeps
+    // whatever scrollTop it finds (main.js), and it runs in the next
+    // microtask, so zeroing it right before the dispatch shows no jump.
+    // "Back to this month" keeps its own scroll to today (goNow).
+    toTop() {
+      const view = document.getElementById('router-view');
+      if (view) view.scrollTop = 0;
+    },
+
     attachEvents(container, pageKey) {
       const S = window.Store;
       const q = (sel) => container.querySelector(sel);
-      const step = (dir) => { S.dispatch('NAVIGATE_PERIOD', { offset: dir, page: pageKey }); this.announce(pageKey); };
+      const step = (dir) => { this.toTop(); S.dispatch('NAVIGATE_PERIOD', { offset: dir, page: pageKey }); this.announce(pageKey); };
       const prev = q(`#period-prev-${pageKey}`);
       const next = q(`#period-next-${pageKey}`);
       const label = q(`#period-label-${pageKey}`);
@@ -1268,6 +1278,12 @@ window.Components = {
         if (lab) lab.focus({ preventScroll: true });
       };
       const apply = (period) => {
+        // a different period from the sheet opens at the top too
+        const p0 = shown;
+        const same = p0.type === period.type && (period.type === 'custom'
+          ? p0.start === period.start && p0.end === period.end
+          : p0.value === period.value);
+        if (!same) window.Components.PeriodBar.toTop();
         S.dispatch('UPDATE_FILTERS', { page: pageKey, filters: { period } });
         close();
         window.Components.PeriodBar.announce(pageKey);
