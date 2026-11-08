@@ -7005,11 +7005,11 @@ Object.assign(window.Views, {
             initialIcon: selectedIcon,
             onSelect: (icon) => {
               selectedIcon = icon;
-              const preview = container.querySelector('#acc-icon-preview');
-              if (preview) {
-                preview.setAttribute('data-lucide', icon);
-                window.StackdHydrateIcons();
-              }
+              // 1.2.2: hydration has already swapped the <i> for an <svg>, and
+              // a data-lucide on that svg is never read again — so the field
+              // kept the old icon until save. Put back a fresh <i> and hydrate.
+              iconTrigger.innerHTML = `<i id="acc-icon-preview" data-lucide="${window.I18n.esc(icon)}"></i>`;
+              window.StackdHydrateIcons(iconTrigger);
             }
           });
         });
