@@ -251,6 +251,18 @@ describe('shake to hide (HG-4)', () => {
     await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(true)); // the seal lands just before the save
   });
 
+  // 1.2.2 (HG-13, owner after 10205): show plays the hide's taps, same timing
+  it('a shake back to visible plays the same taps as the hide', async () => {
+    boot({ native: true, stored: { hide: true, shake: true } });
+    mount();
+    const now = Date.now();
+    motion(20, now); motion(-20, now + 200); motion(20, now + 400);
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(false));
+    await vi.waitFor(() => expect(haptics.impact).toHaveBeenCalledWith({ style: 'HEAVY' }));
+    const styles = haptics.impact.mock.calls.map(c => c[0].style);
+    expect(styles).toEqual(['LIGHT', 'LIGHT', 'LIGHT', 'LIGHT', 'HEAVY']);
+  });
+
   // 1.2.2 (HG-13 fix): iOS keeps the motion grant for one page load only, so
   // with Shake to hide on, the first tap after a launch asks again — once.
   it('re-asks iOS for motion access on the first tap after a launch', async () => {

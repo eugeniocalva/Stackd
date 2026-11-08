@@ -70,6 +70,8 @@ the shake, not during it.
 
 Mirror, lighter: balls shrink out right → left, digits sharpen in (≈ 360 ms),
 one `MEDIUM` impact. The pill slides out.
+*Changed after the 10205 check (owner):* the reveal plays the hide's taps —
+4 × `LIGHT` + the `HEAVY` seal on the hide's clock (same milliseconds).
 
 ### 4c. Reduce Motion / large text / web
 

@@ -462,7 +462,7 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   bridge grants it silently). iOS Safari gives motion only on https.
   HG-13 (`docs/hidden-balances-motion-plan.md`): on Home every hide/show goes
   through `DashboardView.setHidden` — balls pop over the digits (cascade,
-  LIGHT tap per ball + HEAVY seal), then ONE `SET_PRIVACY`; the reveal
+  LIGHT tap per ball + HEAVY seal), then ONE `SET_PRIVACY`; the reveal (same taps)
   mirrors it. DOM-only `.money-cloak` wrappers, unwrapped after; reduced
   motion = fade. A new way to hide/show from Home must call `setHidden`.
 - **Rings and legends (HG-5).** `RingChart.config` only sets cutout 66 %,

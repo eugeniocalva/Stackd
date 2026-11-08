@@ -1420,8 +1420,8 @@ window.Views = {
     // over each amount (the real '•' glyphs, laid exactly where the masked
     // text will sit) while the digits blur away, cascading top → bottom, with
     // a light tap per ball and a heavy seal; then SET_PRIVACY re-renders to
-    // the same picture. Show: the balls shrink out right → left, one medium
-    // tap, then the digits sharpen in. DOM-only until the one dispatch;
+    // the same picture. Show: the balls shrink out right → left with the same
+    // taps and seal as the hide, then the digits sharpen in. DOM-only until the one dispatch;
     // Reduce Motion = the same steps and taps, as fades (CSS). Off Home it
     // is a plain dispatch.
     _motion: null,
@@ -1460,17 +1460,23 @@ window.Views = {
         }
       };
 
-      if (hide) {
-        // a light tap as each of the first figure's balls lands, then the seal
+      // One tap pattern both ways (owner's call after the 10205 check): a
+      // light tap per ball of the first figure, then the heavy seal, on the
+      // hide's clock — the reveal plays the very same milliseconds.
+      const taps = (maxD) => {
         const land = Math.round(M.POP * 0.6);
         for (let i = 0; i < 4; i++) buzz(land + i * M.STEP, () => H.light());
+        buzz(maxD + 3 * M.STEP + M.POP, () => H.heavy());
+      };
+
+      if (hide) {
         // Reduce Motion plays the same sequence; the CSS makes each ball fade
         // in instead of popping and the digits fade instead of blurring.
         const items = this._cloak(root, 'real').filter(it => it.visible);
         const maxD = this._cascade(items, M.CASCADE);
         items.forEach(it => it.el.classList.add('is-covering'));
         const end = maxD + 3 * M.STEP + M.POP;
-        buzz(end, () => H.heavy());
+        taps(maxD);
         at(end, () => {
           // close each figure's gap so a right-aligned amount slides into place
           items.forEach(it => {
@@ -1483,9 +1489,10 @@ window.Views = {
         });
         at(end + M.SHRINK + 10, () => m.commit());
       } else {
-        buzz(0, () => H.impact());
         const items = this._cloak(root, 'mask').filter(it => it.visible);
         const maxD = this._cascade(items, M.OUT_CASCADE);
+        // the hide's cascade over the same figures (linear in the span)
+        taps(Math.round(maxD * M.CASCADE / M.OUT_CASCADE));
         items.forEach(it => it.el.classList.add('is-uncovering'));
         const row = root.querySelector('.privacy-pill-row');
         if (row) row.classList.add('is-leaving');
