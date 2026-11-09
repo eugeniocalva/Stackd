@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): quick widget, docs/phone-widgets-plan.md §2 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="50dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="50dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/stackd_widget_placeholder"
+    android:previewImage="@drawable/stackd_widget_preview_quick"
+    android:description="@string/stackd_widget_quick_desc"
+    android:widgetCategory="home_screen" />

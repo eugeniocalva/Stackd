@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): the app's light theme (src/styles/variables.css) -->
+<resources>
+    <color name="stackd_widget_bg">#FFFFFF</color>
+    <color name="stackd_widget_text">#1A1E21</color>
+    <color name="stackd_widget_text2">#475569</color>
+    <color name="stackd_widget_text3">#64748B</color>
+    <color name="stackd_widget_track">#E2E8F0</color>
+    <color name="stackd_widget_income">#059669</color>
+    <color name="stackd_widget_expense">#DC2626</color>
+    <color name="stackd_widget_transfer">#2F62A8</color>
+    <color name="stackd_widget_bar">#64748B</color>
+</resources>

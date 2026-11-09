@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): see docs/phone-widgets-plan.md §12 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/stackd_widget_bg"
+    android:padding="14dp">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+    <TextView android:id="@+id/title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+    android:textSize="12sp" android:textColor="@color/stackd_widget_text2"
+    android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/stale" android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:textSize="10sp" android:textColor="@color/stackd_widget_text3"
+    android:maxLines="1" android:ellipsize="end" android:visibility="gone" />
+</LinearLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="bottom" android:layout_marginTop="2dp">
+    <TextView android:id="@+id/headline" android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:textSize="22sp" android:textColor="@color/stackd_widget_text" android:textStyle="bold"
+    android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/caption" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+    android:textSize="12sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
+    android:maxLines="1" android:ellipsize="end" android:gravity="end" android:layout_marginStart="8dp" android:layout_marginBottom="3dp" />
+</LinearLayout>
+<ImageView android:id="@+id/curve" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
+<TextView android:id="@+id/empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:textSize="13sp" android:textColor="@color/stackd_widget_text2"
+    android:maxLines="3" android:ellipsize="end" android:visibility="gone" />
+</LinearLayout>

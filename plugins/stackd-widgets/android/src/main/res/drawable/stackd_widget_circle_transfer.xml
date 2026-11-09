@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): Quick add, a filled circle (owner's version D) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#2F62A8" />
+</shape>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): widget picker names; every other widget text comes from the app's snapshot -->
+<resources>
+    <string name="stackd_widget_open">Abrir o Stack\'d</string>
+    <string name="stackd_widget_balances_name">Saldos das contas</string>
+    <string name="stackd_widget_balances_desc">O seu total e o saldo de cada conta.</string>
+    <string name="stackd_widget_flow_name">Receitas e despesas</string>
+    <string name="stackd_widget_flow_desc">Receitas, despesas e líquido deste mês, até ao fim do mês.</string>
+    <string name="stackd_widget_categories_name">Categorias</string>
+    <string name="stackd_widget_categories_desc">Para onde foi o seu dinheiro este mês.</string>
+    <string name="stackd_widget_budgets_name">Metas de orçamento</string>
+    <string name="stackd_widget_budgets_desc">Os gastos deste mês face aos seus limites.</string>
+    <string name="stackd_widget_upcoming_name">Próximos</string>
+    <string name="stackd_widget_upcoming_desc">Os seus próximos pagamentos agendados.</string>
+    <string name="stackd_widget_curve_name">Curva do saldo</string>
+    <string name="stackd_widget_curve_desc">O seu saldo total no último mês.</string>
+    <string name="stackd_widget_quick_name">Adição rápida</string>
+    <string name="stackd_widget_quick_desc">Registe uma despesa, uma receita ou uma transferência num toque.</string>
+    <string name="stackd_widget_expense">Despesa</string>
+    <string name="stackd_widget_income">Receita</string>
+    <string name="stackd_widget_transfer">Transferência</string>
+</resources>

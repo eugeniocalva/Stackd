@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): see docs/phone-widgets-plan.md §12 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/stackd_widget_bg"
+    android:padding="14dp">
+    <TextView android:id="@+id/placeholder_text" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textSize="14sp" android:textStyle="bold" android:textColor="@color/stackd_widget_text" android:gravity="center"
+        android:text="@string/stackd_widget_open" />
+</LinearLayout>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): see docs/phone-widgets-plan.md §12 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@drawable/stackd_widget_bg"
+    android:padding="10dp">
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+        <ImageView android:id="@+id/btn_expense" android:layout_width="44dp" android:layout_height="44dp" android:layout_gravity="center"
+            android:background="@drawable/stackd_widget_circle_expense" android:src="@drawable/stackd_widget_ic_minus" android:padding="11dp" />
+    </FrameLayout>
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+        <ImageView android:id="@+id/btn_income" android:layout_width="44dp" android:layout_height="44dp" android:layout_gravity="center"
+            android:background="@drawable/stackd_widget_circle_income" android:src="@drawable/stackd_widget_ic_plus" android:padding="11dp" />
+    </FrameLayout>
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+        <ImageView android:id="@+id/btn_transfer" android:layout_width="44dp" android:layout_height="44dp" android:layout_gravity="center"
+            android:background="@drawable/stackd_widget_circle_transfer" android:src="@drawable/stackd_widget_ic_transfer" android:padding="11dp" />
+    </FrameLayout>
+</LinearLayout>

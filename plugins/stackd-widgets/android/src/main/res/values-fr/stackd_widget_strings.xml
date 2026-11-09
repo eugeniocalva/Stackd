@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.2 (HG-15 WG-4): widget picker names; every other widget text comes from the app's snapshot -->
+<resources>
+    <string name="stackd_widget_open">Ouvrir Stack\'d</string>
+    <string name="stackd_widget_balances_name">Soldes des comptes</string>
+    <string name="stackd_widget_balances_desc">Votre total et le solde de chaque compte.</string>
+    <string name="stackd_widget_flow_name">Revenus et dépenses</string>
+    <string name="stackd_widget_flow_desc">Les revenus, dépenses et le net de ce mois, jusqu\'à la fin du mois.</string>
+    <string name="stackd_widget_categories_name">Catégories</string>
+    <string name="stackd_widget_categories_desc">Où est passé votre argent ce mois-ci.</string>
+    <string name="stackd_widget_budgets_name">Objectifs de budget</string>
+    <string name="stackd_widget_budgets_desc">Les dépenses de ce mois face à vos limites.</string>
+    <string name="stackd_widget_upcoming_name">À venir</string>
+    <string name="stackd_widget_upcoming_desc">Vos prochains paiements programmés.</string>
+    <string name="stackd_widget_curve_name">Courbe du solde</string>
+    <string name="stackd_widget_curve_desc">Votre solde total sur le dernier mois.</string>
+    <string name="stackd_widget_quick_name">Ajout rapide</string>
+    <string name="stackd_widget_quick_desc">Saisissez une dépense, un revenu ou un virement en un geste.</string>
+    <string name="stackd_widget_expense">Dépense</string>
+    <string name="stackd_widget_income">Revenu</string>
+    <string name="stackd_widget_transfer">Virement</string>
+</resources>
