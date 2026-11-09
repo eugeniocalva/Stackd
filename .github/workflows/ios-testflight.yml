@@ -133,10 +133,15 @@ jobs:
           security default-keychain -s "$KEYCHAIN"
           echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+      # 1.2.2: the archive is signed AD HOC ("-"), which embeds the
+      # entitlements (App Group, iCloud, Associated Domains) without any
+      # certificate; the export below re-signs it with the cloud-managed
+      # distribution certificate. Automatic signing here used to mint a new
+      # "Created via API" Development certificate on every run (a fresh
+      # runner has no private key) until the account hit Apple's limit and
+      # archiving failed with "Choose a certificate to revoke" (2026-11-09).
+      # The .ipa checks below still verify every entitlement.
       - name: Archive
-        env:
-          KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
         run: |
           set -o pipefail
           extra=()
@@ -145,12 +150,16 @@ jobs:
             -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$KEY_PATH" \
-            -authenticationKeyID "$KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            PROVISIONING_PROFILE_SPECIFIER= \
             "${extra[@]}" | tail -n 200
+          # the entitlements must already be in the archived binaries
+          APP="$ARCHIVE/Products/Applications/App.app"
+          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'group.com.stackd.finance' \
+            || { echo "::error::the archived app carries no App Group entitlement"; exit 1; }
+          codesign -d --entitlements - --xml "$APP/PlugIns/StackdWidgets.appex" 2>/dev/null | grep -q 'group.com.stackd.finance' \
+            || { echo "::error::the archived widget extension carries no App Group entitlement"; exit 1; }
 
       - name: Check the archive
         run: |
