@@ -53,6 +53,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="stackd" android:host="connect" />
             </intent-filter>
+            <!-- 1.2.2 (HG-15 WG-2/3): a tap on a Stack'd home-screen widget
+                 opens stackd://open?to=... (StackdWidgets.openUrl). Not
+                 BROWSABLE: only the app's own widgets send it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="stackd" android:host="open" />
+            </intent-filter>
         </activity>
 
         <provider

@@ -1,6 +1,6 @@
 # Phone widgets — iOS and Android (1.2.2 HG-15, plan 2026-11-09)
 
-Status: **plan agreed with the owner (§11); WG-1 and WG-2 built (§12), WG-3…WG-6 to do.** It ships in
+Status: **plan agreed with the owner (§11); WG-1, WG-2 and WG-3 (Android tested; iOS written, untested) built (§12), WG-4…WG-6 to do.** It ships in
 **1.2.2** (owner, Q10). Comment tag: `// 1.2.2 (HG-15)`. Sub-phases are named
 WG-1…WG-6 (§8).
 
@@ -355,3 +355,40 @@ optionally, add a widget screenshot.
 - **Tests.** `tests/unit/widgetLinks.test.js` (7) and
   `tests/e2e/widget_links.spec.js` (2: Income → Transfer → Back; History on
   one day).
+
+### WG-3 Plugin (2026-11-09)
+
+`plugins/stackd-widgets` is laid out like `stackd-cloud`. It is wired in
+through `package.json` as `file:plugins/stackd-widgets`; the lockfile gained
+only its two entries (a plain `npm install` would also bump unrelated
+packages).
+
+- **Android** (`com.stackd.widgets.StackdWidgetsPlugin`):
+  - `write({json})` writes `files/widgets/snapshot.json` atomically (temp
+    file + rename, 256 KB cap). It then sends one `ACTION_APPWIDGET_UPDATE`
+    to every provider of the package that has placed widgets, so WG-4
+    providers need no registration here.
+  - `clear()` removes the file. `takePending()` answers `{}`, because Android
+    taps arrive as intents.
+  - `readSnapshot(Context)` is the providers' reader.
+- **Intent filter.** `AndroidManifest.xml` gained the `stackd://open` filter
+  (`VIEW`, `DEFAULT`, not `BROWSABLE`). Before, only `stackd://connect`
+  resolved.
+- **Checked on the emulator** (API 36.1):
+  - first launch wrote the empty snapshot;
+  - adding an account and a €42 expense rewrote it (total €958.00, Groceries
+    1 slice);
+  - `am start -d stackd://open?to=add&type=income` cold-started on New log /
+    Income;
+  - `…type=transfer` while the app was open switched it to Transfer.
+- **iOS** (`ios/Sources/StackdWidgetsPlugin/StackdWidgetsPlugin.swift`):
+  - `write` uses the App Group `group.com.stackd.finance`
+    (`widgets/snapshot.json`, atomic, protection
+    `completeUntilFirstUserAuthentication`), then
+    `WidgetCenter.reloadAllTimelines()`.
+  - `takePending()` reads and removes the `pendingOpen` key in the group's
+    UserDefaults, and only hands back `stackd://open…`.
+  - Without the App Group entitlement, `write` rejects, which the JS side
+    treats as "try again on the next change".
+  - Not compiled yet: it waits for the owner's Apple setup (§10) and a CI dry
+    run together with WG-5.

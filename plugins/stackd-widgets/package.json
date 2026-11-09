@@ -1,0 +1,22 @@
+{
+  "name": "stackd-widgets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stack'd phone widgets: hands the app's widget snapshot to iOS WidgetKit (App Group) and Android AppWidgets, and the iOS Quick add tap back to the app.",
+  "license": "UNLICENSED",
+  "author": "Stack'd",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "ios/Sources/",
+    "StackdWidgets.podspec"
+  ],
+  "keywords": ["capacitor", "plugin", "native"],
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  }
+}
