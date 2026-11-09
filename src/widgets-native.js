@@ -450,10 +450,18 @@ window.StackdWidgets = {
     // Leaving the app writes at once (the debounce may not get to run), and
     // coming back catches a new day and a Quick add tap waiting for us.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') this.consumePending();
+      if (document.visibilityState === 'visible') this._takeSoon();
       this.sync();
     });
-    this.consumePending();
+    this._takeSoon();
     this.sync({ force: true });
+  },
+
+  // iOS runs the Quick add intent around the moment the app comes forward,
+  // not always before it: look now and once more shortly after.
+  _takeSoon() {
+    this.consumePending().then((opened) => {
+      if (!opened) setTimeout(() => { this.consumePending(); }, 900);
+    });
   }
 };

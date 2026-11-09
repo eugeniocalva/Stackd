@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 1.2.2 (HG-15 WG-5): the App Group shared with the app, where the app
+	     writes widgets/snapshot.json (App ID com.stackd.finance.widgets). -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.stackd.finance</string>
+	</array>
+</dict>
+</plist>

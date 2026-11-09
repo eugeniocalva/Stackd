@@ -70,8 +70,9 @@
 	</array>
 
 	<!-- Required-reason APIs used inside the app target. CA92.1 = read and
-	     write only this app's own data; C617.1 = timestamps of files the app
-	     itself created (the stackd_db mirror). -->
+	     write only this app's own data; 1C8F.1 = the App Group shared with the
+	     widgets (1.2.2 HG-15: Quick add's pending target); C617.1 = timestamps
+	     of files the app itself created (the stackd_db mirror). -->
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>
@@ -80,6 +81,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<dict>

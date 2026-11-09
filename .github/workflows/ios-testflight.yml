@@ -201,6 +201,21 @@ jobs:
           # with the iCloud.com.stackd.finance container on the App ID.
           grep -q 'iCloud.com.stackd.finance' "$ENTS" \
             || { echo "::error::iCloud container entitlement missing from the signed app - enable iCloud (container iCloud.com.stackd.finance) on the App ID"; exit 1; }
+          # 1.2.2 (HG-15): the widgets. The app and the extension share the
+          # App Group group.com.stackd.finance (enabled on both App IDs).
+          grep -q 'group.com.stackd.finance' "$ENTS" \
+            || { echo "::error::App Group entitlement missing from the app - enable App Groups (group.com.stackd.finance) on com.stackd.finance"; exit 1; }
+          APPEX="$APP/PlugIns/StackdWidgets.appex"
+          [ -d "$APPEX" ] || { echo "::error::StackdWidgets.appex is not in the app bundle"; exit 1; }
+          codesign -dvv "$APPEX" 2>&1 | grep -q 'Authority=Apple Distribution' \
+            || { echo "::error::the widget extension is not signed with an Apple Distribution certificate"; exit 1; }
+          XENTS="$RUNNER_TEMP/widget-entitlements.plist"
+          codesign -d --entitlements "$XENTS" --xml "$APPEX" 2>/dev/null
+          grep -q 'group.com.stackd.finance' "$XENTS" \
+            || { echo "::error::App Group entitlement missing from the widget extension - enable App Groups on com.stackd.finance.widgets"; exit 1; }
+          [ -f "$APPEX/PrivacyInfo.xcprivacy" ] || { echo "::error::the widget extension has no PrivacyInfo.xcprivacy"; exit 1; }
+          xv="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APPEX/Info.plist")"
+          [ "$xv" = "$VERSION" ] || { echo "::error::widget extension version $xv != app $VERSION"; exit 1; }
           # A store build must not be debuggable.
           gta="$(plutil -extract get-task-allow raw -o - "$ENTS" 2>/dev/null || echo absent)"
           echo "get-task-allow: $gta"

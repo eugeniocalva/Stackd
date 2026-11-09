@@ -23,6 +23,13 @@
 	<array>
 		<string>iCloud.com.stackd.finance</string>
 	</array>
+	<!-- 1.2.2 (HG-15 WG-5): the App Group shared with the widget extension;
+	     the app writes widgets/snapshot.json there (plugins/stackd-widgets).
+	     Enabled on both App IDs in the developer account. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.stackd.finance</string>
+	</array>
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array>
 		<string>iCloud.com.stackd.finance</string>

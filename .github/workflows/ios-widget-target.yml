@@ -1,0 +1,32 @@
+# 1.2.2 (HG-15 WG-5, docs/phone-widgets-plan.md §9): adds the StackdWidgets
+# extension target to the Xcode project on a Mac (there is none on the team)
+# and hands the changed project.pbxproj back as an artifact, to be reviewed
+# and committed. It needs no secrets and signs nothing.
+#
+# MANUAL ONLY. Run again only if tools/ios/add-widget-target.rb changes.
+name: iOS widget target
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  add-target:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add the StackdWidgets target
+        run: |
+          gem list xcodeproj | grep -q xcodeproj || sudo gem install xcodeproj
+          ruby tools/ios/add-widget-target.rb
+          xcodebuild -project ios/App/App.xcodeproj -list
+          git diff --stat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-pbxproj
+          path: ios/App/App.xcodeproj/project.pbxproj
