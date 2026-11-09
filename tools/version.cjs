@@ -46,13 +46,16 @@ function versions() {
 }
 
 // [file, regex, replacement] — every regex must match exactly `count` times.
+// 1.2.2 (HG-15): the Xcode project has 4 version lines of each kind — the
+// App target and the StackdWidgets extension (Debug + Release); the
+// extension must carry the app's version or App Store Connect rejects it.
 function targets(v) {
   return [
     ['index.html', /<title>[^<]*<\/title>/g, `<title>${v.title}</title>`, 1],
     ['android/app/build.gradle', /versionCode \d+/g, `versionCode ${v.code}`, 1],
     ['android/app/build.gradle', /versionName "[^"]*"/g, `versionName "${v.name}"`, 1],
-    ['ios/App/App.xcodeproj/project.pbxproj', /MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${v.name};`, 2],
-    ['ios/App/App.xcodeproj/project.pbxproj', /CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${v.code};`, 2]
+    ['ios/App/App.xcodeproj/project.pbxproj', /MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${v.name};`, 4],
+    ['ios/App/App.xcodeproj/project.pbxproj', /CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${v.code};`, 4]
   ];
 }
 
