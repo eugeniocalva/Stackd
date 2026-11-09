@@ -2614,6 +2614,10 @@ window.Views = {
         if (holder) initialAttachments = holder.attachments.slice();
       }
 
+      // 1.2.2 (HG-15 WG-2): a phone widget's Quick add opens New log on its
+      // type (#add?type=income). A new log only; the draft below still wins.
+      if (!isEdit && ['expense', 'income', 'transfer'].includes(params.type)) initialType = params.type;
+
       // Apply temporary draft form state if available (e.g. while adding a new category)
       if (window._draftTxFormState) {
         const draft = window._draftTxFormState;

@@ -404,13 +404,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       // v1.07 B3: the bank's return (App Link on a verified install, the
       // stackd:// scheme from the broker's hand-off page otherwise) — warm
       // via appUrlOpen, cold via the launch URL.
-      if (window.BankConnect && window.BankConnect.featureEnabled()) {
-        CapacitorApp.addListener('appUrlOpen', (ev) => {
-          if (ev && ev.url) window.BankConnect.handleReturn(ev.url).catch(() => {});
-        });
-        if (typeof CapacitorApp.getLaunchUrl === 'function') {
-          CapacitorApp.getLaunchUrl().then(r => { if (r && r.url) return window.BankConnect.handleReturn(r.url); }).catch(() => {});
-        }
+      // 1.2.2 (HG-15 WG-2): a tap on a phone widget (stackd://open?to=…)
+      // arrives the same two ways and is always listened for; any other URL
+      // still goes to Bank Connect when that is on.
+      const openUrl = (url) => {
+        if (!url) return;
+        if (window.StackdWidgets && window.StackdWidgets.openUrl(url)) return;
+        if (window.BankConnect && window.BankConnect.featureEnabled()) window.BankConnect.handleReturn(url).catch(() => {});
+      };
+      CapacitorApp.addListener('appUrlOpen', (ev) => { if (ev && ev.url) openUrl(ev.url); });
+      if (typeof CapacitorApp.getLaunchUrl === 'function') {
+        CapacitorApp.getLaunchUrl().then(r => { if (r && r.url) openUrl(r.url); }).catch(() => {});
       }
       // 1.0.1 (BUG-03): Router.handleBack runs the in-app chain (open sheet →
       // + menu → selection / widget edit mode → unsaved-form confirm → route

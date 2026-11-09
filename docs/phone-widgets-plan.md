@@ -1,6 +1,6 @@
 # Phone widgets — iOS and Android (1.2.2 HG-15, plan 2026-11-09)
 
-Status: **plan agreed with the owner (§11); WG-1 built (§12), WG-2…WG-6 to do.** It ships in
+Status: **plan agreed with the owner (§11); WG-1 and WG-2 built (§12), WG-3…WG-6 to do.** It ships in
 **1.2.2** (owner, Q10). Comment tag: `// 1.2.2 (HG-15)`. Sub-phases are named
 WG-1…WG-6 (§8).
 
@@ -326,3 +326,32 @@ optionally, add a widget screenshot.
   literal broke the file: the editing tools turn the ` ` escape into the
   real character, which ends the line. `_clip` compares code points instead;
   never write those two escapes in `src/`.
+
+### WG-2 Deep links (2026-11-09)
+
+- **Parsing.** `StackdWidgets.parseOpenUrl(url)` accepts only
+  `stackd://open[?…]` and returns `{ path, actions }`; any other URL gets
+  `null`, so bank returns and Universal Links keep their owner. The targets:
+
+  | Link | Opens |
+  |---|---|
+  | `to=add[&type=expense\|income\|transfer]` | `#add[?type=…]` (an unknown type opens plain `#add`) |
+  | `to=analytics` | Analytics on this month (`UPDATE_FILTERS`) |
+  | `to=budget` | Goals on this month (`SET_MONTH_FILTER`) |
+  | `to=history&day=YYYY-MM-DD` | History on that one day (custom period), every other filter cleared; a day that is not a real date opens History as it was |
+  | anything else | Home |
+
+- **Opening.** `openUrl(url)` dispatches the target's actions, then
+  `Router.navigate`s, so Back returns to the screen that was open. When the
+  app already shows that path, it re-applies the route instead. It never
+  throws.
+- **`main.js`.** `appUrlOpen` and `getLaunchUrl` are now always registered
+  on native. A widget URL goes to `StackdWidgets.openUrl`; any other URL goes
+  to `BankConnect.handleReturn`, only when Bank Connect is on (as before).
+- **iOS Quick add.** `consumePending()` reads `takePending()` from the plugin
+  (WG-3) at start and on every return to the app.
+- **New log.** `AddTransactionView` reads `?type=` for a new log only, before
+  the draft (an add-category round trip keeps the user's own switch).
+- **Tests.** `tests/unit/widgetLinks.test.js` (7) and
+  `tests/e2e/widget_links.spec.js` (2: Income → Transfer → Back; History on
+  one day).

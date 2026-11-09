@@ -354,6 +354,93 @@ window.StackdWidgets = {
     this._timer = setTimeout(() => { this.sync(); }, this.DEBOUNCE_MS);
   },
 
+  // ── WG-2: a tap on a widget ────────────────────────────────────────────
+  // Every tap arrives as stackd://open?to=<target>[&type=…|&day=…]: iOS
+  // widgetURL / Link and Android PendingIntents through Capacitor's
+  // appUrlOpen / getLaunchUrl, the iOS Quick add buttons through the
+  // plugin's takePending() (an App Intent stores the URL, then opens the app).
+  // The targets are a fixed list; anything else opens Home. Nothing from the
+  // URL reaches markup or a route string unchecked.
+  ADD_TYPES: ['expense', 'income', 'transfer'],
+
+  _isDay(v) {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const [y, m, d] = v.split('-').map(Number);
+    const dt = new Date(y, m - 1, d, 12);
+    return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  },
+
+  _query(url) {
+    const q = {};
+    const i = url.indexOf('?');
+    if (i === -1) return q;
+    url.slice(i + 1).split('#')[0].split('&').forEach(pair => {
+      const [k, v] = pair.split('=');
+      if (!k) return;
+      try { q[decodeURIComponent(k)] = decodeURIComponent(v || ''); } catch (e) { /* a broken escape is ignored */ }
+    });
+    return q;
+  },
+
+  // → { path, actions: [[type, payload]…] } for a widget URL, null for any
+  // other URL (a bank return, a Universal Link) so its owner handles it.
+  parseOpenUrl(url) {
+    if (typeof url !== 'string' || !/^stackd:\/\/open(?:[/?#]|$)/i.test(url)) return null;
+    const q = this._query(url);
+    const S = window.Store;
+    const today = S._todayYMD();
+    switch (q.to) {
+      case 'add':
+        return { path: this.ADD_TYPES.includes(q.type) ? `#add?type=${q.type}` : '#add', actions: [] };
+      case 'analytics':
+        return {
+          path: '#analytics',
+          actions: [['UPDATE_FILTERS', { page: 'analytics', filters: { period: { type: 'month', value: today, start: '', end: '' } } }]]
+        };
+      case 'budget':
+        return { path: '#budget', actions: [['SET_MONTH_FILTER', today.slice(0, 7)]] };
+      case 'history': {
+        if (!this._isDay(q.day)) return { path: '#transactions', actions: [] };
+        return {
+          path: '#transactions',
+          actions: [['UPDATE_FILTERS', {
+            page: 'history',
+            filters: { period: { type: 'custom', value: '', start: q.day, end: q.day }, categories: [], types: [], accounts: [], tags: [] }
+          }]]
+        };
+      }
+      default:
+        return { path: '#dashboard', actions: [] };
+    }
+  },
+
+  // Opens a widget URL. Returns true when it was one (handled), false
+  // otherwise. A fresh entry over the current screen, so Back returns there.
+  openUrl(url) {
+    const target = this.parseOpenUrl(url);
+    if (!target) return false;
+    try {
+      target.actions.forEach(([type, payload]) => window.Store.dispatch(type, payload));
+      const cur = window.location ? window.location.hash : '';
+      if (cur === target.path) window.Router.handleRouteChange();
+      else window.Router.navigate(target.path);
+    } catch (e) { /* a widget tap never breaks the app */ }
+    return true;
+  },
+
+  // iOS Quick add: the App Intent left its URL in the App Group.
+  async consumePending() {
+    const cap = window.Capacitor;
+    const p = cap && cap.Plugins && cap.Plugins.StackdWidgets;
+    if (!p || typeof p.takePending !== 'function') return false;
+    try {
+      const r = await p.takePending();
+      return !!(r && r.url && this.openUrl(r.url));
+    } catch (e) {
+      return false;
+    }
+  },
+
   // Called once from main.js after the first render. Only a native build with
   // the plugin listens at all; the web build does nothing.
   start() {
@@ -361,8 +448,12 @@ window.StackdWidgets = {
     this._started = true;
     window.Store.subscribe(() => this.schedule());
     // Leaving the app writes at once (the debounce may not get to run), and
-    // coming back catches a new day.
-    document.addEventListener('visibilitychange', () => { this.sync(); });
+    // coming back catches a new day and a Quick add tap waiting for us.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.consumePending();
+      this.sync();
+    });
+    this.consumePending();
     this.sync({ force: true });
   }
 };
