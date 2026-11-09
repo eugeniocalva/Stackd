@@ -184,11 +184,8 @@ describe('History summary card (1.0.1 BUG-04 / BUG-05)', () => {
     });
 
     it('Tags screen drill-down spans the tag\'s own rows, not every transaction', () => {
-      let handler = null;
-      const row = { dataset: { tagOpen: 'food' }, addEventListener: (ev, fn) => { if (ev === 'click') handler = fn; } };
-      const container = { querySelectorAll: (sel) => (sel === '[data-tag-open]' ? [row] : []) };
-      global.window.Views.TagsView.attachEvents(container, Store.getState());
-      handler();
+      // 1.2.2 (HG-14): the edit sheet's "See N transactions" link
+      global.window.Views.TagsView.openHistory('food');
       const p = Store.state.historyFilters.period;
       expect(p.type).toBe('custom');
       expect(p.start).toBe('2026-10-03');
@@ -199,10 +196,7 @@ describe('History summary card (1.0.1 BUG-04 / BUG-05)', () => {
 
     it('Tags drill-down ends today when every tagged row is in the past', () => {
       Store.dispatch('ADD_TRANSACTION', { type: 'expense', amount: 5, accountId: 'acc1', categoryId: 'cat_groceries', date: '2026-03-02', tags: ['coffee'] });
-      let handler = null;
-      const row = { dataset: { tagOpen: 'coffee' }, addEventListener: (ev, fn) => { handler = fn; } };
-      global.window.Views.TagsView.attachEvents({ querySelectorAll: () => [row] }, Store.getState());
-      handler();
+      global.window.Views.TagsView.openHistory('coffee');
       const p = Store.state.historyFilters.period;
       expect(p.start).toBe('2026-03-02');
       expect(p.end).toBe('2026-10-01');

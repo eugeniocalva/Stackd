@@ -5368,3 +5368,55 @@ a:focus-visible,
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* 1.2.2 (HG-14) Tags page: + next to ✕, and the tag edit sheet */
+.page-head-actions { display: flex; align-items: center; gap: var(--space-3); }
+button.page-close { border: none; cursor: pointer; padding: 0; }
+.tes-sheet { max-height: 88vh; overflow-y: auto; }
+.tes-head-pad { width: 44px; flex-shrink: 0; }
+.tes-label { display: block; margin: var(--space-3) 0 var(--space-2); font-size: var(--text-sm); font-weight: 700; color: var(--text-secondary); }
+.tes-name-wrap { position: relative; }
+.tes-hash { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-weight: 700; pointer-events: none; }
+.tes-name { width: 100%; padding-left: 30px; }
+.tes-error { margin: var(--space-2) 0 0; color: var(--color-danger, #dc2626); font-size: var(--text-sm); }
+.tes-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tes-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px;
+  padding: 0 4px 0 12px; border-radius: var(--radius-full);
+  background: var(--bg-surface-sunken); color: var(--text-primary); font-weight: 600; font-size: 0.9rem;
+}
+.tes-chip svg { width: 16px; height: 16px; flex-shrink: 0; }
+.tes-chip-x {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); cursor: pointer;
+}
+.tes-chip--add { padding: 0 14px 0 10px; border: 1px dashed var(--border-color); background: transparent; color: var(--color-primary); cursor: pointer; }
+.tes-hint { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-tertiary); }
+.tes-see {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px;
+  margin-top: var(--space-4); padding: 0 var(--space-3); border: none; border-radius: var(--radius-lg);
+  background: var(--bg-surface-sunken); color: var(--text-primary); font-weight: 600; cursor: pointer;
+}
+.tes-see svg { width: 18px; height: 18px; color: var(--text-tertiary); }
+.tes-actions { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6); }
+.tes-catlist { display: flex; flex-direction: column; gap: var(--space-1); }
+.tes-cat {
+  display: flex; align-items: center; gap: var(--space-3); min-height: 48px; padding: 0 var(--space-3);
+  border: none; border-radius: var(--radius-lg); background: transparent; color: var(--text-primary);
+  font-weight: 600; font-size: 1rem; text-align: left; cursor: pointer;
+}
+.tes-cat:hover, .tes-cat:focus-visible { background: var(--bg-surface-sunken); }
+.tes-cat svg { width: 20px; height: 20px; color: var(--text-secondary); }
+.tes-summary { margin: 0 0 var(--space-4); padding-left: 1.2em; color: var(--text-primary); line-height: 1.45; }
+.tes-summary li + li { margin-top: var(--space-2); }
+.tes-body { color: var(--text-secondary); line-height: 1.45; }
+.tes-q { margin: 0 0 var(--space-4); padding: var(--space-3); border: 1px solid var(--border-color); border-radius: var(--radius-lg); }
+.tes-q legend { padding: 0 4px; font-weight: 700; color: var(--text-primary); line-height: 1.4; }
+.tes-opt { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 44px; padding: 10px 0; cursor: pointer; line-height: 1.35; }
+.tes-opt input { margin-top: 2px; width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--color-primary); }
+.tes-move { display: flex; align-items: center; gap: var(--space-3); margin: 4px 0 0 32px; }
+.tes-move select { flex: 1; min-height: 44px; }
+.tes-sheet { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+.tes-actions .btn:disabled { opacity: 0.4; cursor: default; }
+.tes-q legend { float: left; width: 100%; padding: 0; margin-bottom: var(--space-2); }
+.tes-q legend + * { clear: both; }

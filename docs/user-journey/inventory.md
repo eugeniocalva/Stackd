@@ -93,7 +93,7 @@ Title "Smart Insights" + "Worked out from your own entries, on this phone." Sect
 
 ### A11. Categories and tags
 
-**Categories** (Others → Categories): grouped Income / Expense / All Types, a count per category, **+** → New Category (Category Name, type Expense / Income / Both, icon; free plan: Pro lock). Tap → **Category detail** (its transactions, by tag) → ⋮ → **Edit Category** (Delete only when it has no transactions). **Tags** (Others → Tags): every tag with its count; tap → History filtered by that tag over all time; unused created tags can be removed.
+**Categories** (Others → Categories): grouped Income / Expense / All Types, a count per category, **+** → New Category (Category Name, type Expense / Income / Both, icon; free plan: Pro lock). Tap → **Category detail** (its transactions, by tag) → ⋮ → **Edit Category** (Delete only when it has no transactions). **Tags** (Others → Tags): every tag with its count and categories; **+** → New tag; tap → **Edit tag** sheet (name, category chips + Add category, "See N transactions" → History over all time, Delete); Save asks a summary confirmation, and a removed category with tagged rows asks keep / lose the tag / move (HG-14).
 
 ### A12. Others & Settings
 
@@ -203,7 +203,7 @@ Each step: **id** · screen · what the user does · what the app shows · scree
 | L19 | Currency | Others → Currency → USD | **Switch to USD?** naming the accounts that would be excluded; Cancel | `l26-currency-switch` | nothing changed |
 | L20 | Analytics · custom range | Period pill → **Custom range…**; picks Sep 14 and Nov 3; Done | the calendar step; bars by week, `vs Jul 25 – Sep 13` | `l27-period-sheet-custom`, `l28-analytics-custom` | label; comparison label |
 | L21 | Categories | Others → **Categories**; **+**; "Subscriptions", Expense, icon; **Create Category**; opens it; back, ⋮ on its row → Edit → Delete | the list by type; New Category with Select Icon; the detail (empty); the editor | `l29-categories`, `l30-new-category`, `l31-category-detail` | created then deleted |
-| L22 | Tags | Others → **Tags**; taps "friends" | every tag with a count; History filtered by that tag over all time | `l32-tags` | tags chip |
+| L22 | Tags | Others → **Tags**; taps "friends", then "See 1 transaction" | every tag with a count; the Edit tag sheet; History filtered by that tag over all time | `l32-tags` | tags chip |
 | L23 | Edit Account | Home → ⋯ on Cash; Opening Balance Date later than existing rows; Save | **Entries before this date** (n entries … will stay in History but no longer count) → "Open on … instead" | `l33-opening-date-sheet` | date kept at the earliest |
 | L24 | Delete account | Edit Account → **Delete Account** → "Yes, Delete Everything" | "Delete Account? All associated transactions will be permanently deleted." | `l34-delete-account` | card gone; totals exclude it |
 | L25 | Factory Reset | Others → Danger Zone → **Factory Reset** → confirm | "Factory Reset?"; then the Welcome sheet again | `l35-factory-reset`, `l36-welcome-again` | storage cleared; Welcome shown |

@@ -5063,25 +5063,21 @@ Object.assign(window.Views, {
   TagsView: {
     render(state) {
       const tags = window.Store.getAllUniqueTags();
-      // v0.85: tags now open History filtered by that tag (all time), the same
-      // destination the analytics category→tag drilldown uses — one way to
-      // read a tag's transactions instead of a second, weaker list view.
+      // 1.2.2 (HG-14, docs/tags-page-plan.md): a row opens the edit sheet
+      // (name + categories); History is one link inside it (openHistory).
       // 1.2.0 (UX-9): no prototype, so a tag named 'constructor' counts from 0
       const counts = Object.create(null);
       state.transactions.forEach(tx => {
         (Array.isArray(tx.tags) ? tx.tags : []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
       });
       // 1.2.0 (UX-9): each row names the categories the tag is linked to
-      // (explicit ∪ derived), and a tag created in the picker that no
-      // transaction carries yet can be removed here (DELETE_TAG).
+      // (explicit ∪ derived).
       const catName = {};
       state.categories.forEach(c => { catName[c.id] = c.name; });
-      const explicit = state.tagLinks || {};
       let listHtml = tags.map(t => {
         const linkedNames = window.Store.getTagLinks(t).map(id => catName[id]).filter(Boolean);
-        const removable = !counts[t] && Object.prototype.hasOwnProperty.call(explicit, t);
         return `
-        <div class="list-item touch-target" data-tag-open="${escapeAttr(t)}" role="button" tabindex="0" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+        <div class="list-item touch-target" data-tag-open="${escapeAttr(t)}" role="button" tabindex="0" aria-haspopup="dialog" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
           <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
             <div class="list-item-icon" style="margin: 0; background: var(--bg-surface-sunken); border-radius: 8px;"><i data-lucide="hash"></i></div>
             <div style="min-width: 0;">
@@ -5090,9 +5086,7 @@ Object.assign(window.Views, {
               ${linkedNames.length ? `<div class="list-item-subtitle tags-linked-cats" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${linkedNames.map(n => esc(n)).join(', ')}</div>` : ''}
             </div>
           </div>
-          ${removable
-            ? `<button type="button" class="tags-remove-btn touch-target" data-tag-remove="${escapeAttr(t)}" aria-label="${window.I18n.t('form.removeTag', { tag: escapeAttr(t) })}" style="border: none; background: transparent; color: var(--text-tertiary); font-size: 1rem; padding: 8px; cursor: pointer;">✕</button>`
-            : '<div style="color: var(--text-tertiary);">›</div>'}
+          <div style="color: var(--text-tertiary);">›</div>
         </div>
       `;
       }).join('');
@@ -5111,7 +5105,10 @@ Object.assign(window.Views, {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${window.I18n.t('form.tags')}</h1>
-            <a href="#settings" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
+            <div class="page-head-actions">
+              <button type="button" id="tags-add" class="page-close" aria-haspopup="dialog" aria-label="${window.I18n.t('tags.add')}"><i data-lucide="plus" aria-hidden="true"></i></button>
+              <a href="#settings" aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
+            </div>
           </div>
           
           <div class="list-group">
@@ -5120,40 +5117,39 @@ Object.assign(window.Views, {
         </div>
       `;
     },
-    attachEvents(container, state) {
+    attachEvents(container) {
       window.StackdHydrateIcons();
-      container.querySelectorAll('[data-tag-remove]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation(); // not the row's History drill-down
-          window.Store.dispatch('DELETE_TAG', { tag: btn.dataset.tagRemove });
-        });
-      });
+      const add = container.querySelector && container.querySelector('#tags-add');
+      if (add) add.addEventListener('click', () => window.Components.TagEditSheet.show({ tag: null }));
       container.querySelectorAll('[data-tag-open]').forEach(row => {
-        row.addEventListener('click', () => {
-          const tag = row.dataset.tagOpen;
-          if (!tag) return;
-          // A tag list is an all-time index, so the History period must not
-          // hide older matches behind "This Month". 1.0.1 (BUG-04) span the
-          // TAG's own rows, not every transaction (a far-future recurring
-          // member of an unrelated series stretched the range by years).
-          const dates = state.transactions
-            .filter(t => Array.isArray(t.tags) && t.tags.includes(tag))
-            .map(t => t.date).filter(Boolean).sort();
-          const pad = (n) => String(n).padStart(2, '0');
-          const now = new Date();
-          const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-          const start = dates.length ? dates[0] : todayStr;
-          const last = dates.length ? dates[dates.length - 1] : todayStr;
-          const end = last > todayStr ? last : todayStr;
-
-          // 1.2.2 (HG-10) through UPDATE_FILTERS, not a direct state write
-          window.Store.dispatch('UPDATE_FILTERS', {
-            page: 'history',
-            filters: { period: { type: 'custom', value: '', start, end }, categories: [], types: [], accounts: [], tags: [tag] }
-          });
-          window.Router.navigate('#transactions');
+        const open = () => { if (row.dataset.tagOpen) window.Components.TagEditSheet.show({ tag: row.dataset.tagOpen }); };
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
         });
       });
+    },
+
+    // History filtered by the tag over all time (the sheet's "See N
+    // transactions" link). A tag list is an all-time index, so the History
+    // period must not hide older matches behind "This Month". 1.0.1 (BUG-04)
+    // span the TAG's own rows, not every transaction (a far-future recurring
+    // member of an unrelated series stretched the range by years).
+    openHistory(tag) {
+      if (!tag) return;
+      const dates = window.Store.getState().transactions
+        .filter(t => Array.isArray(t.tags) && t.tags.includes(tag))
+        .map(t => t.date).filter(Boolean).sort();
+      const todayStr = window.Store._todayYMD();
+      const start = dates.length ? dates[0] : todayStr;
+      const last = dates.length ? dates[dates.length - 1] : todayStr;
+      const end = last > todayStr ? last : todayStr;
+      // 1.2.2 (HG-10) through UPDATE_FILTERS, not a direct state write
+      window.Store.dispatch('UPDATE_FILTERS', {
+        page: 'history',
+        filters: { period: { type: 'custom', value: '', start, end }, categories: [], types: [], accounts: [], tags: [tag] }
+      });
+      window.Router.navigate('#transactions');
     }
   },
 

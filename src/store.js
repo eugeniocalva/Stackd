@@ -3561,10 +3561,64 @@ window.Store = {
 
       case 'DELETE_TAG': {
         const tag = this.normalizeTag(payload && payload.tag);
-        if (!tag || !Object.prototype.hasOwnProperty.call(this.state.tagLinks, tag)) break;
-        delete this.state.tagLinks[tag]; // transactions keep their own tags
+        if (!tag) break;
+        // 1.2.2 (HG-14): the Tags page's Delete removes a used tag from its
+        // rows too (the rows stay); without the flag rows keep their tags
+        if (payload.fromTransactions) {
+          let n = 0;
+          this.state.transactions.forEach(tx => {
+            if (Array.isArray(tx.tags) && tx.tags.includes(tag)) { tx.tags = tx.tags.filter(x => x !== tag); n++; }
+          });
+          if (n) { window.StackdDB.save('transactions', this.state.transactions); changed = true; }
+          this._renameTagInFilters(tag, null);
+        }
+        if (!Object.prototype.hasOwnProperty.call(this.state.tagLinks, tag)) break;
+        delete this.state.tagLinks[tag];
         window.StackdDB.save('tagLinks', this.state.tagLinks);
         if (!payload.silent) changed = true;
+        break;
+      }
+
+      // 1.2.2 (HG-14, docs/tags-page-plan.md): the Tags page's edit sheet in
+      // ONE change. `removed[catId].mode` says what the rows of a category
+      // taken off the tag do: 'untag' (stay, lose the tag), 'keep' (stay with
+      // the tag — the category stays linked) or 'move' (to `to`; transfer
+      // legs and opening balances never move). A name already in use merges.
+      case 'EDIT_TAG': {
+        const p = payload || {};
+        const name = this.normalizeTag(p.name);
+        if (!name) break;
+        const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+        const old = p.tag ? this.normalizeTag(p.tag) : '';
+        const isCat = (id) => typeof id === 'string' && this.state.categories.some(c => c.id === id);
+        const removed = (p.removed && typeof p.removed === 'object') ? p.removed : {};
+        const want = [];
+        (Array.isArray(p.categoryIds) ? p.categoryIds : []).forEach(id => { if (isCat(id) && !want.includes(id)) want.push(id); });
+        Object.keys(removed).forEach(id => { if (removed[id] && removed[id].mode === 'keep' && isCat(id) && !want.includes(id)) want.push(id); });
+        let rows = false;
+        if (old) {
+          this.state.transactions.forEach(tx => {
+            if (!Array.isArray(tx.tags) || !tx.tags.includes(old)) return;
+            const r = tx.categoryId && own(removed, tx.categoryId) ? removed[tx.categoryId] : null;
+            if (r && r.mode === 'untag') { tx.tags = tx.tags.filter(x => x !== old); rows = true; return; }
+            if (r && r.mode === 'move' && isCat(r.to) && !tx.transferRef && tx.type !== 'opening_balance') {
+              tx.categoryId = r.to;
+              rows = true;
+            }
+            if (old !== name) {
+              tx.tags = tx.tags.reduce((acc, x) => { const v = x === old ? name : x; if (!acc.includes(v)) acc.push(v); return acc; }, []);
+              rows = true;
+            }
+          });
+        }
+        const links = this.state.tagLinks;
+        const kept = old !== name && own(links, name) ? links[name] : [];
+        if (old && old !== name) delete links[old];
+        links[name] = kept.concat(want.filter(id => !kept.includes(id)));
+        window.StackdDB.save('tagLinks', links);
+        if (rows) window.StackdDB.save('transactions', this.state.transactions);
+        if (old && old !== name) this._renameTagInFilters(old, name);
+        changed = true;
         break;
       }
 
@@ -5620,6 +5674,36 @@ window.Store = {
   _loadBackupLog() {
     const raw = window.StackdDB.load('backupLog', []);
     return Array.isArray(raw) ? raw.filter(e => e && typeof e === 'object') : [];
+  },
+
+  // 1.2.2 (HG-14): the session History/Analytics tag filters follow a rename
+  // (to = the new name) or a delete (to = null).
+  _renameTagInFilters(from, to) {
+    ['historyFilters', 'analyticsFilters'].forEach(key => {
+      const f = this.state[key];
+      if (!f || !Array.isArray(f.tags) || !f.tags.includes(from)) return;
+      const tags = [];
+      f.tags.forEach(x => { const v = x === from ? to : x; if (v && !tags.includes(v)) tags.push(v); });
+      this.state[key] = { ...f, tags };
+    });
+  },
+
+  // 1.2.2 (HG-14): what an edit of `tag` would touch, for the confirm sheet —
+  // rows per category (and how many of them can move), and the total.
+  tagUsage(tag) {
+    const t = this.normalizeTag(tag);
+    const byCat = Object.create(null);
+    let total = 0;
+    if (!t) return { total, byCat };
+    this.state.transactions.forEach(tx => {
+      if (!Array.isArray(tx.tags) || !tx.tags.includes(t)) return;
+      total++;
+      const k = tx.categoryId || '';
+      const e = byCat[k] || (byCat[k] = { count: 0, movable: 0 });
+      e.count++;
+      if (!tx.transferRef && tx.type !== 'opening_balance') e.movable++;
+    });
+    return { total, byCat };
   },
 
   // 1.2.0 (UX-9): every tag the install knows — transaction tags ∪ the

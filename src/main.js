@@ -669,6 +669,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // splash dismissal below relies on the first render having happened.
   window.Store.emit({ sync: true });
 
+  // 1.2.2 (HG-15): the phone widgets' snapshot (docs/phone-widgets-plan.md).
+  // A no-op unless the native StackdWidgets plugin is present.
+  if (window.StackdWidgets) window.StackdWidgets.start();
+
   // 1.0.2 (BUG-69): a WebView kept in memory resumes on a new day with
   // History/Analytics still on yesterday's period. Two triggers — the page
   // visibility event (also the web build) and Capacitor's native 'resume' —

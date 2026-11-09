@@ -4055,6 +4055,251 @@ window.Components = {
   // amountNote (1.0.2 live-U3-N1: a rebuild would replace a later member's
   // different amount, e.g. a hand-edited loan payment).
   // -----------------------------------------------------------------------
+  // 1.2.2 (HG-14, docs/tags-page-plan.md): the Tags page's add / edit sheet.
+  // One wrapper, four steps (PeriodSheet's pattern): 'form' (name +
+  // category chips), 'cats' (pick a category to add), 'confirm' (one summary
+  // of every change; a removed category that still has rows with the tag
+  // asks what they do) and 'delete'. Nothing is dispatched before Confirm.
+  TagEditSheet: {
+    show(options = {}) {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (v) => window.I18n.esc(v);
+      const container = document.getElementById('modal-container');
+      if (!container) return;
+      const old = document.getElementById('tag-edit-sheet');
+      if (old) old.remove();
+
+      const orig = options.tag ? S.normalizeTag(options.tag) : '';
+      const cats = () => S.getState().categories || [];
+      const catOf = (id) => cats().find(c => c.id === id);
+      const usage = orig ? S.tagUsage(orig) : { total: 0, byCat: Object.create(null) };
+      const origCats = orig ? S.getTagLinks(orig).filter(id => catOf(id)) : [];
+      const st = {
+        step: 'form',
+        name: orig,
+        cats: origCats.slice(),
+        added: [],          // in the order they were added (D6: newest preselected)
+        choice: {},         // removed catId → {mode, to}
+        error: ''
+      };
+      const known = () => S.getAllUniqueTags();
+      const norm = () => S.normalizeTag(st.name);
+      const removedCats = () => origCats.filter(id => !st.cats.includes(id));
+      const isDirty = () => !orig ? !!norm()
+        : (norm() !== orig || removedCats().length > 0 || st.cats.some(id => !origCats.includes(id)));
+      const clash = () => { const n = norm(); return n && n !== orig && known().includes(n); };
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'modal-backdrop';
+      wrapper.id = 'tag-edit-sheet';
+      wrapper.setAttribute('role', 'dialog');
+      wrapper.setAttribute('aria-modal', 'true');
+      wrapper.setAttribute('aria-labelledby', 'tes-title');
+
+      const close = () => {
+        wrapper.classList.remove('open');
+        document.removeEventListener('keydown', onKey, true);
+        setTimeout(() => wrapper.remove(), 300);
+      };
+
+      const chipHtml = (id) => {
+        const c = catOf(id);
+        if (!c) return '';
+        return `<span class="tes-chip"><i data-lucide="${esc(c.icon || 'pin')}" aria-hidden="true"></i><span class="tes-chip-name">${esc(c.name)}</span>
+          <button type="button" class="tes-chip-x" data-k="rm-${esc(id)}" data-rm="${esc(id)}" aria-label="${t('tags.removeCategory', { name: esc(c.name) })}"><i data-lucide="x" aria-hidden="true"></i></button></span>`;
+      };
+
+      const formHtml = () => {
+        const n = usage.total;
+        return `
+          <div class="period-sheet-head">
+            <h2 id="tes-title" class="period-sheet-title">${t(orig ? 'tags.editTitle' : 'tags.newTitle')}</h2>
+            <button type="button" class="period-sheet-x" data-k="close" data-back-dismiss aria-label="${t('common.close')}"><i data-lucide="x" aria-hidden="true"></i></button>
+          </div>
+          <label class="tes-label" for="tag-name">${t('tags.name')}</label>
+          <div class="tes-name-wrap"><span class="tes-hash" aria-hidden="true">#</span>
+            <input id="tag-name" class="form-control tes-name" type="text" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(st.name)}"${st.error ? ' aria-invalid="true" aria-describedby="tag-name-error"' : ''}></div>
+          ${st.error ? `<p id="tag-name-error" class="tes-error" role="alert">${st.error}</p>` : ''}
+          <div class="tes-label" id="tes-cats-label">${t('tags.categories')}</div>
+          <div class="tes-chips" role="group" aria-labelledby="tes-cats-label">
+            ${st.cats.map(chipHtml).join('')}
+            <button type="button" class="tes-chip tes-chip--add" data-k="add-cat"><i data-lucide="plus" aria-hidden="true"></i>${t('tags.addCategory')}</button>
+          </div>
+          ${st.cats.length ? '' : `<p class="tes-hint">${t('tags.noCategories')}</p>`}
+          ${orig && n ? `<button type="button" class="tes-see" data-k="see">${t('tags.seeTx', { count: n })}<i data-lucide="chevron-right" aria-hidden="true"></i></button>` : ''}
+          <div class="tes-actions">
+            ${orig ? `<button type="button" class="btn btn-danger" data-k="delete" id="tes-delete">${t('common.delete')}</button>` : ''}
+            <button type="button" class="btn btn-primary" data-k="save" id="tes-save"${isDirty() ? '' : ' disabled'}>${t('common.save')}</button>
+          </div>`;
+      };
+
+      const catsHtml = () => {
+        const list = cats().filter(c => !st.cats.includes(c.id)).sort((a, b) => S.compareAlpha(a, b));
+        return `
+          <div class="period-sheet-head">
+            <button type="button" class="period-sheet-back" data-k="back" data-back-dismiss><i data-lucide="chevron-left" aria-hidden="true"></i>${t('tags.backToTag')}</button>
+            <h2 id="tes-title" class="period-sheet-title">${t('tags.pickCategory')}</h2>
+            <span class="tes-head-pad" aria-hidden="true"></span>
+          </div>
+          <div class="tes-catlist">
+            ${list.map(c => `<button type="button" class="tes-cat" data-k="pick-${esc(c.id)}" data-pick="${esc(c.id)}"><i data-lucide="${esc(c.icon || 'pin')}" aria-hidden="true"></i><span>${esc(c.name)}</span></button>`).join('')}
+          </div>`;
+      };
+
+      // the rows a removed category still holds decide its question
+      const asked = () => removedCats().filter(id => usage.byCat[id] && usage.byCat[id].count > 0);
+      const confirmHtml = () => {
+        const n = norm();
+        const lines = [];
+        if (orig && n !== orig) {
+          const merge = clash();
+          const c = usage.total;
+          const key = merge ? (c ? 'tags.confirmMerge' : 'tags.confirmMergeNoTx') : (c ? 'tags.confirmRename' : 'tags.confirmRenameNoTx');
+          lines.push(t(key, { from: esc(orig), to: esc(n), count: c }));
+        }
+        const add = st.cats.filter(id => !origCats.includes(id)).map(id => esc(catOf(id).name));
+        if (add.length) lines.push(t('tags.confirmLinked', { names: add.join(', ') }));
+        const quiet = removedCats().filter(id => !asked().includes(id)).map(id => esc(catOf(id).name));
+        if (quiet.length) lines.push(t('tags.confirmUnlinked', { names: quiet.join(', ') }));
+        const questions = asked().map(id => {
+          const u = usage.byCat[id];
+          const cname = esc(catOf(id).name);
+          const ch = st.choice[id];
+          const targets = st.cats;
+          const canMove = targets.length > 0 && u.movable > 0;
+          const radio = (mode, label) => `<label class="tes-opt"><input type="radio" name="tes-${esc(id)}" data-mode="${mode}" data-cat="${esc(id)}"${ch.mode === mode ? ' checked' : ''}><span>${label}</span></label>`;
+          return `<fieldset class="tes-q">
+            <legend>${t('tags.removedQ', { count: u.count, cat: cname, tag: esc(orig) })}</legend>
+            ${radio('untag', t('tags.optUntag', { cat: cname }))}
+            ${radio('keep', t('tags.optKeep', { cat: cname }))}
+            ${canMove ? radio('move', t('tags.optMove')) : ''}
+            ${canMove && ch.mode === 'move' ? `<label class="tes-move"><span>${t('tags.moveTo')}</span>
+              <select class="form-control" data-move="${esc(id)}">${targets.map(tid => `<option value="${esc(tid)}"${ch.to === tid ? ' selected' : ''}>${esc(catOf(tid).name)}</option>`).join('')}</select></label>
+              ${u.movable < u.count ? `<p class="tes-hint">${t('tags.moveSkipped', { count: u.count - u.movable, cat: cname })}</p>` : ''}` : ''}
+          </fieldset>`;
+        }).join('');
+        return `
+          <div class="period-sheet-head">
+            <button type="button" class="period-sheet-back" data-k="back" data-back-dismiss><i data-lucide="chevron-left" aria-hidden="true"></i>${t('tags.backToTag')}</button>
+            <h2 id="tes-title" class="period-sheet-title">${t('tags.confirmTitle')}</h2>
+            <span class="tes-head-pad" aria-hidden="true"></span>
+          </div>
+          ${lines.length ? `<ul class="tes-summary">${lines.map(l => `<li>${l}</li>`).join('')}</ul>` : ''}
+          ${questions}
+          <div class="tes-actions"><button type="button" class="btn btn-primary" data-k="confirm" id="tes-confirm">${t('tags.confirm')}</button></div>`;
+      };
+
+      const deleteHtml = () => `
+          <div class="period-sheet-head">
+            <button type="button" class="period-sheet-back" data-k="back" data-back-dismiss><i data-lucide="chevron-left" aria-hidden="true"></i>${t('tags.backToTag')}</button>
+            <h2 id="tes-title" class="period-sheet-title">${t('tags.deleteTitle', { tag: esc(orig) })}</h2>
+            <span class="tes-head-pad" aria-hidden="true"></span>
+          </div>
+          <p class="tes-body">${usage.total ? t('tags.deleteBody', { count: usage.total }) : t('tags.deleteBodyNoTx')}</p>
+          <div class="tes-actions"><button type="button" class="btn btn-danger" data-k="delete-yes" id="tes-delete-yes">${t('common.delete')}</button></div>`;
+
+      const paint = (focusKey) => {
+        const body = { form: formHtml, cats: catsHtml, confirm: confirmHtml, delete: deleteHtml }[st.step]();
+        wrapper.innerHTML = `<div class="modal-content period-sheet tes-sheet">${body}</div>`;
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(wrapper);
+        const el = (focusKey && wrapper.querySelector(focusKey.startsWith('#') ? focusKey : `[data-k="${focusKey}"]`))
+          || (st.step === 'form' && !orig ? wrapper.querySelector('#tag-name') : null)
+          || wrapper.querySelector('[data-k]');
+        if (el) el.focus({ preventScroll: true });
+        const input = wrapper.querySelector('#tag-name');
+        if (input) {
+          input.addEventListener('input', () => {
+            st.name = input.value;
+            if (st.error) { st.error = ''; const er = wrapper.querySelector('#tag-name-error'); if (er) er.remove(); input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby'); }
+            const sv = wrapper.querySelector('#tes-save');
+            if (sv) sv.disabled = !isDirty();
+          });
+          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        }
+      };
+
+      const finish = (dispatchArgs) => {
+        S.dispatch(...dispatchArgs);
+        close();
+        if (window.Components.Announcer) window.Components.Announcer.say(t('tags.savedAnnounce'));
+      };
+
+      const save = () => {
+        if (!isDirty()) return;
+        const n = norm();
+        if (!n) { st.error = t('tags.errEmpty'); paint('#tag-name'); return; }
+        if (!orig && known().includes(n)) { st.error = t('tags.errExists'); paint('#tag-name'); return; }
+        if (!orig) { finish(['EDIT_TAG', { tag: null, name: n, categoryIds: st.cats }]); return; }
+        // D2/D6: each asked category starts on "keep the tag"; Move targets the newest added
+        asked().forEach(id => {
+          if (!st.choice[id]) st.choice[id] = { mode: 'keep', to: '' };
+          const pref = st.added.slice().reverse().find(x => st.cats.includes(x)) || st.cats[0] || '';
+          if (!st.cats.includes(st.choice[id].to)) st.choice[id].to = pref;
+        });
+        st.step = 'confirm';
+        paint();
+      };
+
+      const confirm = () => {
+        const removed = {};
+        removedCats().forEach(id => {
+          const ch = st.choice[id];
+          removed[id] = ch && asked().includes(id) ? { mode: ch.mode, to: ch.to } : { mode: 'untag' };
+        });
+        finish(['EDIT_TAG', { tag: orig, name: norm(), categoryIds: st.cats, removed }]);
+      };
+
+      wrapper.addEventListener('click', (e) => {
+        if (e.target === wrapper) { close(); return; }
+        const btn = e.target.closest && e.target.closest('[data-k]');
+        if (!btn || btn.disabled) return;
+        const k = btn.dataset.k;
+        if (k === 'close') { close(); return; }
+        if (k === 'back') { st.step = 'form'; paint('save'); return; }
+        if (k === 'add-cat') { st.step = 'cats'; paint(); return; }
+        if (btn.dataset.pick) {
+          st.cats.push(btn.dataset.pick);
+          if (!origCats.includes(btn.dataset.pick)) st.added.push(btn.dataset.pick);
+          st.step = 'form';
+          paint('add-cat');
+          return;
+        }
+        if (btn.dataset.rm) { st.cats = st.cats.filter(id => id !== btn.dataset.rm); paint('add-cat'); return; }
+        if (k === 'see') { close(); window.Views.TagsView.openHistory(orig); return; }
+        if (k === 'save') { save(); return; }
+        if (k === 'confirm') { confirm(); return; }
+        if (k === 'delete') { st.step = 'delete'; paint(); return; }
+        if (k === 'delete-yes') finish(['DELETE_TAG', { tag: orig, fromTransactions: true }]);
+      });
+      wrapper.addEventListener('change', (e) => {
+        const el = e.target;
+        if (el.dataset.mode) {
+          st.choice[el.dataset.cat].mode = el.dataset.mode;
+          paint(`#tes-confirm`);
+          const r = [...wrapper.querySelectorAll("input[data-mode]")].find(x => x.dataset.cat === el.dataset.cat && x.dataset.mode === el.dataset.mode);
+          if (r) r.focus({ preventScroll: true });
+        } else if (el.dataset.move) {
+          st.choice[el.dataset.move].to = el.value;
+        }
+      });
+
+      const onKey = (e) => {
+        if (!wrapper.isConnected) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (st.step === 'form') close(); else { st.step = 'form'; paint('save'); }
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+
+      container.appendChild(wrapper);
+      paint();
+      requestAnimationFrame(() => wrapper.classList.add('open'));
+    }
+  },
+
   RecurringUpdateModal: {
     show(options) {
       const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false, gapNote = false } = options;

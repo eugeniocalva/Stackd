@@ -104,7 +104,7 @@ test.describe('Category → tag drilldown', () => {
     await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(3);
   });
 
-  test('Settings → Tags opens History filtered by that tag over all time', async ({ page }) => {
+  test('Settings → Tags: the edit sheet link opens History filtered by that tag over all time', async ({ page }) => {
     await bootstrap(page);
     await page.evaluate(() => window.Router.navigate('#tags'));
     await page.waitForSelector('[data-tag-open]');
@@ -112,7 +112,9 @@ test.describe('Category → tag drilldown', () => {
     const row = page.locator('[data-tag-open="credito"]');
     await expect(row).toContainText('#credito');
     await expect(row).toContainText('1 transaction');
+    // 1.2.2 (HG-14): a row opens the edit sheet; its link opens History
     await row.click();
+    await page.click('#tag-edit-sheet [data-k="see"]');
 
     await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
     const f = await page.evaluate(() => window.Store.getState().historyFilters);

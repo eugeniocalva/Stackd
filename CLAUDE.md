@@ -42,7 +42,7 @@ npx playwright test tests/e2e/debt_simulator.spec.js
 The app is **vanilla JS using global objects, not ES modules**. Each `src/*.js` file attaches a singleton to `window` and is loaded via ordered `<script defer>` tags in `index.html`. Dependency order matters and is fixed by that tag order:
 
 ```
-db.js → i18n.js → i18n/*.js → utils/scroll.js → utils/keyboard.js → attachments.js → loan-engine.js → store.js → components.js → widgets.js → insights.js → views.js → router.js → export.js → import.js → backup.js → bank-connect.js → pro.js → main.js → libs/pdf-lib.min.js
+db.js → i18n.js → i18n/*.js → utils/scroll.js → utils/keyboard.js → attachments.js → loan-engine.js → store.js → components.js → widgets.js → widgets-native.js → insights.js → views.js → router.js → export.js → import.js → backup.js → bank-connect.js → pro.js → main.js → libs/pdf-lib.min.js
 ```
 
 The core globals and their roles:
@@ -621,6 +621,15 @@ Comment tag `// 1.2.2 (HG-N)`; the CSS block is appended at the end of
   `.text-expense` stays red for nets and the form. History rows pass
   `hideDate` (the day header carries it) and sit in a compact
   `.history-list`.
+
+- **Phone widgets (HG-15, `docs/phone-widgets-plan.md`).** System widgets
+  (iOS WidgetKit + Android AppWidget) draw one JSON snapshot that
+  `window.StackdWidgets.buildSnapshot` (`src/widgets-native.js`) builds from
+  the Home cards' own data builders — never recompute a figure there. Amounts
+  are masked whenever `privacy.hide` is on (any screen); texts go through
+  `_clip`. `sync()` writes through `Capacitor.Plugins.StackdWidgets` only when
+  the content hash changed; without the plugin it is a no-op. A new Home-card
+  rule that a widget shows must reach the snapshot through that card's builder.
 
 ## User journey (UJ, 2026-11-08)
 

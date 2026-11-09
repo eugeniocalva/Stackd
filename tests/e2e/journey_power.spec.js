@@ -696,7 +696,8 @@ test.describe('Journey · Lea (power user)', () => {
     const tagRow = page.locator('[data-tag-open="friends"]');
     await expect(tagRow).toContainText('#friends');
     await expect(tagRow).toContainText('1 transaction');
-    await tagRow.click();
+    await tagRow.click(); // 1.2.2 (HG-14): the edit sheet, then its History link
+    await page.click('#tag-edit-sheet [data-k="see"]');
     await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
     await expect(page.locator('.period-bar [data-filter-kind="tags"]')).toContainText('#friends');
     const f = await state(page, () => window.Store.getState().historyFilters);
