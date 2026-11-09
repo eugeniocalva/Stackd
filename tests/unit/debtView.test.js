@@ -413,7 +413,14 @@ describe('Promote when storage is full (1.0.2, BUG-34)', () => {
     container.querySelector('#btn-dres-promote').click();
     document.getElementById('loan-name-input').value = 'Casa';
     document.getElementById('modal-save-btn').click();
-    await new Promise((r) => setTimeout(r, 800));
+    // Wait for the end state (the prompt torn down, the sheet up) rather than a
+    // fixed 800 ms, which a loaded runner overshoots (CI, 2026-11-09). The
+    // prompt's teardown runs 300 ms in, so the sheet must still be there after.
+    await new Promise((r) => setTimeout(r, 400));
+    await vi.waitFor(() => {
+      if (document.getElementById('active-modal')) throw new Error('prompt still open');
+      if (!document.getElementById('storage-full-modal')) throw new Error('sheet not up yet');
+    }, { timeout: 5000, interval: 50 });
 
     const sheet = document.getElementById('storage-full-modal');
     expect(sheet).not.toBeNull();
