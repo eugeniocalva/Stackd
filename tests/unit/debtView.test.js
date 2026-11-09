@@ -441,7 +441,13 @@ describe('Promote when storage is full (1.0.2, BUG-34)', () => {
       }
     });
     document.getElementById('modal-delete-btn').click();
-    await new Promise((r) => setTimeout(r, 800));
+    // the end state, not a fixed 800 ms (CI under load, 2026-11-09): the
+    // closing Modal's teardown has run (300 ms) and the sheet is still up
+    await new Promise((r) => setTimeout(r, 400));
+    await vi.waitFor(() => {
+      if (document.getElementById('active-modal')) throw new Error('modal still open');
+      if (!document.getElementById('storage-full-modal')) throw new Error('sheet not up yet');
+    }, { timeout: 5000, interval: 50 });
 
     expect(document.getElementById('storage-full-modal')).not.toBeNull();
   });
