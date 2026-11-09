@@ -1,6 +1,6 @@
 # Phone widgets — iOS and Android (1.2.2 HG-15, plan 2026-11-09)
 
-Status: **plan agreed with the owner (§11); WG-1…WG-4 built (§12; the iOS half of WG-3 written, untested), WG-5 and WG-6 to do.** It ships in
+Status: **plan agreed with the owner (§11); WG-1…WG-5 built (§12; iOS compiled and signed in CI, not yet seen on a phone), WG-6 to do.** It ships in
 **1.2.2** (owner, Q10). Comment tag: `// 1.2.2 (HG-15)`. Sub-phases are named
 WG-1…WG-6 (§8).
 
@@ -451,3 +451,60 @@ clash with the app's.
   - A tap on Budget goals opened `#budget` on 2026-11.
   - Not checked: a real Quick add tap from the launcher. Its intents are the
     same `stackd://open` URIs WG-3 tested.
+
+### WG-5 iOS widgets (2026-11-09)
+
+- **Owner's Apple setup done (§10).** The App Group `group.com.stackd.finance`
+  exists ("Stackd Finance Widgets"), and both App IDs have App Groups with it
+  ticked.
+- **`ios/App/StackdWidgets/`:**
+  - `StackdWidgets.swift`: the bundle and the 8 configurations (kinds
+    `StackdBalances`, `StackdFlow`, `StackdCategories`, `StackdBudgets`,
+    `StackdUpcoming`, `StackdCurve`, `StackdQuickAdd`,
+    `StackdQuickAddLock`).
+  - `Snapshot.swift`:
+    - a `Decodable` with every field optional, so an older or newer app
+      gives the placeholder, never a crash;
+    - one `TimelineProvider` (now + next midnight, `.after(midnight)`);
+    - the `Palette` (`variables.css` light / dark);
+    - `Open.url`.
+  - `Views.swift`: SwiftUI views; amounts are `.privacySensitive()`.
+  - `QuickAddIntent.swift`: an App Intent, `openAppWhenRun`, that writes
+    `pendingOpen` to the group's UserDefaults.
+  - `Info.plist`, `StackdWidgets.entitlements`, `PrivacyInfo.xcprivacy`
+    (1C8F.1), and `Localizable.xcstrings`.
+- **Strings.** `tools/widgets/widget-strings.json` holds the gallery words
+  for both platforms (`ios-strings.cjs` and `android-strings.cjs` write
+  them).
+- **Same look as Android:** letter marks instead of icons, and the same
+  colours. Quick add uses SF Symbols minus / plus / arrow.left.arrow.right on
+  the filled circles.
+- **Taps:**
+  - Wide widgets use `widgetURL`; each wide Upcoming row is a `Link` to
+    `history&day=`.
+  - Quick add's circles are `Button(intent:)` (iOS 17: a small widget has
+    one tap area otherwise).
+  - The app looks for the pending tap at start, on every return, and again
+    0.9 s later (the intent may run just after the app comes forward).
+- **App target:**
+  - `App.entitlements` has the App Group, and its privacy manifest adds
+    1C8F.1.
+  - `QuickAddIntent.swift` is compiled into the app as well (an intent that
+    opens the app may run in its process), with `AppIntents` weak-linked
+    because the app stays on iOS 15.
+- **The Xcode target** was created on GitHub's Mac by
+  `tools/ios/add-widget-target.rb` (workflow "iOS widget target", run
+  42711818314) and the `project.pbxproj` it returned is committed.
+  - `tools/version.cjs` now expects 4 version lines of each kind.
+  - `ios-testflight.yml` also checks that the appex is in the bundle, signed
+    Apple Distribution, has the App Group (app and appex), has its privacy
+    manifest and has the app's version.
+- **CI dry run 42714183442: green.**
+  - Archive and export pass, and the appex is signed "Apple Distribution:
+    Eugenio Maria Calvaresi".
+  - One harmless Xcode warning remains: the extension's own module "missing
+    a dependency on" itself.
+  - On the way, `debtView.test.js`'s storage-full sheet test, timing-bound,
+    failed twice on the runner; it now waits for its end state.
+- **Not yet seen on a phone.** That needs a TestFlight upload (owner's
+  call).
