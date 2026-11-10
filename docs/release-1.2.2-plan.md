@@ -102,6 +102,8 @@ Everything is in **`Desktop\Stackd-1.2.2-store-assets\`**, copied from
 |---|---|---|---|
 | `play/<lang>/` | 1080×2160 (widgets) and 1080×1920 | **7 per language**, upload in name order: `00-widgets` (new: the Android home screen with Account balances, Income vs Expenses and Quick add), `01-home`, `02-history`, `03-goals`, `04-analytics`, `05-insights`, `06-debt` | Play → Main store listing → Phone screenshots, per language |
 | **`apple-6.3/<lang>/`** | **1206×2622** | **6 per language** | **App Store Connect → 1.2.2 → "iPhone com Dynamic Island (ecrã médio)"**, the slot the console offered on 2026-11-10. It refused 6.5" and 6.9". |
+| **`apple-banners/<lang>/header.png`** | **3840×1646** | 1 per language | App Store Connect → 1.2.2 → "Cabeçalho e resultados de pesquisa" → **Cabeçalho**. Optional; made by `tools/store/apple-banners.cjs`. |
+| **`apple-banners/<lang>/search.png`** | **3840×2560** | 1 per language | the same section → **Resultados da pesquisa**. Optional; without it Apple shows the first screenshots. |
 | `apple-6.5/<lang>/` | 1284×2778 | **6 per language** (`01-home` … `06-debt`) | App Store Connect → 1.2.2 → iPhone 6.5" display, per localization |
 | `apple-6.9/<lang>/` | 1290×2796 | 6 per language | Spare: only if the console offers a 6.9" slot |
 | `play/feature-graphic.png`, `play/icon-512.png` | 1024×500, 512×512 | unchanged design | Already on the Play listing; replace only if Play asks |
