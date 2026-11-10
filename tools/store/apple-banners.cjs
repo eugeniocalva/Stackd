@@ -70,26 +70,32 @@ const STYLE = `
   .sub { font-weight: 600; color: #a7b3c6; line-height: 1.15; }
 `;
 
+// The product page crops the header to its middle (the owner's preview,
+// 2026-11-10: about 300 px gone on each side at iPhone width) and floats the
+// back / share buttons over its top corners. Everything therefore sits in a
+// centred safe area 2,800 px wide (HEADER_SAFE), clear of the top band.
+const HEADER_SAFE = { left: 520, right: 3320, top: 300, bottom: 1600 };
+
 const header = (lang) => {
   const shots = SCREENS.map(f => dataUrl(path.join(SHOTS, lang, f)));
   return `<style>${STYLE}
     html, body { width: 3840px; height: 1646px; }
-    body { display: flex; align-items: center; justify-content: center; gap: 220px; }
-    .text { display: flex; flex-direction: column; gap: 56px; width: 1500px; }
-    .brand { display: flex; align-items: center; gap: 56px; }
-    .mark { width: 260px; height: 200px; }
-    .name { font-size: 150px; }
-    .sub { font-size: 104px; }
-    .phones { display: flex; align-items: center; gap: 70px; }
+    body { display: flex; align-items: center; justify-content: center; gap: 150px; padding-top: 120px; box-sizing: border-box; }
+    .text { display: flex; flex-direction: column; gap: 44px; width: 1100px; }
+    .brand { display: flex; align-items: center; gap: 40px; }
+    .mark { width: 180px; height: 138px; }
+    .name { font-size: 112px; }
+    .sub { font-size: 76px; }
+    .phones { display: flex; align-items: center; gap: 50px; }
   </style>
   <div class="text">
     <div class="brand"><div class="mark">${markSvg}</div><div class="name">${NAME}</div></div>
     <div class="sub">${SUBTITLE[lang]}</div>
   </div>
   <div class="phones">
-    ${phone(shots[1], 1240)}
-    ${phone(shots[0], 1420)}
-    ${phone(shots[2], 1240)}
+    ${phone(shots[1], 1000)}
+    ${phone(shots[0], 1150)}
+    ${phone(shots[2], 1000)}
   </div>`;
 };
 
@@ -125,9 +131,10 @@ const search = (lang) => {
       await page.setContent(html);
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(150);
-      // nothing may spill past a 60 px margin
-      const fits = await page.evaluate(() => [...document.body.querySelectorAll('.phone, .name, .sub, .mark')]
-        .every(el => { const b = el.getBoundingClientRect(); return b.left >= 60 && b.right <= innerWidth - 60 && b.top >= 40 && b.bottom <= innerHeight - 40; }));
+      // the header keeps to its safe area; the search image to a 60 px margin
+      const safe = kind === 'header' ? HEADER_SAFE : { left: 60, right: w - 60, top: 40, bottom: h - 40 };
+      const fits = await page.evaluate((s) => [...document.body.querySelectorAll('.phone, .name, .sub, .mark')]
+        .every(el => { const b = el.getBoundingClientRect(); return b.left >= s.left && b.right <= s.right && b.top >= s.top && b.bottom <= s.bottom; }), safe);
       const buf = await page.screenshot();
       await page.close();
       const dir = path.join(OUT, lang);
