@@ -49,6 +49,7 @@ public class BudgetsWidget extends BaseWidget {
             rv.setViewVisibility(ROW[i], View.VISIBLE);
             rv.setTextViewText(NAME[i], r.optString("name"));
             rv.setTextViewText(VALUE[i], r.optString("pctText"));
+            rv.setContentDescription(ROW[i], r.optString("name") + ", " + r.optString("pctText")); // WG-6
             rv.setTextColor(VALUE[i], over ? expense : text2);
             rv.setImageViewBitmap(BAR[i], Draw.bar(ctx, r.optDouble("ratio", 0), over ? expense : fill, track, w, 5));
         }

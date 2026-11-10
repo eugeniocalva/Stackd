@@ -53,6 +53,8 @@ public class UpcomingWidget extends BaseWidget {
             text(rv, SUB[shown], day);
             rv.setTextViewText(Rows.VALUE[shown], r.optString("text"));
             rv.setTextColor(Rows.VALUE[shown], colour);
+            // WG-6: one TalkBack item per payment: name, day, amount
+            rv.setContentDescription(Rows.ROW[shown], name + ", " + day + ", " + r.optString("text"));
             rv.setOnClickPendingIntent(Rows.ROW[shown], open(ctx, "history&day=" + date, shown));
             shown++;
         }

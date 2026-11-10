@@ -68,9 +68,11 @@ struct Amount: View {
     let text: String?
     var font: Font = .subheadline.bold()
     var color: Color = Palette.text
+    var accent: Bool = false
     var body: some View {
         Text(text ?? "").font(font).foregroundStyle(color)
             .lineLimit(1).minimumScaleFactor(0.7).privacySensitive()
+            .widgetAccentable(accent)
     }
 }
 
@@ -95,8 +97,11 @@ struct OpenApp: View {
 }
 
 extension View {
+    // WG-6: the system text size is honoured up to xLarge; past that the
+    // layouts (sized to a medium widget's ~123 pt) would cut rows off.
     func stackdCard() -> some View {
-        containerBackground(for: .widget) { Palette.bg }
+        dynamicTypeSize(...DynamicTypeSize.xLarge)
+            .containerBackground(for: .widget) { Palette.bg }
     }
 }
 
@@ -114,7 +119,7 @@ struct BalancesView: View {
             let rest = (s.accountCount ?? accounts.count) - shown.count
             VStack(alignment: .leading, spacing: large ? 7 : 4) {
                 Header(title: s.label("accounts", String(localized: "widget.balances.name")), stale: s.staleText(on: entry.date))
-                Amount(text: s.total?.text, font: large ? .title.bold() : .title2.bold(), color: Palette.trend(s.total?.trend))
+                Amount(text: s.total?.text, font: large ? .title.bold() : .title2.bold(), color: Palette.trend(s.total?.trend), accent: true)
                 if large { Divider().overlay(Palette.track) }
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, a in
                     HStack(spacing: 10) {
@@ -123,6 +128,7 @@ struct BalancesView: View {
                         Spacer(minLength: 6)
                         Amount(text: a.text, font: .body.bold(), color: Palette.trend(a.trend))
                     }
+                    .accessibilityElement(children: .combine)
                 }
                 if rest > 0, let tpl = (rest == 1 ? s.moreOne : s.moreOther) {
                     Text(tpl.replacingOccurrences(of: "{n}", with: String(rest)))
@@ -146,7 +152,7 @@ struct FlowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Header(title: s.label("incomeExpense", String(localized: "widget.flow.name")), stale: s.staleText(on: entry.date))
                 if let m = s.month {
-                    Amount(text: m.netText, font: .title2.bold(), color: Palette.trend(m.netTrend))
+                    Amount(text: m.netText, font: .title2.bold(), color: Palette.trend(m.netTrend), accent: true)
                     Text("\(m.title ?? "") · \(s.label("eom"))").font(.footnote).foregroundStyle(Palette.text2).lineLimit(1)
                     Spacer(minLength: 0)
                     row(s.label("income"), m.incomeText, m.incomeBar, Palette.income)
@@ -170,6 +176,7 @@ struct FlowView: View {
             }
             Bar(fraction: fraction ?? 0, fill: color)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -219,6 +226,7 @@ struct CategoriesView: View {
                                     Spacer(minLength: 4)
                                     Amount(text: sl.text)
                                 }
+                                .accessibilityElement(children: .combine)
                             }
                         }
                     }
@@ -244,7 +252,7 @@ struct BudgetsView: View {
                 Header(title: s.label("budgets", String(localized: "widget.budgets.name")), stale: s.staleText(on: entry.date))
                 if let b = s.budgets {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Amount(text: b.spentText, font: .title3.bold())
+                        Amount(text: b.spentText, font: .title3.bold(), accent: true)
                         Text(b.ofText ?? "").font(.footnote).foregroundStyle(Palette.text2)
                             .lineLimit(1).minimumScaleFactor(0.8).privacySensitive()
                         Spacer(minLength: 4)
@@ -263,6 +271,7 @@ struct BudgetsView: View {
                             }
                             Bar(fraction: r.ratio ?? 0, fill: over ? Palette.expense : Palette.bar)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                     Spacer(minLength: 0)
                 } else {
@@ -328,6 +337,7 @@ struct UpcomingView: View {
             Spacer(minLength: 4)
             Amount(text: r.text, color: color(r.kind))
         }
+        .accessibilityElement(children: .combine)
     }
 
     // small: the name with its day underneath, the amount on the right
@@ -340,6 +350,7 @@ struct UpcomingView: View {
             Spacer(minLength: 4)
             Amount(text: r.text, color: color(r.kind))
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -375,7 +386,7 @@ struct CurveView: View {
                     let color = c.trend == "flat" ? Palette.text2 : Palette.trend(c.trend)
                     Header(title: "\(title) · \(s.label("range", "1M"))", stale: s.staleText(on: entry.date))
                     HStack(alignment: .firstTextBaseline) {
-                        Amount(text: c.totalText, font: .title2.bold())
+                        Amount(text: c.totalText, font: .title2.bold(), accent: true)
                         Spacer(minLength: 6)
                         Amount(text: [c.changeText ?? "", c.pctText ?? ""].filter { !$0.isEmpty }.joined(separator: "  "),
                                color: color)
@@ -385,6 +396,7 @@ struct CurveView: View {
                         CurveShape(points: pts, closed: true).fill(color.opacity(0.15))
                         CurveShape(points: pts, closed: false)
                             .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                            .widgetAccentable()
                     }
                     .padding(.vertical, 2)
                     .accessibilityHidden(true)
@@ -405,6 +417,7 @@ struct CurveView: View {
 
 struct QuickAddView: View {
     let entry: StackdEntry
+    @Environment(\.widgetRenderingMode) private var mode
     var body: some View {
         HStack(spacing: 10) {
             circle("expense", "minus", Palette.addExpense, "expenseBtn", "widget.expense")
@@ -419,8 +432,15 @@ struct QuickAddView: View {
         let label = entry.snap?.label(labelKey, String(localized: fallbackKey)) ?? String(localized: fallbackKey)
         return Button(intent: QuickAddIntent(type: type)) {
             ZStack {
-                Circle().fill(color)
-                Image(systemName: symbol).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                if mode == .fullColor {
+                    Circle().fill(color)
+                    Image(systemName: symbol).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                } else {
+                    // WG-6: tinted / clear Home Screens draw everything in one
+                    // tint, so the fills would merge: rings + symbols instead
+                    Circle().strokeBorder(lineWidth: 2).widgetAccentable()
+                    Image(systemName: symbol).font(.system(size: 17, weight: .bold))
+                }
             }
             .frame(width: 40, height: 40)
         }

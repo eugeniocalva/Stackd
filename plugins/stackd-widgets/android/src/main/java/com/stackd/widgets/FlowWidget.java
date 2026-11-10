@@ -30,6 +30,9 @@ public class FlowWidget extends BaseWidget {
         rv.setTextViewText(R.id.in_value, m.optString("incomeText"));
         rv.setTextViewText(R.id.out_label, snap.label("expense", ""));
         rv.setTextViewText(R.id.out_value, m.optString("expenseText"));
+        // WG-6: TalkBack reads each line as one item
+        rv.setContentDescription(R.id.in_row, snap.label("income", "") + ", " + m.optString("incomeText"));
+        rv.setContentDescription(R.id.out_row, snap.label("expense", "") + ", " + m.optString("expenseText"));
         float w = wide ? 280 : 130;
         int track = ctx.getColor(R.color.stackd_widget_track);
         rv.setImageViewBitmap(R.id.in_bar, Draw.bar(ctx, m.optDouble("incomeBar", 0), ctx.getColor(R.color.stackd_widget_income), track, w, 6));

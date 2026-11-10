@@ -38,6 +38,8 @@ public class BalancesWidget extends BaseWidget {
             rv.setTextViewText(Rows.NAME[i], name);
             rv.setTextViewText(Rows.VALUE[i], a.optString("text"));
             rv.setTextColor(Rows.VALUE[i], trendColor(ctx, a.optString("trend")));
+            // WG-6: TalkBack reads the row as one item
+            rv.setContentDescription(Rows.ROW[i], name + ", " + a.optString("text"));
         }
         Rows.hideFrom(rv, shown, 8);
         int rest = snap.json.optInt("accountCount", accounts.length()) - shown;

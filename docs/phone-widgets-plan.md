@@ -1,6 +1,6 @@
 # Phone widgets — iOS and Android (1.2.2 HG-15, plan 2026-11-09)
 
-Status: **plan agreed with the owner (§11); WG-1…WG-5 built (§12; iOS compiled and signed in CI, not yet seen on a phone), WG-6 to do.** It ships in
+Status: **plan agreed with the owner (§11); WG-1…WG-6 built (§12); the owner checked TestFlight 10207/10208 on an iPhone.** It ships in
 **1.2.2** (owner, Q10). Comment tag: `// 1.2.2 (HG-15)`. Sub-phases are named
 WG-1…WG-6 (§8).
 
@@ -540,3 +540,34 @@ The owner checked TestFlight 10207 on an iPhone: the widgets work. Two asks:
 - **CI signing.** The archive is now signed ad hoc and only the export signs
   for the App Store (no new Development certificate per run; dry run
   42722052511 green).
+
+### WG-6 Polish (2026-11-10)
+
+- **iOS tinted and clear Home Screens (iOS 18 / 26):**
+  - The headline amounts (total, net, spent, curve total) and the curve
+    line are `.widgetAccentable()`, so they take the tint.
+  - Quick add reads `widgetRenderingMode`. In any mode other than full
+    colour, the three filled circles become rings with their symbols,
+    because one tint would merge three fills into identical discs.
+- **Text size.**
+  - iOS: the system text size is honoured up to `xLarge`
+    (`.dynamicTypeSize(...xLarge)` in `stackdCard()`). Past it the
+    medium layouts would cut rows off, and amounts already shrink rather
+    than cut off.
+  - Android: text is in `sp` and follows the font scale; rows keep their
+    own height.
+- **Screen readers.**
+  - iOS: every row (account, category, budget, payment, income /
+    expense line) is one VoiceOver element
+    (`.accessibilityElement(children: .combine)`). Marks, rings, bars and
+    the curve stay hidden, and Quick add's circles carry Expense / Income
+    / Transfer.
+  - Android: each row has a `contentDescription` (name, amount; Upcoming
+    adds the day).
+- **Store.** `docs/store-listing.md` §1e: the 1.2.2 What's new now leads
+  with the widgets and mentions tag editing, in 5 languages (418–436
+  characters). The store screenshots do not show the widgets; adding one
+  needs a phone screenshot (owner).
+- **Not covered:** a screenshot of the tinted / clear modes and of
+  TalkBack / VoiceOver on a real device. Both are owner checks on the next
+  TestFlight / phone install.

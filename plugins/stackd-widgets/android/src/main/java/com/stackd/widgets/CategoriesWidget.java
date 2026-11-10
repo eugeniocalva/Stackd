@@ -47,6 +47,7 @@ public class CategoriesWidget extends BaseWidget {
             rv.setImageViewBitmap(Rows.MARK[i], Draw.mark(ctx, name, colours[i], 22));
             rv.setTextViewText(Rows.NAME[i], name);
             rv.setTextViewText(Rows.VALUE[i], s.optString("text"));
+            rv.setContentDescription(Rows.ROW[i], name + ", " + s.optString("text")); // WG-6
         }
         Rows.hideFrom(rv, shown, 4);
         return rv;
