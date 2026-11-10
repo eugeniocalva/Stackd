@@ -13,6 +13,15 @@ const path = require('path');
 
 const APP = path.resolve(__dirname, '../..');
 const SITE = path.resolve(APP, '../StackdSite');
+
+// 1.2.2 site: _headers lets browsers keep /img/* for a week, so a re-captured
+// screenshot stayed stale for returning visitors. Every image and the
+// stylesheet are linked with ?v=<content hash>: a changed file is a new URL.
+const ver = (url) => {
+  const f = path.join(SITE, url.split('?')[0]);
+  if (!fs.existsSync(f)) return url;
+  return `${url}?v=${require('crypto').createHash('md5').update(fs.readFileSync(f)).digest('hex').slice(0, 8)}`;
+};
 const ORIGIN = 'https://stackdplatform.com';
 const LANGS = ['en', 'fr', 'it', 'es', 'pt'];
 const CONTACT = 'hi@stackdplatform.com';
@@ -83,9 +92,9 @@ const head = ({ lang, page, title, description, alternates = true, noindex = fal
 ${links.join('\n')}
   <meta name="theme-color" content="#f4f7f9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0f19" media="(prefers-color-scheme: dark)">
-  <link rel="icon" href="/img/icon-512.webp" type="image/webp">
-  <link rel="apple-touch-icon" href="/img/icon.png">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="${ver('/img/icon-512.webp')}" type="image/webp">
+  <link rel="apple-touch-icon" href="${ver('/img/icon.png')}">
+  <link rel="stylesheet" href="${ver('/styles.css')}">
 </head>`;
 };
 
@@ -168,5 +177,5 @@ const write = (rel, html) => {
 
 module.exports = {
   APP, SITE, ORIGIN, LANGS, CONTACT, S,
-  APP_STORE, href, urlFor, playUrl, attr, fill, head, header, footer, langMenu, write
+  APP_STORE, ver, href, urlFor, playUrl, attr, fill, head, header, footer, langMenu, write
 };
