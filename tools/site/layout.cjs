@@ -18,6 +18,9 @@ const LANGS = ['en', 'fr', 'it', 'es', 'pt'];
 const CONTACT = 'hi@stackdplatform.com';
 const PLAY = 'https://play.google.com/store/apps/details?id=com.stackd.finance';
 // Google Play's web listing reads ?hl=; the app's Portuguese is European.
+// The App Store record "Stack'd Finance" (Apple ID 6816636640); without a
+// storefront in the path Apple opens the visitor's own country.
+const APP_STORE = 'https://apps.apple.com/app/id6816636640';
 const PLAY_HL = { fr: 'fr', it: 'it', es: 'es', pt: 'pt-PT' };
 
 // Site copy, one table per language (tools/site/strings/<lang>.cjs). A missing
@@ -134,7 +137,7 @@ const header = ({ lang, current, page }) => {
       <a href="${onHome ? '' : home}#studio">${n.studio}</a>
       <a href="${href(lang, 'support')}"${cur('support')}>${n.support}</a>
       ${langMenu(lang, page)}
-      <a class="btn btn-primary btn-sm" href="${playUrl(lang)}">${n.get}</a>
+      <a class="btn btn-primary btn-sm" href="${onHome ? '' : home}#get">${n.get}</a>
     </nav>
   </div>
 </header>`;
@@ -165,5 +168,5 @@ const write = (rel, html) => {
 
 module.exports = {
   APP, SITE, ORIGIN, LANGS, CONTACT, S,
-  href, urlFor, playUrl, attr, fill, head, header, footer, langMenu, write
+  APP_STORE, href, urlFor, playUrl, attr, fill, head, header, footer, langMenu, write
 };

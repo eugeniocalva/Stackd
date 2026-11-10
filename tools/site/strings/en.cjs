@@ -17,7 +17,7 @@ module.exports = {
   nav: { label: 'Site', app: 'The app', privacy: 'Privacy', studio: 'Studio', support: 'Support', get: 'Get the app' },
   footer: {
     label: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Use', support: 'Support', contact: 'Contact',
-    trademark: "Google Play and the Google Play logo are trademarks of Google LLC. Stack'd is not affiliated with, endorsed by, or certified by any bank or financial institution."
+    trademark: "Google Play and the Google Play logo are trademarks of Google LLC. App Store and the Apple logo are trademarks of Apple Inc. Stack'd is not affiliated with, endorsed by, or certified by any bank or financial institution."
   },
   ogAlt: "Stack'd on a phone, showing a total balance and wallet cards, beside the headline: money tracking that never leaves your phone.",
 
@@ -29,9 +29,9 @@ module.exports = {
       h1: 'Money tracking that <em>stays on your phone</em>.',
       lede: "Stack'd keeps every wallet, every log and every budget on your device. There is no account to create and no cloud to sync with. The only thing that ever goes online is the bank link you can choose to turn on, and it shows you every transaction before saving it.",
       play: 'Get it on Google Play',
-      ios: 'iPhone version in progress',
+      ios: "Download on the App Store",
       facts: ['<b>0</b> accounts or trackers', '<b>5</b> languages', '<b>CSV</b> in and out, always'],
-      imgAlt: "Stack'd home screen: total balance of €28,088.91, a balance chart, wallet cards for Main Bank and Savings, and smart insights."
+      imgAlt: "Stack'd home screen: total balance of €28,110.91, a balance chart, wallet cards for Main Bank and Revolut, and the latest transactions."
     },
     app: {
       eyebrow: "What's inside",
@@ -43,7 +43,9 @@ module.exports = {
         { h: 'Goals', p: 'A monthly budget per category. The Goals tab shows what is already spent, what is still committed by repeating logs, and how the month will end up, not only how it looks today.' },
         { h: 'Debt simulator', p: 'Enter an amount, a rate and a duration and read the full amortization schedule: every instalment, its interest share and the remaining principal. Link a loan to its repeating payment and progress tracks itself.' },
         { h: 'Bank statement import', p: "Drop in a statement as <code>CSV</code>, <code>camt.053</code> or <code>MT940</code>. Stack'd maps the columns, skips what you already logged, pairs transfers between your own wallets and shows a review before anything is saved. The file itself is never kept." },
-        { h: 'Home widgets and insights', p: 'Compose the Home screen from nine widget types: latest logs, account balances, income versus expense, top categories, budgets, savings rate, 50/30/20 and more. Smart Insights point out what changed this month in one line each.' }
+        { h: "Home, your way", p: "Compose Home from nine widget types: latest logs, account balances, income versus expense, top categories, budgets, savings rate, 50/30/20 and more. Drag along a chart to read any day or month, and shake the phone to hide every amount." },
+        { h: "Widgets on your phone", p: "Balances, income versus expenses, categories, budgets, upcoming payments and your balance curve, right on the iPhone or Android Home Screen, plus a quick add for an expense, an income or a transfer. When balances are hidden, the widgets hide them too." },
+        { h: "Smart Insights", p: "A tab of short notes drawn from your own logs: a budget running ahead of the month, a category that grew, a payment due this week. Each one opens the screen it is about, and all of it is worked out on the phone." }
       ]
     },
     pricing: {
@@ -62,6 +64,7 @@ module.exports = {
       intro: 'Low colour, large numbers, one thing per screen. Light and dark themes, and the interface in English, French, Italian, Spanish or Portuguese.',
       items: [
         { alt: 'History screen listing transactions grouped by day, with amounts, categories and wallets.', title: 'History', caption: 'Every log, filterable by wallet, category, tag and period.' },
+        { alt: "Smart Insights screen: short notes about this month’s spending, budgets and upcoming payments.", title: "Smart Insights", caption: "What changed this month, one line each." },
         { alt: 'Loan result screen: €18,000 at 4.05% over 5 years gives a €331.90 monthly payment, €1,914.23 total interest, 60 instalments.', title: 'Debt', caption: 'Simulate a loan before signing it, then track the real one.' },
         { alt: 'The same home screen in the light theme.', title: 'Light and dark', caption: 'Pick a theme, or let it follow the system.' }
       ]
@@ -80,7 +83,7 @@ module.exports = {
         'No data sharing beyond the optional bank link'
       ],
       rights: [
-        { eyebrow: 'Access and portability', h: 'Export everything as CSV', p: 'Accounts, categories, transactions and loans leave the app as plain CSV files that open in any spreadsheet. The same files import back, so a backup is a full restore.' },
+        { eyebrow: "Access and portability", h: "Back up and export everything", p: "Backup saves your whole ledger as one file, on iCloud Drive or on the phone, when you tap Back up now or once a day, and restores it in one step. Every record also leaves as plain CSV that opens in any spreadsheet." },
         { eyebrow: 'Rectification', h: 'Edit any record, any time', p: 'Nothing is locked after saving. Change a log, an account or a budget and every derived figure follows.' },
         { eyebrow: 'Erasure', h: 'Factory reset, and it is gone', p: 'Delete one record or erase everything from Settings. Since no copy exists elsewhere, no one, including us, can bring it back. Keep your CSV backups safe.' }
       ]
@@ -117,8 +120,8 @@ module.exports = {
       p: 'All running normally. Stack\'d works offline, so the app itself keeps working whatever happens here; only Online banking depends on our server. If something is wrong, we post it on this line.'
     },
     tips: [
-      { h: 'Back up before you switch phones', p: "Stack'd keeps no copy of your data anywhere but your device. Before uninstalling or moving to a new phone, export your CSV files from Others &amp; Settings and import them on the new device." },
-      { h: 'Lost data cannot be recovered by us', p: 'There is no account, and no copy of your data on any server, so we cannot restore anything. If you have a CSV export, Import CSV in Others &amp; Settings brings it all back, accounts and categories included.' },
+      { h: "Back up before you switch phones", p: "Stack'd keeps no copy of your data anywhere but your device. Before uninstalling or moving to a new phone, open Others &amp; Settings → <b>Backup</b>, tap <b>Back up now</b> and restore that file on the new device. On iPhone, a backup on iCloud Drive is already there waiting." },
+      { h: "Lost data cannot be recovered by us", p: "There is no account, and no copy of your data on any server, so we cannot restore anything. If you have a backup file or a CSV export, restore it in Others &amp; Settings → <b>Backup</b>: accounts and categories come back too." },
       { h: 'Reporting a bug', p: 'Email us the app version (shown in Others &amp; Settings), your phone model and what you expected to happen. Never send a real bank statement; describe the format instead.' }
     ],
     faqH: 'Frequently asked',
@@ -126,11 +129,12 @@ module.exports = {
       { q: 'How do I set up an account?', a: 'Tap the + button in the bottom bar and choose <b>Add Account</b>, or use the Add Account tile at the end of the accounts row on Home. Give it a name, an icon and an opening balance. From then on the balance is always computed from your transactions, so it stays in sync automatically.' },
       { q: 'How do I add a new transaction?', a: 'Tap the + button and choose <b>Add Log</b>. Pick Expense, Income or Transfer, then enter the amount, date, account and category. You can also add a note and tags, or turn on the repeat option to make it recurring (daily, weekly, monthly…).' },
       { q: 'How do I edit or delete a transaction?', a: 'Open <b>History</b> (the list icon in the bottom bar) and tap any transaction to open it in the editor. Change what you need and save, or use Delete. If the transaction is part of a recurring series, you will be asked whether the change should apply to only this one, this and future ones, or the whole series.' },
-      { q: 'How do I import a bank statement?', a: "Go to Others &amp; Settings and choose <b>Import CSV</b>. Stack'd accepts its own CSV backups and any bank statement in CSV, camt.053 (ISO 20022) or MT940 format. A review screen shows what will be added, what is already logged, and which rows are transfers between your own accounts, before anything is saved." },
-      { q: 'How do I set up widgets on my Home screen?', a: 'On Home, scroll to the <b>Widgets</b> section. Tap <b>Add</b> to pick a widget from the gallery and choose its size. Tap <b>Edit</b> to reorder, resize, configure or remove widgets, then tap Done when you are happy with the layout.' },
+      { q: "How do I import a bank statement?", a: "Go to Others &amp; Settings → <b>Import and export</b> and choose Import. Stack'd reads bank statements in CSV, camt.053 (ISO 20022) or MT940, QIF files and exports from MoneyStats. Check opens a review of what will be added, what is already logged and which rows are transfers between your own accounts; nothing is saved until you tap Import." },
+      { q: "How do I set up widgets on my Home screen?", a: "On Home, in the <b>Widgets</b> section, tap <b>Add</b> to pick one from the gallery, preview it with your own data and choose its size. Tap <b>Edit</b>, or long-press a widget, to rearrange them: drag it to a new place, change its size and options, or remove it." },
+      { q: "How do I add Stack'd widgets to my phone?", a: "Update Stack'd and open it once, then add a widget the way your phone does. On iPhone, touch and hold an empty spot on the Home Screen, tap <b>Edit</b> → <b>Add Widget</b> (or <b>+</b>) and search for Stack'd; the Lock Screen has a + of its own. On Android, touch and hold the Home screen, tap <b>Widgets</b> and pick Stack'd. When balances are hidden in the app, the widgets hide their amounts." },
       { q: 'How do I set up a loan?', a: 'Tap the + button and choose <b>Debt</b>. Pick a loan type to open the simulator, enter the amount, interest rate and duration, and review the full payment schedule. You can keep it as a simulation or track it as an active loan. Tracking links it to a recurring expense so your progress updates automatically as payments are logged.' },
       { q: 'How do I manage categories?', a: "Go to <b>Others → Categories</b> to see all your categories, or tap a category to see its activity or edit its name, icon and color. Stack'd ships with a default set, which is what the free plan uses. Creating categories of your own is part of Stack'd Pro; the + button, then <b>Add Category</b>, is where you do it once Pro is unlocked." },
-      { q: 'How do I use tags?', a: 'Tags are free-form labels you type in the <b>Tags</b> field when creating or editing a transaction. Autocomplete suggests the ones you already use. Browse them under <b>Others → Tags</b>, or filter History by tag to see everything with that label.' },
+      { q: "How do I use tags?", a: "Tags are free-form labels you type in the <b>Tags</b> field when creating or editing a transaction; the picker suggests the ones you already use. Under <b>Others → Tags</b> you can add a tag, rename one, merge two by renaming one onto the other, and link tags to categories. Filter History by tag to see everything with that label." },
       { q: 'Can I change the language or currency?', a: 'Yes, both are in Others &amp; Settings. The interface is available in English, French, Italian, Spanish and Portuguese and switches instantly. Each account can have its own currency; accounts in a currency other than your main one are shown separately rather than converted.' },
       { q: 'How do I delete all my data?', a: 'Others &amp; Settings has a Factory Reset in the Danger Zone that erases every account, budget and transaction permanently. Uninstalling the app does the same. That covers everything you record, because it is stored only on your device. If you have used Bank Connect, disconnect each linked bank first: that deletes the server-side record of the link. For anything about those records the app cannot do itself, write to {email}.' }
     ],

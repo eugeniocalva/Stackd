@@ -9,7 +9,7 @@ module.exports = {
   nav: { label: 'Sito', app: "L'app", privacy: 'Privacy', studio: 'Lo studio', support: 'Assistenza', get: "Scarica l'app" },
   footer: {
     label: 'Note legali', privacy: 'Informativa sulla privacy', terms: 'Termini di utilizzo', support: 'Assistenza', contact: 'Contatti',
-    trademark: "Google Play e il logo Google Play sono marchi di Google LLC. Stack'd non è affiliato, approvato o certificato da alcuna banca o istituto finanziario."
+    trademark: "Google Play e il logo Google Play sono marchi di Google LLC. App Store e il logo Apple sono marchi di Apple Inc. Stack'd non è affiliato, approvato o certificato da alcuna banca o istituto finanziario."
   },
   ogAlt: "Stack'd su un telefono, con il saldo totale e le schede dei conti, accanto al titolo (in inglese): i tuoi soldi, tracciati senza mai lasciare il telefono.",
 
@@ -21,9 +21,9 @@ module.exports = {
       h1: 'I tuoi soldi, tracciati <em>sul tuo telefono</em>.',
       lede: "Stack'd tiene ogni conto, ogni movimento e ogni budget sul tuo dispositivo. Non c'è un account da creare né un cloud con cui sincronizzarsi. L'unica cosa che va online è il collegamento bancario che puoi scegliere di attivare, e ti mostra ogni movimento prima di salvarlo.",
       play: 'Disponibile su Google Play',
-      ios: 'Versione per iPhone in arrivo',
+      ios: "Scarica su App Store",
       facts: ['<b>0</b> account o tracker', '<b>5</b> lingue', '<b>CSV</b> in entrata e in uscita, sempre'],
-      imgAlt: "Dashboard di Stack'd: saldo totale di €28.088,91, grafico del saldo, schede dei conti Banca principale e Risparmi, e smart insights."
+      imgAlt: "Dashboard di Stack'd: saldo totale di €28.110,91, grafico del saldo, schede dei conti Banca principale e Revolut, e gli ultimi movimenti."
     },
     app: {
       eyebrow: "Cosa c'è dentro",
@@ -35,7 +35,9 @@ module.exports = {
         { h: 'Obiettivi', p: "Un budget mensile per categoria. La scheda Obiettivi mostra quanto è già speso, quanto è ancora impegnato dai movimenti ricorrenti e come finirà il mese, non solo com'è oggi." },
         { h: 'Simulatore di prestiti', p: "Inserisci importo, tasso e durata e leggi il piano di ammortamento completo: ogni rata, la sua quota di interessi e il capitale residuo. Collega un prestito al suo pagamento ricorrente e l'avanzamento si aggiorna da solo." },
         { h: 'Importazione degli estratti conto', p: "Carica un estratto conto in <code>CSV</code>, <code>camt.053</code> o <code>MT940</code>. Stack'd abbina le colonne, salta quello che hai già registrato, accoppia i trasferimenti tra i tuoi conti e mostra un riepilogo prima di salvare qualcosa. Il file non viene mai conservato." },
-        { h: 'Widget e smart insights', p: "Componi la dashboard con nove tipi di widget: ultimi movimenti, saldi dei conti, entrate e spese, categorie principali, budget, tasso di risparmio, 50/30/20 e altro. Gli smart insights segnalano cosa è cambiato questo mese, con una riga ciascuno." }
+        { h: "La dashboard come vuoi tu", p: "Componi la dashboard con nove tipi di widget: ultimi movimenti, saldi dei conti, entrate e spese, categorie principali, budget, tasso di risparmio, 50/30/20 e altro. Trascina il dito su un grafico per leggere ogni giorno o mese, e scuoti il telefono per nascondere tutti gli importi." },
+        { h: "Widget sul telefono", p: "Saldi, entrate e uscite, categorie, budget, pagamenti in arrivo e andamento del saldo, direttamente nella schermata Home di iPhone o Android, con un'aggiunta rapida per una spesa, un'entrata o un trasferimento. Quando i saldi sono nascosti, lo sono anche nei widget." },
+        { h: "Approfondimenti smart", p: "Una scheda di note brevi ricavate dai tuoi movimenti: un budget in anticipo sul mese, una categoria cresciuta, un pagamento in scadenza questa settimana. Ognuna apre la schermata di cui parla, e tutto è calcolato sul telefono." }
       ]
     },
     pricing: {
@@ -54,6 +56,7 @@ module.exports = {
       intro: "Pochi colori, numeri grandi, una cosa per schermata. Tema chiaro e scuro, e l'interfaccia in inglese, francese, italiano, spagnolo o portoghese.",
       items: [
         { alt: 'Schermata Cronologia con i movimenti raggruppati per giorno, con importi, categorie e conti.', title: 'Cronologia', caption: 'Ogni movimento, filtrabile per conto, categoria, tag e periodo.' },
+        { alt: "Schermata Approfondimenti smart: note brevi sulle spese del mese, i budget e i pagamenti in arrivo.", title: "Approfondimenti smart", caption: "Cosa è cambiato questo mese, una riga ciascuno." },
         { alt: "Risultato di un prestito: €18.000 al 4,05% in 5 anni danno una rata mensile di €331,90, €1914,23 di interessi totali, 60 rate.", title: 'Debiti', caption: 'Simula un prestito prima di firmarlo, poi segui quello vero.' },
         { alt: 'La stessa dashboard con il tema chiaro.', title: 'Chiaro e scuro', caption: 'Scegli un tema, o lascia che segua il sistema.' }
       ]
@@ -72,7 +75,7 @@ module.exports = {
         'Nessuna condivisione di dati oltre al collegamento bancario facoltativo'
       ],
       rights: [
-        { eyebrow: 'Accesso e portabilità', h: 'Esporta tutto in CSV', p: "Conti, categorie, movimenti e prestiti escono dall'app come semplici file CSV che si aprono in qualsiasi foglio di calcolo. Gli stessi file si reimportano, quindi un backup è un ripristino completo." },
+        { eyebrow: "Accesso e portabilità", h: "Backup ed esportazione di tutto", p: "Il backup salva tutti i tuoi dati in un unico file, su iCloud Drive o sul telefono, quando tocchi Esegui backup ora o una volta al giorno, e li ripristina in un solo passaggio. Ogni dato esce anche come semplice CSV che si apre in qualsiasi foglio di calcolo." },
         { eyebrow: 'Rettifica', h: 'Modifica tutto, in qualsiasi momento', p: 'Niente resta bloccato dopo il salvataggio. Cambia un movimento, un conto o un budget e ogni cifra che ne dipende si aggiorna.' },
         { eyebrow: 'Cancellazione', h: 'Un ripristino, e non c’è più', p: "Elimina un singolo elemento o cancella tutto dalle impostazioni. Dato che non esiste una copia altrove, nessuno, noi compresi, può recuperarlo. Tieni al sicuro i tuoi backup CSV." }
       ]
@@ -104,8 +107,8 @@ module.exports = {
       p: "Tutto funziona normalmente. Stack'd funziona offline, quindi l'app continua a funzionare qualunque cosa succeda qui; solo la Banca online dipende dal nostro server. Se qualcosa non va, lo scriviamo su questa riga."
     },
     tips: [
-      { h: 'Fai un backup prima di cambiare telefono', p: "Stack'd non tiene copie dei tuoi dati da nessuna parte se non sul tuo dispositivo. Prima di disinstallare l'app o passare a un nuovo telefono, esporta i file CSV da Altro e impostazioni e importali sul nuovo dispositivo." },
-      { h: 'Non possiamo recuperare dati persi', p: "Non c'è un account né una copia dei tuoi dati su un server, quindi non possiamo ripristinare nulla. Se hai un'esportazione CSV, Importa CSV in Altro e impostazioni rimette tutto a posto, conti e categorie compresi." },
+      { h: "Fai un backup prima di cambiare telefono", p: "Stack'd non tiene copie dei tuoi dati da nessuna parte se non sul tuo dispositivo. Prima di disinstallare l'app o passare a un nuovo telefono, apri Altro e impostazioni → <b>Backup</b>, tocca <b>Esegui backup ora</b> e ripristina quel file sul nuovo dispositivo. Su iPhone, un backup su iCloud Drive ti aspetta già lì." },
+      { h: "Non possiamo recuperare dati persi", p: "Non c'è un account né una copia dei tuoi dati su un server, quindi non possiamo ripristinare nulla. Se hai un file di backup o un'esportazione CSV, ripristinalo in Altro e impostazioni → <b>Backup</b>: tornano anche conti e categorie." },
       { h: 'Segnalare un bug', p: "Mandaci la versione dell'app (indicata in Altro e impostazioni), il modello del telefono e cosa ti aspettavi che succedesse. Non inviare mai un vero estratto conto; descrivine piuttosto il formato." }
     ],
     faqH: 'Domande frequenti',
@@ -113,11 +116,12 @@ module.exports = {
       { q: 'Come creo un conto?', a: "Tocca il pulsante + nella barra in basso e scegli <b>Aggiungi conto</b>, oppure usa il riquadro Aggiungi wallet alla fine della fila dei conti nella dashboard. Dagli un nome, un'icona e un saldo iniziale. Da quel momento il saldo è sempre calcolato dai tuoi movimenti, quindi resta sincronizzato automaticamente." },
       { q: 'Come aggiungo un nuovo movimento?', a: 'Tocca il pulsante + e scegli <b>Aggiungi movimento</b>. Seleziona Spesa, Entrata o Trasferimento, poi inserisci importo, data, conto e categoria. Puoi anche aggiungere una nota e dei tag, o attivare la ricorrenza (giornaliera, settimanale, mensile…).' },
       { q: 'Come modifico o elimino un movimento?', a: "Apri la <b>Cronologia</b> (l'icona a elenco nella barra in basso) e tocca un movimento per aprirlo nell'editor. Cambia quello che serve e salva, oppure usa Elimina. Se il movimento fa parte di una serie ricorrente, ti verrà chiesto se la modifica vale solo per questo, per questo e i successivi, o per l'intera serie." },
-      { q: 'Come importo un estratto conto?', a: "Vai in Altro e impostazioni e scegli <b>Importa CSV</b>. Stack'd accetta i propri backup CSV e qualsiasi estratto conto in formato CSV, camt.053 (ISO 20022) o MT940. Una schermata di riepilogo mostra cosa verrà aggiunto, cosa è già registrato e quali righe sono trasferimenti tra i tuoi conti, prima di salvare qualcosa." },
-      { q: 'Come configuro i widget nella dashboard?', a: 'Nella dashboard, scorri fino alla sezione <b>Widget</b>. Tocca <b>Aggiungi</b> per scegliere un widget dalla galleria e la sua dimensione. Tocca <b>Modifica</b> per riordinare, ridimensionare, configurare o rimuovere i widget, poi tocca Fatto quando la disposizione ti soddisfa.' },
+      { q: "Come importo un estratto conto?", a: "Vai in Altro e impostazioni → <b>Importazione e esportazione</b> e scegli Importa. Stack'd legge gli estratti conto in CSV, camt.053 (ISO 20022) o MT940, i file QIF e le esportazioni di MoneyStats. Verifica apre un riepilogo di cosa verrà aggiunto, cosa è già registrato e quali righe sono trasferimenti tra i tuoi conti; nulla viene salvato finché non tocchi Importa." },
+      { q: "Come configuro i widget nella dashboard?", a: "Nella dashboard, nella sezione <b>Widget</b>, tocca <b>Aggiungi</b> per sceglierne uno dalla galleria, vederne l'anteprima con i tuoi dati e scegliere la dimensione. Tocca <b>Modifica</b>, o tieni premuto un widget, per riordinarli: trascinalo in un altro punto, cambiane dimensione e opzioni, o rimuovilo." },
+      { q: "Come aggiungo i widget di Stack'd al telefono?", a: "Aggiorna Stack'd e aprilo una volta, poi aggiungi un widget come prevede il tuo telefono. Su iPhone, tieni premuto uno spazio vuoto della schermata Home, tocca <b>Modifica</b> → <b>Aggiungi widget</b> (o <b>+</b>) e cerca Stack'd; anche la schermata di blocco ha il suo +. Su Android, tieni premuta la schermata Home, tocca <b>Widget</b> e scegli Stack'd. Quando i saldi sono nascosti nell'app, i widget nascondono gli importi." },
       { q: 'Come creo un prestito?', a: "Tocca il pulsante + e scegli <b>Debiti</b>. Seleziona un tipo di prestito per aprire il simulatore, inserisci importo, tasso e durata, e consulta il piano di ammortamento completo. Puoi tenerlo come simulazione o monitorarlo come prestito attivo. Il monitoraggio lo collega a una spesa ricorrente, così l'avanzamento si aggiorna automaticamente man mano che registri le rate." },
       { q: 'Come gestisco le categorie?', a: "Vai su <b>Altro → Categorie</b> per vedere tutte le tue categorie, oppure tocca una categoria per vederne l'attività o modificarne nome, icona e colore. Stack'd include un set predefinito, che è quello del piano gratuito. Creare categorie tue fa parte di Stack'd Pro; una volta sbloccato Pro, lo fai dal pulsante +, poi <b>Aggiungi categoria</b>." },
-      { q: 'Come uso i tag?', a: "I tag sono etichette libere che scrivi nel campo <b>Tag</b> quando crei o modifichi un movimento. Il completamento automatico suggerisce quelli che usi già. Sfogliali in <b>Altro → Tag</b>, oppure filtra la Cronologia per tag per vedere tutto ciò che porta quell'etichetta." },
+      { q: "Come uso i tag?", a: "I tag sono etichette libere che scrivi nel campo <b>Tag</b> quando crei o modifichi un movimento; il selettore suggerisce quelli che usi già. In <b>Altro → Tag</b> puoi aggiungere un tag, rinominarne uno, unirne due dando all'uno il nome dell'altro, e collegare i tag alle categorie. Filtra la Cronologia per tag per vedere tutto ciò che ha quell'etichetta." },
       { q: 'Posso cambiare lingua o valuta?', a: "Sì, entrambe sono in Altro e impostazioni. L'interfaccia è disponibile in inglese, francese, italiano, spagnolo e portoghese e cambia all'istante. Ogni conto può avere la sua valuta; i conti in una valuta diversa da quella principale vengono mostrati a parte, senza conversione." },
       { q: 'Come elimino tutti i miei dati?', a: "In Altro e impostazioni, nella Zona pericolosa, c'è il Ripristino totale, che cancella per sempre ogni conto, budget e movimento. Disinstallare l'app ha lo stesso effetto. Questo copre tutto ciò che registri, perché è salvato solo sul tuo dispositivo. Se hai usato Bank Connect, scollega prima ogni banca collegata: così viene eliminata la traccia del collegamento sul server. Per tutto ciò che riguarda queste tracce e che l'app non può fare da sola, scrivi a {email}." }
     ],

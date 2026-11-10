@@ -31,12 +31,18 @@ const ICONS = {
   target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
   bank: '<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
   upload: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/>',
-  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+  phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
+  bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>'
 };
 // One icon per Home feature, in the order of strings home.app.items.
-const FEATURE_ICONS = ['wallet', 'repeat', 'target', 'bank', 'upload', 'grid'];
+const FEATURE_ICONS = ['wallet', 'repeat', 'target', 'bank', 'upload', 'grid', 'phone', 'bulb'];
 // One screenshot per Home screens figure, in the order of home.screens.items.
-const SCREEN_IMGS = ['history-dark', 'debt-dark', 'home-light'];
+const SCREEN_IMGS = ['history-dark', 'insights-dark', 'debt-dark', 'home-light'];
+
+// Apple's official badges (toolbox.marketingtools.apple.com, black, one per
+// language, unaltered), drawn at the Play badge's 44 px height.
+const APP_STORE_W = { en: 132, fr: 139, it: 132, es: 132, pt: 132 };
 
 const page = (lang, body) => `<!DOCTYPE html>
 <html lang="${lang}">
@@ -90,9 +96,9 @@ ${header({ lang, current: 'home', page: '' })}
       <p class="eyebrow">${h.hero.eyebrow}</p>
       ${heroTitle(h.hero.h1)}
       <p class="lede">${h.hero.lede}</p>
-      <div class="cta">
+      <div class="cta" id="get">
         <a class="play-badge" href="${L.playUrl(lang)}"><img src="/img/google-play-${lang}.png" alt="${h.hero.play}" width="148" height="44"></a>
-        <span class="btn btn-ghost" aria-disabled="true">${h.hero.ios}</span>
+        <a class="play-badge" href="${L.APP_STORE}"><img src="/img/app-store-${lang}.svg" alt="${h.hero.ios}" width="${APP_STORE_W[lang]}" height="44"></a>
       </div>
       <div class="facts">
 ${h.hero.facts.map(f => `        <span>${f}</span>`).join('\n')}

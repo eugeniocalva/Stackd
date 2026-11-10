@@ -9,7 +9,7 @@ module.exports = {
   nav: { label: 'Sitio', app: 'La app', privacy: 'Privacidad', studio: 'El estudio', support: 'Soporte', get: 'Descargar' },
   footer: {
     label: 'Legal', privacy: 'Política de privacidad', terms: 'Términos de uso', support: 'Soporte', contact: 'Contacto',
-    trademark: "Google Play y el logotipo de Google Play son marcas de Google LLC. Stack'd no está afiliado, respaldado ni certificado por ningún banco ni entidad financiera."
+    trademark: "Google Play y el logotipo de Google Play son marcas de Google LLC. App Store y el logotipo de Apple son marcas de Apple Inc. Stack'd no está afiliado, respaldado ni certificado por ningún banco ni entidad financiera."
   },
   ogAlt: "Stack'd en un teléfono, con el saldo total y las tarjetas de las cuentas, junto al titular (en inglés): el control de tu dinero que nunca sale de tu teléfono.",
 
@@ -21,9 +21,9 @@ module.exports = {
       h1: 'Tu dinero bajo control, <em>sin salir de tu teléfono</em>.',
       lede: "Stack'd guarda cada cuenta, cada movimiento y cada presupuesto en tu dispositivo. No hay cuenta de usuario que crear ni nube con la que sincronizar. Lo único que se conecta a internet es el enlace bancario que puedes decidir activar, y te muestra cada movimiento antes de guardarlo.",
       play: 'Disponible en Google Play',
-      ios: 'Versión para iPhone en camino',
+      ios: "Consíguelo en el App Store",
       facts: ['<b>0</b> cuentas de usuario o rastreadores', '<b>5</b> idiomas', '<b>CSV</b> de entrada y salida, siempre'],
-      imgAlt: "Panel de Stack'd: saldo total de €28.088,91, gráfico del saldo, tarjetas de las cuentas Banco principal y Ahorros, y smart insights."
+      imgAlt: "Panel de Stack'd: saldo total de €28.110,91, gráfico del saldo, tarjetas de las cuentas Banco principal y Revolut, y los últimos movimientos."
     },
     app: {
       eyebrow: 'Qué incluye',
@@ -35,7 +35,9 @@ module.exports = {
         { h: 'Objetivos', p: 'Un presupuesto mensual por categoría. La pestaña Objetivos muestra lo que ya has gastado, lo que aún comprometen los movimientos recurrentes y cómo acabará el mes, no solo cómo va hoy.' },
         { h: 'Simulador de préstamos', p: 'Introduce un importe, un tipo de interés y una duración y consulta el cuadro de amortización completo: cada cuota, su parte de intereses y el capital pendiente. Vincula un préstamo a su pago recurrente y el progreso se sigue solo.' },
         { h: 'Importación de extractos bancarios', p: "Sube un extracto en <code>CSV</code>, <code>camt.053</code> o <code>MT940</code>. Stack'd asigna las columnas, omite lo que ya registraste, empareja las transferencias entre tus propias cuentas y muestra una revisión antes de guardar nada. El archivo nunca se conserva." },
-        { h: 'Widgets y smart insights', p: 'Compón el panel con nueve tipos de widget: últimos movimientos, saldos de las cuentas, ingresos frente a gastos, categorías principales, presupuestos, tasa de ahorro, 50/30/20 y más. Los smart insights señalan qué ha cambiado este mes, con una línea cada uno.' }
+        { h: "El panel a tu manera", p: "Compón el panel con nueve tipos de widget: últimos movimientos, saldos de las cuentas, ingresos frente a gastos, categorías principales, presupuestos, tasa de ahorro, 50/30/20 y más. Desliza el dedo por un gráfico para leer cada día o mes, y agita el teléfono para ocultar todos los importes." },
+        { h: "Widgets en tu teléfono", p: "Saldos, ingresos y gastos, categorías, presupuestos, próximos pagos y la curva del saldo, en la pantalla de inicio del iPhone o de Android, con un añadir rápido para un gasto, un ingreso o una transferencia. Cuando los saldos están ocultos, los widgets también los ocultan." },
+        { h: "Consejos inteligentes", p: "Una pestaña de notas breves sacadas de tus propios movimientos: un presupuesto que va por delante del mes, una categoría que ha crecido, un pago que vence esta semana. Cada una abre la pantalla de la que habla, y todo se calcula en el teléfono." }
       ]
     },
     pricing: {
@@ -54,6 +56,7 @@ module.exports = {
       intro: 'Poco color, números grandes, una cosa por pantalla. Tema claro y oscuro, y la interfaz en inglés, francés, italiano, español o portugués.',
       items: [
         { alt: 'Pantalla Historial con los movimientos agrupados por día, con importes, categorías y cuentas.', title: 'Historial', caption: 'Cada movimiento, filtrable por cuenta, categoría, etiqueta y periodo.' },
+        { alt: "Pantalla Consejos inteligentes: notas breves sobre los gastos del mes, los presupuestos y los próximos pagos.", title: "Consejos inteligentes", caption: "Lo que ha cambiado este mes, una línea cada uno." },
         { alt: "Resultado de un préstamo: €18.000 al 4,05 % a 5 años dan una cuota mensual de €331,90, €1914,23 de intereses totales, 60 cuotas.", title: 'Deudas', caption: 'Simula un préstamo antes de firmarlo y luego sigue el real.' },
         { alt: 'El mismo panel con el tema claro.', title: 'Claro y oscuro', caption: 'Elige un tema o deja que siga al sistema.' }
       ]
@@ -72,7 +75,7 @@ module.exports = {
         'Sin compartir datos más allá del enlace bancario opcional'
       ],
       rights: [
-        { eyebrow: 'Acceso y portabilidad', h: 'Exporta todo en CSV', p: 'Cuentas, categorías, movimientos y préstamos salen de la app como archivos CSV sencillos que se abren en cualquier hoja de cálculo. Los mismos archivos se vuelven a importar, así que una copia de seguridad es una restauración completa.' },
+        { eyebrow: "Acceso y portabilidad", h: "Copia y exporta todo", p: "La copia de seguridad guarda todos tus datos en un solo archivo, en iCloud Drive o en el teléfono, cuando tocas Hacer copia ahora o una vez al día, y los restaura en un solo paso. Cada registro sale también como un CSV sencillo que se abre en cualquier hoja de cálculo." },
         { eyebrow: 'Rectificación', h: 'Edita cualquier registro, cuando quieras', p: 'Nada queda bloqueado después de guardar. Cambia un movimiento, una cuenta o un presupuesto y cada cifra que depende de ellos se actualiza.' },
         { eyebrow: 'Supresión', h: 'Restablece y desaparece', p: 'Elimina un registro o bórralo todo desde los ajustes. Como no existe ninguna copia en otro sitio, nadie, ni siquiera nosotros, puede recuperarlo. Guarda bien tus copias CSV.' }
       ]
@@ -104,8 +107,8 @@ module.exports = {
       p: "Todo funciona con normalidad. Stack'd funciona sin conexión, así que la app sigue funcionando pase lo que pase aquí; solo la Banca en línea depende de nuestro servidor. Si algo falla, lo publicamos en esta línea."
     },
     tips: [
-      { h: 'Haz una copia antes de cambiar de teléfono', p: "Stack'd no guarda ninguna copia de tus datos fuera de tu dispositivo. Antes de desinstalar la app o pasarte a un teléfono nuevo, exporta tus archivos CSV desde Otros y ajustes e impórtalos en el nuevo dispositivo." },
-      { h: 'No podemos recuperar datos perdidos', p: 'No hay cuenta de usuario ni copia de tus datos en ningún servidor, así que no podemos restaurar nada. Si tienes una exportación CSV, Importar CSV en Otros y ajustes lo recupera todo, cuentas y categorías incluidas.' },
+      { h: "Haz una copia antes de cambiar de teléfono", p: "Stack'd no guarda ninguna copia de tus datos fuera de tu dispositivo. Antes de desinstalar la app o pasarte a un teléfono nuevo, abre Otros y ajustes → <b>Copia de seguridad</b>, toca <b>Hacer copia ahora</b> y restaura ese archivo en el dispositivo nuevo. En iPhone, una copia en iCloud Drive ya te espera allí." },
+      { h: "No podemos recuperar datos perdidos", p: "No hay cuenta de usuario ni copia de tus datos en ningún servidor, así que no podemos restaurar nada. Si tienes un archivo de copia o una exportación CSV, restáuralo en Otros y ajustes → <b>Copia de seguridad</b>: vuelven también las cuentas y las categorías." },
       { h: 'Informar de un error', p: 'Envíanos la versión de la app (aparece en Otros y ajustes), el modelo de tu teléfono y lo que esperabas que pasara. Nunca envíes un extracto bancario real; describe su formato.' }
     ],
     faqH: 'Preguntas frecuentes',
@@ -113,11 +116,12 @@ module.exports = {
       { q: '¿Cómo creo una cuenta?', a: 'Toca el botón + en la barra inferior y elige <b>Añadir cuenta</b>, o usa el bloque Añadir wallet al final de la fila de cuentas del panel. Dale un nombre, un icono y un saldo inicial. A partir de ahí el saldo siempre se calcula a partir de tus movimientos, así que se mantiene sincronizado automáticamente.' },
       { q: '¿Cómo añado un movimiento nuevo?', a: 'Toca el botón + y elige <b>Añadir movimiento</b>. Selecciona Gasto, Ingreso o Transferencia, y luego introduce el importe, la fecha, la cuenta y la categoría. También puedes añadir una nota y etiquetas, o activar la recurrencia (diaria, semanal, mensual…).' },
       { q: '¿Cómo edito o elimino un movimiento?', a: 'Abre el <b>Historial</b> (el icono de lista en la barra inferior) y toca cualquier movimiento para abrirlo en el editor. Cambia lo que necesites y guarda, o usa Eliminar. Si el movimiento forma parte de una serie recurrente, se te preguntará si el cambio se aplica solo a este, a este y a los siguientes, o a toda la serie.' },
-      { q: '¿Cómo importo un extracto bancario?', a: "Ve a Otros y ajustes y elige <b>Importar CSV</b>. Stack'd acepta sus propias copias CSV y cualquier extracto bancario en formato CSV, camt.053 (ISO 20022) o MT940. Una pantalla de revisión muestra lo que se añadirá, lo que ya está registrado y qué filas son transferencias entre tus propias cuentas, antes de guardar nada." },
-      { q: '¿Cómo configuro los widgets del panel?', a: 'En el panel, baja hasta la sección <b>Widgets</b>. Toca <b>Añadir</b> para elegir un widget de la galería y su tamaño. Toca <b>Editar</b> para reordenar, redimensionar, configurar o quitar widgets, y luego toca Listo cuando la disposición te convenza.' },
+      { q: "¿Cómo importo un extracto bancario?", a: "Ve a Otros y ajustes → <b>Importar y exportar</b> y elige Importar. Stack'd lee extractos bancarios en CSV, camt.053 (ISO 20022) o MT940, archivos QIF y exportaciones de MoneyStats. Comprobar abre una revisión de lo que se añadirá, lo que ya está registrado y qué filas son transferencias entre tus propias cuentas; no se guarda nada hasta que tocas Importar." },
+      { q: "¿Cómo configuro los widgets del panel?", a: "En el panel, en la sección <b>Widgets</b>, toca <b>Añadir</b> para elegir uno de la galería, verlo con tus propios datos y elegir su tamaño. Toca <b>Editar</b>, o mantén pulsado un widget, para reorganizarlos: arrástralo a otro sitio, cambia su tamaño y sus opciones, o quítalo." },
+      { q: "¿Cómo añado los widgets de Stack'd a mi teléfono?", a: "Actualiza Stack'd y ábrelo una vez; luego añade un widget como lo haga tu teléfono. En iPhone, mantén pulsado un espacio vacío de la pantalla de inicio, toca <b>Editar</b> → <b>Añadir widget</b> (o <b>+</b>) y busca Stack'd; la pantalla bloqueada también tiene su +. En Android, mantén pulsada la pantalla de inicio, toca <b>Widgets</b> y elige Stack'd. Cuando los saldos están ocultos en la app, los widgets ocultan sus importes." },
       { q: '¿Cómo creo un préstamo?', a: 'Toca el botón + y elige <b>Deudas</b>. Selecciona un tipo de préstamo para abrir el simulador, introduce el importe, el tipo de interés y la duración, y revisa el cuadro de amortización completo. Puedes dejarlo como simulación o hacerle seguimiento como préstamo activo. El seguimiento lo vincula a un gasto recurrente, así que tu progreso se actualiza automáticamente según registras las cuotas.' },
       { q: '¿Cómo gestiono las categorías?', a: "Ve a <b>Otros → Categorías</b> para ver todas tus categorías, o toca una categoría para ver su actividad o editar su nombre, icono y color. Stack'd incluye un conjunto por defecto, que es el del plan gratuito. Crear tus propias categorías forma parte de Stack'd Pro; con Pro desbloqueado, se hace desde el botón + y luego <b>Añadir categoría</b>." },
-      { q: '¿Cómo uso las etiquetas?', a: 'Las etiquetas son textos libres que escribes en el campo <b>Etiquetas</b> al crear o editar un movimiento. El autocompletado sugiere las que ya usas. Explóralas en <b>Otros → Etiquetas</b>, o filtra el Historial por etiqueta para ver todo lo que la lleva.' },
+      { q: "¿Cómo uso las etiquetas?", a: "Las etiquetas son textos libres que escribes en el campo <b>Etiquetas</b> al crear o editar un movimiento; el selector sugiere las que ya usas. En <b>Otros → Etiquetas</b> puedes añadir una etiqueta, cambiar el nombre de una, unir dos dando a una el nombre de la otra y vincular etiquetas a categorías. Filtra el Historial por etiqueta para ver todo lo que la lleva." },
       { q: '¿Puedo cambiar el idioma o la moneda?', a: 'Sí, ambos están en Otros y ajustes. La interfaz está disponible en inglés, francés, italiano, español y portugués y cambia al instante. Cada cuenta puede tener su propia moneda; las cuentas en una moneda distinta de la principal se muestran aparte, sin convertir.' },
       { q: '¿Cómo borro todos mis datos?', a: 'En Otros y ajustes, dentro de la Zona de riesgo, está Restablecer de fábrica, que borra para siempre cada cuenta, presupuesto y movimiento. Desinstalar la app hace lo mismo. Eso cubre todo lo que registras, porque solo se guarda en tu dispositivo. Si has usado Bank Connect, desconecta antes cada banco vinculado: así se borra el registro del enlace en el servidor. Para cualquier cosa sobre esos registros que la app no pueda hacer por sí misma, escribe a {email}.' }
     ],

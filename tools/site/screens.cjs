@@ -7,7 +7,7 @@
 //
 // English goes to ../StackdSite/img/, the others to ../StackdSite/img/<lang>/
 // (tools/site/pages.cjs references them there). Only the four shots the site
-// shows are taken: home dark + light, history dark, debt dark.
+// shows are taken: home dark + light, history dark, insights dark, debt dark.
 //
 // The app translates its own interface; the example data is user data, which
 // it never translates, so the account names and notes are localized here and
@@ -104,6 +104,9 @@ const LOC = {
       document.querySelectorAll('*').forEach(el => { if (el.scrollHeight > el.clientHeight + 4 && getComputedStyle(el).overflowY !== 'visible') el.scrollTop = 0; });
     });
     await shot('history-dark');
+
+    // 1.2.2: the Smart Insights tab.
+    await go('#insights'); await shot('insights-dark');
 
     // The simulator is driven through its real form, so the result screen is
     // what a user sees.

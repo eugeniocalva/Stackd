@@ -9,7 +9,7 @@ module.exports = {
   nav: { label: 'Site', app: "L'application", privacy: 'Confidentialité', studio: 'Le studio', support: 'Assistance', get: 'Télécharger' },
   footer: {
     label: 'Mentions légales', privacy: 'Politique de confidentialité', terms: "Conditions d'utilisation", support: 'Assistance', contact: 'Contact',
-    trademark: "Google Play et le logo Google Play sont des marques de Google LLC. Stack'd n'est affilié à aucune banque ni institution financière, ni approuvé ou certifié par l'une d'elles."
+    trademark: "Google Play et le logo Google Play sont des marques de Google LLC. App Store et le logo Apple sont des marques d'Apple Inc. Stack'd n'est affilié à aucune banque ni institution financière, ni approuvé ou certifié par l'une d'elles."
   },
   ogAlt: "Stack'd sur un téléphone, avec un solde total et des cartes de comptes, à côté du titre (en anglais) : le suivi de votre argent qui ne quitte jamais votre téléphone.",
 
@@ -21,9 +21,9 @@ module.exports = {
       h1: 'Vos comptes, gardés <em>sur votre téléphone</em>.',
       lede: "Stack'd garde chaque compte, chaque opération et chaque budget sur votre appareil. Aucun compte utilisateur à créer, aucun cloud à synchroniser. La seule chose qui passe en ligne est le lien bancaire que vous pouvez choisir d'activer, et il vous montre chaque opération avant de l'enregistrer.",
       play: 'Disponible sur Google Play',
-      ios: 'Version iPhone en préparation',
+      ios: "Télécharger dans l'App Store",
       facts: ['<b>0</b> compte utilisateur ni traceur', '<b>5</b> langues', '<b>CSV</b> en entrée et en sortie, toujours'],
-      imgAlt: "Tableau de bord de Stack'd : solde total de €28 088,91, graphique du solde, cartes des comptes Banque principale et Épargne, et smart insights."
+      imgAlt: "Tableau de bord de Stack'd : solde total de €28 110,91, graphique du solde, cartes des comptes Banque principale et Revolut, et les dernières opérations."
     },
     app: {
       eyebrow: 'Ce qu’elle contient',
@@ -35,7 +35,9 @@ module.exports = {
         { h: 'Objectifs', p: "Un budget mensuel par catégorie. L'onglet Objectifs montre ce qui est déjà dépensé, ce qui reste engagé par les opérations récurrentes et comment le mois va se terminer, pas seulement où il en est aujourd'hui." },
         { h: 'Simulateur de prêt', p: "Saisissez un montant, un taux et une durée et lisez le tableau d'amortissement complet : chaque échéance, sa part d'intérêts et le capital restant. Reliez un prêt à son paiement récurrent et la progression se suit toute seule." },
         { h: 'Import de relevés bancaires', p: "Déposez un relevé au format <code>CSV</code>, <code>camt.053</code> ou <code>MT940</code>. Stack'd associe les colonnes, ignore ce que vous avez déjà saisi, apparie les virements entre vos propres comptes et affiche un récapitulatif avant tout enregistrement. Le fichier lui-même n'est jamais conservé." },
-        { h: 'Widgets et smart insights', p: "Composez le tableau de bord avec neuf types de widgets : dernières opérations, soldes des comptes, revenus et dépenses, principales catégories, budgets, taux d'épargne, 50/30/20 et plus. Les smart insights signalent ce qui a changé ce mois-ci, en une ligne chacun." }
+        { h: "Un tableau de bord à votre façon", p: "Composez le tableau de bord avec neuf types de widgets : dernières opérations, soldes des comptes, revenus et dépenses, principales catégories, budgets, taux d'épargne, 50/30/20 et plus. Faites glisser le doigt sur un graphique pour lire chaque jour ou chaque mois, et secouez le téléphone pour masquer tous les montants." },
+        { h: "Des widgets sur votre téléphone", p: "Soldes, revenus et dépenses, catégories, budgets, paiements à venir et courbe du solde, directement sur l'écran d'accueil de l'iPhone ou d'Android, avec un ajout rapide pour une dépense, un revenu ou un virement. Quand les soldes sont masqués, les widgets les masquent aussi." },
+        { h: "Astuces intelligentes", p: "Un onglet de notes courtes tirées de vos propres opérations : un budget en avance sur le mois, une catégorie qui augmente, un paiement dû cette semaine. Chacune ouvre l'écran dont elle parle, et tout est calculé sur le téléphone." }
       ]
     },
     pricing: {
@@ -54,6 +56,7 @@ module.exports = {
       intro: 'Peu de couleurs, de grands chiffres, une chose par écran. Thème clair et sombre, et une interface en anglais, français, italien, espagnol ou portugais.',
       items: [
         { alt: "Écran Historique listant les opérations regroupées par jour, avec montants, catégories et comptes.", title: 'Historique', caption: 'Chaque opération, filtrable par compte, catégorie, tag et période.' },
+        { alt: "Écran Astuces intelligentes : notes courtes sur les dépenses du mois, les budgets et les paiements à venir.", title: "Astuces intelligentes", caption: "Ce qui a changé ce mois-ci, en une ligne chacun." },
         { alt: "Résultat d'un prêt : €18 000 à 4,05 % sur 5 ans donnent une mensualité de €331,90, €1 914,23 d'intérêts au total, 60 échéances.", title: 'Dettes', caption: 'Simulez un prêt avant de le signer, puis suivez le vrai.' },
         { alt: 'Le même tableau de bord en thème clair.', title: 'Clair et sombre', caption: 'Choisissez un thème, ou laissez-le suivre le système.' }
       ]
@@ -72,7 +75,7 @@ module.exports = {
         'Aucun partage de données hors du lien bancaire facultatif'
       ],
       rights: [
-        { eyebrow: 'Accès et portabilité', h: 'Tout exporter en CSV', p: "Comptes, catégories, opérations et prêts sortent de l'application en fichiers CSV simples, lisibles par n'importe quel tableur. Les mêmes fichiers se réimportent : une sauvegarde est une restauration complète." },
+        { eyebrow: "Accès et portabilité", h: "Tout sauvegarder, tout exporter", p: "La sauvegarde enregistre toutes vos données dans un seul fichier, sur iCloud Drive ou sur le téléphone, quand vous touchez Sauvegarder maintenant ou une fois par jour, et les restaure en une étape. Chaque élément sort aussi en CSV simple, lisible par n'importe quel tableur." },
         { eyebrow: 'Rectification', h: 'Modifier tout, à tout moment', p: "Rien n'est verrouillé après l'enregistrement. Modifiez une opération, un compte ou un budget et chaque chiffre qui en dépend suit." },
         { eyebrow: 'Effacement', h: 'Une réinitialisation, et tout disparaît', p: "Supprimez un élément ou effacez tout depuis les réglages. Comme aucune copie n'existe ailleurs, personne, nous compris, ne peut le récupérer. Gardez vos sauvegardes CSV en lieu sûr." }
       ]
@@ -104,8 +107,8 @@ module.exports = {
       p: "Tout fonctionne normalement. Stack'd marche hors ligne : l'application continue de fonctionner quoi qu'il arrive ici ; seule la Banque en ligne dépend de notre serveur. En cas de problème, nous l'indiquons sur cette ligne."
     },
     tips: [
-      { h: 'Sauvegardez avant de changer de téléphone', p: "Stack'd ne garde aucune copie de vos données ailleurs que sur votre appareil. Avant de désinstaller l'application ou de passer à un nouveau téléphone, exportez vos fichiers CSV depuis Autres et réglages et importez-les sur le nouvel appareil." },
-      { h: 'Nous ne pouvons pas récupérer des données perdues', p: "Il n'y a pas de compte utilisateur ni de copie de vos données sur un serveur : nous ne pouvons donc rien restaurer. Si vous avez un export CSV, Importer un CSV dans Autres et réglages remet tout en place, comptes et catégories compris." },
+      { h: "Sauvegardez avant de changer de téléphone", p: "Stack'd ne garde aucune copie de vos données ailleurs que sur votre appareil. Avant de désinstaller l'application ou de passer à un nouveau téléphone, ouvrez Autres et réglages → <b>Sauvegarde</b>, touchez <b>Sauvegarder maintenant</b> et restaurez ce fichier sur le nouvel appareil. Sur iPhone, une sauvegarde sur iCloud Drive vous y attend déjà." },
+      { h: "Nous ne pouvons pas récupérer des données perdues", p: "Il n'y a pas de compte utilisateur ni de copie de vos données sur un serveur : nous ne pouvons donc rien restaurer. Si vous avez un fichier de sauvegarde ou un export CSV, restaurez-le dans Autres et réglages → <b>Sauvegarde</b> : les comptes et les catégories reviennent aussi." },
       { h: 'Signaler un bug', p: "Envoyez-nous la version de l'application (affichée dans Autres et réglages), le modèle de votre téléphone et ce que vous attendiez. N'envoyez jamais un vrai relevé bancaire ; décrivez plutôt son format." }
     ],
     faqH: 'Questions fréquentes',
@@ -113,11 +116,12 @@ module.exports = {
       { q: 'Comment créer un compte ?', a: "Touchez le bouton + dans la barre du bas et choisissez <b>Ajouter un compte</b>, ou utilisez la tuile Ajouter un wallet à la fin de la rangée des comptes sur le tableau de bord. Donnez-lui un nom, une icône et un solde initial. Ensuite, le solde est toujours calculé à partir de vos opérations : il reste donc synchronisé automatiquement." },
       { q: 'Comment ajouter une nouvelle opération ?', a: 'Touchez le bouton + et choisissez <b>Ajouter une opération</b>. Sélectionnez Dépense, Revenu ou Virement, puis saisissez le montant, la date, le compte et la catégorie. Vous pouvez aussi ajouter une note et des tags, ou activer la récurrence (quotidienne, hebdomadaire, mensuelle…).' },
       { q: 'Comment modifier ou supprimer une opération ?', a: "Ouvrez l'<b>Historique</b> (l'icône de liste dans la barre du bas) et touchez une opération pour l'ouvrir dans l'éditeur. Modifiez ce que vous voulez et enregistrez, ou utilisez Supprimer. Si l'opération fait partie d'une série récurrente, il vous sera demandé si le changement s'applique à celle-ci uniquement, à celle-ci et aux suivantes, ou à toute la série." },
-      { q: 'Comment importer un relevé bancaire ?', a: "Allez dans Autres et réglages et choisissez <b>Importer un CSV</b>. Stack'd accepte ses propres sauvegardes CSV et tout relevé bancaire au format CSV, camt.053 (ISO 20022) ou MT940. Un écran de vérification montre ce qui sera ajouté, ce qui est déjà saisi et quelles lignes sont des virements entre vos propres comptes, avant tout enregistrement." },
-      { q: 'Comment configurer les widgets du tableau de bord ?', a: 'Sur le tableau de bord, faites défiler jusqu’à la section <b>Widgets</b>. Touchez <b>Ajouter</b> pour choisir un widget dans la galerie et sa taille. Touchez <b>Modifier</b> pour réorganiser, redimensionner, configurer ou retirer des widgets, puis touchez Terminé quand la disposition vous convient.' },
+      { q: "Comment importer un relevé bancaire ?", a: "Allez dans Autres et réglages → <b>Importer et exporter</b> et choisissez Importer. Stack'd lit les relevés bancaires au format CSV, camt.053 (ISO 20022) ou MT940, les fichiers QIF et les exports de MoneyStats. Vérifier ouvre un récapitulatif de ce qui sera ajouté, de ce qui est déjà saisi et des lignes qui sont des virements entre vos propres comptes ; rien n'est enregistré avant que vous touchiez Importer." },
+      { q: "Comment configurer les widgets du tableau de bord ?", a: "Sur le tableau de bord, dans la section <b>Widgets</b>, touchez <b>Ajouter</b> pour en choisir un dans la galerie, le prévisualiser avec vos propres données et choisir sa taille. Touchez <b>Modifier</b>, ou appuyez longuement sur un widget, pour réorganiser : faites-le glisser ailleurs, changez sa taille et ses options, ou retirez-le." },
+      { q: "Comment ajouter les widgets Stack'd sur mon téléphone ?", a: "Mettez Stack'd à jour et ouvrez-le une fois, puis ajoutez un widget comme votre téléphone le prévoit. Sur iPhone, maintenez le doigt sur un espace vide de l'écran d'accueil, touchez <b>Modifier</b> → <b>Ajouter un widget</b> (ou <b>+</b>) et cherchez Stack'd ; l'écran verrouillé a aussi son +. Sur Android, maintenez le doigt sur l'écran d'accueil, touchez <b>Widgets</b> et choisissez Stack'd. Quand les soldes sont masqués dans l'application, les widgets masquent leurs montants." },
       { q: 'Comment créer un prêt ?', a: "Touchez le bouton + et choisissez <b>Dettes</b>. Sélectionnez un type de prêt pour ouvrir le simulateur, saisissez le montant, le taux et la durée, puis consultez le tableau d'amortissement complet. Vous pouvez le garder comme simulation ou le suivre comme prêt actif. Le suivi le relie à une dépense récurrente, donc votre progression se met à jour automatiquement à mesure que les échéances sont enregistrées." },
       { q: 'Comment gérer les catégories ?', a: "Allez dans <b>Autres → Catégories</b> pour voir toutes vos catégories, ou touchez une catégorie pour voir son activité ou modifier son nom, son icône et sa couleur. Stack'd est livré avec un jeu par défaut, celui de l'offre gratuite. Créer vos propres catégories fait partie de Stack'd Pro ; une fois Pro débloqué, cela se fait avec le bouton +, puis <b>Ajouter une catégorie</b>." },
-      { q: 'Comment utiliser les tags ?', a: "Les tags sont des libellés libres que vous saisissez dans le champ <b>Tags</b> lors de la création ou de la modification d'une opération. L'autocomplétion suggère ceux que vous utilisez déjà. Parcourez-les dans <b>Autres → Tags</b>, ou filtrez l'Historique par tag pour voir tout ce qui porte ce libellé." },
+      { q: "Comment utiliser les tags ?", a: "Les tags sont des libellés libres que vous saisissez dans le champ <b>Tags</b> lors de la création ou de la modification d'une opération ; le sélecteur propose ceux que vous utilisez déjà. Dans <b>Autres → Tags</b>, vous pouvez ajouter un tag, en renommer un, en fusionner deux en donnant à l'un le nom de l'autre, et relier des tags à des catégories. Filtrez l'Historique par tag pour voir tout ce qui porte ce libellé." },
       { q: 'Puis-je changer la langue ou la devise ?', a: "Oui, les deux se trouvent dans Autres et réglages. L'interface existe en anglais, français, italien, espagnol et portugais et change instantanément. Chaque compte peut avoir sa propre devise ; les comptes dans une devise autre que la principale sont affichés à part, sans conversion." },
       { q: 'Comment supprimer toutes mes données ?', a: "Autres et réglages contient une Réinitialisation, dans la Zone sensible, qui efface définitivement chaque compte, budget et opération. Désinstaller l'application a le même effet. Cela couvre tout ce que vous enregistrez, puisque tout est stocké uniquement sur votre appareil. Si vous avez utilisé Bank Connect, déconnectez d'abord chaque banque liée : cela supprime la trace du lien sur le serveur. Pour tout ce qui concerne ces traces et que l'application ne peut pas faire elle-même, écrivez à {email}." }
     ],
