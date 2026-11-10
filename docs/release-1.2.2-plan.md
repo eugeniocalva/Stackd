@@ -11,6 +11,15 @@ One version on both stores, from one commit (unified release policy). The
 `docs/release-checklist.md` is the mechanical list for the builds; this file
 is what is specific to 1.2.2 and who does what.
 
+**Status 2026-11-10:**
+
+- **Done (§4 A1–A4):** the builds from commit `7a08aba`.
+  - Gates: lint, 2,437 unit, 209 e2e.
+  - AAB 10202 on the Desktop.
+  - iOS 10210 uploaded (CI run 42794702738).
+  - Assets on the Desktop.
+- **Next:** your console steps (§4 B and C). Tag `v1.2.2` after you submit.
+
 ---
 
 ## 1. What ships (the 1.2.2 round)
