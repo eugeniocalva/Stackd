@@ -73,7 +73,7 @@ const home = (lang) => {
         <p>${it.p}</p>
       </div>`).join('\n');
   const screens = h.screens.items.map((it, i) => `      <figure>
-        <div class="phone small"><img src="${img(lang, SCREEN_IMGS[i])}" width="780" height="1688" alt="${attr(it.alt)}" loading="lazy"></div>
+        <div class="phone small"><img${SCREEN_IMGS[i].endsWith('-light') ? ' class="light"' : ''} src="${img(lang, SCREEN_IMGS[i])}" width="780" height="1688" alt="${attr(it.alt)}" loading="lazy"></div>
         <figcaption><b>${it.title}</b><span>${it.caption}</span></figcaption>
       </figure>`).join('\n');
   const rights = h.privacy.rights.map(r => `        <div>
