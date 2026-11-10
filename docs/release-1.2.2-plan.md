@@ -18,7 +18,32 @@ is what is specific to 1.2.2 and who does what.
   - AAB 10202 on the Desktop.
   - iOS 10210 uploaded (CI run 42794702738).
   - Assets on the Desktop.
-- **Next:** your console steps (§4 B and C). Tag `v1.2.2` after you submit.
+- **Submitted 2026-11-10:**
+  - Play: 10202 and the screenshots for 5 languages in review, full
+    rollout, **managed publishing OFF** (owner's choice: live on approval).
+  - App Store: 1.2.2 (10210) "A aguardar revisão" (submission
+    824e70b8-…), with the header and search artwork.
+  - Tag `v1.2.2` on `7a08aba` pushed.
+
+**Console lessons for the next release** (the owner found the first
+guide too vague):
+
+- **Play release notes** live inside the draft release (Production →
+  Releases → Edit release → Release notes). The listing's English is
+  **en-GB**, so the tags are `<en-GB>`, `<fr-FR>`, `<it-IT>`, `<es-ES>`,
+  `<pt-PT>`. "Draft release" on the track means nothing is sent yet;
+  Publishing overview → "Submit N changes for review" sends it.
+- **App Store screenshots:** the console now has one iPhone slot, "iPhone
+  com Dynamic Island (ecrã médio)". It takes 1206×2622 or 1179×2556 and
+  refuses 6.5" and 6.9". Use `apple-6.3`.
+- **App Store "Cabeçalho e resultados de pesquisa"** (optional):
+  - header 3840×1646, cropped about 300 px per side, with buttons over the
+    top corners (keep content in the centre);
+  - search 3840×2560;
+  - both from `tools/store/apple-banners.cjs`.
+- **Portuguese console labels:** "Novidades desta versão",
+  "Compilação", "Lançamento da versão", "Adicionar para revisão" →
+  "Submeter para revisão".
 
 ---
 
