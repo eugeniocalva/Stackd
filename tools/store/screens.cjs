@@ -44,6 +44,11 @@ const OUT_ROOT = path.resolve(__dirname, 'out');
 const LANGS = ['en', 'fr', 'it', 'es', 'pt'];
 
 const TARGETS = {
+  // 2026-11-10: App Store Connect now offers only "iPhone com Dynamic Island
+  // (ecrã médio)" — the 6.1"/6.3" slot, accepting 1179x2556 or 1206x2622 —
+  // and refused both the 6.5" and the 6.9" sets. 402x874 @3x is the 6.3"
+  // iPhone's own logical size, so nothing is scaled.
+  'apple-6.3': { w: 402, h: 874, scale: 3 },   // -> 1206 x 2622 (6.3", upload this)
   'apple-6.9': { w: 430, h: 932, scale: 3 },   // -> 1290 x 2796 (6.9")
   'apple-6.5': { w: 428, h: 926, scale: 3 },   // -> 1284 x 2778 (6.5")
   play: { w: 360, h: 640, scale: 3 }           // -> 1080 x 1920

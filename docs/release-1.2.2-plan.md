@@ -101,6 +101,7 @@ Everything is in **`Desktop\Stackd-1.2.2-store-assets\`**, copied from
 | Folder | Size | Images | Goes to |
 |---|---|---|---|
 | `play/<lang>/` | 1080×2160 (widgets) and 1080×1920 | **7 per language**, upload in name order: `00-widgets` (new: the Android home screen with Account balances, Income vs Expenses and Quick add), `01-home`, `02-history`, `03-goals`, `04-analytics`, `05-insights`, `06-debt` | Play → Main store listing → Phone screenshots, per language |
+| **`apple-6.3/<lang>/`** | **1206×2622** | **6 per language** | **App Store Connect → 1.2.2 → "iPhone com Dynamic Island (ecrã médio)"**, the slot the console offered on 2026-11-10. It refused 6.5" and 6.9". |
 | `apple-6.5/<lang>/` | 1284×2778 | **6 per language** (`01-home` … `06-debt`) | App Store Connect → 1.2.2 → iPhone 6.5" display, per localization |
 | `apple-6.9/<lang>/` | 1290×2796 | 6 per language | Spare: only if the console offers a 6.9" slot |
 | `play/feature-graphic.png`, `play/icon-512.png` | 1024×500, 512×512 | unchanged design | Already on the Play listing; replace only if Play asks |
@@ -151,8 +152,10 @@ Everything is in **`Desktop\Stackd-1.2.2-store-assets\`**, copied from
    or TestFlight shows it), then select **1.2.2 (10210)**.
 3. **What's New in This Version:** paste each language (§2) into its
    localization (English, French, Italian, Spanish, Portuguese (Portugal)).
-4. **Screenshots → iPhone 6.5" Display:** for each localization, remove the
-   old ones and upload `apple-6.5/<lang>/01…06`.
+4. **Screenshots → "iPhone com Dynamic Island (ecrã médio)"** (6.1"/6.3"):
+   for each localization, remove the old ones and upload
+   `apple-6.3/<lang>/01…06` (1206×2622). On 2026-11-10 the console refused
+   both the 6.5" and the 6.9" sets.
 5. **App Review Information → Notes**, optional: add one line.
    > 1.2.2 adds Home Screen and Lock Screen widgets. They show figures the
    > app writes to a shared App Group file on the device; nothing is sent
