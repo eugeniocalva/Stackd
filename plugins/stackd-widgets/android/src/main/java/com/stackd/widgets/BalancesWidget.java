@@ -26,19 +26,20 @@ public class BalancesWidget extends BaseWidget {
             rv.setTextColor(R.id.headline, trendColor(ctx, total.optString("trend")));
         }
         JSONArray accounts = snap.arr("accounts");
-        int shown = Math.min(accounts.length(), wide ? 4 : 3);
+        // 4×2: two accounts at the larger text; a taller widget lists up to 8
+        int shown = Math.min(accounts.length(), rowsFor(90, 38, 2, 8));
         for (int i = 0; i < shown; i++) {
             JSONObject a = accounts.optJSONObject(i);
             if (a == null) continue;
             String name = a.optString("name");
             int colour = Draw.color(a.optString("color"), ctx.getColor(R.color.stackd_widget_text2));
             rv.setViewVisibility(Rows.ROW[i], View.VISIBLE);
-            rv.setImageViewBitmap(Rows.MARK[i], Draw.mark(ctx, name, colour, 24));
+            rv.setImageViewBitmap(Rows.MARK[i], Draw.mark(ctx, name, colour, 28));
             rv.setTextViewText(Rows.NAME[i], name);
             rv.setTextViewText(Rows.VALUE[i], a.optString("text"));
             rv.setTextColor(Rows.VALUE[i], trendColor(ctx, a.optString("trend")));
         }
-        Rows.hideFrom(rv, shown, 4);
+        Rows.hideFrom(rv, shown, 8);
         int rest = snap.json.optInt("accountCount", accounts.length()) - shown;
         if (rest > 0) {
             String tpl = snap.json.optString(rest == 1 ? "moreOne" : "moreOther", "+{n}");

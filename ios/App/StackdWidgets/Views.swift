@@ -5,6 +5,11 @@ import WidgetKit
 // views. Amounts are .privacySensitive(): iOS blanks them on a locked phone
 // (Lock Screen, StandBy) while names and dates stay (owner, Q4). Hidden
 // balances in the app already arrive masked in the snapshot.
+// 2026-11-10 (owner, phone check): bigger text everywhere — titles at
+// subheadline, rows at subheadline/body — and a large Account balances that
+// lists every account. Each layout is sized to the family's height (a medium
+// widget has about 123 pt inside its margins); amounts shrink rather than
+// cut off (minimumScaleFactor).
 
 // ── shared pieces ─────────────────────────────────────────────────────────
 
@@ -13,10 +18,10 @@ struct Header: View {
     let stale: String?
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
+            Text(title).font(.subheadline).foregroundStyle(Palette.text2).lineLimit(1)
             Spacer(minLength: 4)
             if let s = stale {
-                Text(s).font(.caption2).foregroundStyle(Palette.text2).lineLimit(1)
+                Text(s).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
             }
         }
     }
@@ -27,7 +32,7 @@ struct Header: View {
 struct Mark: View {
     let name: String
     let color: Color
-    var size: CGFloat = 22
+    var size: CGFloat = 26
     var body: some View {
         ZStack {
             Circle().fill(color.opacity(0.16))
@@ -43,7 +48,7 @@ struct Mark: View {
 struct Bar: View {
     let fraction: Double
     let fill: Color
-    var height: CGFloat = 5
+    var height: CGFloat = 6
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
@@ -58,10 +63,21 @@ struct Bar: View {
     }
 }
 
+// An amount: bold, never cut off (it shrinks first), blanked when locked.
+struct Amount: View {
+    let text: String?
+    var font: Font = .subheadline.bold()
+    var color: Color = Palette.text
+    var body: some View {
+        Text(text ?? "").font(font).foregroundStyle(color)
+            .lineLimit(1).minimumScaleFactor(0.7).privacySensitive()
+    }
+}
+
 struct EmptyNote: View {
     let text: String
     var body: some View {
-        Text(text).font(.subheadline).foregroundStyle(Palette.text2)
+        Text(text).font(.body).foregroundStyle(Palette.text2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
@@ -70,7 +86,7 @@ struct OpenApp: View {
     let snap: Snap?
     var body: some View {
         Text(snap?.label("open", String(localized: "widget.open")) ?? String(localized: "widget.open"))
-            .font(.subheadline.bold())
+            .font(.body.bold())
             .foregroundStyle(Palette.text)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,30 +100,33 @@ extension View {
     }
 }
 
-// ── W1 Account balances (wide) ────────────────────────────────────────────
+// ── W1 Account balances (wide; large lists every account) ────────────────
 
 struct BalancesView: View {
     let entry: StackdEntry
+    @Environment(\.widgetFamily) private var family
+
     var body: some View {
         if let s = entry.snap, s.hasData {
+            let large = family == .systemLarge
             let accounts = s.accounts ?? []
-            let shown = Array(accounts.prefix(3))
+            let shown = Array(accounts.prefix(large ? 8 : 2))
             let rest = (s.accountCount ?? accounts.count) - shown.count
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: large ? 7 : 4) {
                 Header(title: s.label("accounts", String(localized: "widget.balances.name")), stale: s.staleText(on: entry.date))
-                Text(s.total?.text ?? "").font(.title2.bold()).foregroundStyle(Palette.trend(s.total?.trend))
-                    .lineLimit(1).minimumScaleFactor(0.6).privacySensitive()
+                Amount(text: s.total?.text, font: large ? .title.bold() : .title2.bold(), color: Palette.trend(s.total?.trend))
+                if large { Divider().overlay(Palette.track) }
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, a in
-                    HStack(spacing: 8) {
-                        Mark(name: a.name ?? "", color: Palette.hex(a.color, Palette.text2))
-                        Text(a.name ?? "").font(.subheadline).foregroundStyle(Palette.text).lineLimit(1)
+                    HStack(spacing: 10) {
+                        Mark(name: a.name ?? "", color: Palette.hex(a.color, Palette.text2), size: large ? 30 : 26)
+                        Text(a.name ?? "").font(.body).foregroundStyle(Palette.text).lineLimit(1)
                         Spacer(minLength: 6)
-                        Text(a.text ?? "").font(.subheadline.bold()).foregroundStyle(Palette.trend(a.trend))
-                            .lineLimit(1).privacySensitive()
+                        Amount(text: a.text, font: .body.bold(), color: Palette.trend(a.trend))
                     }
                 }
                 if rest > 0, let tpl = (rest == 1 ? s.moreOne : s.moreOther) {
-                    Text(tpl.replacingOccurrences(of: "{n}", with: String(rest))).font(.caption2).foregroundStyle(Palette.text2)
+                    Text(tpl.replacingOccurrences(of: "{n}", with: String(rest)))
+                        .font(.footnote).foregroundStyle(Palette.text2)
                 }
                 Spacer(minLength: 0)
             }
@@ -127,10 +146,9 @@ struct FlowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Header(title: s.label("incomeExpense", String(localized: "widget.flow.name")), stale: s.staleText(on: entry.date))
                 if let m = s.month {
-                    Text(m.netText ?? "").font(.title2.bold()).foregroundStyle(Palette.trend(m.netTrend))
-                        .lineLimit(1).minimumScaleFactor(0.6).privacySensitive()
-                    Text("\(m.title ?? "") · \(s.label("eom"))").font(.caption2).foregroundStyle(Palette.text2).lineLimit(1)
-                    Spacer(minLength: 2)
+                    Amount(text: m.netText, font: .title2.bold(), color: Palette.trend(m.netTrend))
+                    Text("\(m.title ?? "") · \(s.label("eom"))").font(.footnote).foregroundStyle(Palette.text2).lineLimit(1)
+                    Spacer(minLength: 0)
                     row(s.label("income"), m.incomeText, m.incomeBar, Palette.income)
                     row(s.label("expense"), m.expenseText, m.expenseBar, Palette.expense)
                 } else {
@@ -146,9 +164,9 @@ struct FlowView: View {
     private func row(_ label: String, _ value: String?, _ fraction: Double?, _ color: Color) -> some View {
         VStack(spacing: 3) {
             HStack {
-                Text(label).font(.caption).foregroundStyle(Palette.text2).lineLimit(1)
+                Text(label).font(.subheadline).foregroundStyle(Palette.text2).lineLimit(1)
                 Spacer(minLength: 4)
-                Text(value ?? "").font(.caption.bold()).foregroundStyle(color).lineLimit(1).privacySensitive()
+                Amount(text: value, color: color)
             }
             Bar(fraction: fraction ?? 0, fill: color)
         }
@@ -160,7 +178,7 @@ struct FlowView: View {
 struct Ring: View {
     let shares: [Double]
     let colors: [Color]
-    var line: CGFloat = 11
+    var line: CGFloat = 12
     var body: some View {
         ZStack {
             Circle().stroke(Palette.track, lineWidth: line)
@@ -189,17 +207,17 @@ struct CategoriesView: View {
                     HStack(spacing: 12) {
                         ZStack {
                             Ring(shares: slices.map { $0.share ?? 0 }, colors: colors)
-                            Text(c.spentText ?? "").font(.caption.bold()).foregroundStyle(Palette.text)
-                                .lineLimit(1).minimumScaleFactor(0.5).padding(.horizontal, 14).privacySensitive()
+                            Amount(text: c.spentText, font: .footnote.bold())
+                                .padding(.horizontal, 15)
                         }
-                        .frame(width: 86, height: 86)
-                        VStack(alignment: .leading, spacing: 4) {
+                        .frame(width: 92, height: 92)
+                        VStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(slices.prefix(4).enumerated()), id: \.offset) { i, sl in
-                                HStack(spacing: 6) {
-                                    Mark(name: sl.name ?? "", color: colors[i], size: 18)
-                                    Text(sl.name ?? "").font(.caption).foregroundStyle(Palette.text).lineLimit(1)
+                                HStack(spacing: 7) {
+                                    Mark(name: sl.name ?? "", color: colors[i], size: 20)
+                                    Text(sl.name ?? "").font(.subheadline).foregroundStyle(Palette.text).lineLimit(1)
                                     Spacer(minLength: 4)
-                                    Text(sl.text ?? "").font(.caption.bold()).foregroundStyle(Palette.text).lineLimit(1).privacySensitive()
+                                    Amount(text: sl.text)
                                 }
                             }
                         }
@@ -222,26 +240,28 @@ struct BudgetsView: View {
     let entry: StackdEntry
     var body: some View {
         if let s = entry.snap, s.hasData {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Header(title: s.label("budgets", String(localized: "widget.budgets.name")), stale: s.staleText(on: entry.date))
                 if let b = s.budgets {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(b.spentText ?? "").font(.title3.bold()).foregroundStyle(Palette.text).lineLimit(1).privacySensitive()
-                        Text(b.ofText ?? "").font(.caption2).foregroundStyle(Palette.text2).lineLimit(1).privacySensitive()
+                        Amount(text: b.spentText, font: .title3.bold())
+                        Text(b.ofText ?? "").font(.footnote).foregroundStyle(Palette.text2)
+                            .lineLimit(1).minimumScaleFactor(0.8).privacySensitive()
                         Spacer(minLength: 4)
-                        Text(b.pctText ?? "").font(.caption.bold())
+                        Text(b.pctText ?? "").font(.subheadline.bold())
                             .foregroundStyle((b.over ?? false) ? Palette.expense : Palette.text).lineLimit(1)
                     }
-                    ForEach(Array((b.rows ?? []).prefix(3).enumerated()), id: \.offset) { _, r in
+                    // two rows: the ones closest to (or over) their limit
+                    ForEach(Array((b.rows ?? []).prefix(2).enumerated()), id: \.offset) { _, r in
                         let over = r.over ?? false
-                        VStack(spacing: 2) {
+                        VStack(spacing: 3) {
                             HStack {
-                                Text(r.name ?? "").font(.caption).foregroundStyle(Palette.text).lineLimit(1)
+                                Text(r.name ?? "").font(.subheadline).foregroundStyle(Palette.text).lineLimit(1)
                                 Spacer(minLength: 4)
-                                Text(r.pctText ?? "").font(.caption.bold())
+                                Text(r.pctText ?? "").font(.subheadline.bold())
                                     .foregroundStyle(over ? Palette.expense : Palette.text2).lineLimit(1)
                             }
-                            Bar(fraction: r.ratio ?? 0, fill: over ? Palette.expense : Palette.bar, height: 4)
+                            Bar(fraction: r.ratio ?? 0, fill: over ? Palette.expense : Palette.bar)
                         }
                     }
                     Spacer(minLength: 0)
@@ -268,7 +288,7 @@ struct UpcomingView: View {
             let tomorrow = Snap.ymd(entry.date.addingTimeInterval(86_400))
             let wide = family != .systemSmall
             let rows = Array((s.upcoming ?? []).filter { ($0.date ?? "") >= today }.prefix(wide ? 3 : 2))
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: wide ? 6 : 5) {
                 Header(title: s.label("upcoming", String(localized: "widget.upcoming.name")), stale: s.staleText(on: entry.date))
                 if rows.isEmpty {
                     EmptyNote(text: s.label("nothingScheduled"))
@@ -276,11 +296,10 @@ struct UpcomingView: View {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
                         let day = r.date == today ? s.label("today", r.dayText ?? "")
                             : r.date == tomorrow ? s.label("tomorrow", r.dayText ?? "") : (r.dayText ?? "")
-                        let line = rowView(r, day: day, wide: wide)
                         if wide {
-                            Link(destination: Open.url("history&day=\(r.date ?? "")")) { line }
+                            Link(destination: Open.url("history&day=\(r.date ?? "")")) { wideRow(r, day: day) }
                         } else {
-                            line
+                            smallRow(r, day: day)
                         }
                     }
                     Spacer(minLength: 0)
@@ -300,17 +319,26 @@ struct UpcomingView: View {
         }
     }
 
-    private func rowView(_ r: Snap.Upcoming, day: String, wide: Bool) -> some View {
-        HStack(spacing: 8) {
-            if wide {
-                Mark(name: r.name ?? "", color: r.kind == "transfer" ? Palette.transfer : Palette.text2)
-            }
+    // wide: one line per payment — mark, name, day, amount
+    private func wideRow(_ r: Snap.Upcoming, day: String) -> some View {
+        HStack(spacing: 9) {
+            Mark(name: r.name ?? "", color: r.kind == "transfer" ? Palette.transfer : Palette.text2)
+            Text(r.name ?? "").font(.subheadline).foregroundStyle(Palette.text).lineLimit(1)
+            Text(day).font(.footnote).foregroundStyle(Palette.text2).lineLimit(1)
+            Spacer(minLength: 4)
+            Amount(text: r.text, color: color(r.kind))
+        }
+    }
+
+    // small: the name with its day underneath, the amount on the right
+    private func smallRow(_ r: Snap.Upcoming, day: String) -> some View {
+        HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(r.name ?? "").font(.caption).foregroundStyle(Palette.text).lineLimit(1)
-                Text(day).font(.caption2).foregroundStyle(Palette.text2).lineLimit(1)
+                Text(r.name ?? "").font(.subheadline).foregroundStyle(Palette.text).lineLimit(1)
+                Text(day).font(.footnote).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer(minLength: 4)
-            Text(r.text ?? "").font(.caption.bold()).foregroundStyle(color(r.kind)).lineLimit(1).privacySensitive()
+            Amount(text: r.text, color: color(r.kind))
         }
     }
 }
@@ -347,23 +375,22 @@ struct CurveView: View {
                     let color = c.trend == "flat" ? Palette.text2 : Palette.trend(c.trend)
                     Header(title: "\(title) · \(s.label("range", "1M"))", stale: s.staleText(on: entry.date))
                     HStack(alignment: .firstTextBaseline) {
-                        Text(c.totalText ?? "").font(.title2.bold()).foregroundStyle(Palette.text)
-                            .lineLimit(1).minimumScaleFactor(0.6).privacySensitive()
+                        Amount(text: c.totalText, font: .title2.bold())
                         Spacer(minLength: 6)
-                        Text([c.changeText ?? "", c.pctText ?? ""].filter { !$0.isEmpty }.joined(separator: "  "))
-                            .font(.caption.bold()).foregroundStyle(color).lineLimit(1).privacySensitive()
+                        Amount(text: [c.changeText ?? "", c.pctText ?? ""].filter { !$0.isEmpty }.joined(separator: "  "),
+                               color: color)
                     }
                     let pts = c.points ?? []
                     ZStack {
                         CurveShape(points: pts, closed: true).fill(color.opacity(0.15))
                         CurveShape(points: pts, closed: false)
-                            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                            .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                     }
                     .padding(.vertical, 2)
                     .accessibilityHidden(true)
                 } else {
                     Header(title: title, stale: s.staleText(on: entry.date))
-                    Text(s.total?.text ?? "").font(.title2.bold()).foregroundStyle(Palette.text).privacySensitive()
+                    Amount(text: s.total?.text, font: .title2.bold())
                     Spacer(minLength: 0)
                 }
             }

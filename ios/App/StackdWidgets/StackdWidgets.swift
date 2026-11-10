@@ -27,7 +27,8 @@ struct BalancesWidget: Widget {
         }
         .configurationDisplayName(Text("widget.balances.name"))
         .description(Text("widget.balances.desc"))
-        .supportedFamilies([.systemMedium])
+        // 2026-11-10 (owner): a large size that lists every account
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 

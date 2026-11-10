@@ -1,4 +1,6 @@
 // Generates the stackd-widgets RemoteViews layouts (1.2.2 HG-15 WG-4).
+// 2026-11-10 (owner, phone check): bigger text; the list layout has 8 row
+// slots so a taller Account balances / Upcoming lists more.
 // Run: node tools/widgets/android-layouts.cjs plugins/stackd-widgets/android/src/main/res/layout
 const fs = require('fs');
 const path = require('path');
@@ -24,57 +26,58 @@ const tv = (id, o = {}) => {
 const W1 = ' android:layout_weight="1"';
 const GONE = ' android:visibility="gone"';
 const header = `<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-    ${tv('title', { size: 12, w: '0dp', weight: W1 })}
-    ${tv('stale', { size: 10, color: 'stackd_widget_text3', extra: GONE })}
+    ${tv('title', { size: 14, w: '0dp', weight: W1 })}
+    ${tv('stale', { size: 12, color: 'stackd_widget_text3', extra: GONE })}
 </LinearLayout>`;
-const row = (n, o = {}) => `<LinearLayout android:id="@+id/row${n}" android:layout_width="match_parent" android:layout_height="0dp"${W1}
+const row = (n, o = {}) => `<LinearLayout android:id="@+id/row${n}" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:paddingTop="${o.pad || 5}dp" android:paddingBottom="${o.pad || 5}dp"
     android:orientation="horizontal" android:gravity="center_vertical"${GONE}>
-    <ImageView android:id="@+id/row${n}_mark" android:layout_width="24dp" android:layout_height="24dp" android:layout_marginEnd="8dp" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/row${n}_mark" android:layout_width="28dp" android:layout_height="28dp" android:layout_marginEnd="10dp" android:importantForAccessibility="no" />
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"${W1} android:orientation="vertical">
-        ${tv(`row${n}_name`, { size: 13, color: 'stackd_widget_text', w: 'match_parent' })}
-        ${o.sub ? tv(`row${n}_sub`, { size: 11, w: 'match_parent', extra: GONE }) : ''}
+        ${tv(`row${n}_name`, { size: 16, color: 'stackd_widget_text', w: 'match_parent' })}
+        ${o.sub ? tv(`row${n}_sub`, { size: 13, w: 'match_parent', extra: GONE }) : ''}
     </LinearLayout>
-    ${tv(`row${n}_value`, { size: 13, color: 'stackd_widget_text', bold: true, extra: ' android:layout_marginStart="8dp"' })}
+    ${tv(`row${n}_value`, { size: 16, color: 'stackd_widget_text', bold: true, extra: ' android:layout_marginStart="8dp"' })}
 </LinearLayout>`;
 const rows = (count, o) => Array.from({ length: count }, (_, i) => row(i + 1, o)).join('\n');
-const empty = tv('empty', { size: 13, w: 'match_parent', lines: 3, extra: GONE });
+const empty = tv('empty', { size: 15, w: 'match_parent', lines: 3, extra: GONE });
 
 const files = {
   // W1 Account balances, W5 Upcoming
   stackd_widget_list: root(`${header}
-${tv('headline', { size: 22, color: 'stackd_widget_text', bold: true, extra: ' android:layout_marginTop="2dp" android:layout_marginBottom="4dp"' + GONE })}
+${empty}
+${tv('headline', { size: 26, color: 'stackd_widget_text', bold: true, extra: ' android:layout_marginTop="2dp" android:layout_marginBottom="4dp"' + GONE })}
 <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"${W1} android:orientation="vertical">
-${rows(4, { sub: true })}
+${rows(8, { sub: true })}
 </LinearLayout>
-${tv('more', { size: 11, extra: GONE })}
-${empty}`),
+${tv('more', { size: 13, extra: GONE })}`),
 
   // W2 Income vs Expenses
   stackd_widget_flow: root(`${header}
-${tv('headline', { size: 22, bold: true, color: 'stackd_widget_text', extra: ' android:layout_marginTop="2dp"' })}
-${tv('caption', { size: 11 })}
+${empty}
+${tv('headline', { size: 26, bold: true, color: 'stackd_widget_text', extra: ' android:layout_marginTop="2dp"' })}
+${tv('caption', { size: 13 })}
 <FrameLayout android:layout_width="match_parent" android:layout_height="0dp"${W1} />
 <LinearLayout android:id="@+id/in_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-    ${tv('in_label', { size: 12, w: '0dp', weight: W1 })}
-    ${tv('in_value', { size: 13, bold: true, color: 'stackd_widget_income' })}
+    ${tv('in_label', { size: 15, w: '0dp', weight: W1 })}
+    ${tv('in_value', { size: 16, bold: true, color: 'stackd_widget_income' })}
 </LinearLayout>
 <ImageView android:id="@+id/in_bar" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="3dp" android:layout_marginBottom="6dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
 <LinearLayout android:id="@+id/out_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-    ${tv('out_label', { size: 12, w: '0dp', weight: W1 })}
-    ${tv('out_value', { size: 13, bold: true, color: 'stackd_widget_expense' })}
+    ${tv('out_label', { size: 15, w: '0dp', weight: W1 })}
+    ${tv('out_value', { size: 16, bold: true, color: 'stackd_widget_expense' })}
 </LinearLayout>
-<ImageView android:id="@+id/out_bar" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
-${empty}`),
+<ImageView android:id="@+id/out_bar" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />`),
 
   // W3 Categories
   stackd_widget_ring: root(`${header}
 <LinearLayout android:id="@+id/body" android:layout_width="match_parent" android:layout_height="0dp"${W1} android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="6dp">
     <FrameLayout android:layout_width="96dp" android:layout_height="96dp" android:layout_marginEnd="14dp">
         <ImageView android:id="@+id/ring" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
-        ${tv('ring_center', { size: 12, bold: true, color: 'stackd_widget_text', w: 'match_parent', gravity: ' android:gravity="center"', extra: ' android:layout_gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"' })}
+        ${tv('ring_center', { size: 14, bold: true, color: 'stackd_widget_text', w: 'match_parent', gravity: ' android:gravity="center"', extra: ' android:layout_gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"' })}
     </FrameLayout>
-    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent"${W1} android:orientation="vertical">
-${rows(4, {})}
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"${W1} android:orientation="vertical">
+${rows(4, { pad: 3 })}
     </LinearLayout>
 </LinearLayout>
 ${empty}`),
@@ -83,15 +86,15 @@ ${empty}`),
   stackd_widget_budget: root(`${header}
 <LinearLayout android:id="@+id/body" android:layout_width="match_parent" android:layout_height="0dp"${W1} android:orientation="vertical">
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="bottom" android:layout_marginTop="2dp">
-    ${tv('headline', { size: 20, bold: true, color: 'stackd_widget_text' })}
-    ${tv('caption', { size: 11, w: '0dp', weight: W1, extra: ' android:layout_marginStart="6dp" android:layout_marginBottom="2dp"' })}
-    ${tv('pct', { size: 13, bold: true, color: 'stackd_widget_text' })}
+    ${tv('headline', { size: 22, bold: true, color: 'stackd_widget_text' })}
+    ${tv('caption', { size: 13, w: '0dp', weight: W1, extra: ' android:layout_marginStart="6dp" android:layout_marginBottom="2dp"' })}
+    ${tv('pct', { size: 16, bold: true, color: 'stackd_widget_text' })}
 </LinearLayout>
 <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"${W1} android:orientation="vertical" android:layout_marginTop="4dp">
 ${[1, 2, 3].map(n => `<LinearLayout android:id="@+id/row${n}" android:layout_width="match_parent" android:layout_height="0dp"${W1} android:orientation="vertical" android:gravity="center_vertical"${GONE}>
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        ${tv(`row${n}_name`, { size: 12, color: 'stackd_widget_text', w: '0dp', weight: W1 })}
-        ${tv(`row${n}_value`, { size: 12, bold: true })}
+        ${tv(`row${n}_name`, { size: 15, color: 'stackd_widget_text', w: '0dp', weight: W1 })}
+        ${tv(`row${n}_value`, { size: 15, bold: true })}
     </LinearLayout>
     <ImageView android:id="@+id/row${n}_bar" android:layout_width="match_parent" android:layout_height="5dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
 </LinearLayout>`).join('\n')}
@@ -102,8 +105,8 @@ ${empty}`),
   // W6 Balance curve
   stackd_widget_curve: root(`${header}
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="bottom" android:layout_marginTop="2dp">
-    ${tv('headline', { size: 22, bold: true, color: 'stackd_widget_text' })}
-    ${tv('caption', { size: 12, bold: true, w: '0dp', weight: W1, gravity: ' android:gravity="end"', extra: ' android:layout_marginStart="8dp" android:layout_marginBottom="3dp"' })}
+    ${tv('headline', { size: 26, bold: true, color: 'stackd_widget_text' })}
+    ${tv('caption', { size: 15, bold: true, w: '0dp', weight: W1, gravity: ' android:gravity="end"', extra: ' android:layout_marginStart="8dp" android:layout_marginBottom="3dp"' })}
 </LinearLayout>
 <ImageView android:id="@+id/curve" android:layout_width="match_parent" android:layout_height="0dp"${W1} android:layout_marginTop="6dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
 ${empty}`),

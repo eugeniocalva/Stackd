@@ -20,6 +20,10 @@ public abstract class BaseWidget extends AppWidgetProvider {
     // Below this width (dp) a resizable widget uses its small layout.
     static final int WIDE_MIN_DP = 220;
 
+    // The widget's height (dp) for this draw: a taller Account balances or
+    // Upcoming lists more rows (2026-11-10).
+    protected int heightDp = 0;
+
     protected abstract RemoteViews build(Context ctx, Snapshot snap, boolean wide);
 
     // The widget's tap when it has data (stackd://open?to=…).
@@ -47,6 +51,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
             if (needsData() && (snap == null || snap.isEmpty())) {
                 rv = placeholder(ctx, snap);
             } else {
+                heightDp = heightOf(mgr, id);
                 rv = build(ctx, snap, isWide(mgr, id));
                 if (rv.getLayoutId() != 0) rv.setOnClickPendingIntent(R.id.widget_root, open(ctx, target(), id));
             }
@@ -61,6 +66,20 @@ public abstract class BaseWidget extends AppWidgetProvider {
         Bundle o = mgr.getAppWidgetOptions(id);
         int w = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
         return w == 0 || w >= WIDE_MIN_DP;
+    }
+
+    // Portrait height: the launcher's MAX height (MIN is the landscape one).
+    static int heightOf(AppWidgetManager mgr, int id) {
+        Bundle o = mgr.getAppWidgetOptions(id);
+        if (o == null) return 0;
+        int h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        return h > 0 ? h : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+    }
+
+    // How many rows of rowDp fit under a header of headerDp, between min and max.
+    int rowsFor(int headerDp, int rowDp, int min, int max) {
+        if (heightDp <= 0) return min;
+        return Math.max(min, Math.min(max, (heightDp - headerDp) / rowDp));
     }
 
     static RemoteViews placeholder(Context ctx, Snapshot snap) {

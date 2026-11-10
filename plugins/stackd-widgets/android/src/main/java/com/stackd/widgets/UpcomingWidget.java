@@ -12,7 +12,7 @@ import org.json.JSONObject;
 // Today / Tomorrow itself, even while the app stays closed. A row opens
 // History on its day.
 public class UpcomingWidget extends BaseWidget {
-    private static final int[] SUB = { R.id.row1_sub, R.id.row2_sub, R.id.row3_sub, R.id.row4_sub };
+    private static final int[] SUB = { R.id.row1_sub, R.id.row2_sub, R.id.row3_sub, R.id.row4_sub, R.id.row5_sub, R.id.row6_sub, R.id.row7_sub, R.id.row8_sub };
 
     @Override
     protected String target() {
@@ -27,7 +27,7 @@ public class UpcomingWidget extends BaseWidget {
         String today = Snapshot.today();
         String tomorrow = Snapshot.tomorrow();
         JSONArray all = snap.arr("upcoming");
-        int max = wide ? 4 : 2;
+        int max = wide ? rowsFor(50, 54, 2, 8) : 2;
         int shown = 0;
         for (int i = 0; i < all.length() && shown < max; i++) {
             JSONObject r = all.optJSONObject(i);
@@ -45,7 +45,7 @@ public class UpcomingWidget extends BaseWidget {
             rv.setViewVisibility(Rows.ROW[shown], View.VISIBLE);
             if (wide) {
                 rv.setViewVisibility(Rows.MARK[shown], View.VISIBLE);
-                rv.setImageViewBitmap(Rows.MARK[shown], Draw.mark(ctx, name, "transfer".equals(kind) ? colour : ctx.getColor(R.color.stackd_widget_text2), 24));
+                rv.setImageViewBitmap(Rows.MARK[shown], Draw.mark(ctx, name, "transfer".equals(kind) ? colour : ctx.getColor(R.color.stackd_widget_text2), 28));
             } else {
                 rv.setViewVisibility(Rows.MARK[shown], View.GONE);
             }
@@ -56,7 +56,7 @@ public class UpcomingWidget extends BaseWidget {
             rv.setOnClickPendingIntent(Rows.ROW[shown], open(ctx, "history&day=" + date, shown));
             shown++;
         }
-        Rows.hideFrom(rv, shown, 4);
+        Rows.hideFrom(rv, shown, 8);
         if (shown == 0) Rows.empty(rv, snap.label("nothingScheduled", ""));
         return rv;
     }

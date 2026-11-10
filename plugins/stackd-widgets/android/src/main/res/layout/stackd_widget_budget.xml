@@ -9,32 +9,32 @@
     android:padding="14dp">
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
     <TextView android:id="@+id/title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text2"
+    android:textSize="14sp" android:textColor="@color/stackd_widget_text2"
     android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/stale" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="10sp" android:textColor="@color/stackd_widget_text3"
+    android:textSize="12sp" android:textColor="@color/stackd_widget_text3"
     android:maxLines="1" android:ellipsize="end" android:visibility="gone" />
 </LinearLayout>
 <LinearLayout android:id="@+id/body" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical">
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="bottom" android:layout_marginTop="2dp">
     <TextView android:id="@+id/headline" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="20sp" android:textColor="@color/stackd_widget_text" android:textStyle="bold"
+    android:textSize="22sp" android:textColor="@color/stackd_widget_text" android:textStyle="bold"
     android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/caption" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-    android:textSize="11sp" android:textColor="@color/stackd_widget_text2"
+    android:textSize="13sp" android:textColor="@color/stackd_widget_text2"
     android:maxLines="1" android:ellipsize="end" android:layout_marginStart="6dp" android:layout_marginBottom="2dp" />
     <TextView android:id="@+id/pct" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="13sp" android:textColor="@color/stackd_widget_text" android:textStyle="bold"
+    android:textSize="16sp" android:textColor="@color/stackd_widget_text" android:textStyle="bold"
     android:maxLines="1" android:ellipsize="end" />
 </LinearLayout>
 <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:layout_marginTop="4dp">
 <LinearLayout android:id="@+id/row1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:visibility="gone">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
         <TextView android:id="@+id/row1_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text"
     android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/row1_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
     android:maxLines="1" android:ellipsize="end" />
     </LinearLayout>
     <ImageView android:id="@+id/row1_bar" android:layout_width="match_parent" android:layout_height="5dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
@@ -42,10 +42,10 @@
 <LinearLayout android:id="@+id/row2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:visibility="gone">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
         <TextView android:id="@+id/row2_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text"
     android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/row2_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
     android:maxLines="1" android:ellipsize="end" />
     </LinearLayout>
     <ImageView android:id="@+id/row2_bar" android:layout_width="match_parent" android:layout_height="5dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
@@ -53,10 +53,10 @@
 <LinearLayout android:id="@+id/row3" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:visibility="gone">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
         <TextView android:id="@+id/row3_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text"
     android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/row3_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
-    android:textSize="12sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text2" android:textStyle="bold"
     android:maxLines="1" android:ellipsize="end" />
     </LinearLayout>
     <ImageView android:id="@+id/row3_bar" android:layout_width="match_parent" android:layout_height="5dp" android:layout_marginTop="3dp" android:scaleType="fitXY" android:importantForAccessibility="no" />
@@ -64,6 +64,6 @@
 </LinearLayout>
 </LinearLayout>
 <TextView android:id="@+id/empty" android:layout_width="match_parent" android:layout_height="wrap_content"
-    android:textSize="13sp" android:textColor="@color/stackd_widget_text2"
+    android:textSize="15sp" android:textColor="@color/stackd_widget_text2"
     android:maxLines="3" android:ellipsize="end" android:visibility="gone" />
 </LinearLayout>

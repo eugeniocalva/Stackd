@@ -37,7 +37,8 @@ public class CategoriesWidget extends BaseWidget {
         }
         rv.setImageViewBitmap(R.id.ring, Draw.ring(ctx, shares, colours, ctx.getColor(R.color.stackd_widget_track), 96, 12));
         rv.setTextViewText(R.id.ring_center, c.optString("spentText"));
-        int shown = Math.min(n, 4);
+        // three names fit beside the ring at the larger text (2026-11-10)
+        int shown = Math.min(n, 3);
         for (int i = 0; i < shown; i++) {
             JSONObject s = slices.optJSONObject(i);
             if (s == null) continue;

@@ -508,3 +508,35 @@ clash with the app's.
     failed twice on the runner; it now waits for its end state.
 - **Not yet seen on a phone.** That needs a TestFlight upload (owner's
   call).
+
+### Phone check round 1 (2026-11-10)
+
+The owner checked TestFlight 10207 on an iPhone: the widgets work. Two asks:
+
+- **A bigger Account balances that lists every account.**
+  - iOS: the widget also offers `.systemLarge`, which shows the total and up
+    to 8 accounts (the medium size shows 2).
+  - Android: the widget grows with its height. It lists 2 accounts at 4×2
+    and up to 8 when resized taller, counted from the launcher's height
+    (`BaseWidget.rowsFor`). Upcoming grows the same way.
+- **Bigger text everywhere.**
+  - iOS: titles at `.subheadline`, rows at `.subheadline`/`.body`, amounts
+    through one `Amount` view that shrinks rather than cuts off (`minimumScaleFactor
+    0.7`).
+  - Android: titles 14 sp, rows 16 sp, headlines 26 sp; the list rows keep
+    their own height instead of stretching.
+  - To keep the medium/4×2 sizes readable, some show fewer rows:
+
+    | Widget | Before | Now |
+    |---|---|---|
+    | Budget goals on iOS | 3 rows | 2 |
+    | Categories legend on Android | 4 | 3 |
+    | Account balances medium | 3 | 2 |
+
+    The wide Upcoming on iOS shows each payment on one line.
+- **Android picker previews** re-rendered. Each widget was checked off-screen
+  at normal and tall heights on the emulator; the temporary renderer was
+  removed again.
+- **CI signing.** The archive is now signed ad hoc and only the export signs
+  for the App Store (no new Development certificate per run; dry run
+  42722052511 green).
