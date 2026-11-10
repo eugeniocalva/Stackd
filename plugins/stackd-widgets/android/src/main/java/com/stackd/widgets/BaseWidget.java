@@ -68,12 +68,16 @@ public abstract class BaseWidget extends AppWidgetProvider {
         return w == 0 || w >= WIDE_MIN_DP;
     }
 
-    // Portrait height: the launcher's MAX height (MIN is the landscape one).
+    // The smaller of the two heights the launcher reports. MAX_HEIGHT is meant
+    // to be the portrait one, but on the Pixel launcher it overstated a 4×2
+    // widget and a third row ran into "+N more" (emulator, 2026-11-10).
     static int heightOf(AppWidgetManager mgr, int id) {
         Bundle o = mgr.getAppWidgetOptions(id);
         if (o == null) return 0;
-        int h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
-        return h > 0 ? h : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+        int max = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        int min = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+        if (max > 0 && min > 0) return Math.min(max, min);
+        return Math.max(max, min);
     }
 
     // How many rows of rowDp fit under a header of headerDp, between min and max.
