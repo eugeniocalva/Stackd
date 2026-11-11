@@ -30,7 +30,7 @@ module.exports = {
       lede: "Stack'd keeps every wallet, every log and every budget on your device. There is no account to create and no cloud to sync with. The only thing that ever goes online is the bank link you can choose to turn on, and it shows you every transaction before saving it.",
       play: 'Get it on Google Play',
       ios: "Download on the App Store",
-      facts: ['<b>0</b> accounts or trackers', '<b>5</b> languages', '<b>CSV</b> in and out, always'],
+      facts: ['<b>0</b> accounts or trackers', '<b>5</b> languages', '<b>CSV</b> in and out, always', '<b>Worldwide</b> on both stores'],
       imgAlt: "Stack'd home screen: total balance of €28,110.91, a balance chart, wallet cards for Main Bank and Revolut, and the latest transactions."
     },
     app: {

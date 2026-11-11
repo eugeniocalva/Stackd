@@ -22,7 +22,7 @@ module.exports = {
       lede: "O Stack'd guarda cada conta, cada movimento e cada orçamento no seu dispositivo. Não há conta de utilizador para criar nem nuvem com que sincronizar. A única coisa que vai à internet é a ligação bancária que pode optar por ativar, e ela mostra-lhe cada movimento antes de o guardar.",
       play: 'Obter no Google Play',
       ios: "Descarregar na App Store",
-      facts: ['<b>0</b> contas de utilizador ou rastreadores', '<b>5</b> idiomas', '<b>CSV</b> à entrada e à saída, sempre'],
+      facts: ['<b>0</b> contas de utilizador ou rastreadores', '<b>5</b> idiomas', '<b>CSV</b> à entrada e à saída, sempre', '<b>Em todo o mundo</b> nas duas lojas'],
       imgAlt: "Painel do Stack'd: saldo total de €28 110,91, gráfico do saldo, cartões das contas Banco principal e Revolut, e os últimos movimentos."
     },
     app: {

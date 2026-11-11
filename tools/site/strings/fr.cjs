@@ -22,7 +22,7 @@ module.exports = {
       lede: "Stack'd garde chaque compte, chaque opération et chaque budget sur votre appareil. Aucun compte utilisateur à créer, aucun cloud à synchroniser. La seule chose qui passe en ligne est le lien bancaire que vous pouvez choisir d'activer, et il vous montre chaque opération avant de l'enregistrer.",
       play: 'Disponible sur Google Play',
       ios: "Télécharger dans l'App Store",
-      facts: ['<b>0</b> compte utilisateur ni traceur', '<b>5</b> langues', '<b>CSV</b> en entrée et en sortie, toujours'],
+      facts: ['<b>0</b> compte utilisateur ni traceur', '<b>5</b> langues', '<b>CSV</b> en entrée et en sortie, toujours', '<b>Partout dans le monde</b> sur les deux stores'],
       imgAlt: "Tableau de bord de Stack'd : solde total de €28 110,91, graphique du solde, cartes des comptes Banque principale et Revolut, et les dernières opérations."
     },
     app: {

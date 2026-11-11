@@ -22,7 +22,7 @@ module.exports = {
       lede: "Stack'd tiene ogni conto, ogni movimento e ogni budget sul tuo dispositivo. Non c'è un account da creare né un cloud con cui sincronizzarsi. L'unica cosa che va online è il collegamento bancario che puoi scegliere di attivare, e ti mostra ogni movimento prima di salvarlo.",
       play: 'Disponibile su Google Play',
       ios: "Scarica su App Store",
-      facts: ['<b>0</b> account o tracker', '<b>5</b> lingue', '<b>CSV</b> in entrata e in uscita, sempre'],
+      facts: ['<b>0</b> account o tracker', '<b>5</b> lingue', '<b>CSV</b> in entrata e in uscita, sempre', '<b>In tutto il mondo</b> su entrambi gli store'],
       imgAlt: "Dashboard di Stack'd: saldo totale di €28.110,91, grafico del saldo, schede dei conti Banca principale e Revolut, e gli ultimi movimenti."
     },
     app: {
