@@ -590,7 +590,7 @@ here. Everything below is for THIS release, with Bank Connect off.
 | Field | Value |
 |---|---|
 | Price | **Free** — the app is free; Stack'd Pro is the in-app purchase |
-| Availability | **The EEA + UK — D7, decided 2026-09-27.** The EU 27, Iceland, Liechtenstein (if Apple lists it), Norway and the United Kingdom. Turn OFF automatic availability in new countries, or Apple will add storefronts outside the list as it opens them. Set `stackd_pro`'s availability to the same list. |
+| Availability | **Worldwide except China mainland — D7, widened 2026-11-11** (was the EEA + UK from 2026-09-27). China mainland stays off: its storefront needs an ICP filing number. Set `stackd_pro`'s availability to the same list. |
 | Distribution | Public |
 | Pre-orders | No |
 
@@ -670,7 +670,7 @@ No external services: no servers of ours, authentication, data providers, analyt
 - Bundled open-source libraries: Capacitor, cordova-plugin-purchase, Chart.js (MIT), pdf-lib (MIT), Lucide icons (ISC), Inter and Manrope fonts (SIL OFL).
 
 5. REGIONAL DIFFERENCES
-Distributed in the EU, EEA and UK storefronts. It works the same everywhere, with no region-specific content. The interface is in English, French, Italian, Spanish and Portuguese, with any currency. Apple sets the Stack'd Pro price per storefront.
+Distributed in every storefront except China mainland. It works the same everywhere, with no region-specific content. The interface is in English, French, Italian, Spanish and Portuguese, with any currency. Apple sets the Stack'd Pro price per storefront.
 
 6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
 Stack'd is a record-keeping and budgeting tool, not a financial service. It does not connect to bank accounts, hold or move money, process payments, offer or broker credit, or give investment or financial advice. All figures come from the user; the loan simulator only calculates on numbers typed in. No licensed activity is performed, so no licence applies. The app contains no protected third-party material.

@@ -107,7 +107,7 @@ Take these before the work below hits them. My recommendation is in each row.
 | ~~D4~~ | ~~**iPhone-only or universal?**~~ **IMPLEMENTED** — the project is set to iPhone-only, so this needs no action unless you disagree. | **Keep iPhone-only for v1.** Universal means the app is reviewed on iPad and needs 13-inch iPad screenshots; an iPhone-only app still installs and runs on iPad. One line to reverse later. |
 | ~~D5~~ | ~~**App name.**~~ **DECIDED 2026-09-27 — and the prediction was right.** "Stack'd" was refused as unavailable. | The App Store record is **"Stack'd Finance"** (Apple ID 6816636640). Not the documented fallback — the shorter name was taken as-is. **Two things this leaves open:** use the same name on Play unless you have a reason not to (one product, two names splits reviews and search), and run the EUIPO search on *Stack'd Finance* rather than on *Stack'd* before printing anything. The device home-screen name stays "Stack'd". |
 | D6 | **Bank Connect price.** Still unset because it depends on the Enable Banking minimum. | Deferred by D1. Set it when you have the quote; the reference point is €2.99/month or €4.99/month. |
-| ~~D7~~ | ~~**Launch countries.**~~ **DECIDED 2026-09-27: the EEA + UK** (31 storefronts: the EU 27, Iceland, Liechtenstein if Apple lists it, Norway, the United Kingdom). | One legal regime, which the Terms and Privacy were written for; matches Bank Connect's future coverage; and no U.S. storefront means no U.S. withholding under the W-8BEN. Widening later is a checkbox. `stackd_pro` gets the same list. |
+| ~~D7~~ | ~~**Launch countries.**~~ **DECIDED 2026-09-27: the EEA + UK** (31 storefronts: the EU 27, Iceland, Liechtenstein if Apple lists it, Norway, the United Kingdom). | One legal regime, which the Terms and Privacy were written for; matches Bank Connect's future coverage; and no U.S. storefront means no U.S. withholding under the W-8BEN. Widening later is a checkbox. `stackd_pro` gets the same list. **WIDENED 2026-11-11 to worldwide minus China mainland** (Apple: 174 storefronts; Play: +146 countries in review, China removal submitted separately) for the r/AppBuilding launch post — the U.S. storefront is now open while the W-8BEN still has no treaty claim (see O-03b). |
 
 ## 3. Already shipped (v1.14 → v1.18)
 
@@ -543,6 +543,8 @@ unblocked — it is website work in the StackdSite repo rather than app work.
   a new W-8BEN** with the treaty article and rate an accountant confirms.
   Availability set 2026-09-27: EEA + UK for the app and for `stackd_pro`,
   automatic availability in new countries off.
+  **2026-11-11: availability widened to worldwide minus China mainland (D7)**,
+  so U.S. sales now carry the 30% withholding until a treaty W-8BEN is filed.
 - **O-03c · Join the Small Business Program** (15% instead of 30%) ·
   **SUBMITTED 2026-09-27** (the first attempt, before the Paid Apps agreement
   was active, failed). Waiting for Apple's approval; the lower rate starts
