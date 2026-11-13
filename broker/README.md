@@ -39,7 +39,7 @@ and the root `npm run lint/test` never touch it.
 | `GET /v1/connections` | device | the owner's connections (same shape) |
 | `GET /v1/accounts/:id/transactions?date_from&date_to` | device, entitled | proxied, all pages merged → `{transactions, truncated}`; ownership-checked, unknown → 404 |
 | `GET /v1/accounts/:id/balances` | device, entitled | proxied |
-| `DELETE /v1/connections/:ref` | device | deletes the session at the aggregator, forgets the ref, releases capacity |
+| `DELETE /v1/connections/:ref` | device | deletes the session at the aggregator, forgets the ref, releases capacity; 1.3.0 (GAP-4): the owner's last connection, with no active subscription, also deletes the whole owner (`{ok, ref, purged: true}`) |
 | `POST /v1/pair/code` | native, entitled | v1.11: `{code, expiresAt}` — 8 chars, 5-minute TTL, single-use, 5/h per owner |
 | `POST /v1/pair/claim` | — | v1.11: `{code}` → the browser becomes a `web` device on that owner: `Set-Cookie stackd_session` + `{ownerId, active, expiresAt, csrf, sessionExpiresAt}`; 10/h per IP |
 | `GET /v1/session` | cookie | v1.11: the web boot check — same body with a fresh `csrf`, re-issues the cookie (90 days sliding); `401 no_session` |
@@ -75,7 +75,15 @@ production 404). Without a receipt it silently re-checks a stored one near
 expiry / after a lapse (once per 6 h). Config: `PRODUCT_IDS`,
 `PLAY_PACKAGE_NAME`, `APPLE_BUNDLE_ID`, `APPLE_ISSUER_ID`, `APPLE_KEY_ID`
 (vars) and the secrets `PLAY_SERVICE_ACCOUNT_JSON` (whole key file) and
-`APPLE_PRIVATE_KEY` (the `.p8`):
+`APPLE_PRIVATE_KEY` (the `.p8`).
+
+**Retention (1.3.0 GAP-4).** The owner record is deleted when its last
+connection is disconnected without an active subscription, or by the
+owner's Durable Object alarm 14 days after the subscription ended — after
+re-asking the store, and after revoking any connections left at Enable
+Banking. The exact rule is the comment above `OwnerDO` in
+`src/durable-objects.ts`; a device of a purged owner gets
+`401 invalid_device_token` / `401 invalid_session`.
 
 ```powershell
 cd C:\Users\ecalvaresi\Desktop\Projects\Stackd\broker; Get-Content "<service-account>.json" -Raw | npx wrangler secret put PLAY_SERVICE_ACCOUNT_JSON --env production
@@ -169,8 +177,12 @@ owner task and needs no code.
   the per-IP mint/institutions limits, the per-owner request limit, the
   per-owner and global connection caps, and the circuit breaker. App
   attestation (`X-Stackd-Attest`, D-C5) is the real fix and is a fast follow.
-- **Logging** records method, path, status and latency; aggregator failures
-  log status + error code only. Never bodies, never headers, never refs.
+- **Logging** records method, route pattern (`/v1/connections/:ref`, never
+  the concrete path — `src/paths.ts`; unknown paths log as `other`), status
+  and latency; aggregator failures log status + error code only. Never
+  bodies, never headers, never query strings, never refs. Cloudflare's own
+  invocation logs (`[observability]` in `wrangler.toml`) are outside this
+  code and can record the full request URL (path and query string).
 - **`ENTITLEMENT_MODE=open`** is refused whenever `PUBLIC_URL` is the
   production host, regardless of `[vars]`.
 - **EU pin:** `OwnerDO` is reached through `jurisdiction('eu')`. Local

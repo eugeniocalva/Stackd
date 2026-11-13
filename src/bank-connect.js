@@ -35,6 +35,9 @@ window.BankConnect = {
   PROD_BROKER_URL: 'https://api.stackdplatform.com',    // v1.11 B7: what the deployed web build talks to
   WEB_ORIGIN: 'https://app.stackdplatform.com',         // v1.11 B7: the deployed web build (UX plan §16.4)
   CLIENT_ID: 'stackd-web',
+  // 1.3.0 (GAP-7): a request that gets no answer in this long fails as
+  // 'network_timeout' instead of hanging the sheet on a dead network.
+  TIMEOUT_MS: 20000,
   MAX_CONNECTIONS: 3, // D-C9: one product, up to 3 banks
   // Settings-sheet options. 0 = "Maximum" (the institution's own limit).
   HISTORY_OPTIONS: [30, 90, 180, 365, 0],
@@ -444,7 +447,36 @@ window.BankConnect = {
       keepalive: !!opts.keepalive // factory reset revokes right before a reload
     };
     if (web) init.credentials = 'include';
-    const res = await fetch(this.brokerUrl() + path, init);
+    // 1.3.0 (GAP-7): the whole exchange (headers and body) is bounded. A
+    // keepalive request (the revoke right before a factory-reset reload)
+    // is left alone: the page is going away anyway.
+    const ms = opts.timeoutMs != null ? opts.timeoutMs : this.TIMEOUT_MS;
+    const ctrl = !opts.keepalive && ms > 0 && typeof AbortController === 'function' ? new AbortController() : null;
+    let timer = null;
+    if (ctrl) {
+      init.signal = ctrl.signal;
+      timer = setTimeout(() => ctrl.abort(), ms);
+    }
+    const timedOut = (e) => {
+      if (!ctrl || !ctrl.signal.aborted) return e;
+      const err = new Error('network_timeout');
+      err.status = 0;
+      err.code = 'network_timeout';
+      return err;
+    };
+    try {
+      return await this._exchange(path, opts, init, web, timedOut);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  },
+  async _exchange(path, opts, init, web, timedOut) {
+    let res;
+    try {
+      res = await fetch(this.brokerUrl() + path, init);
+    } catch (e) {
+      throw timedOut(e);
+    }
     if (!res.ok) {
       let code = 'broker_' + res.status;
       try { const b = await res.json(); if (b && b.error) code = b.error; } catch (e) { /* no body */ }
@@ -467,7 +499,11 @@ window.BankConnect = {
       throw err;
     }
     if (res.status === 204) return null;
-    return res.json();
+    try {
+      return await res.json();
+    } catch (e) {
+      throw timedOut(e);
+    }
   },
 
   // Bank picker data. Cached per country for the session: the broker caches

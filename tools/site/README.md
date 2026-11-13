@@ -16,6 +16,7 @@ URLs), the others under `/fr/`, `/it/`, `/es/`, `/pt/`.
 | `legal.cjs` | `<lang>/privacy.html`, `<lang>/terms.html` from the app's dictionaries; also writes the shared header and footer into the hand-written English `privacy.html` / `terms.html` |
 | `screens.cjs` | `img/{home-dark,home-light,history-dark,debt-dark}.webp` and the same under `img/<lang>/` — real app screens, 390×844 @2x |
 | `make-og.cjs` | `img/og.png` — the 1200×630 link-preview image, rendered from `og.html` (English only, decision D7) |
+| `jsonld.cjs` | nothing by itself — the schema.org JSON-LD that `pages.cjs` puts in the `<head>` of Home (`MobileApplication` + studio `Organization` + `WebSite`) and Support (`FAQPage` from the page's own FAQ strings). Run it to check the written pages: every block parses, carries what Google's rich results need, has no rating and no unescaped `<`, `>`, `&` or `@` |
 | `sitemap.cjs` | `sitemap.xml` |
 | `redirect-check.cjs` | nothing — tests the site's language redirect, `StackdSite/functions/_middleware.js` |
 | `hero-render.cjs` | nothing in the site — frames, contact sheets and previews of the animated home title in `tools/site/out/hero/` (gitignored), from `hero-scene.html`, `hero.cjs` and the motion in the site's `styles.css` |

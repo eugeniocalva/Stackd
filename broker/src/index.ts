@@ -22,6 +22,7 @@ import { mintToken, parseBearer, parseSessionCookie, sessionCookie, clearSession
 import { OwnerClient, SystemClient, RateClient, type OwnerRecord, type ReqRecord, type Entitlement, type DeviceRecord } from './durable-objects';
 import { returnPage } from './html';
 import { verifyReceipt, StoreError, type VerifyInput } from './store-verify';
+import { pathPattern } from './paths';
 
 export { OwnerDO, SystemDO, RateDO } from './durable-objects';
 
@@ -303,16 +304,21 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
     deviceToken = minted.token;
   }
 
+  // 1.3.0 (GAP-4): a write to an owner purged since the session check.
+  const written = (e: Entitlement | null): Entitlement => {
+    if (e) return e;
+    throw existing ? ownerGone(existing) : new HttpError(401, 'invalid_device_token');
+  };
   let entitlement: Entitlement;
   let reason: string | null = null;
   if (c.cfg.mode === 'open') {
-    entitlement = await owner.setEntitlement({
+    entitlement = written(await owner.setEntitlement({
       active: true,
       platform: 'open',
       productId: 'staging',
       expiresAt: iso(c.now() + 365 * DAY_MS),
       lastVerifiedAt: iso(c.now())
-    });
+    }));
   } else {
     // v1.09 B5: a receipt in the body → verify with the store now; no receipt
     // → re-check a stored one when it is near expiry or lapsed (throttled).
@@ -335,7 +341,7 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
           record = adopted.record;
           deviceToken = adopted.deviceToken;
         }
-        entitlement = await owner.setEntitlement({
+        entitlement = written(await owner.setEntitlement({
           active: v.active,
           platform: v.platform,
           productId: v.productId,
@@ -344,12 +350,12 @@ async function handleEntitlementVerify(request: Request, c: Ctx): Promise<Respon
           purchaseToken: v.purchaseToken || null,
           originalTransactionId: v.originalTransactionId || null,
           state: v.state
-        });
+        }));
         if (adopted) record = { ...record, entitlement };
         if (!v.active) reason = 'store_' + v.state.toLowerCase();
         if (adopted) reason = 'adopted';
       } catch (e) {
-        if (fresh) throw e; // the user is watching: surface receipt_invalid & co.
+        if (fresh || e instanceof HttpError) throw e; // the user is watching: surface receipt_invalid & co.
         entitlement = record.entitlement; // silent re-check failed: keep what we had
       }
     } else {
@@ -432,6 +438,9 @@ async function adoptReceiptOwner(
       originalTransactionId: null,
       state: 'ADOPTED'
     });
+    // 1.3.0 (GAP-4) rule 3: nothing is left on it (no connections, no
+    // subscription) and its token is replaced in the app by the one below.
+    await owner.purge();
   } catch { /* best effort: the adoption itself has already succeeded */ }
 
   return { ownerId: claim.ownerId, owner: target, record: targetRecord, deviceToken: `${claim.ownerId}.${secret}` };
@@ -518,7 +527,7 @@ async function handleConnectStart(request: Request, session: Session, c: Ctx): P
       linkedAt: null,
       lastError: null
     };
-    await session.owner.addRequisition(rec);
+    if (!(await session.owner.addRequisition(rec))) throw ownerGone(session); // purged meanwhile (GAP-4)
     return json({ ref, bankRedirectUrl: auth.url, historyDays, validityDays }, 201);
   } catch (e) {
     await c.system.release();
@@ -629,13 +638,24 @@ async function handleAccountData(kind: 'transactions' | 'balances', accountId: s
   }
 }
 
+// 1.3.0 (GAP-4): the owner was purged while this request was in flight. The
+// same answer as a token that never existed, so the app starts over.
+function ownerGone(session: Session): HttpError {
+  return session.kind === 'web'
+    ? new HttpError(401, 'invalid_session', undefined, { 'set-cookie': clearSessionCookie() })
+    : new HttpError(401, 'invalid_device_token');
+}
+
 async function handleRevoke(ref: string, session: Session, c: Ctx): Promise<Response> {
   const rec = session.record.requisitions[ref];
   if (!rec) throw new HttpError(404, 'unknown_ref');
   if (rec.sessionId) await c.agg.deleteSession(rec.sessionId);
-  await session.owner.removeRequisition(ref);
+  // 1.3.0 (GAP-4) rule 1 (src/durable-objects.ts): the last connection of an
+  // owner without a subscription takes the whole owner record with it.
+  const { purged } = await session.owner.removeRequisition(ref, true);
   await c.system.release();
-  return json({ ok: true, ref });
+  if (!purged) return json({ ok: true, ref });
+  return json({ ok: true, ref, purged: true }, 200, session.kind === 'web' ? { 'set-cookie': clearSessionCookie() } : undefined);
 }
 
 // ── Well-known (D-C7) ──────────────────────────────────────────────────────
@@ -769,7 +789,7 @@ export function createApp(deps: Deps = {}) {
           await note(e.code);
         } else {
           // Message only — never a body, never a header.
-          console.log(JSON.stringify({ level: 'error', p: url.pathname, err: e instanceof Error ? e.message : String(e) }));
+          console.log(JSON.stringify({ level: 'error', p: pathPattern(url.pathname), err: e instanceof Error ? e.message : String(e) }));
           res = json({ error: 'internal' }, 500);
           await note('internal');
         }
@@ -778,7 +798,9 @@ export function createApp(deps: Deps = {}) {
       for (const [k, v] of Object.entries(cors)) headers.set(k, v);
       headers.set('x-content-type-options', 'nosniff');
       res = new Response(res.body, { status: res.status, headers });
-      console.log(JSON.stringify({ m: request.method, p: url.pathname, s: res.status, ms: now() - started }));
+      // 1.3.0 (audit, logs): the route pattern, never the concrete path —
+      // account uids and connection refs live in path segments.
+      console.log(JSON.stringify({ m: request.method, p: pathPattern(url.pathname), s: res.status, ms: now() - started }));
       return res;
     },
 
