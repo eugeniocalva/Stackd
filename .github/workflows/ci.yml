@@ -1,0 +1,69 @@
+# 1.3.0 (GAP-2): the gates on every push to main and every pull request.
+# Before this, lint and the unit tests ran only inside the manual TestFlight
+# workflow, and the e2e suite and the broker checks never ran in CI.
+#
+# Ubuntu runners, no secrets: nothing here builds, signs or deploys.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App — lint, unit, e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Dependency audit (shipped dependencies only)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: E2E tests
+        run: npm run test:e2e
+      - name: Keep the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  broker:
+    name: Broker — typecheck, tests, dry-run build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: broker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: broker/package-lock.json
+      - run: npm ci
+      - name: Check (typecheck + tests + wrangler dry-run)
+        run: npm run check

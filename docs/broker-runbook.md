@@ -94,6 +94,16 @@ owner:
 
 No names, no addresses, no bank credentials, no balances, no transactions.
 
+**How long (1.3.0 GAP-4).** An owner record is deleted whole — devices,
+browser sessions, connections, subscription status and store identifier,
+plus the receipt and pairing entries that point at it — when its last bank
+is disconnected with no active subscription, or by the owner's alarm 14 days
+after the subscription ended (the store is asked again first, and any banks
+still linked are revoked at Enable Banking). A subscription still active is
+never deleted. The exact rule is the comment above `OwnerDO` in
+`broker/src/durable-objects.ts`. So "how many people" (step 4) counts only
+current and recently lapsed subscribers.
+
 It also holds, as secrets: the **Enable Banking private key**, the **Play
 service-account key**, and the **Apple In-App Purchase key**.
 
@@ -272,6 +282,58 @@ Never claim "no data was affected" unless step 4 actually established it.
 - Fix the cause, and add a counter or threshold in `src/index.ts` if the
   monitoring did not catch it. An incident the alerting missed should change
   the alerting.
+
+---
+
+## 8. Rollback — a bad broker deploy
+
+Use this when a deploy itself is the incident (errors since a release, a
+wrong `[vars]` value). It restores **code and config**, never data. If bank
+traffic is the worry, pause it first (§2), then roll back.
+
+Which Worker: no flag = **staging** (`stackd-broker-staging`,
+api-staging.stackdplatform.com); `--env production` = **production**
+(`stackd-broker`, api.stackdplatform.com). Run from `broker/`, logged in with
+`npx wrangler login`.
+
+```bash
+cd broker
+npx wrangler deployments list --env production    # what is live, newest first, with version ids
+npx wrangler rollback --env production --message "roll back <reason>"               # to the previous version
+npx wrangler rollback <VERSION_ID> --env production --message "roll back <reason>"  # to a named one
+# staging: the same commands without --env production
+```
+
+Then `curl https://api.stackdplatform.com/healthz` and
+`node scripts/smoke.mjs https://api.stackdplatform.com`, and write the
+version ids and times into the incident record (§7).
+
+**What a rollback cannot undo:**
+
+- **Durable Object storage.** Owner records, the SystemDO indexes and the
+  counters are not versioned. Whatever the bad version wrote or deleted
+  stays written or deleted — in particular owners it purged (GAP-4) are gone.
+  Our DOs are SQLite-backed (`new_sqlite_classes`), which Cloudflare keeps
+  point-in-time recoverable for 30 days, but only per object and from code
+  (the storage bookmark API): it is a deliberate code change, not a console
+  button, and restoring a purged owner undoes a deletion the privacy policy
+  promised. Treat it as a last resort and record why.
+- **Secrets** (`wrangler secret put`) are not part of a code rollback. If a
+  secret changed with the bad deploy, put the previous value back by hand.
+- **Durable Object migrations.** `broker/wrangler.toml` has one migration,
+  tag `v1` (`new_sqlite_classes` for OwnerDO, SystemDO, RateDO). A migration
+  is one-way: a rollback cannot cross it (Wrangler refuses a rollback to a
+  version on the other side of a migration), and a `deleted_classes` or
+  `renamed_classes` step takes or moves that class's data for good. So:
+  ship any new `[[migrations]]` entry in a deploy of its own, additive only
+  (`new_sqlite_classes`), tried on staging first; never delete a class that
+  holds data; and if a deploy that carried a migration goes bad, **roll
+  forward** — redeploy the fixed code with the migration kept — instead of
+  rolling back.
+- **Behaviour that depends on the version.** Rolling back to a version
+  older than 1.3.0 also brings back its rules: no GAP-4 purge, and log lines
+  with concrete paths (connection refs, account ids) instead of route
+  patterns.
 
 ---
 

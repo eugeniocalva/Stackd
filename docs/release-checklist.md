@@ -253,3 +253,51 @@ TestFlight, then submit.
   no shipped build talks to it at all. When that changes, its gate is
   `npm run deploy:production` from inside `broker/`, which refuses to run
   until `scripts/preflight.mjs` passes.
+
+## 10. Rollback — when a release goes wrong
+
+Added 2026-11-13 (GAP-6). Read it **before** shipping, not during the fire.
+A store binary cannot be "rolled back": what you can do is stop it spreading
+and ship a fixed build fast.
+
+**Stop it spreading (minutes):**
+
+- **Google Play** — ship every production release as a **staged rollout**
+  (start at 10–20 %, not 100 %). If crash or ANR rates jump in *Android
+  vitals*, or a bad bug is reported: Play Console → Release → Production →
+  **Halt rollout**. Users who already updated keep the bad build; nobody new
+  gets it. Resume or replace the release once it is fixed.
+- **App Store** — release with **Phased Release for Automatic Updates**
+  (7-day ramp). Problem found: App Store Connect → the version → **Pause
+  Phased Release** (up to 30 days). Manual updates from the store page still
+  get the build, so pausing slows it, it does not stop it.
+- **Worst case (data loss, security):** remove the app from sale in the
+  affected store until a fix is approved, and say so in a support note.
+
+**Ship the fix (hours to a day):**
+
+1. Fix on `main`, with a test that fails without the fix.
+2. **PATCH bump** (`npm pkg set version=x.y.z+1 && npm run version:sync`):
+   neither store accepts a build number twice, and a halted Play release
+   needs a higher `versionCode` to replace it.
+3. Gates (§3), build (§4–7), smoke on a device (§8).
+4. Play: create a new release that replaces the halted one (staged again).
+   App Store: submit the new version and ask for an **expedited review**
+   (App Store Connect → Contact Us → App Review → expedited review request)
+   when users are actually harmed.
+
+**Data safety net:** a bad build can only damage data on the device. Users
+with the daily backup on (Backup page) can restore yesterday's file; the
+boot heals in `store.js` are idempotent, so a fixed build repairs what it can
+on the next launch. Never ship a "fix" that deletes or rewrites user data
+without a test that restores a real backup first.
+
+**Website (Cloudflare Pages):** Cloudflare dashboard → Workers & Pages → the
+site → Deployments → pick the last good one → **Rollback to this
+deployment** (instant, no rebuild). Then `git revert` the bad commit in
+`StackdSite` so the next push does not bring it back.
+
+**Broker:** see `docs/broker-runbook.md` → *Rollback* (`wrangler rollback`).
+Durable Object data migrations cannot be rolled back with the code: a
+release that changes stored shapes must read both the old and the new shape
+for one release.

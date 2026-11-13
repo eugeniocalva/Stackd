@@ -19,6 +19,12 @@ routes = [
 [observability]
 enabled = true
 
+# 1.3.0 (GAP-5): our own log lines name route patterns only (src/paths.ts).
+# Cloudflare's automatic per-request log would still record the full URL,
+# which carries connection refs and account ids: switch it off.
+[observability.logs]
+invocation_logs = false
+
 # v1.16 A-11: the monitoring cron. Runs outside the request path, so it still
 # fires while the API itself is failing — but not if the whole Worker is down,
 # which is why README also asks for an EXTERNAL pinger on /healthz. Alerts go
