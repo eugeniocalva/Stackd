@@ -18,9 +18,9 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260903.1",
+    "@cloudflare/workers-types": "^5.20261110.1",
     "typescript": "^5.5.0",
     "vitest": "^4.0.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.160.0"
   }
 }
