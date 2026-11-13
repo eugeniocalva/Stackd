@@ -52,7 +52,7 @@ jobs:
       SCHEME: App
       BUILD_NUMBER: ${{ inputs.build_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The `runner` context does not exist at job level, so the temp paths
       # are set here and exported to every later step.
