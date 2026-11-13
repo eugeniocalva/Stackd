@@ -31,6 +31,8 @@ describe('Negative Opening Balance Support', () => {
           defaultAccountId: 'acc_cc'
         }),
         getCurrencySymbol: () => '$',
+        CURRENCY_CODES: ['USD', 'EUR', 'JPY', 'GBP', 'CNY'], // 1.3.0 (PL-2)
+        currencyLabel: (c) => String(c),
         getAccountBalance: (id) => -250.00,
         dispatch: vi.fn(),
         _isPositiveTx: (t) => t.type === 'opening_balance' ? t.amount >= 0 : (t.type === 'income' || t.type === 'transfer_in'),

@@ -26,7 +26,7 @@ Build 1.2.x (public 1.2), English, light theme, invented example data.
 
 | Screen | Shows | Controls | Leads to |
 |---|---|---|---|
-| **Welcome to Stack'd** (sheet, mandatory) | "Set your preferred region. You can always change this later in Others → Region Setting." Two rows: **Currency** (USD, EUR, JPY, GBP, CNY), **Language** (English, Français, Italiano, Español, Português). Cannot be swiped away. | the two rows open pickers; **Get Started** | Home (empty) |
+| **Welcome to Stack'd** (sheet, mandatory) | "Set your preferred region. You can always change this later in Others → Region Setting." Two rows: **Currency** (every currency, searchable; opens on the one of the phone's region), **Language** (English, Français, Italiano, Español, Português). Cannot be swiped away. | the two rows open pickers; **Get Started** | Home (empty) |
 
 ### A3. Home (Dashboard)
 
@@ -100,9 +100,9 @@ Title "Smart Insights" + "Worked out from your own entries, on this phone." Sect
 | Card | Rows |
 |---|---|
 | **Manage** | **Accounts** (n accounts) → **Accounts** sheet: your order with Move up / Move down and a grip, "Default wallet" under the default, **+ Create New Account**; **Categories**; **Tags** |
-| **Region Setting** | **Currency** (Choose Currency; switching → **Switch to USD?** confirm naming the excluded accounts and a relabel option); **Language** (Choose Language, live) |
+| **Region Setting** | **Currency** (Choose Currency: search field, Suggested, More currencies; Done / Cancel; switching → **Switch to USD?** confirm naming the excluded accounts and a relabel option); **Language** (Choose Language, live) |
 | **Tab bar** | Home locked first; the other tabs with Move up / Move down and a grip; **Restore the default order** |
-| **Privacy** | **Hide balances**, **Shake to hide** |
+| **Privacy** | **Hide balances**, **Shake to hide**; on the phone apps **App lock** (create a 4-digit PIN), then **Unlock with Face ID / fingerprint**, **Lock after** (Immediately · 1 minute away · 5 minutes away), **Change PIN** |
 | **Data Visualization** / **Preferences** | Enable transaction time input |
 | **Appearance** | Theme Light · Dark · System |
 | **Data** | **Import and export** → sheet (Import file · Export file); **Backup**; **Import rules** |

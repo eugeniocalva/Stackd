@@ -54,7 +54,7 @@ window.StackdWidgets = {
     const signed = !!(opts && opts.signed);
     const sign = v < 0 ? '-' : (signed && v > 0 ? '+' : '');
     if (state.privacy && state.privacy.hide === true) {
-      return `${sign}${S.getCurrencySymbol(ccy || state.currency)}${S.MONEY_MASK}`;
+      return `${sign}${S.currencyPrefix(ccy || state.currency)}${S.MONEY_MASK}`; // 1.3.0 (PL-2)
     }
     const s = S.formatCurrency(Math.abs(v), ccy, { plain: true });
     return sign + s;

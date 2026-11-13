@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- androidx.biometric merges this one already; named here so the app's
+         need for it is visible in the plugin that asks. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+</manifest>

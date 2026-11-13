@@ -205,7 +205,7 @@ module.exports = {
         ['Back (Android, swipe)', 'Closes the top sheet, then the menu, then selection mode, then widget edit mode, then asks "Discard changes?" on a dirty form, then goes back.', '—']
       ]},
       { title: 'First launch', rows: [
-        ['Welcome to Stack\'d', 'Mandatory sheet: Currency (USD, EUR, JPY, GBP, CNY), Language (5), "You can always change this later in Others → Region Setting".', 'Get Started → Home']
+        ['Welcome to Stack\'d', 'Mandatory sheet: Currency (every major currency, searchable), Language (5), "You can always change this later in Others → Region Setting".', 'Get Started → Home']
       ]},
       { title: 'Home', rows: [
         ['Total balance', 'Total in the base currency; deltas as of today and projected EOM vs the start of the month. Accounts in another currency are excluded (a note says how many).', '—'],

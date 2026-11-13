@@ -40,6 +40,10 @@
     <string>Take a photo of a receipt to attach it to a transaction. Photos stay on this device.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Pick a photo of a receipt to attach it to a transaction. Photos stay on this device.</string>
+    <!-- 1.3.0 (PL-3/PL-4): App lock's Face ID prompt (plugins/stackd-privacy).
+         iOS ends the app at the first Face ID request without this string. -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Stack'd uses Face ID to unlock the app when App lock is on.</string>
     <!-- 1.2.0 (UX-11): the iCloud Drive folder of the backups (Files >
          iCloud Drive > Stack'd > Stackd Backups). Bump the bundle version
          whenever this dictionary changes, or iCloud keeps the old one. -->

@@ -282,6 +282,78 @@ describe('shake to hide (HG-4)', () => {
     C.PrivacyShake.disarmPermission();
   });
 
+  // 1.3.0 (PL-1): the first touch after a launch often ends a scroll, which
+  // iOS does not take as a gesture — the call throws. 1.2.2 stopped listening
+  // there, so no shake arrived until the Settings switch was flipped.
+  it('keeps asking until iOS grants: a refused first touch is not the last try', async () => {
+    boot({ stored: { hide: false, shake: true } });
+    global.window.document = document;
+    let gesture = false;
+    const ask = vi.fn(() => (gesture ? Promise.resolve('granted') : Promise.reject(new Error('NotAllowedError'))));
+    global.window.DeviceMotionEvent.requestPermission = ask;
+    mount();
+    document.body.dispatchEvent(new Event('touchend', { bubbles: true })); // the end of a scroll
+    expect(ask).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(C.PrivacyShake._asking).toBe(false));
+    expect(C.PrivacyShake._granted).toBe(false);
+    expect(C.PrivacyShake._armHandler).not.toBe(null); // still armed
+    gesture = true;
+    document.body.click(); // a real tap
+    expect(ask).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(C.PrivacyShake._granted).toBe(true));
+    expect(C.PrivacyShake._armHandler).toBe(null);
+    document.body.click();
+    expect(ask).toHaveBeenCalledTimes(2); // granted: nothing left to ask
+  });
+
+  it('a real refusal ends the asking, and turning the pref off disarms it', async () => {
+    boot({ stored: { hide: false, shake: true } });
+    global.window.document = document;
+    const ask = vi.fn(() => Promise.resolve('denied'));
+    global.window.DeviceMotionEvent.requestPermission = ask;
+    mount();
+    document.body.click();
+    await vi.waitFor(() => expect(C.PrivacyShake._armHandler).toBe(null));
+    document.body.click();
+    expect(ask).toHaveBeenCalledTimes(1);
+    // armed again by a render, then the pref goes off
+    mount();
+    expect(C.PrivacyShake._armHandler).not.toBe(null);
+    S.dispatch('SET_PRIVACY', { shake: false });
+    mount();
+    expect(C.PrivacyShake._armHandler).toBe(null);
+  });
+
+  // 1.3.0 (PL-1): the iPhone shell detects the shake itself (CoreMotion)
+  it('listens to the native shake when the plugin offers one, and stops it with Home', async () => {
+    boot({ native: true, stored: { hide: false, shake: true } });
+    let onShake = null;
+    const remove = vi.fn();
+    const plugin = {
+      addListener: vi.fn((name, fn) => { onShake = fn; return Promise.resolve({ remove }); }),
+      startShake: vi.fn(() => Promise.resolve({ native: true })),
+      stopShake: vi.fn(() => Promise.resolve({}))
+    };
+    global.window.Capacitor.Plugins.StackdPrivacy = plugin;
+    mount();
+    expect(plugin.addListener).toHaveBeenCalledWith('shake', expect.any(Function));
+    expect(plugin.startShake).toHaveBeenCalledTimes(1);
+    mount(); // a re-render does not subscribe twice
+    expect(plugin.startShake).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(C.PrivacyShake._nativeHandle).not.toBe(null));
+    onShake();
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(true));
+    // the web detector firing for the same shake counts once (cooldown)
+    const fired = vi.fn();
+    C.PrivacyShake._onShake = fired;
+    const now = Date.now();
+    motion(20, now); motion(-20, now + 200); motion(20, now + 400);
+    expect(fired).not.toHaveBeenCalled();
+    V.destroy();
+    expect(plugin.stopShake).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
   it('asks iOS for motion access and reports a refusal', async () => {
     boot();
     global.window.DeviceMotionEvent.requestPermission = vi.fn(() => Promise.resolve('denied'));

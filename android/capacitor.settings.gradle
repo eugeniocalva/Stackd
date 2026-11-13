@@ -26,5 +26,8 @@ project(':capacitor-splash-screen').projectDir = new File('../node_modules/@capa
 include ':stackd-cloud'
 project(':stackd-cloud').projectDir = new File('../plugins/stackd-cloud/android')
 
+include ':stackd-privacy'
+project(':stackd-privacy').projectDir = new File('../plugins/stackd-privacy/android')
+
 include ':stackd-widgets'
 project(':stackd-widgets').projectDir = new File('../plugins/stackd-widgets/android')

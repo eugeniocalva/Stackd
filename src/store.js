@@ -164,6 +164,8 @@ window.Store = {
     // (Store.isMoneyMasked); shake flips hide from a shake while Home is on
     // screen. Per-device pref, outside the CSV backup.
     privacy: { hide: false, shake: false },
+    // 1.3.0 (PL-3): App lock (normalizeAppLock). Per device, outside the backup.
+    appLock: null,
     // 1.2.2 (HG-7 P2): the tab bar order after Home (Home is always first
     // and the start screen). Per-device pref, outside the CSV backup.
     navOrder: ['transactions', 'budget', 'analytics', 'insights'],
@@ -342,6 +344,7 @@ window.Store = {
     this.state.enableTimeInput = window.StackdDB.load('enableTimeInput', false);
     this.state.exportPrefs = window.StackdDB.load('exportPrefs', null); // 1.1.0 (IE-4)
     this.state.privacy = this.normalizePrivacy(window.StackdDB.load('privacy', null)); // 1.2.2 (HG-4)
+    this.state.appLock = this.normalizeAppLock(window.StackdDB.load('appLock', null)); // 1.3.0 (PL-3)
     this.state.navOrder = this.normalizeNavOrder(window.StackdDB.load('navOrder', null)); // 1.2.2 (HG-7 P2)
     this.state.accountOrder = this._loadAccountOrder(); // 1.2.2 (HG-12)
     this.state.analyticsBalanceMode = window.StackdDB.load('analyticsBalanceMode', 'today');
@@ -2135,6 +2138,7 @@ window.Store = {
       case 'enableTimeInput': s.enableTimeInput = L('enableTimeInput', false); return true;
       case 'exportPrefs': s.exportPrefs = L('exportPrefs', null); return true; // 1.1.0 (IE-4)
       case 'privacy': s.privacy = this.normalizePrivacy(L('privacy', null)); return true; // 1.2.2 (HG-4)
+      case 'appLock': s.appLock = this.normalizeAppLock(L('appLock', null)); return true; // 1.3.0 (PL-3)
       case 'navOrder': s.navOrder = this.normalizeNavOrder(L('navOrder', null)); return true; // 1.2.2 (HG-7 P2)
       case 'accountOrder': s.accountOrder = this._loadAccountOrder(); return true; // 1.2.2 (HG-12)
       case 'historySortOrder': s.historySortOrder = L('historySortOrder', 'desc'); return true;
@@ -3856,6 +3860,8 @@ window.Store = {
         window.StackdDB.remove('exportPrefs');
         this.state.privacy = this.normalizePrivacy(null); // 1.2.2 (HG-4): a fresh install shows its balances
         window.StackdDB.remove('privacy');
+        this.state.appLock = this.normalizeAppLock(null); // 1.3.0 (PL-3): a wiped install has no lock
+        window.StackdDB.remove('appLock');
         this.state.navOrder = this.normalizeNavOrder(null); // 1.2.2 (HG-7 P2): the default tab order
         window.StackdDB.remove('navOrder');
         this.state.accountOrder = []; // 1.2.2 (HG-12): back to alphabetical
@@ -4062,7 +4068,7 @@ window.Store = {
         // nothing (keeps same-currency transfer pairs on one currency). It is
         // a label change only: amounts are never converted.
         const code = typeof payload === 'string' ? payload : (payload && payload.code);
-        if (!code) break;
+        if (!this.isCurrencyCode(code)) break; // 1.3.0 (PL-2): three capitals, or nothing
         const prev = this.state.currency;
         if (payload && typeof payload === 'object' && payload.relabel && code !== prev) {
           let moved = false;
@@ -4125,6 +4131,17 @@ window.Store = {
       case 'SET_PRIVACY': {
         this.state.privacy = this.normalizePrivacy(Object.assign({}, this.getPrivacy(), payload || {}));
         window.StackdDB.save('privacy', this.state.privacy);
+        changed = true;
+        break;
+      }
+
+      // 1.3.0 (PL-3, docs/privacy-currencies-plan.md §4): App lock — merged
+      // and normalised. { enabled: false } forgets the PIN's hash with it.
+      // Per device, outside the backup. The PIN itself is never stored.
+      case 'SET_APP_LOCK': {
+        this.state.appLock = this.normalizeAppLock(Object.assign({}, this.getAppLock(), payload || {}));
+        if (this.state.appLock.enabled) window.StackdDB.save('appLock', this.state.appLock);
+        else window.StackdDB.remove('appLock');
         changed = true;
         break;
       }
@@ -4427,10 +4444,131 @@ window.Store = {
   },
 
   // Currency helpers
+  // 1.3.0 (PL-2, docs/privacy-currencies-plan.md \u00a73): every active ISO 4217
+  // currency except funds, metals and the seven that count in thousandths
+  // (BHD IQD JOD KWD LYD OMR TND \u2014 D6: amounts are kept in cents). Names and
+  // symbols come from Intl, so there is no dictionary key per currency.
+  CURRENCY_CODES: ('AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BIF BMD BND BOB BRL BSD BTN BWP BYN BZD ' +
+    'CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD ' +
+    'HKD HNL HTG HUF IDR ILS INR IRR ISK JMD JPY KES KGS KHR KMF KPW KRW KYD KZT LAK LBP LKR LRD LSL MAD MDL MGA MKD ' +
+    'MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF ' +
+    'SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TOP TRY TTD TWD TZS UAH UGX USD UYU UZS ' +
+    'VES VND VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG').split(' '),
+  // The five original currencies keep their signs and dictionary names.
+  _PINNED_SYMBOLS: { USD: '$', EUR: '\u20ac', JPY: '\u00a5', GBP: '\u00a3', CNY: '\u00a5' },
+  // The phone's region \u2192 its currency (regionCurrency). 'CCY:R1 R2\u2026' groups.
+  _REGION_CURRENCIES: 'EUR:AD AT AX BE BG BL CY DE EE ES FI FR GF GP GR HR IE IT LT LU LV MC ME MF MQ MT NL PM PT RE SI SK SM TF VA XK YT|' +
+    'USD:AS BQ EC FM GU IO MH MP PA PR PW SV TC TL UM US VG VI ZW|GBP:GB GG GS IM JE|AUD:AU CC CX HM KI NF NR TV|NZD:CK NU NZ PN TK|' +
+    'CHF:CH LI|DKK:DK FO GL|NOK:BV NO SJ|XOF:BF BJ CI GW ML NE SN TG|XAF:CF CG CM GA GQ TD|XCD:AG AI DM GD KN LC MS VC|XPF:NC PF WF|' +
+    'MAD:EH MA|ILS:IL PS|XCG:CW SX|AED:AE|AFN:AF|ALL:AL|AMD:AM|AOA:AO|ARS:AR|AWG:AW|AZN:AZ|BAM:BA|BBD:BB|BDT:BD|BIF:BI|BMD:BM|BND:BN|' +
+    'BOB:BO|BRL:BR|BSD:BS|BTN:BT|BWP:BW|BYN:BY|BZD:BZ|CAD:CA|CDF:CD|CLP:CL|CNY:CN|COP:CO|CRC:CR|CUP:CU|CVE:CV|CZK:CZ|DJF:DJ|DOP:DO|' +
+    'DZD:DZ|EGP:EG|ERN:ER|ETB:ET|FJD:FJ|FKP:FK|GEL:GE|GHS:GH|GIP:GI|GMD:GM|GNF:GN|GTQ:GT|GYD:GY|HKD:HK|HNL:HN|HTG:HT|HUF:HU|IDR:ID|' +
+    'INR:IN|IRR:IR|ISK:IS|JMD:JM|JPY:JP|KES:KE|KGS:KG|KHR:KH|KMF:KM|KPW:KP|KRW:KR|KYD:KY|KZT:KZ|LAK:LA|LBP:LB|LKR:LK|LRD:LR|LSL:LS|' +
+    'MDL:MD|MGA:MG|MKD:MK|MMK:MM|MNT:MN|MOP:MO|MRU:MR|MUR:MU|MVR:MV|MWK:MW|MXN:MX|MYR:MY|MZN:MZ|NAD:NA|NGN:NG|NIO:NI|NPR:NP|PEN:PE|' +
+    'PGK:PG|PHP:PH|PKR:PK|PLN:PL|PYG:PY|QAR:QA|RON:RO|RSD:RS|RUB:RU|RWF:RW|SAR:SA|SBD:SB|SCR:SC|SDG:SD|SEK:SE|SGD:SG|SHP:SH|SLE:SL|' +
+    'SOS:SO|SRD:SR|SSP:SS|STN:ST|SYP:SY|SZL:SZ|THB:TH|TJS:TJ|TMT:TM|TOP:TO|TRY:TR|TTD:TT|TWD:TW|TZS:TZ|UAH:UA|UGX:UG|UYU:UY|UZS:UZ|' +
+    'VES:VE|VND:VN|VUV:VU|WST:WS|YER:YE|ZAR:ZA|ZMW:ZM',
+  isCurrencyCode(code) {
+    return typeof code === 'string' && /^[A-Z]{3}$/.test(code);
+  },
+  // The currency of the phone's region ('en-ZA' \u2192 'ZAR'), '' when it cannot
+  // be told. Reads window.navigator only: a host without one has no region.
+  regionCurrency() {
+    let region = '';
+    try {
+      const nav = window.navigator;
+      const tags = nav ? [].concat(nav.languages && nav.languages.length ? Array.from(nav.languages) : [], nav.language || []) : [];
+      for (const tag of tags) {
+        if (!tag) continue;
+        region = new Intl.Locale(tag).region || '';
+        if (region) break;
+      }
+      // no tag names a region ('en'): the likeliest one for the first language
+      if (!region && tags[0]) region = new Intl.Locale(tags[0]).maximize().region || '';
+    } catch (e) { region = ''; }
+    if (!region) return '';
+    if (!this._regionCurrencyMap) {
+      const map = this._regionCurrencyMap = Object.create(null);
+      this._REGION_CURRENCIES.split('|').forEach(group => {
+        const [ccy, regions] = group.split(':');
+        regions.split(' ').forEach(r => { map[r] = ccy; });
+      });
+    }
+    return this._regionCurrencyMap[region] || '';
+  },
+  // 'South African Rand' in the app language (Intl.DisplayNames, first letter
+  // capitalized \u2014 CLDR writes Italian and Spanish names in lower case). The
+  // code itself when the system has no name for it. Plain text: escape it.
+  _currencyNameCache: {},
+  currencyName(code) {
+    const c = String(code == null ? '' : code);
+    const loc = this.getLocale();
+    const key = loc + '|' + c;
+    const hit = this._currencyNameCache[key];
+    if (hit !== undefined) return hit;
+    let name = c;
+    if (Object.prototype.hasOwnProperty.call(this._PINNED_SYMBOLS, c) && window.I18n) {
+      const label = window.I18n.t('currency.' + c); // 'EUR \u2014 Euro'
+      const cut = label.indexOf(' \u2014 ');
+      name = cut >= 0 ? label.slice(cut + 3) : label;
+    } else if (this.isCurrencyCode(c)) {
+      try {
+        const got = new Intl.DisplayNames([loc], { type: 'currency' }).of(c);
+        if (got && got !== c) name = got.charAt(0).toLocaleUpperCase(loc) + got.slice(1);
+      } catch (e) { name = c; }
+    }
+    this._currencyNameCache[key] = name;
+    return name;
+  },
+  // 'ZAR \u2014 South African Rand'; just the code when it has no name. Plain text.
+  currencyLabel(code) {
+    const c = String(code == null ? '' : code);
+    const name = this.currencyName(c);
+    return name && name !== c ? `${c} \u2014 ${name}` : c;
+  },
+  // Currency helpers
+  // v1.02: optional override for per-account surfaces; defaults to primary.
+  // 1.3.0 (PL-2): the system's narrow symbol in a fixed English locale (ZAR
+  // 'R', SEK 'kr', CHF 'CHF'), so a sign never changes with the app language;
+  // a code the system does not know shows the code, never '$' (an imported
+  // ZAR account used to read as dollars). The result is always safe to put in
+  // markup: a stored code that is not three capitals becomes '\u00a4'.
+  _currencySymbolCache: {},
   getCurrencySymbol(currencyCode) {
-    // v1.02: optional override for per-account surfaces; defaults to primary.
-    const symbols = { USD: '$', EUR: '\u20ac', JPY: '\u00a5', GBP: '\u00a3', CNY: '\u00a5' };
-    return symbols[currencyCode || this.state.currency] || '$';
+    const code = currencyCode || this.state.currency;
+    if (!code) return '$';
+    if (Object.prototype.hasOwnProperty.call(this._PINNED_SYMBOLS, code)) return this._PINNED_SYMBOLS[code];
+    if (!this.isCurrencyCode(code)) return '\u00a4';
+    const hit = this._currencySymbolCache[code];
+    if (hit !== undefined) return hit;
+    let sym = code;
+    try {
+      const parts = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' }).formatToParts(1);
+      const part = parts.find(p => p.type === 'currency');
+      if (part && part.value) sym = part.value;
+    } catch (e) { sym = code; } // an old WebView without narrowSymbol
+    sym = sym.replace(/[<>&"'`\s]/g, '') || code;
+    this._currencySymbolCache[code] = sym;
+    return sym;
+  },
+  // The symbol as it stands before a figure: a word of two or more characters
+  // takes a no-break space ('CHF 1,234.56', 'kr 1,234', 'Cg. 12.00'); a
+  // single character or anything ending in a currency sign stays glued
+  // ('R1,234.56', '\u20ac12.00', 'R$1,234.56').
+  currencyPrefix(currencyCode) {
+    const sym = this.getCurrencySymbol(currencyCode);
+    return Array.from(sym).length >= 2 && /\p{L}/u.test(sym) && !/\p{Sc}$/u.test(sym) ? sym + '\u00a0' : sym;
+  },
+  // Every sign an amount on screen can start with \u2014 the base currency's and
+  // each account's, plus the four classic ones \u2014 as a regex alternation,
+  // longest first (Home's hide / show motion finds its figures with it).
+  moneySymbolPattern() {
+    const set = new Set(['$', '\u20ac', '\u00a5', '\u00a3']);
+    [this.state.currency].concat((this.state.accounts || []).map(a => a && a.currency)).forEach(c => {
+      if (c) set.add(this.currencyPrefix(c));
+    });
+    return Array.from(set).sort((a, b) => b.length - a.length)
+      .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   },
 
   // v0.93: Intl.NumberFormat construction is one of the most expensive routine
@@ -4443,7 +4581,7 @@ window.Store = {
     // stays locale|digits — the symbol is applied OUTSIDE the cached formatter
     // and the decimals rule is folded into the digits half of the key.
     const code = currencyCode || this.state.currency;
-    const symbol = this.getCurrencySymbol(code);
+    const symbol = this.currencyPrefix(code); // 1.3.0 (PL-2): 'CHF ' / 'R' / '€'
     const isNeg = amount < 0;
     // 1.2.2 (HG-4): hidden balances — the sign and symbol stay, the figure
     // becomes a fixed-length mask (no length hint). Files and prices pass
@@ -4452,7 +4590,8 @@ window.Store = {
     const abs = Math.abs(amount);
     // No decimal places for Yen / Renminbi; 1.2.2 (HG-7): { whole: true }
     // rounds to whole units for a headline figure (Insights).
-    const noDecimals = code === 'JPY' || code === 'CNY' || !!(opts && opts.whole);
+    // 1.3.0 (PL-2): so does every currency without a minor unit (KRW, VND…).
+    const noDecimals = code === 'JPY' || code === 'CNY' || !!(opts && opts.whole) || this.currencyDigits(code) === 0;
     const key = this.getLocale() + '|' + (noDecimals ? '0' : '2');
     let fmt = this._numberFormatCache[key];
     if (!fmt) {
@@ -4472,6 +4611,20 @@ window.Store = {
   // or apostrophe groups in threes and is never the decimal; >2 decimals ->
   // NaN). A Number is rounded to cents as is. A leading '-' is kept, so
   // callers can refuse it.
+  _stripMoneySign(s) {
+    const signs = new Set();
+    [this.state.currency].concat((this.state.accounts || []).map(a => a && a.currency)).forEach(c => {
+      if (!this.isCurrencyCode(c)) return;
+      signs.add(c);
+      signs.add(this.getCurrencySymbol(c));
+    });
+    const list = Array.from(signs).sort((a, b) => b.length - a.length);
+    const lead = list.find(g => s.startsWith(g) && s.length > g.length);
+    if (lead) s = s.slice(lead.length).replace(/^\s+/, '');
+    const tail = list.find(g => s.endsWith(g) && s.length > g.length);
+    if (tail) s = s.slice(0, -tail.length).replace(/\s+$/, '');
+    return s;
+  },
   _amountSepCache: {},
   _numberSeparators() {
     const loc = this.getLocale();
@@ -4496,6 +4649,9 @@ window.Store = {
     if (!s) return null;
     // Spaces next to a currency sign or the minus are free ('€ 12,50', '- 5').
     s = s.replace(/^[€$£¥]\s*|\s*[€$£¥]$/g, '');
+    // 1.3.0 (PL-2): the same for the signs and codes in use here ('R 12,50',
+    // '100 CHF') — only those, so stray letters are still refused.
+    s = this._stripMoneySign(s);
     let neg = false;
     const minus = /^[-−]\s*/.exec(s);
     if (minus) { neg = true; s = s.slice(minus[0].length); }
@@ -4920,6 +5076,36 @@ window.Store = {
       quoteAll: typeof src.quoteAll === 'boolean' ? src.quoteAll : d.quoteAll,
       bom: typeof src.bom === 'boolean' ? src.bom : d.bom
     };
+  },
+
+  // 1.3.0 (PL-3): App lock. enabled needs a whole PIN record (PBKDF2 hash,
+  // salt, iterations — all written by AppLock); anything less reads as off.
+  // delay = seconds away before a return locks (0 | 60 | 300, default 60).
+  // deviceSecureAtSetup: the phone had a screen lock when the PIN was made —
+  // only then may that screen lock reset a forgotten PIN (A3).
+  APP_LOCK_DELAYS: [0, 60, 300],
+  normalizeAppLock(p) {
+    const src = p && typeof p === 'object' ? p : {};
+    const hex = (v, n) => (typeof v === 'string' && v.length === n && /^[0-9a-f]+$/.test(v) ? v : '');
+    const hash = hex(src.hash, 64);
+    const salt = hex(src.salt, 32);
+    const iter = Number.isInteger(src.iter) && src.iter >= 1000 && src.iter <= 5000000 ? src.iter : 0;
+    const enabled = src.enabled === true && !!hash && !!salt && !!iter;
+    return {
+      enabled,
+      hash: enabled ? hash : '',
+      salt: enabled ? salt : '',
+      iter: enabled ? iter : 0,
+      biometrics: enabled && src.biometrics === true,
+      delay: this.APP_LOCK_DELAYS.includes(src.delay) ? src.delay : 60,
+      deviceSecureAtSetup: enabled && src.deviceSecureAtSetup === true,
+      fails: enabled && Number.isInteger(src.fails) && src.fails > 0 ? Math.min(src.fails, 99) : 0,
+      lockedUntil: enabled && Number.isFinite(src.lockedUntil) && src.lockedUntil > 0 ? src.lockedUntil : 0
+    };
+  },
+
+  getAppLock() {
+    return this.normalizeAppLock(this.state.appLock);
   },
 
   // 1.2.2 (HG-4): hidden balances on Home.

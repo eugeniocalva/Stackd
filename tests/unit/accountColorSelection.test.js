@@ -29,6 +29,8 @@ describe('Account Color Selection', () => {
           defaultAccountId: 'acc1'
         }),
         getCurrencySymbol: () => '$',
+        CURRENCY_CODES: ['USD', 'EUR', 'JPY', 'GBP', 'CNY'], // 1.3.0 (PL-2)
+        currencyLabel: (c) => String(c),
         getAccountBalance: () => 100,
         // 1.0.2 (BUG-30): new-mode saves look the name up (unguarded, as BUG-11's category call).
         findAccountByName: () => null,

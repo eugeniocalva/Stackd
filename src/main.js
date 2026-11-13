@@ -139,6 +139,12 @@ const EMERGENCY_ICONS = {
   'lightbulb': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lightbulb"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>',
   'arrow-up-right': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-up-right"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
   'arrow-down-right': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-down-right"><path d="m7 7 10 10"/><path d="M17 7v10H7"/></svg>',
+  // 1.3.0 (PL-3): App lock
+  'fingerprint': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-fingerprint"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>',
+  'scan-face': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scan-face"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>',
+  'delete': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-delete"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></svg>',
+  'timer': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-timer"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>',
+  'key-round': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-key-round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
   'lock': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   'map-pin': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-map-pin"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
   'microscope': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-microscope"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>',
@@ -392,7 +398,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // the homeWidgets seed check) reads it — a no-op on web and when healthy.
   await window.StackdDB.initNative();
   window.Store.init();
-  
+
+  // 1.3.0 (PL-3): App lock. Up before the first render below, so a locked
+  // app never draws a figure; the biometric prompt waits for the splash.
+  if (window.AppLock) window.AppLock.boot();
+
+  // 1.3.0 (PL-1): iOS forgets the motion grant at every launch. With Shake
+  // to hide on, ask again from the first tap wherever the app opens (a widget
+  // tap lands on the log form, not on Home) — it stays armed until granted.
+  if (window.Components && window.Components.PrivacyShake && window.Store.getPrivacy().shake
+      && window.Components.PrivacyShake.supported()) {
+    window.Components.PrivacyShake.armPermission();
+  }
+
   // 2. Initialize router
   window.Router.init();
 
@@ -766,6 +784,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Show once: on first ever launch, and again after a Factory Reset
   // (RESET_APP clears the 'stackd_v1_setup_done' flag).
   const _finishBoot = () => {
+    if (window.AppLock) window.AppLock.ready(); // 1.3.0 (PL-3): Face ID / fingerprint, once the splash is gone
     if (!localStorage.getItem('stackd_v1_setup_done')) {
       _showRegionSetupModal();
     }
@@ -825,34 +844,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 // v0.89 P8d: the modal's own copy is translated, so picking a language here
 // has to rebuild it — the selections carry over via the arguments.
 function _showRegionSetupModal(initialCurrency, initialLanguage) {
-  const CURRENCIES = [
-    { code: 'USD', symbol: '$', label: window.I18n.t('currency.USD') },
-    { code: 'EUR', symbol: '€', label: window.I18n.t('currency.EUR') },
-    { code: 'JPY', symbol: '¥', label: window.I18n.t('currency.JPY') },
-    { code: 'GBP', symbol: '£', label: window.I18n.t('currency.GBP') },
-    { code: 'CNY', symbol: '¥', label: window.I18n.t('currency.CNY') },
-  ];
   const LANGUAGES = window.I18n.LANGUAGES; // v0.86 P8a: en/fr/it/es/pt
 
   // Defaults: EUR + English.
+  // 1.3.0 (PL-2): on a first launch the currency is the one of the phone's
+  // region (a South African phone opens on ZAR); EUR when it cannot be told.
   // 1.0.1 (BUG-01): the sheet also reappears when an earlier onboarding was
   // dismissed before 'Get started' (setup_done missing) — with accounts that
   // already carry the store's base. Preselect THAT base, not EUR, so Get
   // started never silently flips it and zeroes every total.
   const _st = window.Store.getState();
   let selectedCurrency = initialCurrency ||
-    ((_st.accounts && _st.accounts.length && _st.currency) ? _st.currency : 'EUR');
+    ((_st.accounts && _st.accounts.length && _st.currency) ? _st.currency : (window.Store.regionCurrency() || 'EUR'));
   // 1.0.2 (BUG-40): the language is saved the moment it is picked, so a
   // relaunch before Get started (or after a Factory reset, which keeps the
   // language) reopens the sheet in it instead of claiming 'English'.
   let selectedLanguage  = initialLanguage || _st.language || 'en';
 
-  const currencyLabel = () => (CURRENCIES.find(x => x.code === selectedCurrency) || {}).label || selectedCurrency;
+  const currencyLabel = () => window.Store.currencyLabel(selectedCurrency);
   const languageLabel = () => (LANGUAGES.find(x => x.code === selectedLanguage)  || {}).label || 'English';
 
   // ── Picker sheet: slides up above the welcome modal ───────────────────────
-  const openPicker = ({ title, items, selected, onSelect }) => {
-    const optionsHtml = items.map(item => `
+  // 1.3.0 (PL-2): `currencies: true` draws Components.CurrencyList (every
+  // currency, searchable) in place of the fixed rows.
+  const openPicker = ({ title, items, selected, onSelect, currencies }) => {
+    const optionsHtml = currencies
+      ? window.Components.CurrencyList.html({ selected, rowClass: 'setup-picker-opt', role: 'button' })
+      : items.map(item => `
       <div class="setup-picker-opt" data-code="${item.code}"
            style="display:flex;align-items:center;gap:16px;
                   padding:14px 0;border-bottom:1px solid var(--border-color);
@@ -893,7 +911,13 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
       setTimeout(() => sheet.remove(), 300);
     };
 
-    sheet.querySelectorAll('.setup-picker-opt').forEach(opt => {
+    if (currencies) {
+      window.Components.CurrencyList.bind(sheet, {
+        selected, rowClass: 'setup-picker-opt', role: 'button',
+        onPick: (code) => { onSelect(code); close(); }
+      });
+    }
+    if (!currencies) sheet.querySelectorAll('.setup-picker-opt').forEach(opt => {
       const pick = () => { onSelect(opt.dataset.code); close(); };
       opt.addEventListener('click', pick);
       opt.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
@@ -918,7 +942,7 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
           <div class="list-item-icon" style="margin:0;"><i data-lucide="coins"></i></div>
           <div>
             <div class="list-item-title">${window.I18n.t('others.currency')}</div>
-            <div class="list-item-subtitle" id="setup-currency-subtitle">${currencyLabel()}</div>
+            <div class="list-item-subtitle" id="setup-currency-subtitle">${window.I18n.esc(currencyLabel())}</div>
           </div>
         </div>
         <i data-lucide="chevron-right" style="color:var(--text-tertiary);width:20px;height:20px;flex-shrink:0;"></i>
@@ -984,11 +1008,12 @@ function _showRegionSetupModal(initialCurrency, initialLanguage) {
 
     if (rowCurrency) {
       const open = () => openPicker({
-        title: window.I18n.t('others.currency'), items: CURRENCIES, selected: selectedCurrency,
+        title: window.I18n.t('others.currency'), currencies: true, selected: selectedCurrency,
         onSelect: code => {
           selectedCurrency = code;
           const sub = document.getElementById('setup-currency-subtitle');
           if (sub) sub.textContent = currencyLabel();
+          rowCurrency.focus();
         }
       });
       rowCurrency.addEventListener('click', open);

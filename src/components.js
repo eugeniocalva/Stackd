@@ -2177,6 +2177,146 @@ window.Components = {
   // Reusable bottom-sheet picker for selecting from a list of options.
   // Includes an 'X' button in the top right for navigation back.
   // -----------------------------------------------------------------------
+  // 1.3.0 (PL-2, docs/privacy-currencies-plan.md §3): the one currency list.
+  // Suggested (the phone's region, the current choice, the five originals),
+  // then every other currency by name; typing filters by code, name or symbol
+  // into one flat list. Hosts: CurrencyPicker below (Settings and the account
+  // form — two-step: pick, then Done) and the onboarding sheet in main.js
+  // (a pick is the choice). Row markup is the host's class + .currency-row.
+  CurrencyList: {
+    _rows: null,
+    _rowsLocale: null,
+    _fold(s) {
+      return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    },
+    _row(code) {
+      const S = window.Store;
+      const row = { code, name: S.currencyName(code), symbol: S.getCurrencySymbol(code) };
+      row.key = this._fold(row.code + ' ' + row.name + ' ' + row.symbol);
+      return row;
+    },
+    rows() {
+      const S = window.Store;
+      const loc = S.getLocale();
+      if (this._rows && this._rowsLocale === loc) return this._rows;
+      const rows = S.CURRENCY_CODES.map(code => this._row(code));
+      let cmp;
+      try { cmp = new Intl.Collator(loc).compare; } catch (e) { cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0); }
+      rows.sort((a, b) => cmp(a.name, b.name));
+      this._rows = rows;
+      this._rowsLocale = loc;
+      return rows;
+    },
+    // The short list on top. `selected` may be a code the list does not
+    // carry (an imported account's): it is offered all the same.
+    suggested(selected) {
+      const S = window.Store;
+      const out = [];
+      [S.regionCurrency(), selected, 'USD', 'EUR', 'GBP', 'JPY', 'CNY'].forEach(c => {
+        if (S.isCurrencyCode(c) && !out.includes(c)) out.push(c);
+      });
+      return out;
+    },
+    _rowHtml(row, o) {
+      const esc = window.I18n.esc;
+      const on = row.code === o.selected;
+      const label = row.name && row.name !== row.code ? `${row.code} — ${row.name}` : row.code;
+      const role = o.role === 'radio' ? `role="radio" aria-checked="${on ? 'true' : 'false'}"` : 'role="button"';
+      return `<div class="currency-row ${o.rowClass}${on ? ' is-selected' : ''}" data-code="${esc(row.code)}" tabindex="0" ${role}>
+        <span class="currency-row-symbol" aria-hidden="true">${esc(row.symbol)}</span>
+        <span class="currency-row-label">${esc(label)}</span>
+        ${on ? '<span class="currency-row-check" aria-hidden="true">✓</span>' : ''}
+      </div>`;
+    },
+    listHtml(o) {
+      const t = (k) => window.I18n.t(k);
+      const all = this.rows();
+      const q = this._fold(o.query || '').trim();
+      if (q) {
+        const hits = all.filter(r => r.key.includes(q));
+        if (o.selected && !all.some(r => r.code === o.selected)) {
+          const own = this._row(o.selected);
+          if (own.key.includes(q)) hits.unshift(own);
+        }
+        return hits.length
+          ? hits.map(r => this._rowHtml(r, o)).join('')
+          : `<p class="currency-empty" role="status">${t('currencyPicker.none')}</p>`;
+      }
+      const top = this.suggested(o.selected);
+      const byCode = Object.create(null);
+      all.forEach(r => { byCode[r.code] = r; });
+      return `<div class="currency-group-title">${t('currencyPicker.suggested')}</div>`
+        + top.map(c => this._rowHtml(byCode[c] || this._row(c), o)).join('')
+        + `<div class="currency-group-title">${t('currencyPicker.more')}</div>`
+        + all.filter(r => !top.includes(r.code)).map(r => this._rowHtml(r, o)).join('');
+    },
+    // o: { selected, rowClass, role: 'radio' | 'button' }
+    html(o) {
+      const t = (k) => window.I18n.t(k);
+      const group = o.role === 'radio' ? ` role="radiogroup" aria-label="${t('others.chooseCurrency')}"` : '';
+      return `<div class="currency-list">
+        <input type="search" id="currency-search" class="form-control currency-search" placeholder="${t('currencyPicker.search')}" aria-label="${t('currencyPicker.search')}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="40" enterkeyhint="search">
+        <div class="currency-list-scroll" id="currency-opts"${group}>${this.listHtml(o)}</div>
+      </div>`;
+    },
+    // Wires a list written by html(). onPick(code) runs on every pick; the
+    // list then redraws with the new selection (unless the host removed it).
+    bind(root, o) {
+      const box = root && root.querySelector('#currency-opts');
+      const search = root && root.querySelector('#currency-search');
+      if (!box) return;
+      const state = { selected: o.selected, rowClass: o.rowClass, role: o.role, query: '' };
+      const draw = () => { box.innerHTML = this.listHtml(state); };
+      const pick = (el) => {
+        state.selected = el.dataset.code;
+        if (typeof o.onPick === 'function') o.onPick(state.selected);
+        if (!box.isConnected) return;
+        draw();
+        const chosen = Array.from(box.querySelectorAll('.currency-row')).find(r => r.dataset.code === state.selected);
+        if (chosen) chosen.focus();
+      };
+      box.addEventListener('click', (e) => {
+        const el = e.target.closest && e.target.closest('.currency-row');
+        if (el) pick(el);
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const el = e.target.closest && e.target.closest('.currency-row');
+        if (el) { e.preventDefault(); pick(el); }
+      });
+      // a drag inside the list scrolls it — it must not swipe the sheet away
+      box.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      if (search) {
+        search.addEventListener('input', () => { state.query = search.value; draw(); box.scrollTop = 0; });
+        search.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      }
+    }
+  },
+
+  // 1.3.0 (PL-2): the currency sheet of Settings and the account form.
+  // 1.0.1 (BUG-01) holds: a tap only SELECTS; Done continues; Cancel, the
+  // backdrop, a swipe and Back leave with nothing applied. onDone(code, close)
+  // runs only for a changed choice and owns closing (Settings hands off to
+  // CurrencySwitchConfirm without close()).
+  CurrencyPicker: {
+    show({ title, selected, onDone }) {
+      let picked = selected;
+      window.Components.Modal.show({
+        title: title || window.I18n.t('others.chooseCurrency'),
+        content: window.Components.CurrencyList.html({ selected, rowClass: 'currency-opt', role: 'radio' }),
+        saveText: window.I18n.t('common.done'),
+        onSave: (close) => {
+          if (picked === selected) { close(); return; }
+          onDone(picked, close);
+        }
+      });
+      // Modal.show writes the DOM synchronously, so bind right away.
+      window.Components.CurrencyList.bind(document.getElementById('active-modal'), {
+        selected, rowClass: 'currency-opt', role: 'radio', onPick: (code) => { picked = code; }
+      });
+    }
+  },
+
   ListPicker: {
     show(options) {
       const { title, items, selectedValue, onSelect } = options;
@@ -2608,20 +2748,32 @@ window.Components = {
     // called DeviceMotionEvent.requestPermission() from a user gesture in
     // THIS page load — the grant is not kept across launches (the Capacitor
     // shell answers it silently, but the call still has to be made). So
-    // while Shake to hide is on, the first tap after each launch asks again;
+    // while Shake to hide is on, a tap after each launch asks again;
     // nothing to do where requestPermission does not exist (Android, web).
+    // 1.3.0 (PL-1): it stays armed until iOS answers. The first touch after
+    // a launch is often the end of a scroll or a swipe, which iOS does not
+    // take as a gesture: the call throws, and 1.2.2 had already removed its
+    // listeners — no shake arrived until the Settings switch was flipped.
+    // A thrown call is retried on the next click / touchend; 'granted' or a
+    // real 'denied' ends it (iOS does not ask twice in one page load).
     _granted: false,
     _armHandler: null,
+    _asking: false,
     armPermission() {
       const DME = window.DeviceMotionEvent;
       if (this._granted || this._armHandler || !DME || typeof DME.requestPermission !== 'function') return;
       const doc = window.document;
       if (!doc || typeof doc.addEventListener !== 'function') return;
       const handler = () => {
-        this.disarmPermission();
-        this.requestPermission().then(answer => {
+        if (this._asking) return;
+        this._asking = true;
+        let asked;
+        try { asked = Promise.resolve(DME.requestPermission()); } catch (e) { asked = Promise.reject(e); }
+        asked.then(answer => {
+          this._asking = false;
           if (answer === 'granted') this._granted = true;
-        });
+          this.disarmPermission(); // iOS has answered, either way
+        }, () => { this._asking = false; }); // not a gesture: stay armed
       };
       this._armHandler = handler;
       doc.addEventListener('touchend', handler, true);
@@ -2635,18 +2787,54 @@ window.Components = {
       }
       this._armHandler = null;
     },
+    // 1.3.0 (PL-1): on iPhone the StackdPrivacy plugin reads CoreMotion — no
+    // permission and no tap needed first, so a shake works from the first
+    // second after a launch. It runs next to the web listener (Android, the
+    // web build, a shell without the plugin); _fire's cooldown makes the two
+    // count once.
+    _nativeToken: null,
+    _nativeHandle: null,
+    _nativePlugin() {
+      const cap = window.Capacitor;
+      if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform()) return null;
+      const p = cap.Plugins && cap.Plugins.StackdPrivacy;
+      return p && typeof p.startShake === 'function' && typeof p.addListener === 'function' ? p : null;
+    },
+    _startNative() {
+      const p = this._nativePlugin();
+      if (!p || this._nativeToken) return;
+      const token = this._nativeToken = {};
+      try {
+        Promise.resolve(p.addListener('shake', () => this._fire(Date.now()))).then(h => {
+          if (this._nativeToken === token) this._nativeHandle = h;
+          else if (h && typeof h.remove === 'function') h.remove();
+        }).catch(() => {});
+        Promise.resolve(p.startShake()).catch(() => {});
+      } catch (e) { /* the web listener stays */ }
+    },
+    _stopNative() {
+      if (!this._nativeToken) return;
+      this._nativeToken = null;
+      const h = this._nativeHandle;
+      this._nativeHandle = null;
+      try { if (h && typeof h.remove === 'function') h.remove(); } catch (e) { /* gone */ }
+      const p = this._nativePlugin();
+      try { if (p && typeof p.stopShake === 'function') Promise.resolve(p.stopShake()).catch(() => {}); } catch (e) { /* gone */ }
+    },
     start(onShake) {
       this._onShake = onShake;
       if (this._handler) return;
       this._peaks = [];
       this._handler = (e) => this._sample(e, Date.now());
       window.addEventListener('devicemotion', this._handler);
+      this._startNative();
     },
     stop() {
       if (this._handler) window.removeEventListener('devicemotion', this._handler);
       this._handler = null;
       this._onShake = null;
       this._peaks = [];
+      this._stopNative();
     },
     // The jolt size of one motion event, gravity removed: `acceleration` when
     // the device gives it, else |accelerationIncludingGravity| − g.
@@ -2664,8 +2852,13 @@ window.Components = {
       this._peaks = this._peaks.filter(t => now - t <= this.WINDOW_MS);
       this._peaks.push(now);
       if (this._peaks.length < this.PEAKS || now - this._lastFire < this.COOLDOWN_MS) return;
-      this._lastFire = now;
       this._peaks = [];
+      this._fire(now);
+    },
+    // one shake, from either detector; a fired shake waits COOLDOWN_MS
+    _fire(now) {
+      if (now - this._lastFire < this.COOLDOWN_MS) return;
+      this._lastFire = now;
       if (typeof this._onShake === 'function') {
         try { this._onShake(); } catch (err) { console.error('PrivacyShake:', err); }
       }

@@ -207,6 +207,11 @@ window.Router = {
     const C = window.Components;
     const state = window.Store.getState() || {};
 
+    // 1.3.0 (PL-3): the lock screen is above everything. Locked, Back leaves
+    // the app ('exit'); a PIN setup screen takes Back as its Cancel.
+    const lock = window.AppLock;
+    if (lock && typeof lock.isOpen === 'function' && lock.isOpen()) return lock.handleBack();
+
     if (C && C.dismissTopSheet && C.dismissTopSheet()) return 'sheet';
 
     const nav = document.getElementById('bottom-nav');

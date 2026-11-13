@@ -27,7 +27,9 @@ test.describe('Welcome Region Setup Modal', () => {
     // 2. Click Currency Row to open Picker
     const currencyRow = page.locator('#setup-row-currency');
     await expect(currencyRow).toBeVisible();
-    await expect(page.locator('#setup-currency-subtitle')).toHaveText('EUR — Euro');
+    // 1.3.0 (PL-2): the default is the currency of the device's region — the
+    // test browser is en-US (EUR only when the region cannot be told).
+    await expect(page.locator('#setup-currency-subtitle')).toHaveText('USD — US Dollar');
     await currencyRow.click();
 
     // Picker backdrop should slide up
@@ -127,12 +129,13 @@ test.describe('Welcome Region Setup Modal', () => {
       await expect.poll(() => page.evaluate(() => window.Store.getState().language)).toBe('it');
       await expect(page.locator('#setup-language-subtitle')).toHaveText('Italiano');
 
-      // Inizia (Get started) finishes onboarding in EUR.
+      // Inizia (Get started) finishes onboarding in the region's currency
+      // (1.3.0 PL-2: the test browser is en-US).
       await expect(page.locator('#modal-save-btn')).toHaveText('Inizia');
       await page.click('#modal-save-btn');
       await expect(page.locator('#active-modal')).toBeHidden();
       expect(await page.evaluate(() => localStorage.getItem('stackd_v1_setup_done'))).toBe('1');
-      expect(await page.evaluate(() => window.Store.getState().currency)).toBe('EUR');
+      expect(await page.evaluate(() => window.Store.getState().currency)).toBe('USD');
       expect(await page.evaluate(() => window.Store.getState().language)).toBe('it');
     });
   });

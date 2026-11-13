@@ -28,6 +28,8 @@ describe('Opening Balance Numeric Input & Decimal Shift', () => {
           defaultAccountId: ''
         }),
         getCurrencySymbol: () => '$',
+        CURRENCY_CODES: ['USD', 'EUR', 'JPY', 'GBP', 'CNY'], // 1.3.0 (PL-2)
+        currencyLabel: (c) => String(c),
         // 1.0.3 (BUG-46): the Opening Balance field's decimals per currency
         currencyDigits: () => 2,
         _isPositiveTx: () => true,

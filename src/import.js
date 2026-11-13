@@ -1047,7 +1047,7 @@ window.StackdImport = {
   // U+2212 becomes '-'.
   _restoreAmountText(raw) {
     return String(raw == null ? '' : raw).trim()
-      .replace(/[\s\u00A0\u2009\u202F'\u2019€$£¥\uFFFD]/g, '')
+      .replace(/[\s\u00A0\u2009\u202F'\u2019\p{Sc}\uFFFD]/gu, '') // 1.3.0 (PL-2): any currency sign (₹ ₩ ₪ …)
       .replace(/\u2212/g, '-');
   },
 

@@ -295,3 +295,147 @@ describe('1.2.0 (UX-11) — stackd-cloud plugin wiring', () => {
     expect(m[2]).toMatch(/<key>NSUbiquitousContainerSupportedFolderLevels<\/key>\s*<string>Any<\/string>/);
   });
 });
+
+// 1.3.0 (PL-4, docs/privacy-currencies-plan.md §5): the local stackd-privacy
+// plugin — biometric / passcode prompts for App lock, the app-switcher cover
+// and the iPhone's native shake detection. No JS wrapper is bundled: the app
+// calls Capacitor.Plugins.StackdPrivacy, so the method names on both native
+// sides ARE the contract.
+describe('1.3.0 (PL-4) — stackd-privacy plugin wiring', () => {
+  const METHODS = ['status', 'authenticate', 'setPrivacyCover', 'startShake', 'stopShake'];
+  const SWIFT = 'plugins/stackd-privacy/ios/Sources/StackdPrivacyPlugin/StackdPrivacyPlugin.swift';
+  const JAVA = 'plugins/stackd-privacy/android/src/main/java/com/stackd/privacy/StackdPrivacyPlugin.java';
+
+  it('is a local npm dependency with the Capacitor ios/android source layout', () => {
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.dependencies['stackd-privacy']).toBe('file:plugins/stackd-privacy');
+    const plugin = JSON.parse(read('plugins/stackd-privacy/package.json'));
+    expect(plugin.name).toBe('stackd-privacy');
+    expect(plugin.capacitor).toEqual({ ios: { src: 'ios' }, android: { src: 'android' } });
+    // native only: nothing for a bundler to pick up
+    expect(plugin.main).toBeUndefined();
+    expect(plugin.module).toBeUndefined();
+  });
+
+  // `npm ci` (the TestFlight workflow) refuses a lock that disagrees with
+  // package.json; `npx cap update android` writes the two gradle files.
+  it('the lock links the local package and the cap gradle outputs include it', () => {
+    const lock = JSON.parse(read('package-lock.json'));
+    expect(lock.packages[''].dependencies['stackd-privacy']).toBe('file:plugins/stackd-privacy');
+    expect(lock.packages['node_modules/stackd-privacy']).toEqual({ resolved: 'plugins/stackd-privacy', link: true });
+    expect(lock.packages['plugins/stackd-privacy']).toMatchObject({ version: '1.0.0' });
+    const settings = read('android/capacitor.settings.gradle');
+    expect(settings).toContain("include ':stackd-privacy'");
+    expect(settings).toContain("project(':stackd-privacy').projectDir = new File('../plugins/stackd-privacy/android')");
+    expect(read('android/app/capacitor.build.gradle')).toContain("implementation project(':stackd-privacy')");
+  });
+
+  it('the podspec is named after the package (StackdPrivacy), links its two frameworks, and the Podfile installs it', () => {
+    const spec = read('plugins/stackd-privacy/StackdPrivacy.podspec');
+    expect(spec).toMatch(/s\.name\s*=\s*'StackdPrivacy'/);
+    expect(spec).toContain("s.dependency 'Capacitor'");
+    expect(spec).toMatch(/s\.source_files\s*=\s*'ios\/Sources\//);
+    expect(spec).toMatch(/s\.ios\.deployment_target\s*=\s*'15\.0'/);
+    expect(spec).toMatch(/s\.frameworks\s*=\s*'LocalAuthentication',\s*'CoreMotion'/);
+    expect(read('ios/App/Podfile')).toContain("pod 'StackdPrivacy', :path => '../../plugins/stackd-privacy'");
+  });
+
+  it('the Swift plugin is a bridged CAPPlugin exposing the five methods', () => {
+    const swift = read(SWIFT);
+    expect(swift).toContain('@objc(StackdPrivacyPlugin)');
+    expect(swift).toMatch(/class StackdPrivacyPlugin:\s*CAPPlugin,\s*CAPBridgedPlugin/);
+    expect(swift).toContain('identifier = "StackdPrivacyPlugin"');
+    expect(swift).toContain('jsName = "StackdPrivacy"');
+    METHODS.forEach((m) => {
+      expect(swift).toContain(`CAPPluginMethod(name: "${m}", returnType: CAPPluginReturnPromise)`);
+      expect(swift).toMatch(new RegExp(`@objc func ${m}\\(_ call: CAPPluginCall\\)`));
+    });
+    expect(swift.match(/CAPPluginMethod\(name:/g)).toHaveLength(METHODS.length);
+  });
+
+  it('iOS: LocalAuthentication with both policies, no system fallback button, and a call that never rejects', () => {
+    const swift = read(SWIFT);
+    expect(swift).toContain('import LocalAuthentication');
+    expect(swift).toContain('.deviceOwnerAuthenticationWithBiometrics');
+    expect(swift).toMatch(/\.deviceOwnerAuthentication\b(?!With)/);
+    expect(swift).toContain('localizedFallbackTitle = ""');
+    expect(swift).toContain('localizedCancelTitle = cancelTitle');
+    // Optic ID exists from iOS 17; the pod's deployment target is 15
+    expect(swift).toMatch(/#available\(iOS 17\.0, \*\),\s*type == \.opticID/);
+    ['"cancel"', '"lockout"', '"unavailable"', '"failed"'].forEach((code) => expect(swift).toContain(code));
+    ['.userCancel', '.appCancel', '.systemCancel', '.userFallback', '.biometryLockout', '.biometryNotAvailable', '.biometryNotEnrolled', '.passcodeNotSet']
+      .forEach((c) => expect(swift).toContain(c));
+    expect(swift).not.toMatch(/call\.reject\(/);
+    ['"biometry"', '"enrolled"', '"deviceSecure"'].forEach((k) => expect(swift).toContain(k));
+  });
+
+  it('iOS: the cover follows the app leaving and returning; the shake uses CoreMotion with the JS detector\'s rule', () => {
+    const swift = read(SWIFT);
+    ['UIApplication.willResignActiveNotification', 'UIApplication.didBecomeActiveNotification', 'UIApplication.didEnterBackgroundNotification']
+      .forEach((n) => expect(swift).toContain(n));
+    expect(swift).toContain('.systemBackground');
+    expect(swift).toContain('import CoreMotion');
+    expect(swift).toContain('CMMotionManager()');
+    expect(swift).toContain('startDeviceMotionUpdates(to:');
+    expect(swift).toContain('stopDeviceMotionUpdates()');
+    expect(swift).toContain('userAcceleration');
+    expect(swift).toContain('notifyListeners("shake"');
+    // The same numbers as Components.PrivacyShake — read from the source, so
+    // a change on one side fails here until the other follows.
+    const js = read('src/components.js');
+    const at = js.indexOf('PrivacyShake: {');
+    expect(at).toBeGreaterThan(-1);
+    const block = js.slice(at, at + 1500);
+    const num = (name) => Number(block.match(new RegExp(name + ':\\s*([\\d.]+)'))[1]);
+    const swiftNum = (name) => Number(swift.match(new RegExp('static let ' + name + '\\s*=\\s*([\\d.]+)'))[1]);
+    expect(swiftNum('shakeThreshold')).toBe(num('THRESHOLD'));
+    expect(swiftNum('shakePeaks')).toBe(num('PEAKS'));
+    expect(swiftNum('shakeWindow') * 1000).toBeCloseTo(num('WINDOW_MS'), 6);
+    expect(swiftNum('shakePeakGap') * 1000).toBeCloseTo(num('PEAK_GAP_MS'), 6);
+    expect(swiftNum('gravity')).toBe(9.81);
+    expect(swift).toMatch(/deviceMotionUpdateInterval\s*=\s*1\.0\s*\/\s*60\.0/);
+  });
+
+  it('the Android plugin declares the five methods on androidx.biometric and never blocks screenshots', () => {
+    const java = read(JAVA);
+    expect(java).toContain('package com.stackd.privacy;');
+    expect(java).toContain('@CapacitorPlugin(name = "StackdPrivacy")');
+    METHODS.forEach((m) => {
+      expect(java).toMatch(new RegExp(`@PluginMethod\\s+public void ${m}\\((?:final )?PluginCall call\\)`));
+    });
+    expect(java.match(/@PluginMethod/g)).toHaveLength(METHODS.length);
+    expect(java).toContain('Authenticators.BIOMETRIC_WEAK');
+    expect(java).toContain('Authenticators.DEVICE_CREDENTIAL');
+    expect(java).not.toContain('BIOMETRIC_STRONG');
+    expect(java).toContain('isDeviceSecure()');
+    expect(java).toContain('createConfirmDeviceCredentialIntent');
+    expect(java).toContain('@ActivityCallback');
+    expect(java).toContain('setRecentsScreenshotEnabled(!enabled)');
+    expect(java).toContain('Build.VERSION_CODES.TIRAMISU');
+    expect(java).not.toContain('FLAG_SECURE'); // plan A9: it would block every screenshot
+    // always resolves; one unmatched read keeps the prompt up
+    expect(java).not.toMatch(/call\.reject\(/);
+    expect(java).not.toMatch(/void onAuthenticationFailed\(/);
+    ['"cancel"', '"lockout"', '"unavailable"', '"failed"'].forEach((code) => expect(java).toContain(code));
+    // the shake stays in JS on Android
+    expect(java.match(/ret\.put\("native", false\)/g)).toHaveLength(2);
+    expect(java).not.toContain('"native", true');
+  });
+
+  it('the Android module is com.stackd.privacy with the biometric library and the USE_BIOMETRIC permission', () => {
+    const gradle = read('plugins/stackd-privacy/android/build.gradle');
+    expect(gradle).toContain('namespace = "com.stackd.privacy"');
+    expect(gradle).toMatch(/androidxBiometricVersion\s*=.*'1\.1\.0'/);
+    expect(gradle).toContain('implementation "androidx.biometric:biometric:$androidxBiometricVersion"');
+    expect(gradle).toContain("implementation project(':capacitor-android')");
+    expect(gradle).toContain('JavaVersion.VERSION_21');
+    const manifest = read('plugins/stackd-privacy/android/src/main/AndroidManifest.xml');
+    expect(manifest).toContain('<uses-permission android:name="android.permission.USE_BIOMETRIC" />');
+  });
+
+  it('Info.plist explains Face ID, and asks for no motion permission (CoreMotion device motion needs none)', () => {
+    const plist = read('ios/App/App/Info.plist');
+    expect(plist).toMatch(/<key>NSFaceIDUsageDescription<\/key>\s*<string>Stack'd uses Face ID to unlock the app when App lock is on\.<\/string>/);
+    expect(plist).not.toContain('NSMotionUsageDescription');
+  });
+});

@@ -1,0 +1,30 @@
+{
+  "name": "stackd-privacy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stack'd privacy: biometric / device-credential prompts for App lock, the app-switcher cover, and native shake detection on iOS.",
+  "license": "UNLICENSED",
+  "author": "Stack'd",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "ios/Sources/",
+    "StackdPrivacy.podspec"
+  ],
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

@@ -49,6 +49,21 @@ function clearFieldError(field) {
   field.removeAttribute('aria-describedby');
 }
 
+// 1.3.0 (PL-2): an amount field whose currency sign is laid over its left
+// edge. A sign can now be a word ('CHF', 'kr', 'Cg.'), so the field's left
+// padding is the sign's real width, never less than `estimate` (the old fixed
+// value — also what a host that cannot measure, jsdom or a hidden pane, keeps).
+function fitAmountSign(input, sign, estimate) {
+  if (!input) return;
+  let pad = estimate;
+  if (sign && typeof sign.getBoundingClientRect === 'function') {
+    const box = sign.getBoundingClientRect();
+    const host = input.getBoundingClientRect();
+    if (box.width > 0) pad = Math.max(estimate, Math.ceil(box.right - host.left + 6));
+  }
+  input.style.paddingLeft = pad + 'px';
+}
+
 function showFieldError(field, message, opts) {
   if (!field) return null;
   const o = opts || {};
@@ -1412,6 +1427,7 @@ window.Views = {
         });
       } else {
         P.stop();
+        if (typeof P.disarmPermission === 'function') P.disarmPermission(); // 1.3.0 (PL-1)
       }
     },
 
@@ -1541,9 +1557,13 @@ window.Views = {
     _cloak(root, mode, opts) {
       const withBalls = !(opts && opts.balls === false);
       const mask = window.Store.MONEY_MASK;
+      // 1.3.0 (PL-2): the signs in use (base + each account's), not just $ € ¥ £
+      const signs = window.Store.moneySymbolPattern();
       const re = mode === 'mask'
-        ? /([$\u20ac\u00a5\u00a3])(\u2022{4})/g
-        : /([$\u20ac\u00a5\u00a3])(\d+(?:[.,'\u00a0\u202f\u2009 ]\d{3})*(?:[.,]\d{1,2})?)/g;
+        ? new RegExp('(' + signs + ')(\\u2022{4})', 'g')
+        : new RegExp('(' + signs + ")(\\d+(?:[.,'\\u00a0\\u202f\\u2009 ]\\d{3})*(?:[.,]\\d{1,2})?)", 'g');
+      // a sign made of letters ('R', 'kr') only counts at the start of a word
+      const midWord = (text, mt) => mt.index > 0 && /^\p{L}/u.test(mt[1]) && /[\p{L}\p{N}]/u.test(text[mt.index - 1]);
       // NodeFilter's constants, also where a host window does not expose them
       const NF = window.NodeFilter || { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
       const nodes = [];
@@ -1567,6 +1587,7 @@ window.Views = {
         re.lastIndex = 0;
         let mt;
         while ((mt = re.exec(text))) {
+          if (midWord(text, mt)) continue;
           const start = mt.index + mt[1].length;
           frag.appendChild(document.createTextNode(text.slice(last, start)));
           const el = document.createElement('span');
@@ -4571,7 +4592,7 @@ Object.assign(window.Views, {
               <label class="form-label" for="bdg-amount">${window.I18n.t('budget.monthlyLimit')}</label>
               <div style="position: relative;">
                 <span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 1.5rem; pointer-events: none;" aria-hidden="true">${currSym}</span>
-                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${shownLimit ? Math.round(shownLimit * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: 40px; font-weight: 600;">
+                <input type="text" id="bdg-amount" class="form-control" placeholder="0.00" inputmode="decimal" autocomplete="off" value="${shownLimit ? Math.round(shownLimit * 100) / 100 : ''}" style="font-size: 1.5rem; padding-left: ${40 + (Array.from(currSym).length - 1) * 15}px; font-weight: 600;">
               </div>
               ${hasLimit ? `<div id="bdg-applies-from" style="font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-2);"${this._appliesFromShown(budget.startDate, viewed) ? '' : ' hidden'}>${window.I18n.t('budget.appliesFrom', { month: esc(this._monthLabel(viewed)) })}</div>` : ''}
             </div>
@@ -4628,6 +4649,10 @@ Object.assign(window.Views, {
 
         const bdgBackBtn = container.querySelector('#btn-bdg-back');
         if (bdgBackBtn) bdgBackBtn.addEventListener('click', () => this.closeEditor()); // explicit discard
+
+        // 1.3.0 (PL-2): room for a word sign in front of the limit
+        const bdgAmt = container.querySelector('#bdg-amount');
+        if (bdgAmt) fitAmountSign(bdgAmt, bdgAmt.previousElementSibling, parseFloat(bdgAmt.style.paddingLeft) || 40);
 
         setTimeout(() => {
           const amtInput = container.querySelector('#bdg-amount');
@@ -5226,6 +5251,79 @@ Object.assign(window.Views, {
       }));
     },
 
+    // 1.3.0 (PL-3, docs/privacy-currencies-plan.md §4): App lock, under the
+    // Privacy card's two switches — only where it can work (the phone apps;
+    // AppLock.available). While it is on: the biometrics switch (when the
+    // phone has some enrolled), the lock delay and Change PIN. Every change
+    // goes through window.AppLock, which asks for the PIN where it must.
+    _renderAppLock() {
+      const L = window.AppLock;
+      if (!L || !L.available()) return '';
+      const t = (k) => window.I18n.t(k);
+      const cfg = L.config();
+      const st = L.cachedStatus();
+      const lead = (icon, labelId, title, desc) => `
+              <div style="display: flex; align-items: center; gap: var(--space-3); min-width: 0;">
+                <div class="list-item-icon" style="margin: 0; flex-shrink: 0;" aria-hidden="true"><i data-lucide="${icon}"></i></div>
+                <div style="min-width: 0;">
+                  <div class="list-item-title" id="${labelId}">${title}</div>
+                  ${desc ? `<div class="list-item-subtitle" id="${labelId}-desc" style="white-space: normal; line-height: 1.4;">${desc}</div>` : ''}
+                </div>
+              </div>`;
+      const toggle = (id, labelId, on) => `
+              <label class="toggle-switch" style="flex-shrink: 0;">
+                <input type="checkbox" id="${id}" aria-labelledby="${labelId}" ${on ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>`;
+      const chevron = '<i data-lucide="chevron-right" aria-hidden="true" style="color: var(--text-tertiary); width: 20px; height: 20px; flex-shrink: 0;"></i>';
+      const more = !cfg.enabled ? '' : `
+            ${st.enrolled ? `<div class="lock-row">${lead(L.bioIcon(st), 'label-app-lock-bio', t(L.bioLabelKey(st)), '')}${toggle('toggle-app-lock-bio', 'label-app-lock-bio', cfg.biometrics)}</div>` : ''}
+            <button type="button" class="lock-row lock-row--button touch-target" id="btn-app-lock-delay" aria-haspopup="dialog">
+              ${lead('timer', 'label-app-lock-delay', t('lock.after'), t('lock.after.' + cfg.delay))}${chevron}
+            </button>
+            <button type="button" class="lock-row lock-row--button touch-target" id="btn-app-lock-change">
+              ${lead('key-round', 'label-app-lock-change', t('lock.changePin'), '')}${chevron}
+            </button>
+            <p class="lock-hint">${t('lock.widgetHint')}</p>`;
+      return `
+            <div class="lock-row lock-row--first">
+              ${lead('lock', 'label-app-lock', t('lock.title'), t('lock.desc'))}${toggle('toggle-app-lock', 'label-app-lock', cfg.enabled)}
+            </div>${more}`;
+    },
+
+    _attachAppLock(container) {
+      const L = window.AppLock;
+      if (!L || !L.available()) return;
+      // A switch shows the outcome, not the tap: it goes back at once, and the
+      // re-render that follows a real change sets it.
+      const outcome = (id, run) => {
+        const el = container.querySelector('#' + id);
+        if (!el) return;
+        el.addEventListener('change', (e) => {
+          const on = e.target.checked;
+          e.target.checked = !on;
+          run(on);
+        });
+      };
+      outcome('toggle-app-lock', (on) => (on ? L.enable() : L.disable()));
+      outcome('toggle-app-lock-bio', (on) => L.setBiometrics(on));
+      const delayBtn = container.querySelector('#btn-app-lock-delay');
+      if (delayBtn) {
+        delayBtn.addEventListener('click', () => {
+          window.Components.ListPicker.show({
+            title: window.I18n.t('lock.after'),
+            items: window.Store.APP_LOCK_DELAYS.map(d => ({ id: String(d), name: window.I18n.t('lock.after.' + d) })),
+            selectedValue: String(L.config().delay),
+            onSelect: (v) => window.Store.dispatch('SET_APP_LOCK', { delay: Number(v) })
+          });
+        });
+      }
+      const changeBtn = container.querySelector('#btn-app-lock-change');
+      if (changeBtn) changeBtn.addEventListener('click', () => L.changePin());
+      // biometrics enrolled in the phone's settings since the last look
+      L.refreshStatus();
+    },
+
     _attachNavOrder(container) {
       const list = container.querySelector('#nav-order-list');
       if (!list) return;
@@ -5532,7 +5630,7 @@ Object.assign(window.Views, {
                 <div class="list-item-icon" style="margin: 0;"><i data-lucide="coins"></i></div>
                 <div>
                   <div class="list-item-title">${window.I18n.t('others.currency')}</div>
-                  <div class="list-item-subtitle" id="current-currency-display">${window.I18n.t('currency.' + (['USD','EUR','JPY','GBP','CNY'].includes(state.currency) ? state.currency : 'USD'))}</div>
+                  <div class="list-item-subtitle" id="current-currency-display">${esc(window.Store.currencyLabel(state.currency || 'USD'))}</div>
                 </div>
               </div>
               <i data-lucide="chevron-right" style="color: var(--text-tertiary); width: 20px; height: 20px;"></i>
@@ -5619,6 +5717,7 @@ Object.assign(window.Views, {
                 <span class="slider"></span>
               </label>
             </div>
+            ${this._renderAppLock()}
           </div>
 
           <!-- 1.1.0 (IE-5, docs/import-export-plan.md §3a): one Data card —
@@ -5776,6 +5875,7 @@ Object.assign(window.Views, {
       rowAction('btn-import-rules', () => window.Components.ImportRulesModal.show()); // v1.01
 
       this._attachNavOrder(container); // 1.2.2 (HG-7 P2): Tab bar
+      this._attachAppLock(container); // 1.3.0 (PL-3)
 
       // 1.2.2 (HG-4): Privacy. Turning Shake to hide on asks iOS for motion
       // access from this tap; a refusal turns it back off and says why.
@@ -5787,8 +5887,12 @@ Object.assign(window.Views, {
       if (toggleShake) {
         toggleShake.addEventListener('change', async (e) => {
           const on = e.target.checked;
-          if (!on) { window.Store.dispatch('SET_PRIVACY', { shake: false }); return; }
           const P = window.Components.PrivacyShake;
+          if (!on) {
+            P.disarmPermission(); // 1.3.0 (PL-1): nothing left to ask for
+            window.Store.dispatch('SET_PRIVACY', { shake: false });
+            return;
+          }
           const answer = await P.requestPermission();
           if (answer === 'denied') {
             e.target.checked = false;
@@ -5822,33 +5926,16 @@ Object.assign(window.Views, {
       // Currency picker
       const btnCurrency = document.getElementById('btn-open-currency');
       if (btnCurrency) {
-        const CURRENCIES = [
-          { code: 'USD', symbol: '$', label: window.I18n.t('currency.USD') },
-          { code: 'EUR', symbol: '\u20ac', label: window.I18n.t('currency.EUR') },
-          { code: 'JPY', symbol: '\u00a5', label: window.I18n.t('currency.JPY') },
-          { code: 'GBP', symbol: '\u00a3', label: window.I18n.t('currency.GBP') },
-          { code: 'CNY', symbol: '\u00a5', label: window.I18n.t('currency.CNY') },
-        ];
         // 1.0.1 (BUG-01): two-step picker. A tap (or Enter/Space) only
         // SELECTS; Done continues; Cancel / backdrop / swipe / Back abort with
         // nothing applied. A switch that would leave accounts out of totals
         // goes through Components.CurrencySwitchConfirm (impact + relabel).
+        // 1.3.0 (PL-2): every currency, searchable (Components.CurrencyPicker).
         const openCurrencyPicker = () => {
           const current = window.Store.getState().currency || 'USD';
-          let selected = current;
-          const optionsHtml = () => CURRENCIES.map(c => `
-            <div class="currency-opt list-item" data-code="${c.code}" style="cursor: pointer; display: flex; align-items: center; gap: 16px; padding: 14px var(--space-4); border-bottom: 1px solid var(--bg-surface-sunken);" tabindex="0" role="radio" aria-checked="${c.code === selected ? 'true' : 'false'}">
-              <span style="font-size: 1.4rem; width: 32px; text-align: center; font-family: var(--font-family-display); flex-shrink: 0;">${c.symbol}</span>
-              <span style="flex: 1; font-weight: ${c.code === selected ? '700' : '400'}; color: ${c.code === selected ? 'var(--text-primary)' : 'var(--text-secondary)'}">${c.label}</span>
-              ${c.code === selected ? '<span style="color: var(--color-accent); font-size: 1.1rem;">✓</span>' : ''}
-            </div>
-          `).join('');
-          window.Components.Modal.show({
-            title: window.I18n.t('others.chooseCurrency'),
-            content: `<div id="currency-opts" role="radiogroup" aria-label="${window.I18n.t('others.chooseCurrency')}">${optionsHtml()}</div>`,
-            saveText: window.I18n.t('common.done'),
-            onSave: (close) => {
-              if (selected === current) { close(); return; }
+          window.Components.CurrencyPicker.show({
+            selected: current,
+            onDone: (selected, close) => {
               const impact = window.Store.currencySwitchImpact(selected);
               if (impact.excluded === 0) {
                 // No account would drop out of totals: nothing to confirm.
@@ -5861,23 +5948,6 @@ Object.assign(window.Views, {
               window.Components.CurrencySwitchConfirm.show({ prev: current, next: selected, impact });
             }
           });
-          // Modal.show writes the DOM synchronously, so bind right away.
-          const bindOpts = () => {
-            const wrap = document.getElementById('currency-opts');
-            if (!wrap) return;
-            wrap.querySelectorAll('.currency-opt').forEach(opt => {
-              const pick = () => {
-                selected = opt.dataset.code;
-                wrap.innerHTML = optionsHtml();
-                bindOpts();
-                const chosen = wrap.querySelector(`.currency-opt[data-code="${selected}"]`);
-                if (chosen) chosen.focus();
-              };
-              opt.addEventListener('click', pick);
-              opt.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
-            });
-          };
-          bindOpts();
         };
         btnCurrency.addEventListener('click', openCurrencyPicker);
         btnCurrency.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCurrencyPicker(); } });
@@ -7051,7 +7121,9 @@ Object.assign(window.Views, {
       const obZero = (0).toFixed(obDp);
       // 1.0.3 (BUG-154): an account in a currency the picker does not list
       // (CSV / Bank Connect) keeps it — shown as its code, selected.
-      const listedCcys = ['USD', 'EUR', 'JPY', 'GBP', 'CNY'];
+      // 1.3.0 (PL-2): the select only holds the value now (hidden); the row
+      // above it opens the searchable Components.CurrencyPicker.
+      const listedCcys = window.Store.CURRENCY_CODES;
       const unlistedCcyOption = currencyValue && !listedCcys.includes(currencyValue)
         ? `<option value="${escapeAttr(currencyValue)}" selected>${esc(currencyValue)}</option>`
         : '';
@@ -7094,9 +7166,13 @@ Object.assign(window.Views, {
             </div>
 
             <div class="form-group" style="margin-bottom: var(--space-5);">
-              <label class="form-label" for="edit-acc-currency">${window.I18n.t('account.currency')}</label>
-              <select id="edit-acc-currency" class="form-control">
-                ${unlistedCcyOption}${listedCcys.map(c => `<option value="${c}" ${currencyValue === c ? 'selected' : ''}>${window.I18n.t('currency.' + c)}</option>`).join('')}
+              <label class="form-label" for="btn-acc-currency">${window.I18n.t('account.currency')}</label>
+              <button type="button" id="btn-acc-currency" class="form-control acc-currency-btn" aria-haspopup="dialog">
+                <span id="acc-currency-label">${esc(window.Store.currencyLabel(currencyValue))}</span>
+                <i data-lucide="chevron-down" aria-hidden="true"></i>
+              </button>
+              <select id="edit-acc-currency" hidden tabindex="-1" aria-hidden="true">
+                ${unlistedCcyOption}${listedCcys.map(c => `<option value="${c}" ${currencyValue === c ? 'selected' : ''}>${c}</option>`).join('')}
               </select>
               <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.currencyHint')}</p>
             </div>
@@ -7123,7 +7199,7 @@ Object.assign(window.Views, {
               </div>
               <div style="position: relative;">
                 <span id="ob-sign-symbol" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: ${isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)'}; font-size: 1rem; pointer-events: none; font-family: var(--font-family-display); font-weight: 600;" aria-hidden="true">${isNegativeOb ? '-' : ''}${currSym}</span>
-                <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(obDp)}" placeholder="${obZero}" inputmode="numeric" style="padding-left: ${isNegativeOb ? '38px' : '30px'}; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
+                <input type="text" id="edit-acc-balance" class="form-control" value="${Math.abs(currentObAmt).toFixed(obDp)}" placeholder="${obZero}" inputmode="numeric" style="padding-left: ${(isNegativeOb ? 38 : 30) + (Array.from(currSym).length - 1) * 10}px; ${isNegativeOb ? 'color: var(--color-expense);' : ''}">
               </div>
               <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin: 4px 0 0 2px;">${window.I18n.t('account.negativeHint')}</p>
             </div>
@@ -7226,8 +7302,33 @@ Object.assign(window.Views, {
       const obFieldInit = document.getElementById('edit-acc-balance');
       let obBase = Math.abs(currentObAmt);
       let obAutoText = obFieldInit ? obFieldInit.value : '';
+      // 1.3.0 (PL-2): the row opens the shared picker; Done writes the
+      // hidden select and fires its change, so everything below still follows.
+      const ccyBtn = document.getElementById('btn-acc-currency');
+      if (ccyBtn && ccySelect) {
+        ccyBtn.addEventListener('click', () => {
+          window.Components.CurrencyPicker.show({
+            title: window.I18n.t('account.currency'),
+            selected: ccySelect.value,
+            onDone: (code, close) => {
+              if (!Array.from(ccySelect.options).some(o => o.value === code)) {
+                const opt = document.createElement('option');
+                opt.value = code;
+                opt.textContent = code;
+                ccySelect.appendChild(opt);
+              }
+              ccySelect.value = code;
+              ccySelect.dispatchEvent(new Event('change'));
+              close();
+              ccyBtn.focus();
+            }
+          });
+        });
+      }
       if (ccySelect) {
         ccySelect.addEventListener('change', () => {
+          const ccyLabel = document.getElementById('acc-currency-label');
+          if (ccyLabel) ccyLabel.textContent = window.Store.currencyLabel(ccySelect.value);
           currSym = window.Store.getCurrencySymbol(ccySelect.value);
           // 1.0.3 (BUG-46): the same figure, in the new currency's decimals
           const field = document.getElementById('edit-acc-balance');
@@ -7271,10 +7372,13 @@ Object.assign(window.Views, {
           obSignSymbol.style.color = isNegativeOb ? 'var(--color-expense)' : 'var(--text-tertiary)';
         }
         if (obInput) {
-          obInput.style.paddingLeft = isNegativeOb ? '38px' : '30px';
+          // 1.3.0 (PL-2): a sign of several characters ('CHF', 'kr') needs the room
+          fitAmountSign(obInput, obSignSymbol, (isNegativeOb ? 38 : 30) + (Array.from(currSym).length - 1) * 10);
           obInput.style.color = isNegativeOb ? 'var(--color-expense)' : '';
         }
       };
+
+      fitAmountSign(obInput, obSignSymbol, (isNegativeOb ? 38 : 30) + (Array.from(currSym).length - 1) * 10); // 1.3.0 (PL-2)
 
       if (btnObPos) {
         btnObPos.addEventListener('click', () => {

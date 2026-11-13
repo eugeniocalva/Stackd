@@ -54,6 +54,25 @@ describe('Android Back (BUG-03)', () => {
       expect(window.history.back).not.toHaveBeenCalled();
     });
 
+    // 1.3.0 (PL-3): the lock screen is above everything
+    it('the lock screen answers first: locked → exit, nothing underneath moves', () => {
+      state.activeView = 'analytics';
+      C().Modal.show({ title: 'Hello', content: '<p>x</p>' });
+      openAll();
+      window.AppLock = { isOpen: () => true, handleBack: vi.fn(() => 'exit') };
+      try {
+        expect(R().handleBack({ canGoBack: true })).toBe('exit');
+        expect(window.AppLock.handleBack).toHaveBeenCalledTimes(1);
+        expect(openSheets()).toEqual(['active-modal']); // the sheet under the lock stays
+        expect(window.history.back).not.toHaveBeenCalled();
+        window.AppLock = { isOpen: () => false, handleBack: vi.fn() };
+        expect(R().handleBack({ canGoBack: true })).toBe('sheet');
+        expect(window.AppLock.handleBack).not.toHaveBeenCalled();
+      } finally {
+        delete window.AppLock;
+      }
+    });
+
     it('a non-Home view with history → history.back()', () => {
       state.activeView = 'analytics';
       expect(R().handleBack({ canGoBack: true })).toBe('back');
