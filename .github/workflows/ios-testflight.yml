@@ -62,7 +62,7 @@ jobs:
           echo "EXPORT_DIR=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
           echo "KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
