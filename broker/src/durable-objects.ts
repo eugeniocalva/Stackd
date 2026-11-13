@@ -7,8 +7,8 @@
 // All three expose a tiny fetch-based internal API (https://do/<method>) so
 // the worker talks to them through stubs and the test suite through in-memory
 // fakes with the same surface (test/fakes.ts).
-import type { Env } from './env';
-import { GRACE_MS } from './env';
+import type { Env, Config } from './env';
+import { GRACE_MS, parseConfig } from './env';
 
 export interface DeviceRecord {
   hash: string;
@@ -77,7 +77,65 @@ export interface OwnerRecord {
   entitlement: Entitlement;
   requisitions: Record<string, ReqRecord>;
   pairCodes?: PairCode[]; // v1.11 B7 (absent on pre-B7 records)
+  // 1.3.0 (GAP-4): set when a purge was due but a SystemDO/RateDO clean-up
+  // failed; the alarm retries it.
+  purgeRequestedAt?: string | null;
 }
+
+// ── Retention (1.3.0 GAP-4) ────────────────────────────────────────────────
+// 1.3.0 (GAP-4) — the privacy policy says the owner record ("an opaque owner
+// and device identifier", the linked banks, "your subscription status with
+// the identifier the store issued for it") is kept until you disconnect and
+// deleted "when you disconnect the bank or, after a subscription ends, 14
+// days later". The exact rule implemented here:
+//
+//  1. Last disconnect. `DELETE /v1/connections/:ref` that removes the
+//     owner's LAST connection purges the whole owner when no subscription
+//     may be active: store mode and `entitlement.active === false` (the
+//     store's latest verdict, or never subscribed). An entitlement still
+//     marked active — even one whose expiry has passed, since the store may
+//     have renewed it unseen — is kept and left to rule 2. Open mode
+//     (staging) never purges.
+//  2. 14 days after the end. Every entitlement write arms this owner's
+//     alarm at `end + 14 days`, where `end` = `expiresAt` while marked
+//     active, else the earlier of `expiresAt` and `lapsedAt` (the moment the
+//     broker learned it ended). When the alarm fires and that moment has
+//     passed, the broker first re-asks the store (skipped only when an
+//     inactive verdict is under `recheckMinIntervalMs` old): a renewed
+//     subscription re-arms and nothing is deleted; a store outage retries in
+//     an hour; a store 4xx (receipt unknown / long expired) counts as ended.
+//     Otherwise every remaining connection is revoked at Enable Banking (as
+//     the DELETE route does, capacity released) and the owner is purged.
+//  3. An owner abandoned by a receipt adoption (A-10) has no connections and
+//     no subscription by construction; it is purged on the spot.
+//
+// A purge removes this OwnerDO's whole storage (devices + token hashes, web
+// sessions + CSRF hashes, pairing codes, the entitlement with its purchase
+// token / original transaction id, connections, the per-owner rate window),
+// every SystemDO `receipt:*` and `pair:*` entry pointing at this owner, and
+// the RateDO window `pair:<ownerId>`. A device of a purged owner then gets
+// 401 `invalid_device_token` (bearer) or 401 `invalid_session` with the
+// cookie cleared (web): the same answers as a token that never existed.
+export const PURGE_RETRY_MS = 60 * 60 * 1000;
+// Never fire sooner than this after an entitlement write, so the verify
+// answer that armed it reaches the app before the record can go.
+const MIN_ALARM_DELAY_MS = 60 * 60 * 1000;
+
+const ms = (s: string | null | undefined): number => (s ? Date.parse(s) : NaN);
+
+export function subscriptionEndedAt(e: Entitlement | undefined): number | null {
+  if (!e) return null;
+  const exp = ms(e.expiresAt);
+  if (e.active) return Number.isFinite(exp) ? exp : null;
+  const known = [exp, ms(e.lapsedAt)].filter(Number.isFinite);
+  return known.length ? Math.min(...known) : null;
+}
+
+export function subscriptionMayBeActive(e: Entitlement | undefined, mode: Config['mode']): boolean {
+  return mode === 'open' || !!(e && e.active);
+}
+
+const hasReceipt = (e: Entitlement): boolean => !!(e.platform && (e.purchaseToken || e.originalTransactionId));
 
 interface RateWindow {
   windowStart: number;
@@ -218,17 +276,17 @@ export class OwnerDO {
         const r = await this.load();
         if (!r) return json({ ok: false }, 404);
         const next = { ...r.entitlement, ...(body.entitlement as Entitlement) };
-        // active → inactive starts the grace clock (revoke via alarm, D-C3).
-        if (r.entitlement.active && !next.active) {
-          next.lapsedAt = nowIso;
-          await this.state.storage.setAlarm(Date.now() + GRACE_MS);
-        }
+        // active → inactive starts the grace clock (D-C3). 1.3.0 (GAP-4): so
+        // does a first inactive verdict on a receipt, so a subscription the
+        // broker only ever saw ended still gets a deletion date.
+        if (!next.active && !next.lapsedAt && (r.entitlement.active || hasReceipt(next))) next.lapsedAt = nowIso;
         if (next.active) {
           next.lapsedAt = null;
-          await this.state.storage.deleteAlarm();
+          r.purgeRequestedAt = null;
         }
         r.entitlement = next;
         await this.save(r);
+        await this.arm(r);
         return json({ ok: true, entitlement: r.entitlement });
       }
 
@@ -255,8 +313,24 @@ export class OwnerDO {
         const ref = String(body.ref);
         if (!r || !r.requisitions[ref]) return json({ ok: false }, 404);
         delete r.requisitions[ref];
+        const count = Object.keys(r.requisitions).length;
+        // 1.3.0 (GAP-4) rule 1: the last disconnect without a subscription.
+        // Decided inside this DO turn, so no request can slip in between.
+        if (body.purgeIfIdle && count === 0 && !subscriptionMayBeActive(r.entitlement, parseConfig(this.env).mode)) {
+          return json({ ok: true, count, purged: await this.purge(r) });
+        }
         await this.save(r);
-        return json({ ok: true, count: Object.keys(r.requisitions).length });
+        return json({ ok: true, count });
+      }
+
+      // 1.3.0 (GAP-4) rule 3 (receipt adoption), guarded like rule 1.
+      case '/purge': {
+        const r = await this.load();
+        if (!r) return json({ ok: true, purged: false });
+        if (Object.keys(r.requisitions).length || subscriptionMayBeActive(r.entitlement, parseConfig(this.env).mode)) {
+          return json({ ok: false, purged: false }, 409);
+        }
+        return json({ ok: true, purged: await this.purge(r) });
       }
 
       case '/record': {
@@ -269,21 +343,99 @@ export class OwnerDO {
     }
   }
 
-  // Grace expiry (store mode): the subscription lapsed ≥ 14 days ago →
-  // revoke every session at the aggregator so its billing stops.
-  // Imported data on the device is untouched — the user owns it.
+  // 1.3.0 (GAP-4): one alarm per owner, at `end + 14 days` (the rule at the
+  // top of this file). Cleared when there is no end date to wait for.
+  private async arm(r: OwnerRecord): Promise<void> {
+    if (r.purgeRequestedAt && !r.entitlement.active) {
+      await this.state.storage.setAlarm(Date.now() + PURGE_RETRY_MS); // keep the pending retry
+      return;
+    }
+    const ended = subscriptionEndedAt(r.entitlement);
+    if (ended === null) {
+      if (!r.purgeRequestedAt) await this.state.storage.deleteAlarm();
+      return;
+    }
+    await this.state.storage.setAlarm(Math.max(ended + GRACE_MS, Date.now() + MIN_ALARM_DELAY_MS));
+  }
+
+  // Deletes the owner everywhere. False = a clean-up elsewhere failed: the
+  // record is kept (marked) and the alarm retries, so nothing is half-gone.
+  private async purge(r: OwnerRecord): Promise<boolean> {
+    try {
+      await new SystemClient(this.env).forgetOwner(r.ownerId);
+      await new RateClient(this.env).clear(`pair:${r.ownerId}`);
+    } catch {
+      r.purgeRequestedAt = r.purgeRequestedAt || new Date().toISOString();
+      await this.save(r);
+      await this.state.storage.setAlarm(Date.now() + PURGE_RETRY_MS);
+      return false;
+    }
+    await this.state.storage.deleteAlarm();
+    await this.state.storage.deleteAll();
+    return true;
+  }
+
+  // Before deleting anything on the strength of an end date, ask the store
+  // whether the subscription really is over (it may have renewed without the
+  // app telling us). 'retry' = the store could not answer.
+  private async recheck(r: OwnerRecord, cfg: Config, now: number): Promise<'same' | 'changed' | 'retry'> {
+    const e = r.entitlement;
+    if (!hasReceipt(e)) return 'same';
+    if (!e.active && now - (ms(e.lastVerifiedAt) || 0) < cfg.recheckMinIntervalMs) return 'same';
+    const { verifyReceipt, StoreError } = await import('./store-verify');
+    const input = e.platform === 'play'
+      ? { platform: 'play' as const, purchaseToken: String(e.purchaseToken || ''), productId: String(e.productId || '') }
+      : { platform: 'appstore' as const, originalTransactionId: String(e.originalTransactionId || ''), productId: String(e.productId || '') };
+    try {
+      const v = await verifyReceipt(this.env, cfg, (i, init) => fetch(i, init), input, now);
+      const at = new Date(now).toISOString();
+      r.entitlement = v.active
+        ? { ...e, active: true, expiresAt: v.expiresAt, productId: v.productId, state: v.state, lastVerifiedAt: at, lapsedAt: null }
+        : { ...e, active: false, expiresAt: v.expiresAt || e.expiresAt || null, state: v.state, lastVerifiedAt: at, lapsedAt: e.lapsedAt || at };
+      await this.save(r);
+      return 'changed';
+    } catch (err) {
+      // A 4xx is the store's verdict (receipt unknown, long expired, wrong
+      // product): the subscription is not active.
+      if (err instanceof StoreError && err.status >= 400 && err.status < 500) return 'same';
+      return 'retry';
+    }
+  }
+
+  // Grace expiry (store mode): the subscription ended ≥ 14 days ago →
+  // revoke every session at the aggregator so its billing stops, then
+  // (1.3.0 GAP-4) purge the owner. Imported data on the device is
+  // untouched — the user owns it.
   async alarm(): Promise<void> {
     const r = await this.load();
-    if (!r || this.env.ENTITLEMENT_MODE === 'open') return;
-    if (r.entitlement.active || !r.entitlement.lapsedAt) return;
-    if (Date.now() - Date.parse(r.entitlement.lapsedAt) < GRACE_MS) {
-      await this.state.storage.setAlarm(Date.parse(r.entitlement.lapsedAt) + GRACE_MS);
+    if (!r) return;
+    const cfg = parseConfig(this.env);
+    if (cfg.mode === 'open') return;
+    const now = Date.now();
+    if (r.purgeRequestedAt && !Object.keys(r.requisitions).length && !r.entitlement.active) {
+      await this.purge(r); // a rule-1 purge whose clean-up failed earlier
+      return;
+    }
+    let ended = subscriptionEndedAt(r.entitlement);
+    if (ended === null) return;
+    if (now < ended + GRACE_MS) {
+      await this.state.storage.setAlarm(ended + GRACE_MS);
+      return;
+    }
+    const checked = await this.recheck(r, cfg, now);
+    if (checked === 'retry') {
+      await this.state.storage.setAlarm(now + PURGE_RETRY_MS);
+      return;
+    }
+    ended = subscriptionEndedAt(r.entitlement);
+    if (r.entitlement.active || ended === null || now < ended + GRACE_MS) {
+      await this.arm(r); // renewed at the store: nothing is deleted
       return;
     }
     const { EnableBanking } = await import('./enable-banking');
-    const { parseConfig } = await import('./env');
-    const agg = new EnableBanking(this.env, parseConfig(this.env), (i, init) => fetch(i, init));
+    const agg = new EnableBanking(this.env, cfg, (i, init) => fetch(i, init));
     const system = new SystemClient(this.env);
+    let failed = false;
     for (const ref of Object.keys(r.requisitions)) {
       try {
         const sessionId = r.requisitions[ref].sessionId;
@@ -291,11 +443,15 @@ export class OwnerDO {
         delete r.requisitions[ref];
         await system.release();
       } catch {
-        // Try again next alarm; never lose the record over a transient error.
-        await this.state.storage.setAlarm(Date.now() + 60 * 60 * 1000);
+        failed = true; // try again next alarm; never lose the record over a transient error
       }
     }
-    await this.save(r);
+    if (failed) {
+      await this.save(r);
+      await this.state.storage.setAlarm(now + PURGE_RETRY_MS);
+      return;
+    }
+    await this.purge(r);
   }
 }
 
@@ -405,6 +561,20 @@ export class SystemDO {
         await this.state.storage.put(key, String(body.ownerId));
         return json({ ownerId: String(body.ownerId), claimed: true });
       }
+      // 1.3.0 (GAP-4): a purged owner leaves no routing entry behind — every
+      // receipt (older purchase tokens too) and pairing code pointing at it.
+      case '/owner/forget': {
+        const ownerId = String(body.ownerId || '');
+        if (!ownerId) return json({ error: 'owner_required' }, 400);
+        let removed = 0;
+        for (const [k, v] of await this.state.storage.list<string>({ prefix: 'receipt:' })) {
+          if (v === ownerId) { await this.state.storage.delete(k); removed++; }
+        }
+        for (const [k, v] of await this.state.storage.list<{ ownerId: string }>({ prefix: 'pair:' })) {
+          if (v && v.ownerId === ownerId) { await this.state.storage.delete(k); removed++; }
+        }
+        return json({ ok: true, removed });
+      }
       case '/receipt/set': {
         await this.state.storage.put('receipt:' + String(body.key), String(body.ownerId));
         return json({ ok: true });
@@ -433,6 +603,10 @@ export class RateDO {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/clear') { // 1.3.0 (GAP-4): owner purge
+      await this.state.storage.deleteAll();
+      return json({ ok: true });
+    }
     if (url.pathname !== '/hit') return json({ error: 'unknown_method' }, 404);
     const body = await readBody(request);
     const limit = Number(body.limit || 0);
@@ -514,21 +688,31 @@ export class OwnerClient {
     return data;
   }
 
-  async setEntitlement(entitlement: Entitlement): Promise<Entitlement> {
-    const { data } = await call<{ entitlement: Entitlement }>(this.stub, '/entitlement/set', { entitlement });
-    return data.entitlement;
+  // Null = the owner no longer exists (1.3.0 GAP-4: purged meanwhile).
+  async setEntitlement(entitlement: Entitlement): Promise<Entitlement | null> {
+    const { status, data } = await call<{ entitlement: Entitlement }>(this.stub, '/entitlement/set', { entitlement });
+    return status === 200 ? data.entitlement : null;
   }
 
-  async addRequisition(req: ReqRecord): Promise<void> {
-    await call(this.stub, '/requisitions/add', { req });
+  async addRequisition(req: ReqRecord): Promise<boolean> {
+    const { status } = await call(this.stub, '/requisitions/add', { req });
+    return status === 200;
   }
 
   async updateRequisition(ref: string, patch: Partial<ReqRecord>): Promise<void> {
     await call(this.stub, '/requisitions/update', { ref, patch });
   }
 
-  async removeRequisition(ref: string): Promise<void> {
-    await call(this.stub, '/requisitions/remove', { ref });
+  // 1.3.0 (GAP-4): `purgeIfIdle` = the DELETE route; `purged` = the owner
+  // went with its last connection.
+  async removeRequisition(ref: string, purgeIfIdle = false): Promise<{ purged: boolean }> {
+    const { data } = await call<{ purged?: boolean }>(this.stub, '/requisitions/remove', { ref, purgeIfIdle });
+    return { purged: !!data.purged };
+  }
+
+  async purge(): Promise<boolean> {
+    const { data } = await call<{ purged?: boolean }>(this.stub, '/purge', {});
+    return !!data.purged;
   }
 
   async record(): Promise<OwnerRecord | null> {
@@ -595,6 +779,12 @@ export class SystemClient {
     return (await call<{ ownerId: string; claimed: boolean }>(this.stub, '/receipt/claim', { key, ownerId })).data;
   }
 
+  // 1.3.0 (GAP-4)
+  async forgetOwner(ownerId: string): Promise<void> {
+    const { status } = await call(this.stub, '/owner/forget', { ownerId });
+    if (status !== 200) throw new Error('forget_failed');
+  }
+
   async receiptSet(key: string, ownerId: string): Promise<void> {
     await call(this.stub, '/receipt/set', { key, ownerId });
   }
@@ -625,5 +815,11 @@ export class RateClient {
     const stub = this.env.RATE_DO.get(this.env.RATE_DO.idFromName(key));
     const { data } = await call<{ allowed: boolean }>(stub, '/hit', { limit, windowMs });
     return data.allowed;
+  }
+
+  // 1.3.0 (GAP-4)
+  async clear(key: string): Promise<void> {
+    const stub = this.env.RATE_DO.get(this.env.RATE_DO.idFromName(key));
+    await call(stub, '/clear', {});
   }
 }

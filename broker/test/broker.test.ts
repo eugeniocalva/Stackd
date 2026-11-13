@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import { createPrivateKey } from 'node:crypto';
 import { createApp } from '../src/index';
 import { EnableBanking, pemToPkcs8 } from '../src/enable-banking';
@@ -289,11 +289,12 @@ describe('Stack\'d broker (Enable Banking)', () => {
       expect(conns.status).toBe(200);
       expect((conns.data.connections as unknown[]).length).toBe(1);
 
-      // The owner B minted for itself is left inert, not entitled.
-      const orphan = await recordOf(phoneB);
-      expect(orphan.entitlement.active).toBe(false);
-      expect(orphan.entitlement.state).toBe('ADOPTED');
-      expect(orphan.requisitions).toEqual({});
+      // 1.3.0 (GAP-4) rule 3: the owner B minted for itself holds nothing
+      // (no bank, no subscription), so it is deleted outright and its old
+      // token gets the "start over" answer.
+      expect(await recordOf(phoneB)).toEqual({ error: 'not_found' });
+      expect(env.owners.storages.get(ownerBMinted)!.size).toBe(0);
+      expect((await req('/v1/connections', { token: phoneB })).data).toEqual({ error: 'invalid_device_token' });
     });
 
     it('re-verifying on the owner that already holds the receipt changes nothing', async () => {
@@ -856,7 +857,251 @@ describe('Stack\'d broker (Enable Banking)', () => {
       (globalThis as any).fetch = eb.fetchImpl;
       try { await owner.alarm!(); } finally { (globalThis as any).fetch = realFetch; }
       expect(eb.sessions.size).toBe(0);
-      expect((await req('/v1/connections', { token })).data.connections).toEqual([]);
+      // 1.3.0 (GAP-4): the owner went with its sessions.
+      expect(await req('/v1/connections', { token })).toMatchObject({ status: 401, data: { error: 'invalid_device_token' } });
+    });
+  });
+
+  // 1.3.0 (GAP-4): the privacy policy's "deleted when you disconnect the bank
+  // or, after a subscription ends, 14 days later" — the rule is spelled out
+  // above OwnerDO in src/durable-objects.ts.
+  describe('data retention (GAP-4)', () => {
+    const DAY = 86400000;
+    // The DO alarm runs on the real clock (Date.now()), the worker on `clock`.
+    const realIso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+    const ownerOf = (token: string) => token.split('.')[0];
+    const storageOf = (token: string) => env.owners.storages.get(ownerOf(token))!;
+    const systemKeys = async () => [...(await env.systems.storages.get('system')!.list<unknown>()).entries()];
+    const pointsAt = async (ownerId: string) =>
+      (await systemKeys()).filter(([k, v]) => (k.startsWith('receipt:') && v === ownerId) || (k.startsWith('pair:') && (v as any)?.ownerId === ownerId));
+    const capacity = async () => {
+      const { SystemClient } = await import('../src/durable-objects');
+      return new SystemClient(env as unknown as Env).connections();
+    };
+    const subscribe = async (token: string, purchaseToken: string) => {
+      stores.play.set(purchaseToken, { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_monthly', expiryTime: new Date(clock + 30 * DAY).toISOString() });
+      const r = await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken, productId: 'stackd_bank_connect_monthly' }, token });
+      expect(r.data.active).toBe(true);
+    };
+    const link = async (token: string) => {
+      const s = await start(token);
+      expect(s.status).toBe(201);
+      eb.pendingAccounts = [];
+      await bankReturn(s.data.ref);
+      return s.data.ref as string;
+    };
+    // Rewrites the stored entitlement, as if time had passed without the app.
+    const age = async (token: string, patch: Record<string, unknown>) => {
+      const st = storageOf(token);
+      const rec = (await st.get('owner')) as any;
+      rec.entitlement = { ...rec.entitlement, ...patch };
+      await st.put('owner', rec);
+    };
+    const runAlarm = async (token: string, fetchImpl: typeof combinedFetch = combinedFetch) => {
+      const realFetch = globalThis.fetch;
+      (globalThis as any).fetch = fetchImpl;
+      try { await env.owners.instance(ownerOf(token)).alarm!(); } finally { (globalThis as any).fetch = realFetch; }
+    };
+    const expectPurged = async (token: string) => {
+      expect(storageOf(token).size).toBe(0);
+      expect(storageOf(token).alarm).toBeNull();
+      expect(await pointsAt(ownerOf(token))).toEqual([]);
+      expect(env.rates.storages.get(`pair:${ownerOf(token)}`)?.size || 0).toBe(0);
+      expect(await req('/v1/connections', { token })).toMatchObject({ status: 401, data: { error: 'invalid_device_token' } });
+    };
+
+    beforeEach(() => {
+      env = makeEnv(keys, { ENTITLEMENT_MODE: 'store' }, appleKeys);
+    });
+
+    it('the last disconnect without a subscription purges the whole owner', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_gone');
+      const ref = await link(token);
+      expect((await req('/v1/pair/code', { token, body: {} })).status).toBe(201); // a pairing entry + rate window
+      expect((await pointsAt(ownerOf(token))).length).toBe(2); // receipt + pairing code
+      // The subscription ends; the app learns it on its next check.
+      stores.play.get('tok_gone')!.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+      expect((await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_gone' }, token })).data.active).toBe(false);
+      expect(storageOf(token).size).toBeGreaterThan(0);
+
+      const r = await req(`/v1/connections/${ref}`, { token, method: 'DELETE' });
+      expect(r.status).toBe(200);
+      expect(r.data).toEqual({ ok: true, ref, purged: true });
+      expect(eb.sessions.size).toBe(0);
+      expect(await capacity()).toBe(0);
+      await expectPurged(token);
+      // A dead token never mints: it is told to start over.
+      expect(await req('/v1/entitlement/verify', { token, body: {} })).toMatchObject({ status: 401, data: { error: 'invalid_device_token' } });
+    });
+
+    it('the last disconnect keeps the owner while a subscription is (or may be) active', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_live');
+      const ref1 = await link(token);
+      const ref2 = await link(token);
+      const r = await req(`/v1/connections/${ref1}`, { token, method: 'DELETE' });
+      expect(r.data).toEqual({ ok: true, ref: ref1 });
+      // Past its expiry but still marked active: the store may have renewed
+      // it unseen, so this is left to the 14-day alarm, which asks the store.
+      await age(token, { expiresAt: new Date(clock - DAY).toISOString() });
+      const r2 = await req(`/v1/connections/${ref2}`, { token, method: 'DELETE' });
+      expect(r2.data).toEqual({ ok: true, ref: ref2 });
+      const rec = (await storageOf(token).get('owner')) as any;
+      expect(rec.devices.length).toBe(1);
+      expect(rec.entitlement).toMatchObject({ active: true, purchaseToken: 'tok_live' });
+      expect((await pointsAt(ownerOf(token))).length).toBe(1);
+      expect((await req('/v1/connections', { token })).data).toEqual({ connections: [] });
+    });
+
+    it('open mode (staging) never purges on a disconnect', async () => {
+      env = makeEnv(keys, {}, appleKeys);
+      const token = await mint();
+      const ref = await link(token);
+      expect((await req(`/v1/connections/${ref}`, { token, method: 'DELETE' })).data).toEqual({ ok: true, ref });
+      expect((await req('/v1/connections', { token })).status).toBe(200);
+    });
+
+    it('the alarm purges an owner 14+ days after the subscription ended (no connections left)', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_old');
+      // The app never came back: still marked active, expired 15 days ago.
+      stores.play.get('tok_old')!.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+      stores.play.get('tok_old')!.expiryTime = realIso(-15 * DAY);
+      await age(token, { expiresAt: realIso(-15 * DAY), lastVerifiedAt: realIso(-16 * DAY) });
+      const playCalls = () => stores.calls.filter(c => new URL(c.url).host === 'play.test').length;
+      const before = playCalls();
+      await runAlarm(token);
+      expect(playCalls()).toBe(before + 1); // asked the store first
+      await expectPurged(token);
+    });
+
+    it('the alarm revokes leftover connections at Enable Banking, then purges', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_lapsed');
+      await link(token);
+      await link(token);
+      expect(eb.sessions.size).toBe(2);
+      expect(await capacity()).toBe(2);
+      stores.play.get('tok_lapsed')!.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+      stores.play.get('tok_lapsed')!.expiryTime = realIso(-16 * DAY);
+      await age(token, { active: false, expiresAt: realIso(-16 * DAY), lapsedAt: realIso(-15 * DAY), lastVerifiedAt: realIso(-15 * DAY) });
+      await runAlarm(token);
+      expect(eb.sessions.size).toBe(0);
+      expect(eb.calls.filter(c => c.method === 'DELETE' && c.path.startsWith('/sessions/')).length).toBe(2);
+      expect(await capacity()).toBe(0);
+      await expectPurged(token);
+    });
+
+    it('the alarm leaves an owner alone 13 days after the end, and re-arms for day 14', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_13');
+      await link(token);
+      const endedAt = realIso(-13 * DAY);
+      await age(token, { active: false, expiresAt: endedAt, lapsedAt: endedAt, lastVerifiedAt: endedAt });
+      await runAlarm(token);
+      expect(eb.sessions.size).toBe(1);
+      expect(storageOf(token).alarm).toBe(Date.parse(endedAt) + 14 * DAY);
+      expect((await req('/v1/connections', { token })).data.connections.length).toBe(1);
+    });
+
+    it('never deletes when the store says the subscription renewed, and retries when the store is down', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_renewed');
+      await link(token);
+      await age(token, { expiresAt: realIso(-15 * DAY), lastVerifiedAt: realIso(-16 * DAY) });
+      // Store unreachable: nothing is deleted, the alarm comes back in an hour.
+      const down = (input: string, init?: RequestInit) =>
+        new URL(input).host === 'play.test' ? Promise.resolve(new Response('{}', { status: 503 })) : combinedFetch(input, init);
+      await runAlarm(token, down as typeof combinedFetch);
+      expect(eb.sessions.size).toBe(1);
+      expect(storageOf(token).alarm).toBeGreaterThan(Date.now() + 50 * 60000);
+      // The store answers: it renewed. Nothing is deleted; the clock moves.
+      stores.play.get('tok_renewed')!.expiryTime = realIso(20 * DAY);
+      await runAlarm(token);
+      expect(eb.sessions.size).toBe(1);
+      const rec = (await storageOf(token).get('owner')) as any;
+      expect(rec.entitlement.active).toBe(true);
+      expect(Date.parse(rec.entitlement.expiresAt)).toBeGreaterThan(Date.now() + 19 * DAY);
+      expect(storageOf(token).alarm).toBe(Date.parse(rec.entitlement.expiresAt) + 14 * DAY);
+    });
+
+    it('arms the alarm at expiry + 14 days on every entitlement write', async () => {
+      const token = await mint();
+      expect(storageOf(token).alarm).toBeNull(); // never subscribed: nothing to wait for
+      const expiry = realIso(30 * DAY);
+      stores.play.set('tok_arm', { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE', productId: 'stackd_bank_connect_monthly', expiryTime: expiry });
+      await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_arm' }, token });
+      expect(storageOf(token).alarm).toBe(Date.parse(expiry) + 14 * DAY);
+    });
+
+    it('a purged browser session gets 401 invalid_session with the cookie cleared', async () => {
+      const token = await mint();
+      await subscribe(token, 'tok_web');
+      const ref = await link(token);
+      const code = await req('/v1/pair/code', { token, body: {} });
+      const claim = await req('/v1/pair/claim', { body: { code: code.data.code }, ip: '198.51.100.9' });
+      expect(claim.status).toBe(201);
+      const cookie = (claim.headers.get('set-cookie') || '').split(';')[0];
+      stores.play.get('tok_web')!.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+      await req('/v1/entitlement/verify', { body: { platform: 'play', purchaseToken: 'tok_web' }, token });
+      // The browser disconnects the last bank itself: purged, cookie cleared.
+      const del = await req(`/v1/connections/${ref}`, { method: 'DELETE', cookie, csrf: claim.data.csrf });
+      expect(del.data).toEqual({ ok: true, ref, purged: true });
+      expect(del.headers.get('set-cookie')).toMatch(/Max-Age=0/i);
+      for (const path of ['/v1/session', '/v1/connections']) {
+        const r = await req(path, { cookie });
+        expect(r).toMatchObject({ status: 401, data: { error: 'invalid_session' } });
+        expect(r.headers.get('set-cookie')).toMatch(/Max-Age=0/i);
+      }
+      await expectPurged(token);
+      // The bank's return link for a purged owner is just an invalid link.
+      expect(String((await req(`/v1/connect/return?code=x&state=${ref}`, { client: null })).data)).toContain('invalid_ref');
+    });
+  });
+
+  // 1.3.0 (audit, logs): our log lines name route patterns, never the
+  // account uids, connection refs or owner ids that sit in concrete paths.
+  describe('log lines carry no identifiers', () => {
+    it('logs the route pattern for every request, and `other` for unknown paths', async () => {
+      const lines: string[] = [];
+      const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { lines.push(a.map(String).join(' ')); });
+      try {
+        const token = await mint();
+        const s = await start(token);
+        const ref = s.data.ref as string;
+        eb.accounts.set('acc_secret_uid', { uid: 'acc_secret_uid', iban: 'IT60X0542811101000000123456', currency: 'EUR', balances: { balances: [] } });
+        eb.pendingAccounts = ['acc_secret_uid'];
+        const code = [...eb.authorizations.values()].find(a => a.state === ref)!.code;
+        await req(`/v1/connect/return?code=${code}&state=${ref}`, { client: null });
+        await req(`/v1/connect/status?ref=${ref}`, { token });
+        await req('/v1/accounts/acc_secret_uid/transactions?date_from=2026-08-01', { token });
+        await req('/v1/accounts/acc_secret_uid/balances', { token });
+        await req('/v1/devices/0123456789abcdef', { token, method: 'DELETE' });
+        await req(`/v1/connections/${ref}`, { token, method: 'DELETE' });
+        await req(`/v1/nope/${ref}`, { token });
+        const sessionIds = [...eb.calls].map(c => /^\/sessions\/([^/?]+)/.exec(c.path)?.[1]).filter(Boolean) as string[];
+        const ownerId = token.split('.')[0];
+        const all = lines.join('\n');
+        for (const secret of [ref, ownerId, 'acc_secret_uid', code, token.split('.')[1], ...sessionIds]) expect(all).not.toContain(secret);
+        const ps = lines.map(l => { try { return JSON.parse(l).p; } catch { return null; } });
+        expect(ps).toEqual(expect.arrayContaining([
+          '/v1/connect/return', '/v1/connect/status', '/v1/accounts/:id/transactions', '/v1/accounts/:id/balances',
+          '/v1/devices/:id', '/v1/connections/:ref', 'other'
+        ]));
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('maps aggregator paths too', async () => {
+      const { pathPattern } = await import('../src/paths');
+      expect(pathPattern('/sessions/9f1c-uid')).toBe('/sessions/:id');
+      expect(pathPattern('/accounts/abc/transactions')).toBe('/accounts/:id/transactions');
+      expect(pathPattern('/accounts/abc/balances?x=1')).toBe('/accounts/:id/balances');
+      expect(pathPattern('/aspsps')).toBe('/aspsps');
+      expect(pathPattern('/v1/connections/owner_ref/extra')).toBe('other');
+      expect(pathPattern('')).toBe('other');
     });
   });
 });

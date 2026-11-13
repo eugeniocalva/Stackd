@@ -58,7 +58,9 @@ const fill = (str, vars = {}) => String(str).replace(/\{(\w+)\}/g, (m, k) => {
   throw new Error(`unfilled placeholder ${m} in: ${str}`);
 });
 
-const head = ({ lang, page, title, description, alternates = true, noindex = false }) => {
+// ld: an optional JSON-LD <script> block (tools/site/jsonld.cjs), placed
+// after the meta tags.
+const head = ({ lang, page, title, description, alternates = true, noindex = false, ld = '' }) => {
   const s = S[lang];
   const links = [];
   if (noindex) {
@@ -83,6 +85,7 @@ const head = ({ lang, page, title, description, alternates = true, noindex = fal
       `  <meta property="og:image:alt" content="${attr(s.ogAlt)}">`,
       '  <meta name="twitter:card" content="summary_large_image">'
     );
+    if (ld) links.push(ld);
   }
   return `<head>
   <meta charset="UTF-8">

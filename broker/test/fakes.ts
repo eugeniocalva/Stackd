@@ -20,6 +20,12 @@ class FakeStorage {
   async delete(key: string): Promise<boolean> {
     return this.map.delete(key);
   }
+  async deleteAll(): Promise<void> {
+    this.map.clear(); // like the runtime: the alarm is separate (deleteAlarm)
+  }
+  get size(): number {
+    return this.map.size;
+  }
   async list<T>(opts: { prefix?: string } = {}): Promise<Map<string, T>> {
     const out = new Map<string, T>();
     for (const [k, v] of this.map) if (!opts.prefix || k.startsWith(opts.prefix)) out.set(k, v as T);

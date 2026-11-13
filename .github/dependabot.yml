@@ -1,0 +1,27 @@
+# 1.3.0 (GAP-1/10): weekly dependency updates for the app, the broker and the
+# workflows themselves. Minor and patch bumps come grouped, one PR per
+# ecosystem, so the PR list stays readable; majors come one by one.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      app-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /broker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      broker-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

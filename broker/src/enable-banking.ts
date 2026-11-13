@@ -5,6 +5,7 @@
 // response body, and maps aggregator errors to the broker's own codes.
 import type { Env, Config } from './env';
 import { SystemClient } from './durable-objects';
+import { pathPattern } from './paths';
 
 export class AggregatorError extends Error {
   // Non-sensitive diagnostics (lengths/shapes only); surfaced in staging responses.
@@ -229,7 +230,7 @@ export class EnableBanking {
       throw new AggregatorError(503, 'aggregator_rate_limited');
     }
     if (res.status === 404) throw new AggregatorError(404, 'aggregator_not_found');
-    console.log(JSON.stringify({ level: 'warn', msg: 'aggregator error', p: path.split('?')[0].replace(/[0-9a-f-]{36}/g, ':id'), status: res.status, code }));
+    console.log(JSON.stringify({ level: 'warn', msg: 'aggregator error', p: pathPattern(path), status: res.status, code }));
     throw new AggregatorError(502, `aggregator_error_${res.status}`);
   }
 
