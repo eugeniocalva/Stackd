@@ -23,7 +23,7 @@
     "@playwright/test": "^1.58.2",
     "@vitest/browser": "^4.1.12",
     "@vitest/ui": "^4.1.12",
-    "eslint": "^9.39.4",
+    "eslint": "^10.14.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-n": "^17.24.0",
     "eslint-plugin-promise": "^7.2.1",
