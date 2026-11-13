@@ -40,6 +40,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: E2E tests
         run: npm run test:e2e
+      # The e2e suite runs on the dev server, which never bundles. The phones
+      # load the single built file: build it and check it (vendored
+      # libraries present, a real Receipts PDF, icons and charts drawn).
+      - name: Build the app bundle
+        run: npm run build
+      - name: Check the built bundle
+        run: node tools/check-bundle.cjs
       - name: Keep the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4

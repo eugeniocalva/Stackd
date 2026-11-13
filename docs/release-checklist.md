@@ -109,6 +109,14 @@ from `store-listing.md`.
 
 ## 4. Build the web bundle
 
+**Then check the built file** (1.3.0): `node tools/check-bundle.cjs`. It loads
+`dist/index.html` — what the phones run — and fails if a vendored library
+(pdf-lib, lucide, Chart.js) is missing, if a real Receipts PDF cannot be made,
+or on any console error. The e2e suite cannot catch these: it runs on the dev
+server, which never bundles. (Until 1.3.0 the built app had no
+`window.PDFLib`, so the Receipts PDF export produced nothing on Android and
+iOS.)
+
 ```bash
 npm run build
 git diff --exit-code index.html     # must be clean

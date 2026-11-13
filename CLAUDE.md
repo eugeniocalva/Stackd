@@ -35,6 +35,8 @@ npx playwright test tests/e2e/debt_simulator.spec.js
 
 `npm run build` runs `build.cjs`, which temporarily rewrites `index.html`'s `<script defer src=...>` tags to `type="module"`, runs `vite build`, then restores the `defer` version. This dual form exists because `index.html` must remain openable directly over `file://` (Capacitor/native) with `defer`, while Vite's bundler needs `type="module"` to inline everything. **Do not "fix" the `defer` tags in `index.html`** — the build script depends on toggling them. `vite-plugin-singlefile` inlines all JS/CSS into a single output file.
 
+**Vendored libraries stay out of the bundler (1.3.0).** `src/libs/*.js` (pdf-lib, lucide, Chart.js) are UMD files: bundled as modules, their `typeof exports` test was rewritten to the bundler's own module object and they never set `window.PDFLib` / `window.lucide` — the built app shipped without a working Receipts PDF export. `build.cjs` keeps every `src/libs/` tag classic (`defer`, so Vite skips it) and writes the file into `dist/index.html` as an inline classic `<script>` in its original place. A new vendored library goes in `src/libs/` and gets the same treatment automatically. `node tools/check-bundle.cjs` checks the built file (CI runs it after the e2e suite) — the e2e suite runs on the dev server, which never bundles.
+
 ## Architecture — read this before editing `src/`
 
 > ⚠️ `docs/architecture.md` describes an *aspirational* ES-module structure (split `components/` and `views/` folders) that was **never built**. Ignore its file layout. The real code is described below.
