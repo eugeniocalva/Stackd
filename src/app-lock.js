@@ -513,7 +513,14 @@ window.AppLock = {
       cancelTitle: this._t('lock.usePin'), allowDeviceCredential: false
     });
     if (!this.isLocked()) return false;
-    if (r.ok) { this._unlock(); return true; }
+    if (r.ok) {
+      // a fingerprint / face is a right answer too: earlier wrong PINs no
+      // longer count towards a wait (found on the emulator, 2026-11-13)
+      const cfg = this.config();
+      if (cfg.fails || cfg.lockedUntil) window.Store.dispatch('SET_APP_LOCK', { fails: 0, lockedUntil: 0 });
+      this._unlock();
+      return true;
+    }
     if (r.code === 'lockout') this._say('lock.bioLockout');
     return false;
   },

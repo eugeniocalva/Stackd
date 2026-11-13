@@ -274,6 +274,21 @@ describe('biometrics (PL-3)', () => {
     await vi.waitFor(() => expect(L.isLocked()).toBe(false));
   });
 
+  it('a fingerprint unlock clears the wrong-PIN count', async () => {
+    boot();
+    await setUpPin('1234');
+    await L.setBiometrics(true);
+    boot({ keep: true, pluginOver: { authenticate: vi.fn(async () => ({ ok: false, code: 'cancel' })) } });
+    L.ready();
+    await vi.waitFor(() => expect(plugin.authenticate).toHaveBeenCalledTimes(1));
+    for (let i = 0; i < 3; i++) await enter('0000');
+    expect(S.getAppLock().fails).toBe(3);
+    plugin.authenticate.mockResolvedValueOnce({ ok: true });
+    screen().querySelector('#app-lock-bio').click();
+    await vi.waitFor(() => expect(L.isLocked()).toBe(false));
+    expect(S.getAppLock().fails).toBe(0);
+  });
+
   it('without the switch there is no biometric key and no prompt', async () => {
     boot();
     await setUpPin();
