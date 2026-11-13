@@ -253,6 +253,9 @@ window.AppLock = {
     this._leftAt = null;
     this._authEndedAt = Date.now();
     this._unmount();
+    // the widgets were held while locked (StackdWidgets.sync): catch them up
+    const W = window.StackdWidgets;
+    if (W && typeof W.schedule === 'function') W.schedule();
   },
   _mount() {
     if (this._el) return;

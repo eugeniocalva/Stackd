@@ -335,6 +335,11 @@ window.StackdWidgets = {
     this._timer = null;
     const plugin = this._plugin();
     if (!plugin) return false;
+    // 1.3.0 (PL-3, security review 2026-11-13): nothing reaches the widgets
+    // while App lock is up — a change made under the lock screen must never
+    // become readable on the home screen. The widgets keep their last
+    // snapshot; AppLock syncs again on unlock.
+    if (window.AppLock && typeof window.AppLock.isLocked === 'function' && window.AppLock.isLocked()) return false;
     try {
       const snap = this.buildSnapshot();
       this.last = snap;

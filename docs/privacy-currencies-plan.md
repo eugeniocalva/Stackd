@@ -192,12 +192,33 @@ the same PIN.
 `nativeWiring.test.js` has its block. The Android module compiles and the app
 assembles.
 
-**Not verified yet — needs a device:**
+**Checked on the Android emulator (API 36, 2026-11-13, debug build of 1.3.0):**
+onboarding opens on ZAR with the app's region set to South Africa; the picker
+search works with the keyboard up; Home shows `R15,420.75` / `CHF 2,500.00`;
+PIN setup by taps; the real BiometricPrompt turns the fingerprint on and
+unlocks after a cold launch ("Use PIN" falls back to the pad); a wrong PIN
+counts; 10 s away does not lock, 65 s does; Forgot PIN through the phone's own
+PIN (a wrong phone PIN keeps the prompt; the right one turns App lock off,
+data kept, "App lock is off" sheet); the Recents card is blank once the app is
+left; shake hides and shows on Home, also right after a cold launch. Found and
+fixed there: a fingerprint unlock left the wrong-PIN count standing (b8b365e).
 
-- Android: the biometric prompt, the passcode fallback of Forgot PIN, the
-  Recents thumbnail (emulator or phone).
-- iPhone (TestFlight only — the Swift has never been compiled): Face ID /
-  Touch ID, the app-switcher cover, native shake from the first second after
-  a launch, the web retry in an older shell.
-- The lock delay against the real `pause` / `resume` of both systems,
-  including a trip to the photo picker and to the bank's sign-in page.
+Accepted (A9): opening the app switcher straight from the open app shows its
+live screen — Android draws the running task, not the saved thumbnail; only
+`FLAG_SECURE` would hide it, and that blocks every screenshot.
+
+**iOS:** 1.3 build 10212 is on TestFlight (2026-11-13); the Swift plugin
+compiles, archives and signs. Still to check on an iPhone: Face ID / Touch ID,
+the app-switcher cover, native shake from the first second after a launch.
+
+**Not verified yet:** the lock delay against a trip to the photo picker and to
+the bank's sign-in page.
+
+**Security review (2026-11-13, 51b3c32..b8b365e):** one Medium finding, fixed.
+Home keeps running under the lock screen, and a shake there turned Hide
+balances off without the PIN; the phone widgets then showed real amounts.
+`PrivacyShake._fire` now ignores shakes while `AppLock.isOpen()`, and
+`StackdWidgets.sync` writes nothing while the app is locked (`AppLock._unlock`
+schedules a catch-up). `appLock.test.js` covers both; checked on the
+emulator (locked + shaken twice: Hide balances stays on). Rule: anything that
+can change state without a tap (motion, timers, deep links) must check the lock.

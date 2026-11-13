@@ -54,7 +54,7 @@ const boot = ({ keep = false, stub = true, pluginOver, native = false } = {}) =>
   };
   if (stub) global.window.__STACKD_LOCK_STUB__ = plugin;
   global.localStorage = localStorage;
-  ['db.js', 'i18n.js', 'i18n/en.js', 'loan-engine.js', 'store.js', 'components.js', 'widgets.js', 'views.js', 'app-lock.js'].forEach(executeFile);
+  ['db.js', 'i18n.js', 'i18n/en.js', 'loan-engine.js', 'store.js', 'components.js', 'widgets.js', 'widgets-native.js', 'views.js', 'app-lock.js'].forEach(executeFile);
   S = global.window.Store;
   L = global.window.AppLock;
   V = global.window.Views.OthersView;
@@ -491,5 +491,62 @@ describe('Settings → Privacy → App lock (PL-3)', () => {
     expect(settings().querySelector('#toggle-app-lock-bio')).toBeNull();
     boot({ stub: false });
     expect(settings().querySelector('#toggle-app-lock')).toBeNull();
+  });
+});
+
+// 1.3.0 (PL-3, security review 2026-11-13): Home keeps running under the lock
+// screen. A shake there used to turn Hide balances off without the PIN, and
+// the phone widgets then showed the real amounts.
+describe('nothing changes or leaks under the lock screen (PL-3)', () => {
+  const chartStub = () => {
+    const Chart = function (canvas, config) { this.config = config; this.data = config.data; this.destroy = () => {}; this.update = () => {}; };
+    Chart.getChart = () => null;
+    return Chart;
+  };
+  const mountHome = () => {
+    global.window.Chart = chartStub();
+    global.window.DeviceMotionEvent = function () {}; // a phone with a motion sensor
+    S.dispatch('SET_VIEW', 'dashboard');
+    const root = document.getElementById('router-view');
+    const V = global.window.Views.DashboardView;
+    root.innerHTML = V.render(S.getState());
+    V.attachEvents(root, S.getState(), false);
+  };
+
+  it('a shake while locked leaves Hide balances alone; after unlocking it works again', async () => {
+    boot();
+    await setUpPin('2580');
+    S.dispatch('SET_PRIVACY', { hide: true, shake: true });
+    boot({ keep: true }); // relaunch: locked, Home mounted underneath
+    expect(L.isLocked()).toBe(true);
+    mountHome();
+    const C = global.window.Components;
+    expect(C.PrivacyShake.isRunning()).toBe(true);
+    const t0 = Date.now();
+    C.PrivacyShake._fire(t0);
+    await new Promise(r => setTimeout(r, 900));
+    expect(S.getPrivacy().hide).toBe(true);
+    await enter('2580');
+    expect(L.isLocked()).toBe(false);
+    C.PrivacyShake._fire(t0 + 10); // no cooldown was started while locked
+    await vi.waitFor(() => expect(S.getPrivacy().hide).toBe(false), { timeout: 3000 });
+    C.PrivacyShake.stop();
+  });
+
+  it('the phone widgets get no snapshot while locked, and catch up on unlock', async () => {
+    boot();
+    await setUpPin('2580');
+    const write = vi.fn(async () => ({}));
+    boot({ keep: true, native: true });
+    global.window.Capacitor.Plugins.StackdWidgets = { write };
+    const W = global.window.StackdWidgets;
+    W.DEBOUNCE_MS = 0;
+    expect(L.isLocked()).toBe(true);
+    expect(await W.sync({ force: true })).toBe(false);
+    S.dispatch('SET_PRIVACY', { hide: false });
+    expect(await W.sync()).toBe(false);
+    expect(write).not.toHaveBeenCalled();
+    await enter('2580');
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
   });
 });

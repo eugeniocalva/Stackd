@@ -2857,6 +2857,11 @@ window.Components = {
     },
     // one shake, from either detector; a fired shake waits COOLDOWN_MS
     _fire(now) {
+      // 1.3.0 (PL-3, security review 2026-11-13): Home keeps running under the
+      // lock screen, and a shake there turned Hide balances off without the
+      // PIN — the phone widgets then showed real amounts. While App lock is
+      // up a shake does nothing (and does not start the cooldown).
+      if (window.AppLock && typeof window.AppLock.isOpen === 'function' && window.AppLock.isOpen()) return;
       if (now - this._lastFire < this.COOLDOWN_MS) return;
       this._lastFire = now;
       if (typeof this._onShake === 'function') {
