@@ -259,11 +259,7 @@ Icons are Lucide. `main.js` calls `window.lucide.createIcons()` and also carries
 - **Unit tests** (`tests/unit/`, Vitest + jsdom): because `src/` files are plain globals (not importable modules), tests load them by reading the file and executing it with `new Function('window', 'localStorage', 'crypto', content)` against a fresh mock `global.window`. See `tests/unit/store.test.js` for the `executeFile` helper pattern — replicate it and load dependencies in the same order as `index.html`.
 - **E2E** (`tests/e2e/`, Playwright): runs against `http://localhost:3000` (Chromium only), auto-starting the dev server via `npm.cmd run dev`.
 
-## Second project: `mobile_apple/`
-
-A separate Expo / React Native (expo-router) scaffold for a future iOS app. It is essentially an empty starter (`app/` is unpopulated) and shares no code with the root web app. Its own commands (`expo start`, etc.) run from inside `mobile_apple/`. The root web app is the one in active development.
-
-## Third project: `broker/` (v1.05+, Bank Connect)
+## Second project: `broker/` (v1.05+, Bank Connect)
 
 The Bank Connect broker — a TypeScript Cloudflare Worker with Durable Objects
 that sits between the app and GoCardless (`docs/bank-connect-plan.md`,

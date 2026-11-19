@@ -107,7 +107,6 @@ module.exports = [
       'src/libs/**',
       'dist/**',
       'android/**',
-      'mobile_apple/**',
       'node_modules/**',
       'scratch/**',
       'test-results/**',

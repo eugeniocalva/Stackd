@@ -24,7 +24,6 @@ Made by Stack'd Development Studio — <https://stackdplatform.com>
 | `tools/` | generators for the marketing site, store screenshots and versions |
 | `android/`, `ios/` | Capacitor wrappers |
 | `tests/unit`, `tests/e2e` | Vitest and Playwright |
-| `mobile_apple/` | an unused Expo scaffold, kept for reference only |
 
 **`CLAUDE.md` is the architecture guide.** Read it before changing `src/` —
 the app deliberately uses no module system, so load order and a handful of
