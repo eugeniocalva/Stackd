@@ -3384,7 +3384,10 @@ window.Components = {
       const step = (now) => {
         const f = chart.$ringFocus;
         if (!f || f.to !== to) return;
-        f.t = Math.min(1, ((now || t0 + dur) - t0) / dur);
+        // 1.3.0: no frame timestamp = done. ((t0 + dur) - t0) / dur can round
+        // to 0.9999999999999999, which re-requested a frame forever (a stack
+        // overflow under a synchronous requestAnimationFrame).
+        f.t = now ? Math.min(1, (now - t0) / dur) : 1;
         draw();
         if (f.t < 1 && typeof requestAnimationFrame === 'function') chart.$ringRaf = requestAnimationFrame(step);
       };

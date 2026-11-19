@@ -226,6 +226,28 @@ describe('CategoryRing.fold, geometry and tap zones', () => {
     plugin.beforeDatasetDraw(rest, { meta: { data: els } });
     expect(els[0].outerRadius).toBe(82);
   });
+
+  // 1.3.0: a frame without a timestamp ends the animation. The old
+  // ((t0 + dur) - t0) / dur fallback rounds to 0.9999999999999999 for some
+  // start times (this one among them), and a synchronous rAF then recursed
+  // until the stack overflowed — the CI-only mixedCurrencyViews flake.
+  it('a focus animation ends on a frame without a timestamp, whatever the start time', () => {
+    const CR = C().CategoryRing;
+    const t0 = 54.985611814273305;
+    expect(((t0 + CR.DUR_IN) - t0) / CR.DUR_IN).toBeLessThan(1);
+    const now = vi.spyOn(performance, 'now').mockReturnValue(t0);
+    let frames = 0;
+    global.requestAnimationFrame = (cb) => { frames++; if (frames > 50) throw new Error('runaway'); cb(); return frames; };
+    try {
+      const chart = { draw: vi.fn(), canvas: { isConnected: true }, ctx: {} };
+      CR.focus(chart, 3, 1);
+      expect(frames).toBe(1);
+      expect(chart.$ringFocus.t).toBe(1);
+    } finally {
+      now.mockRestore();
+      delete global.requestAnimationFrame;
+    }
+  });
 });
 
 // 1.2.2 (HG-8 review C3/C5/C7): a focused pill is fitted to the card that
