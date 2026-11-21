@@ -3267,6 +3267,10 @@ window.Store = {
       case 'DELETE_TRANSACTION': {
         const txToDelete = this.state.transactions.find(t => t.id === payload.id);
         if (!txToDelete) break;
+        // 1.3.1 (BUG-179): an opening balance is owned by its account. It
+        // changes through UPDATE_ACCOUNT and goes with DELETE_ACCOUNT; a
+        // swipe or a bulk delete in History never removes it.
+        if (txToDelete.type === 'opening_balance') break;
 
         let idsToDelete = new Set([txToDelete.id]);
         if (txToDelete.transferRef) {
@@ -3382,6 +3386,7 @@ window.Store = {
       case 'TOGGLE_TRANSACTION_SELECTION': {
         const id = payload.id;
         if (!id) break;
+        if (this._isOpeningBalanceId(id)) break; // 1.3.1 (BUG-179)
         const current = Array.isArray(this.state.selectedTransactionIds) ? this.state.selectedTransactionIds : [];
         if (current.includes(id)) {
           this.state.selectedTransactionIds = current.filter(i => i !== id);
@@ -3393,7 +3398,7 @@ window.Store = {
       }
 
       case 'SET_ALL_TRANSACTIONS_SELECTION': {
-        const ids = payload.ids || [];
+        const ids = (payload.ids || []).filter(id => !this._isOpeningBalanceId(id)); // 1.3.1 (BUG-179)
         this.state.selectedTransactionIds = payload.selectAll ? [...ids] : [];
         changed = true;
         break;
@@ -3407,7 +3412,7 @@ window.Store = {
         let idsToDelete = new Set();
         targetIds.forEach(id => {
           const tx = this.state.transactions.find(t => t.id === id);
-          if (tx) {
+          if (tx && tx.type !== 'opening_balance') { // 1.3.1 (BUG-179)
             idsToDelete.add(tx.id);
             if (tx.transferRef) {
               this.state.transactions.forEach(t => {
@@ -3989,6 +3994,42 @@ window.Store = {
         this.state.widgetEditMode = typeof payload === 'boolean'
           ? payload
           : !this.state.widgetEditMode;
+        changed = true;
+        break;
+      }
+
+      // 1.3.1 (BUG-188): "Replace everything" on a backup restore — the
+      // ledger is emptied inside the restore's one change (import.js), then
+      // the backup's files land. Shrinking writes first, as RESET_APP.
+      // Categories stay (the file's merge onto them by name, so their ids —
+      // and the widgets and filters that hold them — survive); settings,
+      // App lock, Pro, widgets and the backup log are not user ledger data.
+      case 'CLEAR_LEDGER': {
+        this.state.transactions = [];
+        window.StackdDB.save('transactions', this.state.transactions);
+        this.state.loans = [];
+        window.StackdDB.save('loans', this.state.loans);
+        this.state.accounts = [];
+        window.StackdDB.save('accounts', this.state.accounts);
+        this.state.budgets = [];
+        window.StackdDB.save('budgets', this.state.budgets);
+        this.state.importRules = [];
+        window.StackdDB.save('importRules', this.state.importRules);
+        this.state.tagLinks = {};
+        window.StackdDB.save('tagLinks', this.state.tagLinks);
+        this.state.selectedTransactionIds = [];
+        this.state.isSelectionMode = false;
+        this.state.pendingLoanLink = null;
+        this.state.debtSim = null;
+        changed = true;
+        break;
+      }
+
+      // 1.3.1 (BUG-188): after the replaced ledger landed — whatever still
+      // names an account the backup does not hold (filters, the saved order,
+      // widget configs, the default wallet, bank links) lets go of it.
+      case 'SETTLE_RESTORE': {
+        this._pruneAccountRefs();
         changed = true;
         break;
       }
@@ -5375,7 +5416,7 @@ window.Store = {
   // bytes, ok, error }. Values are bounded (names and errors are shown on the
   // page, escaped at render) and anything unknown falls back.
   BACKUP_LOG_MAX: 20,
-  BACKUP_LOG_KINDS: ['auto', 'manual', 'restore'],
+  BACKUP_LOG_KINDS: ['auto', 'manual', 'restore', 'before'], // 1.3.1 (BUG-188): 'before' = the copy taken before a replace
   BACKUP_TARGETS: ['icloud', 'documents', 'download'],
 
   normalizeBackupLogEntry(e) {
@@ -6007,6 +6048,12 @@ window.Store = {
   // '' for an empty or reserved value ('__untagged__', '__all__' are filter
   // sentinels; 'uncategorized' is the filters' pseudo category id;
   // '__proto__' would swap a plain object's prototype as a tagLinks key).
+  // 1.3.1 (BUG-179)
+  _isOpeningBalanceId(id) {
+    const tx = this.state.transactions.find(t => t.id === id);
+    return !!tx && tx.type === 'opening_balance';
+  },
+
   normalizeTag(raw) {
     let s = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f]/g, '');
     s = s.replace(/^[\s#]+/, '').replace(/[|,]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();

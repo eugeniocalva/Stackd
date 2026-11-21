@@ -210,43 +210,117 @@ describe('1.2.0 (UX-11) Backup page — actions', () => {
     expect(sheet()).toHaveBeenLastCalledWith(expect.objectContaining({ tone: 'error', title: t('backup.failedTitle') }));
   });
 
-  it('a saved file Restore asks first, then restores that file and logs the restore', async () => {
-    const fsx = nativeFs();
-    fsx.readdir.mockImplementation(async ({ directory }) => (directory === 'DOCUMENTS'
-      ? { files: [{ name: 'Stackd_auto_20261101_080000.json', type: 'file', size: 4096, mtime: 1 }] } : { files: [] }));
-    boot({ platform: 'android', plugins: { Filesystem: fsx } });
-    const root = mount();
-    await flush(); await flush(); await flush();
-    let opts = null;
-    vi.spyOn(global.window.Components.Modal, 'show').mockImplementation((o) => { opts = o; });
-    const result = { kind: 'bundle', files: { accounts: { kind: 'accounts', importedCount: 2 }, transactions: { kind: 'transactions', importedCount: 7, skipped: {} } },
-      importedCount: 9, skippedCount: 0, duplicateCount: 0, newAccounts: 0, newCategories: 0, ambiguousRows: 0, ambiguousAccounts: [] };
-    const restoreFrom = vi.spyOn(B(), 'restoreFrom').mockImplementation((name, target, ok) => { ok(result); return Promise.resolve(); });
-    root.querySelector('[data-backup-restore]').click();
-    expect(restoreFrom).not.toHaveBeenCalled();
-    expect(opts.title).toBe(t('backup.restoreConfirmTitle'));
-    expect(opts.content).toContain('Stackd_auto_20261101_080000.json');
-    const close = vi.fn();
-    opts.onSave(close);
-    expect(close).toHaveBeenCalled();
-    expect(restoreFrom).toHaveBeenCalledWith('Stackd_auto_20261101_080000.json', 'documents', expect.any(Function), expect.any(Function));
-    const shown = sheet().mock.calls.at(-1)[0];
-    expect(shown.title).toBe(t('backup.restoredTitle'));
-    expect(shown.body).toContain(t('backup.file.accounts') + ': 2');
-    expect(shown.body).toContain(t('backup.file.transactions') + ': 7');
-    expect(S().getState().backupLog[0]).toMatchObject({ kind: 'restore', target: 'documents', name: 'Stackd_auto_20261101_080000.json', ok: true });
-  });
-
-  it('a picked .json bundle restores through #import-csv-file with the combined sheet', () => {
+  // 1.3.1 (BUG-188): the file is read first, then the sheet asks how.
+  const bundleText = () => {
     boot();
     S().dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 100, openingDate: '2026-01-01' });
     S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 12, accountId: S().getState().accounts[0].id, categoryId: 'cat_groceries', date: '2026-09-01' });
-    const text = JSON.stringify(B().buildBundle(S().getState()));
+    return JSON.stringify(B().buildBundle(S().getState()));
+  };
+  const nativeWith = (text, name) => {
+    const fsx = nativeFs();
+    fsx.readdir.mockImplementation(async ({ directory }) => (directory === 'DOCUMENTS'
+      ? { files: [{ name, type: 'file', size: 4096, mtime: 1 }] } : { files: [] }));
+    fsx.readFile.mockImplementation(async () => ({ data: text }));
+    boot({ platform: 'android', plugins: { Filesystem: fsx } });
+    return fsx;
+  };
+
+  it('a saved file Restore reads it, asks add or replace, then restores and logs', async () => {
+    const text = bundleText();
+    nativeWith(text, 'Stackd_auto_20261101_080000.json');
+    const root = mount();
+    await flush(); await flush(); await flush();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
+    root.querySelector('[data-backup-restore]').click();
+    await flush(); await flush();
+    expect(opts).not.toBeNull();
+    expect(opts.name).toBe('Stackd_auto_20261101_080000.json');
+    expect(opts.inBackup).toBe(2); // the opening balance and the expense
+    expect(opts.here).toBe(0);
+    expect(opts.canReplace).toBe(true);
+    expect(S().getState().accounts).toEqual([]); // nothing ran yet
+    opts.onAdd();
+    const shown = sheet().mock.calls.at(-1)[0];
+    expect(shown.title).toBe(t('backup.restoredTitle'));
+    expect(shown.body).toContain(t('backup.file.accounts') + ': 1');
+    expect(S().getState().accounts.map(a => a.name)).toEqual(['Main']);
+    expect(S().getState().backupLog[0]).toMatchObject({ kind: 'restore', target: 'documents', name: 'Stackd_auto_20261101_080000.json', ok: true });
+  });
+
+  it('Replace everything saves a copy first, then makes the phone equal the backup', async () => {
+    const text = bundleText();
+    nativeWith(text, 'Stackd_backup_20261101_080000.json');
+    S().dispatch('ADD_ACCOUNT', { name: 'Later', openingBalance: 5, openingDate: '2026-10-01' });
+    const root = mount();
+    await flush(); await flush(); await flush();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
+    const run = vi.spyOn(B(), 'backupNow');
+    root.querySelector('[data-backup-restore]').click();
+    await flush(); await flush();
+    opts.onReplace();
+    expect(S().getState().accounts.map(a => a.name)).toEqual(['Later']); // waits for the copy
+    for (let i = 0; i < 6; i++) await flush();
+    expect(run).toHaveBeenCalledWith({ kind: 'before' });
+    expect(S().getState().accounts.map(a => a.name)).toEqual(['Main']);
+    const before = S().getState().backupLog.find(e => e.kind === 'before');
+    expect(before).toMatchObject({ ok: true });
+    expect(B().isBeforeFile(before.name)).toBe(true);
+    const shown = sheet().mock.calls.at(-1)[0];
+    expect(shown.title).toBe(t('backup.restoredTitle'));
+    expect(shown.body).toContain(t('backup.replacedNote', { name: before.name }));
+  });
+
+  it('when the copy cannot be saved, nothing is replaced and a sheet says so', async () => {
+    const text = bundleText();
+    nativeWith(text, 'Stackd_backup_20261101_080000.json');
+    S().dispatch('ADD_ACCOUNT', { name: 'Later', openingBalance: 5, openingDate: '2026-10-01' });
+    const root = mount();
+    await flush(); await flush(); await flush();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
+    vi.spyOn(B(), 'backupNow').mockResolvedValue({ kind: 'before', ok: false, error: 'disk full' });
+    root.querySelector('[data-backup-restore]').click();
+    await flush(); await flush();
+    opts.onReplace();
+    await flush(); await flush();
+    expect(S().getState().accounts.map(a => a.name)).toEqual(['Later']);
+    expect(sheet()).toHaveBeenLastCalledWith(expect.objectContaining({ tone: 'error', body: t('backup.replace.safetyFailed') }));
+  });
+
+  it('a merge that kept changed items says how many', async () => {
+    const text = bundleText();
+    nativeWith(text, 'Stackd_backup_20261101_080000.json');
+    global.window.StackdImport.importText(text, { mode: 'restore' }, () => {}, (e) => { throw e; });
+    const tx = S().getState().transactions.find(x => x.type === 'expense');
+    S().dispatch('UPDATE_TRANSACTION', { id: tx.id, amount: 99 });
+    const root = mount();
+    await flush(); await flush(); await flush();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
+    root.querySelector('[data-backup-restore]').click();
+    await flush(); await flush();
+    opts.onAdd();
+    const shown = sheet().mock.calls.at(-1)[0];
+    expect(shown.tone).toBe('info');
+    expect(shown.body).toContain(t('backup.differKept', { count: 1 }));
+    expect(S().getState().transactions.find(x => x.id === tx.id).amount).toBe(99);
+  });
+
+  it('a picked .json bundle asks first, then restores through #import-csv-file with the combined sheet', () => {
+    const text = bundleText();
     boot(); // an empty install
     const root = mount();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
     const input = root.querySelector('#import-csv-file');
     Object.defineProperty(input, 'files', { value: [{ name: 'Stackd_backup_20261105_090000.json', text }] });
     input.dispatchEvent(new Event('change'));
+    expect(opts.name).toBe('Stackd_backup_20261105_090000.json');
+    expect(root.querySelector('#btn-import-csv').disabled).toBe(true);
+    opts.onAdd();
     const shown = sheet().mock.calls.at(-1)[0];
     expect(shown.id).toBe('import-result-modal');
     expect(shown.title).toBe(t('backup.restoredTitle'));
@@ -255,37 +329,83 @@ describe('1.2.0 (UX-11) Backup page — actions', () => {
     expect(S().getState().backupLog[0]).toMatchObject({ kind: 'restore', ok: true, name: 'Stackd_backup_20261105_090000.json' });
     expect(root.querySelector('#btn-import-csv').disabled).toBe(false);
   });
+
+  it('Cancel on the sheet gives the restore button back and restores nothing', () => {
+    const text = bundleText();
+    boot();
+    const root = mount();
+    let opts = null;
+    vi.spyOn(global.window.Components.RestoreChoiceSheet, 'show').mockImplementation((o) => { opts = o; });
+    const input = root.querySelector('#import-csv-file');
+    Object.defineProperty(input, 'files', { value: [{ name: 'Stackd_backup_20261105_090000.json', text }] });
+    input.dispatchEvent(new Event('change'));
+    opts.onCancel();
+    expect(root.querySelector('#btn-import-csv').disabled).toBe(false);
+    expect(S().getState().accounts).toEqual([]);
+  });
+
+  it('the real sheet: step 1 offers both, Replace opens a confirm with the safe button focused, Go Back returns', () => {
+    boot();
+    document.body.innerHTML = '<div id="modal-container"></div>';
+    const onAdd = vi.fn();
+    const onReplace = vi.fn();
+    const el = global.window.Components.RestoreChoiceSheet.show({ name: 'Stackd_backup_<b>.json', when: '1 Nov 2026', inBackup: 153, here: 157, canReplace: true, onAdd, onReplace });
+    expect(el.innerHTML).toContain('Stackd_backup_&lt;b&gt;.json');
+    const step1 = el.querySelector('#restore-choice-sheet-step1');
+    const step2 = el.querySelector('#restore-choice-sheet-step2');
+    expect(step1.hidden).toBe(false);
+    expect(step2.hidden).toBe(true);
+    expect(step1.textContent).toContain(t('backup.choice.inBackup', { n: '153' }));
+    expect(step1.textContent).toContain(t('backup.choice.here', { n: '157' }));
+    expect(el.querySelector('#restore-choice-cancel').hasAttribute('data-back-dismiss')).toBe(true);
+    el.querySelector('#restore-choice-replace').click();
+    expect(onReplace).not.toHaveBeenCalled();
+    expect(step2.hidden).toBe(false);
+    expect(document.activeElement.id).toBe('restore-replace-back');
+    expect(step2.textContent).toContain(t('backup.replace.safety'));
+    el.querySelector('#restore-replace-back').click();
+    expect(step1.hidden).toBe(false);
+    el.querySelector('#restore-choice-replace').click();
+    el.querySelector('#restore-replace-confirm').click();
+    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(document.getElementById('restore-choice-sheet')).toBeNull();
+    // without canReplace (never offered for a single CSV) there is no Replace
+    const only = global.window.Components.RestoreChoiceSheet.show({ name: 'x.json', canReplace: false });
+    expect(only.querySelector('#restore-choice-replace')).toBeNull();
+  });
 });
 
-// Review fix (UX-11): the confirm's Components.Modal clears #modal-container
-// 300 ms after close(); the restore result must be shown after that.
+// 1.3.1 (BUG-188): the choice sheet is dropped at once on a choice, and the
+// result sheet that follows must stay.
 describe('1.2.0 (UX-11) Backup page — restore result outlives the confirm', () => {
-  it('real Modal + NoticeSheet: the result sheet is still there 400 ms later', async () => {
+  it('real sheets: the result sheet is still there 400 ms after the choice', async () => {
+    boot();
+    S().dispatch('ADD_ACCOUNT', { name: 'Main', openingBalance: 100, openingDate: '2026-01-01' });
+    const text = JSON.stringify(B().buildBundle(S().getState()));
     const fsx = nativeFs();
     fsx.readdir.mockImplementation(async ({ directory }) => (directory === 'DOCUMENTS'
       ? { files: [{ name: 'Stackd_backup_20261101_080000.json', type: 'file', size: 10, mtime: 1 }] } : { files: [] }));
+    fsx.readFile.mockImplementation(async () => ({ data: text }));
     boot({ platform: 'android', plugins: { Filesystem: fsx } });
     global.window.Components.NoticeSheet.show.mockRestore();
-    const result = { kind: 'bundle', files: { accounts: { kind: 'accounts', importedCount: 1 } },
-      importedCount: 1, skippedCount: 0, duplicateCount: 0, newAccounts: 0, newCategories: 0, ambiguousRows: 0, ambiguousAccounts: [] };
-    const restoreFrom = vi.spyOn(B(), 'restoreFrom').mockImplementation((name, target, ok) => { ok(result); return Promise.resolve(); });
     document.body.innerHTML = '<div id="router-view"></div><div id="modal-container"></div>';
     const root = document.getElementById('router-view');
     root.innerHTML = V().BackupView.render(S().getState());
     V().BackupView.attachEvents(root, S().getState());
     await flush(); await flush(); await flush();
+    root.querySelector('#backup-files [data-backup-restore]').click();
+    await flush(); await flush();
+    expect(document.getElementById('restore-choice-sheet')).not.toBeNull();
     vi.useFakeTimers();
     try {
-      root.querySelector('#backup-files [data-backup-restore]').click();
-      expect(document.getElementById('active-modal')).not.toBeNull();
-      document.getElementById('modal-save-btn').click();
-      expect(restoreFrom).not.toHaveBeenCalled(); // waits for the teardown
-      vi.advanceTimersByTime(400);
-      expect(restoreFrom).toHaveBeenCalledTimes(1);
+      document.getElementById('restore-choice-add').click();
+      expect(document.getElementById('restore-choice-sheet')).toBeNull();
       expect(document.getElementById('import-result-modal')).not.toBeNull();
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(800);
       expect(document.getElementById('import-result-modal')).not.toBeNull();
       expect(document.getElementById('import-result-modal').textContent).toContain(t('backup.restoredTitle'));
+      expect(S().getState().accounts.map(a => a.name)).toEqual(['Main']);
     } finally {
       vi.useRealTimers();
     }

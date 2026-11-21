@@ -289,4 +289,56 @@ describe('Bulk Selection Mode UI Unit Tests', () => {
     expect(html).toContain('white-space: nowrap');
     expect(html).toContain('Delete (25)');
   });
+
+  // 1.3.1 (BUG-179): an opening balance is owned by its account
+  describe('an opening balance cannot be selected or deleted from History', () => {
+    const S = () => global.window.Store;
+    const seed = () => {
+      S().dispatch('ADD_ACCOUNT', { name: 'Checking', type: 'Bank', openingBalance: 2500, openingDate: '2026-01-01' });
+      const acc = S().getState().accounts[0];
+      S().dispatch('ADD_TRANSACTION', { accountId: acc.id, categoryId: 'cat_groceries', type: 'expense', amount: 40, date: '2026-01-05' });
+      const txs = S().getState().transactions;
+      return { acc, ob: txs.find(t => t.type === 'opening_balance'), exp: txs.find(t => t.type === 'expense') };
+    };
+
+    it('the swipe row has Edit but no bin, and is titled Opening balance', () => {
+      const { acc, ob, exp } = seed();
+      const cat = S().getState().categories.find(c => c.id === ob.categoryId);
+      const html = global.window.Components.TransactionItem.render(ob, cat, acc, { allowSwipeReveal: true });
+      expect(html).toContain('swipe-action-btn edit');
+      expect(html).not.toContain('swipe-action-btn delete');
+      expect(html).toContain('data-opening="1"');
+      expect(html).toContain('Opening balance');
+      const other = global.window.Components.TransactionItem.render(exp, null, acc, { allowSwipeReveal: true });
+      expect(other).toContain('swipe-action-btn delete');
+      expect(other).not.toContain('data-opening');
+    });
+
+    it('DELETE_TRANSACTION and DELETE_BULK_TRANSACTIONS leave it alone', () => {
+      const { acc, ob, exp } = seed();
+      S().dispatch('DELETE_TRANSACTION', { id: ob.id });
+      expect(S().getState().transactions.some(t => t.id === ob.id)).toBe(true);
+      S().dispatch('DELETE_BULK_TRANSACTIONS', { ids: [ob.id, exp.id], deleteFuture: false });
+      const left = S().getState().transactions;
+      expect(left.map(t => t.id)).toEqual([ob.id]);
+      expect(S().getAccountBalance(acc.id)).toBe(2500);
+    });
+
+    it('selection skips it: a toggle does nothing and Select All leaves it out', () => {
+      const { ob, exp } = seed();
+      S().dispatch('TOGGLE_SELECTION_MODE', { active: true });
+      S().dispatch('TOGGLE_TRANSACTION_SELECTION', { id: ob.id });
+      expect(S().getState().selectedTransactionIds).toEqual([]);
+      S().dispatch('SET_ALL_TRANSACTIONS_SELECTION', { selectAll: true, ids: [ob.id, exp.id] });
+      expect(S().getState().selectedTransactionIds).toEqual([exp.id]);
+    });
+
+    it('the account still owns it: Edit Account changes it and Delete Account removes it', () => {
+      const { acc, ob } = seed();
+      S().dispatch('UPDATE_ACCOUNT', { id: acc.id, name: 'Checking', type: 'Bank', openingBalance: 90, openingDate: '2026-01-01' });
+      expect(S().getState().transactions.find(t => t.type === 'opening_balance').amount).toBe(90);
+      S().dispatch('DELETE_ACCOUNT', { id: acc.id });
+      expect(S().getState().transactions.some(t => t.id === ob.id)).toBe(false);
+    });
+  });
 });

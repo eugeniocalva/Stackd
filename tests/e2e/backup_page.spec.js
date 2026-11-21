@@ -94,6 +94,7 @@ test.describe('Backup page E2E (1.2.0, UX-11)', () => {
     expect(await page.evaluate(() => window.Store.getState().accounts.length)).toBe(0);
     await goToBackup(page);
     await page.setInputFiles('#import-csv-file', { name, mimeType: 'application/json', buffer: Buffer.from(text, 'utf8') });
+    await page.click('#restore-choice-add'); // 1.3.1 (BUG-188): a bundle asks add or replace first
     const sheet = page.locator('#import-result-modal');
     await expect(sheet).toContainText('Backup restored');
     await expect(sheet).toContainText('Accounts: 2');
@@ -108,6 +109,7 @@ test.describe('Backup page E2E (1.2.0, UX-11)', () => {
 
     // The same file again adds nothing.
     await page.setInputFiles('#import-csv-file', { name, mimeType: 'application/json', buffer: Buffer.from(text, 'utf8') });
+    await page.click('#restore-choice-add'); // 1.3.1 (BUG-188): a bundle asks add or replace first
     await expect(sheet).toContainText('Backup restored');
     await page.click('#import-result-modal-ok');
     expect(await summary(page)).toEqual(before);

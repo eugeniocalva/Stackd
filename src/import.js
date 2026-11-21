@@ -393,6 +393,7 @@ window.StackdImport = {
     // the memoized _importKeyIdx (a caller that replaced the slice leaves it stale).
     const fileTxIds = new Set(rows.map(r => idCell(r, 'id')).filter(Boolean));
     const storeIds = new Set(st0.transactions.map(t => t.id));
+    let storeById = null; // 1.3.1 (BUG-188): built on first use
     // Per bank key: whether a store row holding it belongs to a series or a
     // transfer (D11 ownership follows the matched row, see dup() below).
     const keyOwn = new Map();
@@ -523,7 +524,19 @@ window.StackdImport = {
         if (ref && ownTransfer) dupRefs.add(ref);
       };
       // (a) D1: this very row is here (the local version wins).
-      if (csvId && storeIds.has(csvId)) { dup(true, true); return; }
+      if (csvId && storeIds.has(csvId)) {
+        // 1.3.1 (BUG-188): a backup restore says how many rows it kept that
+        // no longer equal the file (amount, date or paid state).
+        if (this._bundleRun) {
+          if (!storeById) storeById = new Map(st0.transactions.map(t => [t.id, t]));
+          const here = storeById.get(csvId);
+          const filePaid = this._parseBool(row['ispaid']) !== false;
+          if (here && (Math.round(Math.abs(here.amount) * 100) !== Math.round(amount * 100) ||
+              here.date !== date || (here.isPaid !== false) !== filePaid)) this._bundleRun.differ += 1;
+        }
+        dup(true, true);
+        return;
+      }
       // (b) D11: this series is owned here (a schedule edit, a loan sync or a
       // conversion replaced members under the same series id).
       if (sid && (heldSeries.has(sid) || heldSeries.has(Store.fileId(sid)))) { dup(true, true); return; }
@@ -2031,6 +2044,15 @@ window.StackdImport = {
       }
       if (!category) { skip('missing category'); return; }
 
+      // 1.3.1 (BUG-188): "Add what is missing" keeps a budget that is here
+      if (this._bundleRun && this._bundleRun.keep) {
+        const held = (window.Store.getState().budgets || []).find(b => b.categoryId === category.id);
+        if (held) {
+          if (Math.round((Number(held.amount) || 0) * 100) !== Math.round(amount * 100)) this._bundleRun.differ += 1;
+          stats.kept = (stats.kept || 0) + 1;
+          return;
+        }
+      }
       const isCumulative = /^(true|1|yes|y)$/i.test(String(row['cumulative'] || '').trim());
       // 1.0.3 (BUG-140) the Limits column (JSON). An empty, missing or
       // unreadable cell restores the budget flat at Amount; SAVE_BUDGET
@@ -2200,6 +2222,17 @@ window.StackdImport = {
       const csvId = idOf(row);
       const fileKey = csvId || ('row' + i);
       const { acc, byId } = resolve.find(fileKey, csvId, name, fields.currency);
+      // 1.3.1 (BUG-188): "Add what is missing" changes nothing that is
+      // already here — an account the install holds keeps its name, look and
+      // opening balance (the restore used to put those back while every
+      // entry kept its newer values: half a restore).
+      if (acc && this._bundleRun && this._bundleRun.keep) {
+        const ob = window.Store.getState().transactions.find(t => t.accountId === acc.id && t.type === 'opening_balance');
+        const hereC = Math.round((ob ? Number(ob.amount) || 0 : 0) * 100);
+        if (hereC !== Math.round(openingBalance * 100) || (byId && name !== acc.name)) this._bundleRun.differ += 1;
+        stats.kept = (stats.kept || 0) + 1;
+        return;
+      }
       if (acc) {
         const upd = Object.assign({ id: acc.id }, fields);
         // D5 (N6): the file's name only on an id match, never one another
@@ -3008,7 +3041,21 @@ window.StackdImport = {
         accountcurrency: o.ccy, note: 'Opening Balance' });
     });
     const tagRenames = new Map();
-    const tagsDropped = new Map(); // tags with nothing left after the fold (Cyrillic, emoji…)
+    const tagsDropped = new Map(); // tags with nothing left (empty or reserved values)
+    // 1.3.1 (BUG-216): a tag is read by the tag picker's own rule
+    // (Store.normalizeTag keeps accents and inner spaces), so the app's export
+    // comes back as written. A tag the install holds only in the pre-1.2
+    // folded form ('cafe' from a 1.1 import) is reused, so tags do not split.
+    const S = window.Store;
+    const known = new Set();
+    ((S.getState && S.getState().transactions) || []).forEach(x => (x.tags || []).forEach(g => known.add(g)));
+    Object.keys((S.getState && S.getState().tagLinks) || {}).forEach(g => known.add(g));
+    const readTag = (t) => {
+      const n = typeof S.normalizeTag === 'function' ? S.normalizeTag(t) : this._foldTag(t);
+      if (!n || known.has(n)) return n;
+      const folded = this._foldTag(n);
+      return folded && known.has(folded) ? folded : n;
+    };
     const catCount = new Map();
     items.forEach(it => {
       let category = '';
@@ -3025,13 +3072,13 @@ window.StackdImport = {
       it.tagsRaw.split('|').forEach(raw => {
         const t = raw.trim();
         if (!t) return;
-        const f = this._foldTag(t);
+        const f = readTag(t);
         if (!f) {
           if (!droppedHere.has(t)) tagsDropped.set(t, (tagsDropped.get(t) || 0) + 1); // rows, not occurrences
           droppedHere.add(t);
           return;
         }
-        if (f !== t) tagRenames.set(t, f);
+        if (f !== t.toLowerCase()) tagRenames.set(t, f); // a change of case alone is not a rename
         if (tags.indexOf(f) === -1) tags.push(f);
       });
       out.push({
@@ -3391,7 +3438,14 @@ window.StackdImport = {
         // nothing (the batch below rolls the whole change back).
         const bundle = this._parseBundle(csvText);
         if (bundle) {
-          if (onComplete) onComplete(this._restoreBundle(bundle));
+          // 1.3.1 (BUG-188): opts.replace = "Replace everything" — the ledger
+          // is emptied first, inside this same change (a failure rolls both
+          // back), and what still names a missing account is pruned after.
+          const replace = opts.replace === true;
+          if (replace) window.Store.dispatch('CLEAR_LEDGER');
+          const res = this._restoreBundle(bundle, { replace });
+          if (replace) window.Store.dispatch('SETTLE_RESTORE');
+          if (onComplete) onComplete(res);
           return;
         }
         // v1.00: structured statements (camt.053/052 XML, MT940) are sniffed
@@ -3634,7 +3688,26 @@ window.StackdImport = {
   // dedup rule of the six routes applies unchanged. Returns the combined
   // result { kind: 'bundle', files: { accounts: stats, … }, totals… }; a file
   // that is not a Stack'd backup text throws, which rolls everything back.
-  _restoreBundle(bundle) {
+  // 1.3.1 (BUG-188): two ways. Merge ("Add what is missing", the default):
+  // nothing the install holds changes — accounts, categories and budgets
+  // included (_bundleRun.keep) — and `differCount` says how many kept items
+  // no longer equal the file. Replace (o.replace, after CLEAR_LEDGER): the
+  // file's values land as they are.
+  _restoreBundle(bundle, o) {
+    const run = { keep: !(o && o.replace), differ: 0 };
+    const prevRun = this._bundleRun;
+    this._bundleRun = run;
+    try {
+      const out = this._restoreBundleFiles(bundle);
+      out.replaced = !run.keep;
+      out.differCount = run.keep ? run.differ : 0;
+      return out;
+    } finally {
+      this._bundleRun = prevRun || null;
+    }
+  },
+
+  _restoreBundleFiles(bundle) {
     const out = { kind: 'bundle', files: {}, importedCount: 0, skippedCount: 0, duplicateCount: 0,
       newAccounts: 0, newCategories: 0, ambiguousRows: 0, ambiguousAccounts: [],
       createdAt: typeof bundle.createdAt === 'string' ? bundle.createdAt : '',

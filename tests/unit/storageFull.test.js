@@ -313,7 +313,7 @@ describe('Storage full at launch (1.0.2, BUG-34, D-U7-10)', () => {
     });
 
     // the advice works: a delete fits, because memory equals disk
-    const ob = S().getState().transactions.find(x => x.type === 'opening_balance');
+    const ob = S().getState().transactions.find(x => x.id === 'r1'); // 1.3.1 (BUG-179): not the opening balance
     expect(S().dispatch('DELETE_TRANSACTION', { id: ob.id })).toBe(true);
     expect(JSON.parse(disk('transactions')).some(x => x.id === ob.id)).toBe(false);
   });

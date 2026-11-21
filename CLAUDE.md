@@ -695,6 +695,32 @@ A1–A9, "As built"). Comment tag `// 1.3.0 (PL-N)`.
   constants with `PrivacyShake`'s — change them together. After
   `npm install`, `npx cap sync`.
 
+## 1.3.1 fix rounds (2026-11-21)
+
+`docs/deep-test-fixes-1.3.1-plan.md` (ten gate bugs) and
+`docs/deep-test-fixes-1.3.1-part2-plan.md` (five leftovers) are the references.
+Comment tag `// 1.3.1 (BUG-NN)`.
+
+- **Opening balance (BUG-179).** It cannot be deleted or selected in History:
+  no bin on the row (`data-opening`), and `DELETE_TRANSACTION`,
+  `DELETE_BULK_TRANSACTIONS` and the two selection actions ignore it. Only
+  `UPDATE_ACCOUNT` changes it and `DELETE_ACCOUNT` removes it. Its row title is
+  "Opening balance" (`export.txType.opening_balance`), never the category name.
+- **Tags from files (BUG-216).** The ledger importer reads tags with
+  `Store.normalizeTag` and reuses a tag held only in its pre-1.2 folded form.
+  `_foldTag` is now only that lookup — never the reader.
+- **Loan Track form (BUG-75).** `Views._loanTrack()` + `#tx-loan-track`; a save
+  that differs from the instalment asks once (`#loan-track-mismatch`,
+  `opts.loanTrackOk`). `onSave` re-entries must spread `opts`.
+- **Backup restore (BUG-188).** A bundle always asks through
+  `Components.RestoreChoiceSheet`. Merge = `_bundleRun.keep` (accounts and
+  budgets here are not written; `differCount` reports kept items that differ).
+  Replace = `importText(…, { replace: true })`: `CLEAR_LEDGER` → the bundle →
+  `SETTLE_RESTORE`, one change, after a `backupNow({ kind: 'before' })` copy
+  that must succeed. Categories are never emptied (their ids must survive).
+  The six single CSVs still upsert with no sheet. A new ledger slice must be
+  emptied in `CLEAR_LEDGER`.
+
 ## User journey (UJ, 2026-11-08)
 
 `docs/user-journey-plan.md` is the reference. `docs/user-journey/inventory.md`

@@ -556,17 +556,31 @@ describe('Committing a MoneyStats file (1.1.0 IE-2)', () => {
     expect(S().getState().categories.some(c => c.name === 'Supermercato e alimentari')).toBe(false);
   });
 
-  it('tags are folded into the app\'s own form; tags with nothing left are reported', () => {
+  // 1.3.1 (BUG-216): the tag picker's rule, not the pre-1.2 fold.
+  it("tags are read by the tag picker's rule; empty or reserved ones are reported", () => {
     const r = commit(file());
-    expect(txsOf('Bank').find(t => t.amount === 25.33).tags).toEqual(['elettronica-e-accessori']);
-    expect(txsOf('Cash').find(t => t.amount === 4).tags).toEqual(['natale', 'regali-margarida-mia']);
-    expect(txsOf('Bank').find(t => t.amount === 2363.58).tags).toEqual(['recibo-de-vencimento']);
-    expect(r.ledger.tagRenames).toEqual(expect.arrayContaining([{ from: 'Elettronica e Accessori', to: 'elettronica-e-accessori' }]));
+    expect(txsOf('Bank').find(t => t.amount === 25.33).tags).toEqual(['elettronica e accessori']);
+    expect(txsOf('Cash').find(t => t.amount === 4).tags).toEqual(['natale', 'regali margarida mia']);
+    expect(txsOf('Bank').find(t => t.amount === 2363.58).tags).toEqual(['recibo de vencimento']);
+    // a change of case alone is not a rename; the comma is
+    expect(r.ledger.tagRenames).toEqual([{ from: 'Regali Margarida, Mia', to: 'regali margarida mia' }]);
     expect(r.ledger.tagsDropped).toEqual([]);
     boot();
-    const r2 = commit(file([{ acc: 'Cash', date: '01/02/2022', amt: '-1,00', cat: 'X', tags: 'Пример | 🎉 | ok | Пример' }]));
-    expect(txsOf('Cash')[0].tags).toEqual(['ok']);
-    expect(r2.ledger.tagsDropped).toEqual([{ from: 'Пример', rows: 1 }, { from: '🎉', rows: 1 }]);
+    const r2 = commit(file([{ acc: 'Cash', date: '01/02/2022', amt: '-1,00', cat: 'X', tags: 'café | pranzo lavoro | __all__ | # | café' }]));
+    expect(txsOf('Cash')[0].tags).toEqual(['café', 'pranzo lavoro']);
+    expect(r2.ledger.tagRenames).toEqual([]);
+    expect(r2.ledger.tagsDropped).toEqual([{ from: '__all__', rows: 1 }, { from: '#', rows: 1 }]);
+  });
+
+  it('a tag the install holds only in its old folded form is reused', () => {
+    commit(file([{ acc: 'Cash', date: '01/02/2022', amt: '-1,00', cat: 'X', tags: 'cafe | pranzo-lavoro' }]));
+    const r = commit(file([{ acc: 'Cash', date: '02/02/2022', amt: '-2,00', cat: 'X', tags: 'café | Pranzo Lavoro | tè' }]));
+    expect(txsOf('Cash').find(t => t.amount === 2).tags).toEqual(['cafe', 'pranzo-lavoro', 'tè']);
+    expect(r.ledger.tagRenames).toEqual([{ from: 'café', to: 'cafe' }, { from: 'Pranzo Lavoro', to: 'pranzo-lavoro' }]);
+    // once the accented form is here too, it is kept as written
+    const r2 = commit(file([{ acc: 'Cash', date: '03/02/2022', amt: '-3,00', cat: 'X', tags: 'tè' }]));
+    expect(txsOf('Cash').find(t => t.amount === 3).tags).toEqual(['tè']);
+    expect(r2.ledger.tagRenames).toEqual([]);
   });
 
   it('a 0,00 row with no balance word is skipped as a zero amount', () => {

@@ -210,6 +210,7 @@ window.Components = {
         showCancel = !showDelete,
         saveClass = showDelete ? 'btn-secondary' : 'btn-primary',
         deleteText,
+        cancelText, // 1.3.1 (BUG-75): the cancel button's own words ("Go Back")
         // 1.0.2 (BUG-40): false = a mandatory sheet (first-run welcome): no
         // backdrop-tap or swipe-down close, and Android Back swallowed via
         // [data-back-swallow] (D4h). Only its own buttons, or its owner's
@@ -234,7 +235,7 @@ window.Components = {
             <div style="margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3);">
               ${showDelete ? `<button class="btn btn-danger" id="modal-delete-btn"${deleteText ? '' : ` aria-label="${window.I18n.t('modal.deleteAria')}"`}>${deleteText || window.I18n.t('common.delete')}</button>` : ''}
               <button class="btn ${saveClass}" id="modal-save-btn">${saveText}</button>
-              ${showCancel ? `<button class="btn btn-secondary" id="modal-cancel-btn" aria-label="${window.I18n.t('modal.cancelAria')}">${window.I18n.t('common.cancel')}</button>` : ''}
+              ${showCancel ? `<button class="btn btn-secondary" id="modal-cancel-btn"${cancelText ? '' : ` aria-label="${window.I18n.t('modal.cancelAria')}"`}>${cancelText || window.I18n.t('common.cancel')}</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -955,7 +956,7 @@ window.Components = {
         <div class="list-item-content" style="min-width: 0;${dimStyle}">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
             <div class="list-item-title" style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
-              <span class="tx-item-title-text" style="${ELLIPSIS}">${category ? esc(category.name) : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
+              <span class="tx-item-title-text" style="${ELLIPSIS}">${isOpeningBalance ? window.I18n.t('export.txType.opening_balance') : category ? esc(category.name) : (transaction.transferRef ? window.I18n.t('common.transfer') : window.I18n.t('common.uncategorized'))}</span>
             </div>
             <div class="list-item-value ${amountClass}" style="flex-shrink: 0; white-space: nowrap;">${formattedAmount}</div>
           </div>
@@ -996,17 +997,23 @@ window.Components = {
               <i data-lucide="check" style="width: 20px; height: 20px;"></i>
             </button>`;
 
+      // 1.3.1 (BUG-179): an opening balance belongs to its account — no bin
+      // (one generic "Delete Transaction?" took the whole opening amount out
+      // of the account). It changes through Edit Account and goes with the
+      // account; the store ignores a delete of it too.
+      const deleteActionHtml = isOpeningBalance ? '' : `
+            <button class="swipe-action-btn delete" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.deleteAria')}">
+              <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
+            </button>`;
+
       return `
-        <div class="swipe-container" data-id="${transaction.id}">
+        <div class="swipe-container" data-id="${transaction.id}"${isOpeningBalance ? ' data-opening="1"' : ''}>
           <div class="swipe-actions left">${paidActionHtml}
           </div>
           <div class="swipe-actions right">
             <button class="swipe-action-btn edit" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.editAria')}">
               <i data-lucide="edit-2" style="width: 20px; height: 20px;"></i>
-            </button>
-            <button class="swipe-action-btn delete" data-id="${transaction.id}" aria-label="${window.I18n.t('tx.deleteAria')}">
-              <i data-lucide="trash-2" style="width: 20px; height: 20px;"></i>
-            </button>
+            </button>${deleteActionHtml}
           </div>
           <div class="list-item touch-target swipe-content ${isFlush ? 'list-item-flush' : ''} ${selectedClass}" data-id="${transaction.id}" style="cursor: pointer; width: 100%; ${selectedBgStyle}" tabindex="0" role="button"${pressedAttr} aria-label="${window.I18n.t('tx.itemAria', { amount: formattedAmount })}">
             ${innerContent}
@@ -6435,6 +6442,93 @@ Object.assign(window.Components, {
       backdrop.querySelector('#opening-date-cancel').addEventListener('click', cancel);
       backdrop.querySelector('#opening-date-primary').addEventListener('click', choose(o.onPrimary));
       backdrop.querySelector('#opening-date-anyway').addEventListener('click', choose(o.onAnyway));
+      document.addEventListener('keydown', onKey);
+      return backdrop;
+    }
+  },
+
+  // 1.3.1 (BUG-188): asked before every restore of a backup file. Step 1:
+  // "Add what is missing" (nothing here changes) or "Replace everything"
+  // (only where o.canReplace); step 2 confirms the replace, with the safe
+  // button focused. { name, when, inBackup, here, canReplace, onAdd,
+  // onReplace, onCancel } — name and when are plain text, escaped here.
+  RestoreChoiceSheet: {
+    show(options) {
+      const o = options || {};
+      const C = window.Components;
+      const t = (k, p) => window.I18n.t(k, p);
+      const id = 'restore-choice-sheet';
+      const num = (n) => C.esc(Number(n || 0).toLocaleString(window.Store.getLocale()));
+      const P = 'margin: 0 0 var(--space-2); overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-secondary);';
+      const HINT = 'margin: calc(var(--space-1) * -1) 0 var(--space-2); font-size: var(--text-xs); line-height: 1.5; color: var(--text-secondary);';
+      const counts = `
+          <p style="${P}">${t('backup.choice.inBackup', { n: num(o.inBackup) })}<br>${t('backup.choice.here', { n: num(o.here) })}</p>`;
+      const backdrop = C._bankSheet(id, `
+        <div id="${id}-step1">
+          <h2 id="${id}-title" class="header-title" style="margin: 0 0 var(--space-3); font-size: 1.1rem;">${t('backup.restoreConfirmTitle')}</h2>
+          <p style="${P} color: var(--text-primary); font-weight: 600;">${C.esc(o.name || '')}</p>
+          ${o.when ? `<p style="${P}">${t('backup.choice.madeOn', { when: C.esc(o.when) })}</p>` : ''}
+          ${counts}
+          <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4);">
+            <button type="button" class="btn btn-primary" id="restore-choice-add">${t('backup.choice.add')}</button>
+            <p style="${HINT}">${t('backup.choice.addDesc')}</p>
+            ${o.canReplace ? `
+            <button type="button" class="btn btn-secondary" id="restore-choice-replace">${t('backup.choice.replace')}</button>
+            <p style="${HINT}">${t('backup.choice.replaceDesc')}</p>` : ''}
+            <button type="button" class="btn btn-secondary" id="restore-choice-cancel" data-back-dismiss>${t('common.cancel')}</button>
+          </div>
+        </div>
+        <div id="${id}-step2" hidden>
+          <h2 class="header-title" style="margin: 0 0 var(--space-3); font-size: 1.1rem;">${t('backup.replace.title')}</h2>
+          <div style="display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-4);">
+            <i data-lucide="alert-triangle" aria-hidden="true" style="width: 20px; height: 20px; color: var(--color-expense); flex-shrink: 0; margin-top: 2px;"></i>
+            <div id="${id}-body">
+              <p style="${P}">${t('backup.replace.body')}</p>
+              ${counts}
+              <p style="${P}">${t('backup.replace.safety')}</p>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+            <button type="button" class="btn btn-danger" id="restore-replace-confirm">${t('backup.choice.replace')}</button>
+            <button type="button" class="btn btn-secondary" id="restore-replace-back">${t('common.goBack')}</button>
+          </div>
+        </div>`);
+      if (!backdrop) return null;
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      };
+      const finish = () => {
+        if (closed) return false;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        return true;
+      };
+      const cancel = () => {
+        if (!finish()) return;
+        backdrop._close();
+        if (typeof o.onCancel === 'function') o.onCancel();
+      };
+      // A choice leads to a result sheet: drop this one at once, then act.
+      const choose = (fn) => () => {
+        if (!finish()) return;
+        backdrop.remove();
+        if (typeof fn === 'function') fn();
+      };
+      const step = (n) => {
+        backdrop.querySelector('#' + id + '-step1').hidden = n !== 1;
+        backdrop.querySelector('#' + id + '-step2').hidden = n !== 2;
+        const focus = backdrop.querySelector(n === 2 ? '#restore-replace-back' : '#restore-choice-add');
+        if (focus && typeof focus.focus === 'function') focus.focus();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) cancel(); });
+      backdrop.querySelector('#restore-choice-cancel').addEventListener('click', cancel);
+      backdrop.querySelector('#restore-choice-add').addEventListener('click', choose(o.onAdd));
+      const rep = backdrop.querySelector('#restore-choice-replace');
+      if (rep) rep.addEventListener('click', () => step(2));
+      backdrop.querySelector('#restore-replace-back').addEventListener('click', () => step(1));
+      backdrop.querySelector('#restore-replace-confirm').addEventListener('click', choose(o.onReplace));
       document.addEventListener('keydown', onKey);
       return backdrop;
     }

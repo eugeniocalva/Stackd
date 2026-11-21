@@ -1800,7 +1800,8 @@ window.Views = {
       const isSelectionMode = state.isSelectionMode === true;
       const selectedIds = Array.isArray(state.selectedTransactionIds) ? state.selectedTransactionIds : [];
       const selectedCount = selectedIds.length;
-      const visibleTxIds = visibleTx.map(t => t.id);
+      // 1.3.1 (BUG-179): an opening balance is never selected
+      const visibleTxIds = visibleTx.filter(t => t.type !== 'opening_balance').map(t => t.id);
       const allVisibleSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
 
       // 1.2.2 (HG-11): a row whose selection changed since the last render
@@ -2098,7 +2099,7 @@ window.Views = {
           e.stopPropagation();
           const currentStoreState = window.Store.getState();
           const visibleTx = window.Store.getFilteredTransactions('history', null, { keepBeforeOpening: true }); // 1.0.3 (BUG-41): = the list
-          const visibleTxIds = visibleTx.map(t => t.id);
+          const visibleTxIds = visibleTx.filter(t => t.type !== 'opening_balance').map(t => t.id); // 1.3.1 (BUG-179)
           const selectedIds = currentStoreState.selectedTransactionIds || [];
           const allSelected = visibleTxIds.length > 0 && visibleTxIds.every(id => selectedIds.includes(id));
           window.Store.dispatch('SET_ALL_TRANSACTIONS_SELECTION', { selectAll: !allSelected, ids: visibleTxIds });
@@ -2282,8 +2283,8 @@ window.Views = {
       if (!list) return;
       const view = this;
       const OPEN_LEFT = -110;   // Edit + Delete
+      const OPEN_LEFT_ONE = -62; // 1.3.1 (BUG-179): an opening balance has Edit only
       const OPEN_RIGHT = 70;    // Paid
-      const LIMIT_LEFT = -130;
       const SLOP = 8;
       const HOLD_MS = 450;      // D11 (was 500)
       const FLICK = 0.35;       // px per ms
@@ -2293,6 +2294,7 @@ window.Views = {
       const contentOf = (row) => row.querySelector('.swipe-content');
       const offsetOf = (row) => Number(row.dataset.offset || 0);
       const hasPaid = (row) => !!row.querySelector('.swipe-action-btn.paid');
+      const openLeft = (row) => row.querySelector('.swipe-action-btn.delete') ? OPEN_LEFT : OPEN_LEFT_ONE;
       const cancelHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
 
       const setX = (row, x) => {
@@ -2327,6 +2329,7 @@ window.Views = {
         g = { row, id: row.dataset.id, x0: e.clientX, y0: e.clientY, start: offsetOf(row), x: offsetOf(row),
               axis: null, pid: e.pointerId, lastX: e.clientX, lastT: e.timeStamp, v: 0, selecting };
         if (selecting || anyOpen) return;
+        if (row.dataset.opening) return; // 1.3.1 (BUG-179): a long press never selects an opening balance
         holdTimer = setTimeout(() => {
           holdTimer = null;
           if (!g || g.axis) return;
@@ -2359,7 +2362,8 @@ window.Views = {
         if (g.axis !== 'x') return;
         const maxRight = hasPaid(g.row) ? 90 : 0;
         let x = g.start + dx;
-        if (x < LIMIT_LEFT) x = LIMIT_LEFT + (x - LIMIT_LEFT) * 0.2;
+        const limitLeft = openLeft(g.row) - 20;
+        if (x < limitLeft) x = limitLeft + (x - limitLeft) * 0.2;
         if (x > maxRight) x = maxRight + (x - maxRight) * 0.2;
         const dt = e.timeStamp - g.lastT;
         if (dt > 0) g.v = (e.clientX - g.lastX) / dt;
@@ -2380,9 +2384,10 @@ window.Views = {
         view._swallowClick = true; // a drag is not a tap
         const paid = hasPaid(cur.row);
         let target = 0;
-        if (cur.v < -FLICK) target = cur.start > 0 ? 0 : OPEN_LEFT;
+        const left = openLeft(cur.row);
+        if (cur.v < -FLICK) target = cur.start > 0 ? 0 : left;
         else if (cur.v > FLICK) target = cur.start < 0 ? 0 : (paid ? OPEN_RIGHT : 0);
-        else if (cur.x <= OPEN_LEFT / 2) target = OPEN_LEFT;
+        else if (cur.x <= left / 2) target = left;
         else if (paid && cur.x >= OPEN_RIGHT / 2) target = OPEN_RIGHT;
         setX(cur.row, target);
       };
@@ -2664,6 +2669,16 @@ window.Views = {
         delete window._draftTxFormState;
       }
 
+      // 1.3.1 (BUG-75): the form a loan's "Track this payment?" opened says
+      // which loan it tracks and what that loan expects.
+      const loanTrack = (!isEdit && state.pendingLoanLink && initialRecurrenceSeriesId &&
+        initialRecurrenceSeriesId === state.pendingLoanLink.seriesId) ? window.Views._loanTrack() : null;
+      const loanTrackBanner = loanTrack ? `
+          <p id="tx-loan-track" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere;">
+            <i data-lucide="link" aria-hidden="true" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+            <span>${window.I18n.t('debt.track.banner', { name: esc(loanTrack.name), amount: window.Store.formatCurrency(loanTrack.amountC / 100) })}</span>
+          </p>` : '';
+
       if (window._pendingCategorySelection) {
         initialCategory = window._pendingCategorySelection;
         delete window._pendingCategorySelection;
@@ -2701,6 +2716,7 @@ window.Views = {
           ${isEdit ? `<input type="hidden" id="tx-edit-id" value="${editId}">` : ''}
           ${isEdit && initialType==='transfer' ? `<input type="hidden" id="tx-transfer-ref" value="${txToEdit.transferRef}">` : ''}
           
+          ${loanTrackBanner}
           <!-- Large Amount Input -->
           <div class="amount-input-group">
             <span id="currency-symbol" style="color: var(--text-tertiary); font-size: var(--text-2xl); font-family: var(--font-family-display);" aria-hidden="true">${window.Store.getCurrencySymbol(window.Store.getAccountCurrency(initialAccount))}</span>
@@ -3671,6 +3687,41 @@ window.Views = {
           return;
         }
 
+        // 1.3.1 (BUG-75): the loan's Track form saved with another amount or
+        // cadence (or no repeat) used to link without a word. One sheet says
+        // what the loan expects and what is being saved; "Save anyway" goes on
+        // (the store links a repeating payment as before), "Go Back" keeps the form.
+        const pendLink = !isEditSave ? window.Store.getState().pendingLoanLink : null;
+        const sIdEl = document.getElementById('tx-recurrence-series-id');
+        if (pendLink && !opts.loanTrackOk && sIdEl && sIdEl.value === pendLink.seriesId) {
+          const lt = window.Views._loanTrack();
+          const once = !recurrenceData;
+          const differs = lt && (once || Math.round(amount * 100) !== lt.amountC ||
+            Number(recurrenceData.interval) !== 1 || recurrenceData.frequency !== 'months');
+          if (differs) {
+            const T = (k, p) => window.I18n.t(k, p);
+            const fmt = (v) => window.Store.formatCurrency(v);
+            const repeat = once ? T('debt.track.once')
+              : T('form.repeatsEvery.' + recurrenceData.frequency, { count: Number(recurrenceData.interval) || 1 });
+            const line = (html, strong) => `<p style="margin: 0 0 var(--space-2); font-size: var(--text-sm); line-height: 1.55; color: var(--text-${strong ? 'primary' : 'secondary'}); overflow-wrap: anywhere;">${html}</p>`;
+            window.Components.Modal.show({
+              title: T('debt.track.mismatchTitle'),
+              content: `<div id="loan-track-mismatch">
+                ${line(T('debt.track.mismatchExpected', { name: esc(lt.name), amount: fmt(lt.amountC / 100) }))}
+                ${line(T('debt.track.mismatchSaving', { amount: fmt(amount) }) + ' · ' + esc(repeat), true)}
+                ${line(T(once ? 'debt.track.mismatchUnlinked' : 'debt.track.mismatchLinked'))}
+              </div>`,
+              saveText: T('openingDate.saveAnyway'),
+              cancelText: T('common.goBack'),
+              onSave: (closeModal) => {
+                closeModal();
+                window.Views._afterModalTeardown(() => onSave({ ...opts, loanTrackOk: true }));
+              }
+            });
+            return;
+          }
+        }
+
         // 1.0.3 (BUG-41): a row dated before an account's opening date counts
         // in no balance, budget or chart. Say so BEFORE the scope sheet and let
         // the user move the opening date to this day (same Store.batch as the
@@ -3696,9 +3747,9 @@ window.Views = {
             title: window.I18n.t('openingDate.txTitle'),
             bodyHtml: openingConflicts.map(c => window.I18n.t('openingDate.txBody', { account: esc(accName(c.accountId)), date: esc(ODS.fmtDate(c.openingDate)) })),
             primaryHtml: window.I18n.t('openingDate.move', { date: esc(ODS.fmtDate(date)) }),
-            onPrimary: () => onSave({ openingChoice: 'move' }),
+            onPrimary: () => onSave({ ...opts, openingChoice: 'move' }),
             anywayHtml: window.I18n.t('openingDate.saveAnyway'),
-            onAnyway: () => onSave({ openingChoice: 'anyway' })
+            onAnyway: () => onSave({ ...opts, openingChoice: 'anyway' })
           });
           return;
         }
@@ -6242,7 +6293,8 @@ ${native ? `
     const B = window.StackdBackup;
     const target = f.target === 'icloud' ? 'icloud' : 'documents';
     const when = f.mtime ? V._fmtBackupTime(new Date(f.mtime).toISOString()) : '';
-    const kind = B && typeof B.isAutoFile === 'function' && B.isAutoFile(f.name) ? 'auto' : 'manual';
+    const kind = B && typeof B.isAutoFile === 'function' && B.isAutoFile(f.name) ? 'auto'
+      : (B && typeof B.isBeforeFile === 'function' && B.isBeforeFile(f.name) ? 'before' : 'manual'); // 1.3.1 (BUG-188)
     const size = f.bytes ? t('backup.sizeKb', { n: esc(V._fmtKb(f.bytes)) }) : '';
     const meta = [esc(f.name), size, t('backup.target.' + target)].filter(Boolean).join(' · ');
     return `
@@ -6273,6 +6325,17 @@ ${native ? `
   // A Components.Modal closed just before (the restore confirm) clears all
   // of #modal-container 300 ms later: run `fn` once that teardown is done,
   // or the sheet it opens is wiped (the wait Store._announceSaveFailure uses).
+  // 1.3.1 (BUG-75): { name, amountC } of the loan the armed Track form is
+  // for — its next regular instalment, as "Track this payment?" prefilled it.
+  _loanTrack() {
+    const st = window.Store.getState();
+    const pend = st.pendingLoanLink;
+    const loan = pend && (st.loans || []).find(l => l.id === pend.loanId);
+    if (!loan) return null;
+    const next = window.Views._DebtShared.trackablePayment(window.Store.getLoanProgress(loan));
+    return next ? { name: loan.name || '', amountC: next.amountC } : null;
+  },
+
   _afterModalTeardown(fn) {
     let waits = 0;
     const run = () => {
@@ -6310,26 +6373,60 @@ ${native ? `
 
   // A log row's Restore: confirm, then the file goes through the one
   // restore route with the same result sheets as a picked file.
+  // 1.3.1 (BUG-188): the file is read first, so the sheet can say what it
+  // holds; then the user picks "Add what is missing" or "Replace everything".
   _confirmRestoreFrom(name, target, state) {
-    const t = (k, p) => window.I18n.t(k, p);
-    if (!name) return;
-    window.Components.Modal.show({
-      title: t('backup.restoreConfirmTitle'),
-      content: `<p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; margin: 0;">${t('backup.restoreConfirmBody', { name: esc(name) })}</p>`,
-      saveText: t('backup.restoreThis'),
-      onSave: (close) => {
-        close();
-        // Review fix (UX-11): the result sheet must outlive the teardown.
-        window.Views._afterModalTeardown(() => window.Views._restoreFrom(name, target, state));
-      }
+    const B = window.StackdBackup;
+    if (!name || !B || typeof B.read !== 'function') return;
+    const h = window.Views._restoreHandlers(state, name, target, null);
+    return B.read(name, target).then((text) => {
+      window.Views._restoreText(text, name, target, state, null);
+    }, (error) => h.onError(error));
+  },
+
+  // The one restore route of the Backup page, for a text already read (a
+  // picked file, source '', or a file of the backup folder). A backup bundle
+  // asks first (Components.RestoreChoiceSheet); anything else — one of the
+  // six CSV files, a bank file — goes on as before.
+  _restoreText(text, fileName, source, state, done) {
+    const V = window.Views;
+    const I = window.StackdImport;
+    const h = V._restoreHandlers(state, fileName, source, done);
+    let info = null;
+    try { info = I._parseBundle(text) ? I.analyzeText(text) : null; } catch (e) { info = null; }
+    if (!info || info.kind !== 'bundle') {
+      I.importText(text, { mode: 'restore' }, h.onResult, h.onError);
+      return;
+    }
+    const rowsOf = (k) => (info.files && info.files[k] && info.files[k].rowCount) || 0;
+    window.Components.RestoreChoiceSheet.show({
+      name: fileName || '',
+      when: info.createdAt && !isNaN(Date.parse(info.createdAt)) ? V._fmtBackupTime(info.createdAt) : '',
+      inBackup: rowsOf('transactions'),
+      here: (window.Store.getState().transactions || []).length,
+      canReplace: true,
+      onCancel: () => { if (typeof done === 'function') done(); },
+      onAdd: () => I.importText(text, { mode: 'restore' }, h.onResult, h.onError),
+      onReplace: () => V._replaceFromBackup(text, h, done)
     });
   },
 
-  _restoreFrom(name, target, state) {
+  // "Replace everything": a copy of the current data first (D E6) — when it
+  // cannot be written, nothing is replaced — then the restore, as one change.
+  _replaceFromBackup(text, h, done) {
     const B = window.StackdBackup;
-    if (!B || typeof B.restoreFrom !== 'function') return;
-    const h = window.Views._restoreHandlers(state, name, target, null);
-    B.restoreFrom(name, target, h.onResult, h.onError);
+    const I = window.StackdImport;
+    const t = (k, p) => window.I18n.t(k, p);
+    const refuse = () => {
+      window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', title: t('backup.failedTitle'), body: t('backup.replace.safetyFailed') });
+      if (typeof done === 'function') done();
+    };
+    if (!B || typeof B.backupNow !== 'function') { refuse(); return Promise.resolve(); }
+    return B.backupNow({ kind: 'before' }).then((entry) => {
+      if (!entry || !entry.ok) { refuse(); return; }
+      I.importText(text, { mode: 'restore', replace: true },
+        (result) => h.onResult(Object.assign(result || {}, { safetyName: entry.name || '' })), h.onError);
+    }, refuse);
   },
 
   // A log row's Share: a copy of the file through the system share sheet
@@ -6355,6 +6452,9 @@ ${native ? `
       .map(([k, key]) => t('backup.fileCount', { label: t(key), n: V._fmtCount(files[k].importedCount) }))
       .join('\n');
     let message = t('backup.restoredBody', { counts });
+    // 1.3.1 (BUG-188): which way it ran, and what a merge kept that differs
+    if (result.replaced) message = t('backup.replacedNote', { name: result.safetyName || '' }) + '\n\n' + message;
+    if (result.differCount) message += '\n\n' + t('backup.differKept', { count: result.differCount });
     if (result.newAccounts > 0) message += '\n' + t('others.importCreatedAccounts', { count: result.newAccounts });
     if (result.newCategories > 0) message += '\n' + t('others.importCreatedCategories', { count: result.newCategories });
     if (result.skippedCount) {
@@ -6400,8 +6500,16 @@ ${native ? `
         if (window.StackdImport) {
           // v0.71: importCSV routes on the file's shape, so the same button
           // accepts a transactions export or a loans export.
+          // 1.3.1 (BUG-188): read first — a backup bundle asks "add or replace"
           const h = window.Views._restoreHandlers(state, file.name, '', done);
-          window.StackdImport.importCSV(file, state, h.onResult, h.onError);
+          const I = window.StackdImport;
+          if (typeof I._readFileText !== 'function' || typeof I._parseBundle !== 'function') {
+            I.importCSV(file, state, h.onResult, h.onError);
+          } else {
+            I._readFileText(file, (text) => {
+              window.Views._restoreText(text, file.name, '', state, done);
+            }, h.onError);
+          }
         } else {
           window.Components.NoticeSheet.show({ id: 'import-result-modal', tone: 'error', body: window.I18n.t('others.importModuleMissing') });
           btnImport.textContent = window.I18n.t('backup.restoreBtn');
@@ -6485,7 +6593,7 @@ ${native ? `
       }
       window.Components.NoticeSheet.show({
         id: 'import-result-modal',
-        tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows) ? 'info' : 'success',
+        tone: (result.skippedCount || result.duplicateCount || result.ambiguousRows || result.differCount) ? 'info' : 'success',
         title,
         body: message
       });

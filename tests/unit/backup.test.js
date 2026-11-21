@@ -598,3 +598,112 @@ describe('1.2.0 (UX-11) listAll — the saved files the page offers', () => {
     expect(files[1].mtime).toBe(new Date(2026, 10, 3, 8, 0, 0).getTime());
   });
 });
+
+// 1.3.1 (BUG-188): a restore is either a true merge ("Add what is missing")
+// or a replace ("Replace everything"), never half of each.
+describe('1.3.1 (BUG-188) backup restore — add what is missing, or replace everything', () => {
+  // The backup, then what the user did after it.
+  const backupThenEdit = () => {
+    boot();
+    buildLedger();
+    const text = JSON.stringify(B().buildBundle(S().getState()));
+    const backedUp = snapshot();
+    const main = acc('Main Bank');
+    S().dispatch('UPDATE_ACCOUNT', { id: main.id, name: 'Main B', type: 'Bank', openingBalance: 90, openingDate: '2026-01-01' });
+    const groceries = S().getState().transactions.find(x => x.amount === 40);
+    S().dispatch('UPDATE_TRANSACTION', { id: groceries.id, amount: 99 });
+    const gig = S().getState().transactions.find(x => x.amount === 120);
+    S().dispatch('DELETE_TRANSACTION', { id: gig.id });
+    S().dispatch('SAVE_BUDGET', { categoryId: cat('Hobbies').id, amount: 75, startDate: '2026-01', endDate: null, isCumulative: true });
+    S().dispatch('ADD_ACCOUNT', { name: 'Later', type: 'Cash', openingBalance: 5, openingDate: '2026-03-01' });
+    S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 7, accountId: acc('Later').id, categoryId: 'cat_groceries', date: '2026-03-02' });
+    return { text, backedUp, mainId: main.id, groceriesId: groceries.id, gigId: gig.id };
+  };
+
+  it('merge: nothing here changes — accounts and budgets included — and the differences are counted', () => {
+    const { text, mainId, groceriesId, gigId } = backupThenEdit();
+    const { result, error } = restore(text);
+    expect(error).toBeNull();
+    expect(result.replaced).toBe(false);
+    const st = S().getState();
+    const main = st.accounts.find(a => a.id === mainId);
+    expect(main.name).toBe('Main B'); // was put back to 'Main Bank' before 1.3.1
+    expect(st.transactions.find(x => x.accountId === mainId && x.type === 'opening_balance').amount).toBe(90);
+    expect(st.transactions.find(x => x.id === groceriesId).amount).toBe(99);
+    expect(st.budgets.find(b => b.categoryId === cat('Hobbies').id).amount).toBe(75);
+    // what was missing is added; what was added since stays
+    expect(st.transactions.some(x => x.id === gigId)).toBe(true);
+    expect(acc('Later')).toBeTruthy();
+    // the account (name + opening balance), the edited entry, the budget
+    expect(result.differCount).toBe(3);
+    expect(result.files.accounts.importedCount).toBe(0);
+    expect(result.files.transactions.importedCount).toBe(1);
+  });
+
+  it('a merge onto the very data of the backup reports no difference', () => {
+    boot();
+    buildLedger();
+    const text = JSON.stringify(B().buildBundle(S().getState()));
+    const { result } = restore(text);
+    expect(result.differCount).toBe(0);
+    ['accounts', 'transactions', 'loans', 'budgets'].forEach(k => expect(result.files[k].importedCount, k).toBe(0));
+  });
+
+  it('replace: the phone equals the backup, in one change', () => {
+    const { text, backedUp, mainId, groceriesId } = backupThenEdit();
+    let outer = 0;
+    const begin = DB().begin.bind(DB());
+    DB().begin = () => { if (!DB()._journal) outer += 1; begin(); };
+    let result = null;
+    let error = null;
+    I().importText(text, { mode: 'restore', replace: true }, (r) => { result = r; }, (e) => { error = e; });
+    expect(error).toBeNull();
+    expect(outer).toBe(1);
+    expect(result.replaced).toBe(true);
+    expect(result.differCount).toBe(0);
+    expect(snapshot()).toEqual(backedUp);
+    const st = S().getState();
+    expect(acc('Later')).toBeUndefined();
+    expect(st.accounts.find(a => a.id === mainId).name).toBe('Main Bank'); // ids are kept
+    expect(st.transactions.find(x => x.id === groceriesId).amount).toBe(40);
+    expect(st.transactions.some(x => x.amount === 7)).toBe(false);
+  });
+
+  it('replace lets go of what named an account the backup does not hold', () => {
+    const { text } = backupThenEdit();
+    const later = acc('Later').id;
+    S().dispatch('SET_DEFAULT_ACCOUNT', later);
+    S().dispatch('SET_ACCOUNT_ORDER', { ids: S().getState().accounts.map(a => a.id).reverse() });
+    I().importText(text, { mode: 'restore', replace: true }, () => {}, (e) => { throw e; });
+    const st = S().getState();
+    expect(st.defaultAccountId).not.toBe(later);
+    expect((st.accountOrder || []).includes(later)).toBe(false);
+  });
+
+  it('a replace that fails rolls the emptied ledger back', () => {
+    const { text } = backupThenEdit();
+    const before = JSON.stringify(S().getState().transactions);
+    const bundle = JSON.parse(text);
+    bundle.files.loans = 'not,a,loans,file\n1,2,3,4';
+    let error = null;
+    I().importText(JSON.stringify(bundle), { mode: 'restore', replace: true }, () => {}, (e) => { error = e; });
+    expect(error).not.toBeNull();
+    expect(JSON.stringify(S().getState().transactions)).toBe(before);
+    expect(acc('Later')).toBeTruthy();
+    expect(JSON.parse(ls.getItem('stackd_v1_transactions')).length).toBe(JSON.parse(before).length);
+  });
+
+  it('the safety copy is its own kind of file: named, logged, never pruned as automatic', async () => {
+    const fs = makeFilesystem();
+    boot({ platform: 'android', plugins: { Filesystem: fs } });
+    buildLedger();
+    const entry = await B().backupNow({ kind: 'before' });
+    expect(entry.ok).toBe(true);
+    expect(entry.kind).toBe('before');
+    expect(B().isBeforeFile(entry.name)).toBe(true);
+    expect(B().isAutoFile(entry.name)).toBe(false);
+    expect(B()._safeName(entry.name)).toBe(true);
+    expect(S().getState().backupLog[0]).toMatchObject({ kind: 'before', ok: true, name: entry.name });
+    expect(t('backup.kind.before')).toBe('Before restore');
+  });
+});

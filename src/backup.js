@@ -91,8 +91,15 @@ window.StackdBackup = {
       this._p2(d.getHours()) + this._p2(d.getMinutes()) + this._p2(d.getSeconds());
   },
 
+  // 1.3.1 (BUG-188): 'before' = the copy "Replace everything" takes first.
+  // It is not an automatic file (isAutoFile), so pruneAuto never removes it.
   fileName(kind, now) {
-    return (kind === 'auto' ? 'Stackd_auto_' : 'Stackd_backup_') + this.stamp(now) + '.json';
+    const head = kind === 'auto' ? 'Stackd_auto_' : kind === 'before' ? 'Stackd_before_restore_' : 'Stackd_backup_';
+    return head + this.stamp(now) + '.json';
+  },
+
+  isBeforeFile(name) {
+    return /^Stackd_before_restore_\d{8}_\d{6}\.json$/.test(String(name || ''));
   },
 
   isAutoFile(name) {
@@ -362,7 +369,7 @@ window.StackdBackup = {
   // run fires under whatever screen is open).
   async backupNow(opts) {
     const o = opts || {};
-    const kind = o.kind === 'auto' ? 'auto' : 'manual';
+    const kind = o.kind === 'auto' ? 'auto' : o.kind === 'before' ? 'before' : 'manual';
     const S = window.Store;
     const entry = { kind, target: '', name: '', bytes: 0, ok: true, error: '' };
     if (this._running) { entry.ok = false; entry.error = 'busy'; return entry; } // not logged
