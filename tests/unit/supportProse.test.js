@@ -33,7 +33,14 @@ describe('Support prose (v0.91 P8f)', () => {
     it.each(LANGS)('%s FAQ has no unresolved keys', (lang) => {
       global.window.I18n.setLang(lang);
       const faqs = global.window.Components.FaqModal.FAQS;
-      expect(faqs).toHaveLength(10); // v1.10 B6: + bankConnect, bankPending; 1.1.0 IE-8: + moveApp
+      // 1.3.1 (BUG-220): the two Online banking answers show only while the
+      // feature is enabled (it is hidden in this build): 8 without, 10 with
+      expect(faqs).toHaveLength(8);
+      global.window.BankConnect = { FEATURE_ENABLED: true };
+      const withBank = global.window.Components.FaqModal.FAQS;
+      delete global.window.BankConnect;
+      expect(withBank).toHaveLength(10); // v1.10 B6: + bankConnect, bankPending; 1.1.0 IE-8: + moveApp
+      expect(withBank.flatMap(f => [f.q, f.a]).filter(s => /^faq\./.test(s))).toEqual([]);
       const unresolved = faqs.flatMap(f => [f.q, f.a]).filter(s => /^faq\./.test(s));
       expect(unresolved).toEqual([]);
     });

@@ -1238,6 +1238,83 @@ window.Store = {
     return s ? this._stampSchedule(members, s) : false;
   },
 
+  // 1.3.1 (BUG-180, D2): receipts survive a series rebuild. A scoped date or
+  // schedule change drops every later payment and rebuilds the chain from
+  // clones, which carry no attachments — the receipts (and their files, at
+  // settle) were deleted without a word. Read BEFORE the edit: the receipts on
+  // the other payments, and the old order of dates after the tapped one.
+  _seriesReceipts(seriesId, editedIds, fromDate) {
+    const skip = new Set(editedIds);
+    const members = this.state.transactions.filter(t => t.recurrence && t.recurrence.seriesId === seriesId && !skip.has(t.id));
+    const later = [...new Set(members.filter(t => t.date > fromDate).map(t => t.date))].sort();
+    const held = members.filter(t => Array.isArray(t.attachments) && t.attachments.length)
+      .map(t => ({ date: t.date, ord: later.indexOf(t.date), attachments: t.attachments }));
+    return { held, any: held.length > 0 };
+  },
+
+  // After the rebuild: a receipt whose payment was dropped goes to the payment
+  // in the same position of the new chain (same interval and frequency), else
+  // to the nearest earlier payment that exists (a frequency change), else to
+  // the edited payment. Returns true when something moved.
+  _restoreSeriesReceipts(seriesId, editedId, snap, sameStep) {
+    if (!snap || !snap.any) return false;
+    const alive = new Set();
+    this.state.transactions.forEach(t => (t.attachments || []).forEach(a => a && alive.add(a.id)));
+    const lost = snap.held.filter(h => h.attachments.some(a => a && !alive.has(a.id)));
+    if (!lost.length) return false;
+    const owner = (t) => !t.transferRef || t.type === 'expense'; // a transfer keeps its receipts on the expense leg
+    const edited = this.state.transactions.find(t => t.id === editedId);
+    const members = this.state.transactions
+      .filter(t => t.recurrence && t.recurrence.seriesId === seriesId && owner(t))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const later = edited ? members.filter(t => t.id !== editedId && t.date > edited.date) : members;
+    let moved = false;
+    lost.forEach(h => {
+      let target = sameStep && h.ord >= 0 ? later[h.ord] : null;
+      if (!target) target = members.filter(t => t.date <= h.date).pop() || edited || members[0];
+      if (!target) return;
+      const have = new Set((target.attachments || []).map(a => a && a.id));
+      const add = h.attachments.filter(a => a && !have.has(a.id));
+      if (!add.length) return;
+      const i = this.state.transactions.indexOf(target);
+      this.state.transactions[i] = { ...target, attachments: (target.attachments || []).concat(add) };
+      moved = true;
+    });
+    return moved;
+  },
+
+  // 1.3.1 (BUG-181, D3): a series split in two — a loan follows the part that
+  // goes on (the new id holds the armed tail).
+  _moveLoanLink(fromSid, toSid) {
+    let moved = false;
+    (this.state.loans || []).forEach(l => {
+      if (l.linkedSeriesId === fromSid) { l.linkedSeriesId = toSid; l.updatedAt = new Date().toISOString(); moved = true; }
+    });
+    if (moved) window.StackdDB.save('loans', this.state.loans);
+    return moved;
+  },
+
+  // 1.3.1 (BUG-176, D1): the content fields of a scoped edit that the edit did
+  // NOT change, compared with the tapped payment as stored. They are left out
+  // of what spreads to the other payments, so each keeps its own value.
+  // (Date, paid state, attachments and recurrence have their own rules.)
+  _unchangedEditKeys(existing, upd) {
+    const same = [];
+    if (!existing || !upd) return same;
+    const str = (v) => (v == null ? '' : String(v));
+    if (upd.amount !== undefined &&
+      Math.round(Math.abs(Number(upd.amount)) * 100) === Math.round(Math.abs(Number(existing.amount)) * 100)) same.push('amount');
+    ['accountId', 'categoryId', 'comment', 'note', 'time', 'type'].forEach(k => {
+      if (upd[k] !== undefined && str(upd[k]) === str(existing[k])) same.push(k);
+    });
+    if (upd.tags !== undefined) {
+      const a = (Array.isArray(upd.tags) ? upd.tags : []).map(str);
+      const b = (Array.isArray(existing.tags) ? existing.tags : []).map(str);
+      if (a.length === b.length && a.every((x, i) => x === b[i])) same.push('tags');
+    }
+    return same;
+  },
+
   // 1.0.2 (BUG-26): UPDATE_TRANSACTION / UPDATE_TRANSFER — a value the form
   // left out is the series'; without a 'This and future' / 'All' scope the
   // series values always win, so 'Only this' never reschedules (D-U3-2a).
@@ -2559,6 +2636,10 @@ window.Store = {
         const seriesGaps = (scoped && seriesId && sched && !recurrenceRemoved && !stepChanged &&
           (payload.regenerateSeries || dateChanged || scheduleChanged))
           ? this._seriesGaps(seriesId, existingTx, sched) : [];
+        // 1.3.1 (BUG-180): the receipts on the payments a rebuild will drop
+        const receiptSnap = (scoped && seriesId && !recurrenceRemoved)
+          ? this._seriesReceipts(seriesId, [existingTx.id], existingTx.date) : null;
+        let splitSid = null; // 1.3.1 (BUG-181): set in the scoped block below
 
         // Update the target transaction
         this.state.transactions[index] = {
@@ -2634,6 +2715,10 @@ window.Store = {
            // - recurrence:null + future scope = stop the series here (future
            //   materialized occurrences are removed).
            const regenerate = payload.regenerateSeries || dateChanged || scheduleChanged || recurrenceRemoved;
+           const unchangedKeys = this._unchangedEditKeys(existingTx, updatePayload);
+           splitSid = (payload.updateFuture && !payload.updateAll && stepChanged && !recurrenceRemoved &&
+             this.state.transactions.some(t => t.recurrence && t.recurrence.seriesId === seriesId &&
+               t.id !== existingTx.id && t.date < baseDate)) ? window.StackdDB.generateId() : null;
 
            const propagate = (t, i) => {
              const tUpdate = { ...updatePayload };
@@ -2651,6 +2736,11 @@ window.Store = {
              // payment still takes its flip, the others keep their own
              delete tUpdate.isPaid;
              delete tUpdate.attachments; // 1.2.0 (UX-10): per payment, like paid state
+             // 1.3.1 (BUG-176, D1): only what this edit CHANGED spreads. The
+             // form sends every field, so a note-only save with a scope used
+             // to copy the tapped payment's amount, account, category and
+             // tags onto the others — amounts set by hand were lost silently.
+             unchangedKeys.forEach(k => { delete tUpdate[k]; });
              if (t.transferRef && t.type !== existingTx.type) {
                // Counterpart leg of a transfer pair: its account/category
                // belong to the OTHER side — only shared fields may propagate
@@ -2721,6 +2811,13 @@ window.Store = {
                  // 1.0.3 (BUG-51): a scoped date move (or a new interval /
                  // frequency) starts the rebuilt chain on the new day
                  if (dateChanged || stepChanged) updatedTx.recurrence.anchorDay = Number(String(updatedTx.date).slice(8, 10)) || undefined;
+                 // 1.3.1 (BUG-181, D3): a new interval/frequency from the middle
+                 // of a series starts a NEW series here. One series has one
+                 // schedule (the armed tail's), so the earlier payments would
+                 // otherwise be re-stepped with the new frequency by any later
+                 // rebuild from one of them. The old series ends on the
+                 // payment before this one (disarmed below, synced after).
+                 if (splitSid) updatedTx.recurrence.seriesId = splitSid;
                  updatedTx.recurrence.nextDate = this._nextSeriesDate(updatedTx.date, updatedTx.recurrence);
               }
               // v0.98: after a regeneration exactly ONE member may be armed —
@@ -2740,12 +2837,17 @@ window.Store = {
 
         // 1.0.2 (BUG-26): every member carries the series' schedule
         if (seriesId) this._syncSeriesSchedule(seriesId);
+        if (splitSid) this._moveLoanLink(seriesId, splitSid); // 1.3.1 (BUG-181)
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
         // 1.0.3 (BUG-139, D1): the rebuilt chain keeps the old one's gaps
         if (seriesGaps.length && this._dropSeriesGaps(seriesId, payload.id, seriesGaps)) {
           this._syncSeriesSchedule(seriesId);
+          window.StackdDB.save('transactions', this.state.transactions);
+        }
+        // 1.3.1 (BUG-180): put the dropped payments' receipts back
+        if (this._restoreSeriesReceipts(splitSid || seriesId, payload.id, receiptSnap, !stepChanged)) {
           window.StackdDB.save('transactions', this.state.transactions);
         }
         changed = true;
@@ -2833,6 +2935,25 @@ window.Store = {
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
+
+        // 1.3.1 (BUG-75): a loan payment saved as a Transfer (to the loan's
+        // own account) links like an expense does. It used to stay unlinked,
+        // so the loan offered tracking again and a second series was booked.
+        const pendT = this.state.pendingLoanLink;
+        if (pendT && payload.recurrence && payload.recurrence.seriesId === pendT.seriesId) {
+          const linkedLoanT = this.state.loans.find(l => l.id === pendT.loanId);
+          if (linkedLoanT) {
+            linkedLoanT.linkedSeriesId = pendT.seriesId;
+            delete linkedLoanT.needsNoteRelink;
+            linkedLoanT.updatedAt = new Date().toISOString();
+            window.StackdDB.save('loans', this.state.loans);
+            const regularCT = Math.round(Math.abs(Number(payload.amount)) * 100);
+            if (this._applyLoanFinalInstalment(linkedLoanT, regularCT)) {
+              window.StackdDB.save('transactions', this.state.transactions);
+            }
+          }
+          this.state.pendingLoanLink = null;
+        }
         changed = true;
         break;
       }
@@ -2877,6 +2998,10 @@ window.Store = {
         const seriesGapsT = (scopedT && seriesId && schedT && editedLegT && !recurrenceRemoved && !stepChangedT &&
           (payload.regenerateSeries || dateChanged || scheduleChanged))
           ? this._seriesGaps(seriesId, editedLegT, schedT) : [];
+        // 1.3.1 (BUG-180): the receipts on the pairs a rebuild will drop
+        const receiptSnapT = (scopedT && seriesId && editedLegT && !recurrenceRemoved)
+          ? this._seriesReceipts(seriesId, items.map(t => t.id), editedLegT.date) : null;
+        let splitSidT = null; // 1.3.1 (BUG-181): set in the scoped block below
         // 1.0.2 (BUG-74): the expense leg's amount before the edit (the leg a
         // loan reads), for the hand-edit mark below
         const expLegBefore = items.find(t => t.type === 'expense') || items[0];
@@ -2928,6 +3053,20 @@ window.Store = {
         } else {
           incomeAmount = this._receivedAmount(payload); // the form requires it; else untouched
         }
+
+        // 1.3.1 (BUG-176, D1): what this edit changed on the tapped pair, read
+        // BEFORE the legs are updated — only these spread to the other pairs.
+        const strT = (v) => (v == null ? '' : String(v));
+        const moved = {
+          amount: sentAbs !== undefined && Math.round(sentAbs * 100) !== oldAmountC,
+          received: incomeAmount !== undefined && !!incLeg &&
+            Math.round(incomeAmount * 100) !== Math.round(Math.abs(Number(incLeg.amount)) * 100),
+          from: payload.expenseAccountId !== undefined && !!expLeg && payload.expenseAccountId !== expLeg.accountId,
+          to: payload.incomeAccountId !== undefined && !!incLeg && payload.incomeAccountId !== incLeg.accountId,
+          note: payload.note !== undefined && strT(payload.note) !== strT(expLegBefore.comment),
+          time: payload.time !== undefined && strT(payload.time) !== strT(expLegBefore.time),
+          tags: tagsArray !== undefined && tagsArray.join('\u0001') !== (expLegBefore.tags || []).map(strT).join('\u0001')
+        };
 
         items.forEach(item => {
            if (item.type === 'expense') {
@@ -2987,16 +3126,18 @@ window.Store = {
               if (!shouldPropagate) return;
 
               // 1.0.2 (BUG-35): each leg in its own currency (incomeAmount above)
-              if (t.type === 'income') { if (incomeAmount !== undefined) t.amount = incomeAmount; }
-              else if (payload.amount !== undefined) t.amount = Math.abs(payload.amount);
-              if (payload.time !== undefined) t.time = payload.time; // 1.0.3 (BUG-99)
-              if (payload.note !== undefined) t.comment = payload.note;
-              if (payload.tags !== undefined) t.tags = payload.tags.map(tag => tag.toLowerCase());
+              // 1.3.1 (BUG-176, D1): only what this edit changed spreads (moved)
+              const amountSpreads = moved.amount || moved.received || moved.from || moved.to;
+              if (t.type === 'income') { if (incomeAmount !== undefined && amountSpreads) t.amount = incomeAmount; }
+              else if (payload.amount !== undefined && moved.amount) t.amount = Math.abs(payload.amount);
+              if (moved.time) t.time = payload.time; // 1.0.3 (BUG-99)
+              if (moved.note) t.comment = payload.note;
+              if (moved.tags) t.tags = payload.tags.map(tag => tag.toLowerCase());
               // 1.0.2 (BUG-27): paid is per occurrence — only the tapped pair (above) changes
               // 1.0.2 (BUG-74): a propagated amount is the series' own again
-              if (payload.amount !== undefined) delete t.amountEdited;
-              if (t.type === 'expense' && payload.expenseAccountId !== undefined) t.accountId = payload.expenseAccountId;
-              if (t.type === 'income' && payload.incomeAccountId !== undefined) t.accountId = payload.incomeAccountId;
+              if (moved.amount) delete t.amountEdited;
+              if (t.type === 'expense' && moved.from) t.accountId = payload.expenseAccountId;
+              if (t.type === 'income' && moved.to) t.accountId = payload.incomeAccountId;
               if (recurrenceRemoved) {
                  t.recurrence = null;
               } else if (rec) {
@@ -3032,8 +3173,14 @@ window.Store = {
               if (!recurrenceRemoved) {
                  // Re-arm exactly one leg (the expense side) from the new date
                  const pair = this.state.transactions.filter(t => t.transferRef === payload.transferRef);
+                 // 1.3.1 (BUG-181, D3): a new interval/frequency from the middle
+                 // of a series starts a new series here — see UPDATE_TRANSACTION
+                 splitSidT = (payload.updateFuture && !payload.updateAll && stepChangedT &&
+                   this.state.transactions.some(t => t.recurrence && t.recurrence.seriesId === seriesId &&
+                     t.transferRef !== payload.transferRef && t.date < baseDate)) ? window.StackdDB.generateId() : null;
                  pair.forEach(t => {
                     if (!t.recurrence) return;
+                    if (splitSidT) t.recurrence = { ...t.recurrence, seriesId: splitSidT };
                     // 1.0.3 (BUG-51): a scoped date move (or a new interval /
                     // frequency) starts the rebuilt chain on the new day, both legs
                     if (dateChanged || stepChangedT) t.recurrence = { ...t.recurrence, anchorDay: Number(String(t.date).slice(8, 10)) || undefined };
@@ -3053,12 +3200,17 @@ window.Store = {
 
         // 1.0.2 (BUG-26): every member (both legs) carries the series' schedule
         if (seriesId) this._syncSeriesSchedule(seriesId);
+        if (splitSidT) this._moveLoanLink(seriesId, splitSidT); // 1.3.1 (BUG-181)
         this._sortTransactions();
         window.StackdDB.save('transactions', this.state.transactions);
         this._processRecurringTransactions();
         // 1.0.3 (BUG-139, D1): the rebuilt chain keeps the old one's gaps
         if (seriesGapsT.length && this._dropSeriesGaps(seriesId, editedLegT.id, seriesGapsT)) {
           this._syncSeriesSchedule(seriesId);
+          window.StackdDB.save('transactions', this.state.transactions);
+        }
+        // 1.3.1 (BUG-180): put the dropped pairs' receipts back (expense legs)
+        if (editedLegT && this._restoreSeriesReceipts(splitSidT || seriesId, editedLegT.id, receiptSnapT, !stepChangedT)) {
           window.StackdDB.save('transactions', this.state.transactions);
         }
         changed = true;
@@ -3135,8 +3287,18 @@ window.Store = {
               }
            });
         } else if (payload.deleteFuture && txToDelete.recurrence && txToDelete.recurrence.seriesId) {
-           this.state.transactions.forEach(t => {
+           // 1.3.1 (BUG-136, the conversion path): keepHappened = Recurrent
+           // was switched off. The other payments dated today or earlier
+           // already happened — they stay in History, unlinked, as the
+           // UPDATE_TRANSACTION rule does; only later ones are removed.
+           const todayYMD = this._todayYMD();
+           this.state.transactions.forEach((t, i) => {
               if (t.recurrence && t.recurrence.seriesId === txToDelete.recurrence.seriesId && t.date >= txToDelete.date) {
+                 if (payload.keepHappened && t.id !== txToDelete.id && t.date <= todayYMD &&
+                     !(txToDelete.transferRef && t.transferRef === txToDelete.transferRef)) {
+                    this.state.transactions[i] = { ...t, recurrence: null, updatedAt: new Date().toISOString() };
+                    return;
+                 }
                  idsToDelete.add(t.id);
                  if (t.transferRef) {
                     this.state.transactions.forEach(tc => {
@@ -5685,10 +5847,14 @@ window.Store = {
       }
     }
 
-    const finalLimit = baseAmount + carryOver;
+    // 1.3.1 (BUG-197/204): in cents. A raw float sum left 7.1e-15 where a
+    // deficit cancels the limit (usage "140,737,488,355,328,000%") and
+    // 100.00000000000001 spent "over" a 100 limit.
+    const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const finalLimit = cents(baseAmount + carryOver);
     return {
       allocated: baseAmount,
-      spent: spentThisMonth,
+      spent: cents(spentThisMonth),
       carryover: carryOver,
       finalLimit: finalLimit
     };

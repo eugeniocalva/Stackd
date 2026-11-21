@@ -10,7 +10,7 @@
 // plugin JS wrapper is bundled — see db.js / export.js) and feature-detected,
 // so the page works without any of them (web: download only).
 window.StackdBackup = {
-  VERSION: '1.2.0',
+  VERSION: '1.3.1',
   FOLDER: 'Stackd Backups',
   AUTO_KEEP: 10, // automatic files kept per folder (the newest)
   DAY_MS: 24 * 60 * 60 * 1000,

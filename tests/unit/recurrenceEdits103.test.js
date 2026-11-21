@@ -384,4 +384,161 @@ describe('Recurring series edits (1.0.3 U1)', () => {
       noOrphanLegs();
     });
   });
+
+  // ── 1.3.1 (BUG-176, D1) ───────────────────────────────────────────────────
+  describe('BUG-176: a scoped edit spreads only what it changed', () => {
+    it('a note-only "All" save keeps amounts set by hand on the other payments', () => {
+      const sid = addSeries({ comment: 'Rent', amount: 950, date: '2026-09-01', endDate: '2027-03-01', categoryId: 'cat_rent' });
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-10-01'), { amount: 900 }));
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2027-01-01'), { amount: 1000, updateFuture: true }));
+      expect(members(sid).map(t => t.amount)).toEqual([950, 900, 950, 950, 1000, 1000, 1000]);
+
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-11-01'), { comment: 'Flat 4B', updateAll: true }));
+      expect(members(sid).map(t => t.amount)).toEqual([950, 900, 950, 950, 1000, 1000, 1000]);
+      expect(members(sid).every(t => t.comment === 'Flat 4B')).toBe(true);
+      expect(armed(sid)).toHaveLength(1);
+    });
+
+    it('a category-only "This and future" save leaves a later hand-set amount alone', () => {
+      const sid = addSeries({ comment: 'Gym', amount: 25, date: '2026-09-05', endDate: '2027-01-05' });
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-12-05'), { amount: 30 }));
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-10-05'), { categoryId: 'cat_health', updateFuture: true }));
+      expect(at(sid, '2026-12-05').amount).toBe(30);
+      expect(at(sid, '2026-12-05').categoryId).toBe('cat_health');
+      expect(at(sid, '2026-09-05').categoryId).toBe('cat_other');
+    });
+
+    it('a changed amount still spreads to the payments in scope', () => {
+      const sid = addSeries({ comment: 'Net', amount: 40, date: '2026-09-10', endDate: '2027-01-10' });
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-11-10'), { amount: 45, updateFuture: true }));
+      expect(members(sid).map(t => t.amount)).toEqual([40, 40, 45, 45, 45]);
+    });
+
+    it('transfers: a note-only "All" save keeps a pair edited to another amount', () => {
+      const sid = addTransferSeries({ note: 'Sweep', amount: 50, date: '2026-09-15', endDate: '2027-01-15' });
+      Store.dispatch('UPDATE_TRANSFER', editTransfer(at(sid, '2026-12-15', 'expense'), { amount: 80, recurrence: undefined }));
+      Store.dispatch('UPDATE_TRANSFER', editTransfer(at(sid, '2026-10-15', 'expense'), { note: 'Sweep 2', updateAll: true }));
+      expect(at(sid, '2026-12-15', 'expense').amount).toBe(80);
+      expect(at(sid, '2026-12-15', 'income').amount).toBe(80);
+      expect(members(sid).every(t => t.comment === 'Sweep 2')).toBe(true);
+      noOrphanLegs();
+    });
+  });
+
+  // ── 1.3.1 (BUG-136, conversion path) ──────────────────────────────────────
+  describe('BUG-136: Recurrent off while converting to a transfer keeps what happened', () => {
+    it('keepHappened unlinks the payments up to today and removes only later ones', () => {
+      pin(2026, 10, 6);
+      const sid = addSeries({ comment: 'Club', amount: 12.5, date: '2026-07-10', endDate: '2027-01-10' });
+      const tapped = at(sid, '2026-08-10');
+      Store.dispatch('DELETE_TRANSACTION', { id: tapped.id, deleteFuture: true, keepHappened: true });
+      const left = byComment('Club');
+      // Jul (before the tapped one) stays in the series; Sep happened: kept, unlinked;
+      // Aug is the tapped payment (it becomes the transfer); Oct 10 onwards is gone.
+      expect(left.map(t => t.date)).toEqual(['2026-07-10', '2026-09-10']);
+      expect(left[1].recurrence).toBeNull();
+      expect(armed(sid)).toHaveLength(0);
+    });
+
+    it('without keepHappened the cut is unchanged', () => {
+      pin(2026, 10, 6);
+      const sid = addSeries({ comment: 'Club2', amount: 12.5, date: '2026-07-10', endDate: '2027-01-10' });
+      Store.dispatch('DELETE_TRANSACTION', { id: at(sid, '2026-08-10').id, deleteFuture: true });
+      expect(byComment('Club2').map(t => t.date)).toEqual(['2026-07-10']);
+    });
+  });
+
+  // ── 1.3.1 (BUG-180, D2) ───────────────────────────────────────────────────
+  describe('BUG-180: receipts survive a series rebuild', () => {
+    const meta = (id) => ({ id, name: id + '.jpg', type: 'image/jpeg', size: 10 });
+    const setReceipt = (tx, id) => {
+      const i = txs().indexOf(tx);
+      Store.state.transactions[i] = { ...tx, attachments: [meta(id)] };
+    };
+
+    it('a "This and future" date move keeps the receipt of each later payment in its slot', () => {
+      const sid = addSeries({ comment: 'Phone', amount: 20, date: '2026-09-07', endDate: '2027-01-07' });
+      setReceipt(at(sid, '2026-11-07'), 'r-nov');
+      setReceipt(at(sid, '2027-01-07'), 'r-jan');
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-10-07'), { date: '2026-10-05', updateFuture: true }));
+      expect(dates(sid)).toEqual(['2026-09-07', '2026-10-05', '2026-11-05', '2026-12-05', '2027-01-05']);
+      expect((at(sid, '2026-11-05').attachments || []).map(a => a.id)).toEqual(['r-nov']);
+      expect((at(sid, '2027-01-05').attachments || []).map(a => a.id)).toEqual(['r-jan']);
+      expect(at(sid, '2026-12-05').attachments).toBeUndefined();
+    });
+
+    it('a frequency change moves a receipt to the nearest earlier payment', () => {
+      const sid = addSeries({ comment: 'Box', amount: 9, date: '2026-09-07', endDate: '2027-03-07' });
+      setReceipt(at(sid, '2026-12-07'), 'r-dec');
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-10-07'), {
+        recurrence: { seriesId: sid, interval: 3, frequency: 'months', endDate: '2027-03-07' }, updateFuture: true
+      }));
+      const holder = byComment('Box').filter(t => (t.attachments || []).some(a => a.id === 'r-dec')); // the re-stepped part is a new series (BUG-181)
+      expect(holder).toHaveLength(1);
+      expect(holder[0].date <= '2026-12-07').toBe(true);
+    });
+
+    it('transfers: the receipt stays on the expense leg of the same slot', () => {
+      const sid = addTransferSeries({ note: 'Save', amount: 50, date: '2026-09-15', endDate: '2027-01-15' });
+      setReceipt(at(sid, '2026-12-15', 'expense'), 'r-t');
+      Store.dispatch('UPDATE_TRANSFER', editTransfer(at(sid, '2026-10-15', 'expense'), { date: '2026-10-12', updateFuture: true }));
+      expect((at(sid, '2026-12-12', 'expense').attachments || []).map(a => a.id)).toEqual(['r-t']);
+      expect(at(sid, '2026-12-12', 'income').attachments).toBeUndefined();
+      noOrphanLegs();
+    });
+  });
+
+  // ── 1.3.1 (BUG-181, D3) ───────────────────────────────────────────────────
+  describe('BUG-181: a frequency change from the middle splits the series', () => {
+    it('later date moves on the earlier part no longer touch the re-stepped part', () => {
+      const sid = addSeries({ comment: 'Water', amount: 30, date: '2026-07-05', endDate: '2027-07-05' });
+      // from October: every 3 months, This and future
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-10-05'), {
+        recurrence: { seriesId: sid, interval: 3, frequency: 'months', endDate: '2027-07-05' }, updateFuture: true
+      }));
+      const water = () => byComment('Water');
+      expect(water().map(t => t.date)).toEqual(['2026-07-05', '2026-08-05', '2026-09-05', '2026-10-05', '2027-01-05', '2027-04-05', '2027-07-05']);
+      const oldPart = water().slice(0, 3), newPart = water().slice(3);
+      const newSid = newPart[0].recurrence.seriesId;
+      expect(newSid).not.toBe(sid);
+      expect(oldPart.every(t => t.recurrence.seriesId === sid)).toBe(true);
+      expect(newPart.every(t => t.recurrence.seriesId === newSid)).toBe(true);
+      expect(armed(sid)).toHaveLength(0);
+      expect(armed(newSid)).toHaveLength(1);
+      expect(Store.getSeriesSchedule(sid).endDate).toBe('2026-09-05');
+      expect(String(Store.getSeriesSchedule(newSid).interval)).toBe('3');
+
+      // moving an earlier payment's day with This and future stays in the old part
+      // (the form shifts the series end with the move: 1.0.2 rule 7)
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-08-05'), {
+        date: '2026-08-08', updateFuture: true,
+        recurrence: { seriesId: sid, interval: 1, frequency: 'months', endDate: '2026-09-08' }
+      }));
+      expect(water().map(t => t.date)).toEqual(['2026-07-05', '2026-08-08', '2026-09-08', '2026-10-05', '2027-01-05', '2027-04-05', '2027-07-05']);
+    });
+
+    it('a frequency change from the first payment, or with All, keeps one series', () => {
+      const sid = addSeries({ comment: 'Gas', amount: 30, date: '2026-07-05', endDate: '2027-01-05' });
+      Store.dispatch('UPDATE_TRANSACTION', edit(at(sid, '2026-07-05'), {
+        recurrence: { seriesId: sid, interval: 2, frequency: 'months', endDate: '2027-01-05' }, updateFuture: true
+      }));
+      expect(byComment('Gas').every(t => t.recurrence.seriesId === sid)).toBe(true);
+      expect(dates(sid)).toEqual(['2026-07-05', '2026-09-05', '2026-11-05', '2027-01-05']);
+    });
+
+    it('transfers split the same way, both legs together', () => {
+      const sid = addTransferSeries({ note: 'Pot', amount: 50, date: '2026-07-15', endDate: '2027-01-15' });
+      Store.dispatch('UPDATE_TRANSFER', editTransfer(at(sid, '2026-09-15', 'expense'), {
+        recurrence: { seriesId: sid, interval: 2, frequency: 'months', endDate: '2027-01-15' }, updateFuture: true
+      }));
+      const pot = byComment('Pot');
+      const newSid = pot.find(t => t.date === '2026-09-15').recurrence.seriesId;
+      expect(newSid).not.toBe(sid);
+      expect([...new Set(pot.filter(t => t.recurrence.seriesId === sid).map(t => t.date))]).toEqual(['2026-07-15', '2026-08-15']);
+      expect([...new Set(pot.filter(t => t.recurrence.seriesId === newSid).map(t => t.date))]).toEqual(['2026-09-15', '2026-11-15', '2027-01-15']);
+      expect(armed(newSid)).toHaveLength(1);
+      expect(armed(newSid)[0].type).toBe('expense');
+      noOrphanLegs();
+    });
+  });
 });

@@ -60,7 +60,15 @@ window.Router = {
         const a = e.target && e.target.closest ? e.target.closest('a[data-router-leave]') : null;
         if (!a || e.defaultPrevented) return;
         e.preventDefault();
-        this.leave(a.getAttribute('href'));
+        // 1.3.1 (BUG-196): the ✕ of a form asks before dropping what was
+        // typed, as Android Back does (handleBack).
+        const href = a.getAttribute('href');
+        const view = window.Store && window.Store.getState ? window.Store.getState().activeView : null;
+        if (this.FORM_VIEWS.includes(view) && this._isFormDirty()) {
+          this._confirmDiscard(() => { this._formBaseline = null; this.leave(href); });
+          return;
+        }
+        this.leave(href);
       });
     }
     // Initial route handling

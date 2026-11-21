@@ -2865,7 +2865,10 @@ window.StackdImport = {
       const p = parsed[a];
       const entries = list.filter(i => !isBalanceRow(parsed[i]));
       const before = entries.filter(i => parsed[i].date < p.date).length;
-      if (entries.length && before > entries.length - before) return; // a closing row
+      // 1.3.1 (BUG-190): a file with the app's own balance word is Stack'd's
+      // export — its balance row is ALWAYS the opening, also when most
+      // entries are dated before it (pre-opening entries).
+      if (!p.balWord && entries.length && before > entries.length - before) return; // a closing row
       anchors.add(a);
       openings.push({ account: p.account, ccy: ccyOf(p), date: p.date, amount: p.bal || 0, line: p.line });
     });
@@ -3457,7 +3460,19 @@ window.StackdImport = {
         if (shape) {
           // 1.1.0 (IE-4): a file whose every date is ambiguous reads in this
           // install's own export date order, when one was chosen.
-          const saved = window.Store.state.exportPrefs;
+          // 1.3.1 (BUG-189): the raw slice is null until Export settings are
+          // saved once, so the English default (MM/dd) came back day-first:
+          // every date swapped, and a re-import doubled each entry. A file
+          // whose header is this install's own export header (app language)
+          // reads in the export defaults; a foreign file keeps day-first.
+          const own = (() => {
+            try {
+              const mine = new Set(window.StackdExport.LEDGER_COLS.map(k => this._fold(window.I18n.t('ledger.col.' + k))));
+              const cells = (auto.rows[0] || []).map(h => this._fold(h)).filter(Boolean);
+              return cells.length >= 10 && cells.every(h => mine.has(h));
+            } catch (e) { return false; }
+          })();
+          const saved = window.Store.state.exportPrefs || (own ? window.Store.getExportPrefs() : null);
           const fallback = opts.dateFallback || (saved && saved.dateFormat
             ? (/^MM/.test(saved.dateFormat) ? 'mdy' : /^yyyy/.test(saved.dateFormat) ? 'ymd' : 'dmy') : undefined);
           commitLedger(auto, shape, 'ledger', Object.assign({}, opts, { dateFallback: fallback }));

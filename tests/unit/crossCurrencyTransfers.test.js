@@ -376,7 +376,9 @@ describe('Cross-currency transfers (1.0.2 BUG-35)', () => {
     expect(pairOf(ref).inc.amount).toBe(100);
   });
 
-  it('pin: a same-currency series with a member edited to 80/80 becomes 100/100 on a future note-only edit', () => {
+  // 1.3.1 (BUG-176, D1): this test used to PIN the old rule (the pair went back
+  // to 100/100). A note-only edit now spreads the note and nothing else.
+  it('a same-currency series with a member edited to 80/80 keeps it on a future note-only edit', () => {
     const sid = addSeries({ incomeAccountId: savings, receivedAmount: undefined, note: 'Sweep' });
     const pairs0 = pairsOf(sid);
     // a single-member edit of pair 5 to 80 (mirrors within one currency)
@@ -386,8 +388,8 @@ describe('Cross-currency transfers (1.0.2 BUG-35)', () => {
     // this-and-future note-only edit of pair 2
     Store.dispatch('UPDATE_TRANSFER', editPayload(pairsOf(sid)[1].exp, { note: 'Sweep 2', updateFuture: true }));
     const p5 = pairsOf(sid)[4];
-    expect(p5.exp.amount).toBe(100);
-    expect(p5.inc.amount).toBe(100);
+    expect(p5.exp.amount).toBe(80);
+    expect(p5.inc.amount).toBe(80);
     expect(p5.inc.comment).toBe('Sweep 2');
   });
 });

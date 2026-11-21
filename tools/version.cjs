@@ -52,6 +52,8 @@ function versions() {
 function targets(v) {
   return [
     ['index.html', /<title>[^<]*<\/title>/g, `<title>${v.title}</title>`, 1],
+    // 1.3.1 (BUG-219): the backup file names the app version that wrote it
+    ['src/backup.js', /VERSION: '[^']*'/g, `VERSION: '${v.semver}'`, 1],
     ['android/app/build.gradle', /versionCode \d+/g, `versionCode ${v.code}`, 1],
     ['android/app/build.gradle', /versionName "[^"]*"/g, `versionName "${v.name}"`, 1],
     ['ios/App/App.xcodeproj/project.pbxproj', /MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${v.name};`, 4],

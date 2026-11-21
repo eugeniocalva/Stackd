@@ -593,7 +593,9 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${window.Store.getCurrencySymbol(ccy)}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
+                  // 1.3.1 (BUG-177/192): through formatCurrency, so the axis is masked
+                  // with Hide balances and a word sign keeps its space (CHF 500)
+                  callback: (val) => window.Store.formatCurrency(val, ccy, { whole: true })
                 }
               }
             }
@@ -982,7 +984,9 @@ window.Widgets = {
                   stepSize: yScale.stepSize,
                   color: theme.tickColor,
                   font: { size: 10, family: 'Manrope', weight: '600' },
-                  callback: (val) => `${val < 0 ? '-' : ''}${window.Store.getCurrencySymbol(ccy)}${Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 })}`
+                  // 1.3.1 (BUG-177/192): through formatCurrency, so the axis is masked
+                  // with Hide balances and a word sign keeps its space (CHF 500)
+                  callback: (val) => window.Store.formatCurrency(val, ccy, { whole: true })
                 }
               }
             }

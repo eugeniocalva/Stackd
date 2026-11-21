@@ -178,9 +178,13 @@ describe('Typed money amounts (1.0.2 BUG-50)', () => {
     renderView('BudgetView');
     expect($('bdg-amount').value).toBe('1.23');
 
-    // empty = no limit (0)
+    // 1.3.1 (BUG-182): empty on an existing budget asks first (the Remove
+    // confirmation); nothing is removed and the editor stays open
+    const spy2 = vi.spyOn(S(), 'dispatch');
     openEditor('');
-    expect(budget().amount).toBe(0);
-    expect(BV.editCategoryId).toBeNull();
+    expect(spy2).not.toHaveBeenCalledWith('SAVE_BUDGET', expect.anything());
+    spy2.mockRestore();
+    expect(budget().amount).toBeCloseTo(1.23456);
+    expect(BV.editCategoryId).toBe('cat_groceries');
   });
 });

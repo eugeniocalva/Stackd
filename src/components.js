@@ -394,7 +394,9 @@ window.Components = {
     IDS: ['account', 'transaction', 'editDelete', 'widgets', 'loan', 'categories', 'tags', 'bankConnect', 'bankPending', 'moveApp'], // v1.10 B6: Bank Connect entries; 1.1.0 (IE-8): moveApp
 
     get FAQS() {
-      return this.IDS.map(id => ({
+      // 1.3.1 (BUG-220): no Online banking answers while the feature is hidden
+      const bank = !!(window.BankConnect && window.BankConnect.FEATURE_ENABLED);
+      return this.IDS.filter(id => bank || (id !== 'bankConnect' && id !== 'bankPending')).map(id => ({
         q: window.I18n.t(`faq.${id}.q`),
         a: window.I18n.t(`faq.${id}.a`)
       }));
@@ -2634,12 +2636,9 @@ window.Components = {
                 stepSize: yScale.stepSize,
                 font: { size: 10, family: 'Manrope', weight: '600' },
                 color: tickColor,
-                callback: (val) => {
-                  const symbol = window.Store.getCurrencySymbol(ccy); // 1.0.2 (BUG-63)
-                  const sign = val < 0 ? '-' : '';
-                  const formattedAbs = Math.abs(val).toLocaleString(window.Store.getLocale(), { maximumFractionDigits: 0 });
-                  return `${sign}${symbol}${formattedAbs}`;
-                }
+                // 1.0.2 (BUG-63): the selection currency; 1.3.1 (BUG-192): with its
+                // prefix, so a word sign keeps its space (CHF 500)
+                callback: (val) => window.Store.formatCurrency(val, ccy, { whole: true })
               }
             }
           }
@@ -2877,6 +2876,16 @@ window.Components = {
   // and frequency, biggest monthly cost first, with the monthly total.
   // Amounts go through formatCurrency, so they mask on Home when balances are
   // hidden (the sheet opens over the screen it was tapped on).
+  // 1.3.1 (BUG-185): a sheet opened from Home sits outside #router-view, so
+  // the render that follows SET_PRIVACY never reached it: a shake hid Home
+  // and left the Balance Trend sheet and the add-widget previews readable.
+  refreshHomeSheets() {
+    [['expanded-graph-modal', this.ExpandedGraphModal], ['add-widget-modal', this.AddWidgetModal]].forEach(([id, sheet]) => {
+      if (!document.getElementById(id) || !sheet || typeof sheet._refresh !== 'function') return;
+      try { sheet._refresh(); } catch (e) { console.error('refreshHomeSheets:', e); }
+    });
+  },
+
   RecurringPaymentsSheet: {
     show(rows, total) {
       const t = (k, p) => window.I18n.t(k, p);
@@ -4503,7 +4512,7 @@ window.Components = {
 
   RecurringUpdateModal: {
     show(options) {
-      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false, gapNote = false } = options;
+      const { dateChanged = false, recurrenceRemoved = false, scheduleChanged = false, paidNote = null, amountNote = false, gapNote = false, receiptNote = false } = options;
       const onSelection = options.onSelection || ((scope) => {
         if (scope === 'single' && options.onlyThis) options.onlyThis();
         else if (scope === 'future' && options.thisAndFuture) options.thisAndFuture();
@@ -4548,6 +4557,7 @@ window.Components = {
               ${amountNote ? `<p id="ru-amount-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.rebuildAmountNote')}</p>` : ''}
               ${paidNote ? `<p id="ru-paid-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t(paidNote === 'rebuild' ? 'recUpdate.rebuildPaidNote' : 'recUpdate.paidNote')}</p>` : ''}
               ${gapNote ? `<p id="ru-gap-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.gapNote')}</p>` : ''}
+              ${receiptNote ? `<p id="ru-receipt-note" style="color: var(--text-secondary); font-size: var(--text-xs); margin: var(--space-2) 0 0;">${window.I18n.t('recUpdate.receiptNote')}</p>` : ''}
             </div>
 
             <div style="display: flex; flex-direction: column; padding: var(--space-3) var(--space-4) var(--space-5); gap: var(--space-2);">
@@ -5362,6 +5372,8 @@ window.Components = {
       };
 
       renderModalContent();
+      // 1.3.1 (BUG-185): Home re-draws this sheet when balances get hidden
+      this._refresh = renderModalContent;
 
       container.appendChild(modalBackdrop);
 
@@ -5704,6 +5716,13 @@ window.Components = {
 
       container.appendChild(backdrop);
       renderAll();
+      // 1.3.1 (BUG-185): the previews are re-drawn when balances get hidden
+      this._refresh = () => {
+        renderAll();
+        const c = backdrop.querySelector('.modal-content');
+        if (c) c.style.transform = 'translateY(0)';
+        if (window.StackdHydrateIcons) window.StackdHydrateIcons(backdrop);
+      };
 
       requestAnimationFrame(() => {
         backdrop.classList.add('open');

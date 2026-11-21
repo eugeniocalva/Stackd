@@ -194,7 +194,8 @@ describe('1.2.0 (UX-11) backup bundle — build through the export sink', () => 
     expect(E()._sink).toBeNull();
     expect(bundle.format).toBe('stackd-backup');
     expect(bundle.version).toBe(1);
-    expect(bundle.app).toBe("Stack'd 1.2.0");
+    // 1.3.1 (BUG-219): the app version that wrote the file (version:sync keeps it)
+    expect(bundle.app).toBe("Stack'd " + JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')).version);
     expect(bundle.language).toBe('en');
     expect(Number.isNaN(Date.parse(bundle.createdAt))).toBe(false);
     expect(Object.keys(bundle.files)).toEqual(['accounts', 'categories', 'transactions', 'loans', 'budgets', 'importRules']);

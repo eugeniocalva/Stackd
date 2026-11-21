@@ -370,19 +370,22 @@ describe('Recurring transfers and the generation engine', () => {
     const oct = series(sid).find(t => t.date === '2026-10-15' && t.type === 'expense');
     Store.dispatch('UPDATE_TRANSFER', transferEditPayload(oct, { frequency: 'weeks', updateFuture: true }));
 
-    const pairs = pairsOf(sid);
+    // 1.3.1 (BUG-181, D3): the re-stepped part is a NEW series; the monthly
+    // part before it keeps the old id and ends on its last payment.
+    const newSid = Store.getState().transactions.find(t => t.transferRef === oct.transferRef).recurrence.seriesId;
+    expect(newSid).not.toBe(sid);
+    const oldDates = [...pairsOf(sid).values()].map(l => l[0].date).sort();
+    expect(oldDates).toEqual(['2026-08-15', '2026-09-15']);
+    const pairs = pairsOf(newSid);
     const dates = [...pairs.values()].map(l => l[0].date).sort();
-    // past monthly kept
-    expect(dates).toContain('2026-08-15');
-    expect(dates).toContain('2026-09-15');
     // regenerated weekly from Oct 15: Oct 22, Oct 29, ...
+    expect(dates[0]).toBe('2026-10-15');
     expect(dates).toContain('2026-10-22');
     expect(dates).toContain('2026-10-29');
-    // old monthly future members are gone
-    expect(dates.filter(d => d === '2026-11-15').length + dates.filter(d => d === '2026-12-15').length)
-      .toBe(dates.includes('2026-11-15') || dates.includes('2026-12-15') ? 1 : 0); // only if weekly chain lands there
-    expect(generators(sid)).toHaveLength(1);
+    expect(generators(sid)).toHaveLength(0);
+    expect(generators(newSid)).toHaveLength(1);
     for (const [, legs] of pairs) expect(legs).toHaveLength(2);
+    for (const [, legs] of pairsOf(sid)) expect(legs).toHaveLength(2);
   });
 
   // ── 11d. date moved BEFORE surviving past members, future scope ──

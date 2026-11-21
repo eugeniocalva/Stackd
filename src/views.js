@@ -1471,6 +1471,7 @@ window.Views = {
         if (this._motion === m) this._motion = null;
         if (!leaving) this._privacyEntry = { hide, reduce };
         S.dispatch('SET_PRIVACY', { hide });
+        if (window.Components && window.Components.refreshHomeSheets) window.Components.refreshHomeSheets(); // 1.3.1 (BUG-185)
         if (window.Components && window.Components.Announcer) {
           window.Components.Announcer.say(window.I18n.t(hide ? 'privacy.hiddenTitle' : 'privacy.shownAnnounce'));
         }
@@ -3789,7 +3790,9 @@ window.Views = {
                 // deleted (the scope modal promises past history is safe), so
                 // 'all' behaves like 'future' here.
                 if (seriesId && (scope === 'future' || scope === 'all')) {
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, deleteFuture: true });
+                  // 1.3.1 (BUG-136): with Recurrent switched off nothing is
+                  // rebuilt, so payments that already happened must stay
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, deleteFuture: true, keepHappened: !recurrenceData });
                 } else {
                   window.Store.dispatch('DELETE_TRANSACTION', { id: targetId });
                 }
@@ -3927,6 +3930,11 @@ window.Views = {
             (String(recurrenceData.interval) !== String(sched.interval) || String(recurrenceData.frequency) !== String(sched.frequency)));
           const gapNote = rebuilds && stepChanged && typeof window.Store.seriesGapCount === 'function' &&
             window.Store.seriesGapCount(seriesId, targetId) > 0;
+          // 1.3.1 (BUG-180, D2): a new interval/frequency cannot keep a
+          // receipt on "its" payment — it moves to the nearest earlier one
+          const receiptNote = rebuilds && stepChanged && window.Store.getState().transactions.some(t =>
+            t.recurrence && t.recurrence.seriesId === seriesId && t.id !== targetId &&
+            t.date >= from && Array.isArray(t.attachments) && t.attachments.length > 0);
           window.Components.RecurringUpdateModal.show({
             dateChanged,
             recurrenceRemoved,
@@ -3934,6 +3942,7 @@ window.Views = {
             paidNote,
             amountNote: amountAhead,
             gapNote,
+            receiptNote,
             onSelection: (chosen) => doDispatch(chosen === 'single' ? 'only' : chosen)
           });
         } else {
@@ -4708,6 +4717,16 @@ Object.assign(window.Views, {
             const amt = amtElem ? window.Store.parseAmount(amtElem.value) : null;
             if (Number.isNaN(amt) || amt < 0) {
               showFieldError(amtElem, window.I18n.t('form.amountInvalid', { example: window.Store.amountExample() }));
+              return;
+            }
+            // 1.3.1 (BUG-182): an empty or 0 limit used to save 0 — which
+            // removes the budget and its limit history from every month, with
+            // none of the confirmation Remove Budget Limit shows. On a budget
+            // that exists it now IS that confirmation; on a new one, an error.
+            if (!amt) {
+              const delBtn = container.querySelector('#btn-bdg-delete');
+              if (delBtn) delBtn.click();
+              else showFieldError(amtElem, window.I18n.t('form.amountRequired'));
               return;
             }
             const isCum = cumInput ? cumInput.checked : false;
@@ -6503,9 +6522,10 @@ ${native ? `
 Object.assign(window.Views, {
   _ImportDraft: {
     text: '', fileName: '', fromFile: false, overrides: {}, check: null, choices: null, fileCategories: null,
+    dateAsked: false, // 1.3.1 (BUG-189): this file's dates were ambiguous once
     clear() {
       this.text = ''; this.fileName = ''; this.fromFile = false; this.overrides = {};
-      this.check = null; this.choices = null; this.fileCategories = null;
+      this.check = null; this.choices = null; this.fileCategories = null; this.dateAsked = false;
     },
     opts() { return Object.assign({}, this.overrides, this.choices || {}); },
     recheck() { this.check = window.StackdImport.checkText(this.text, this.opts()); return this.check; }
@@ -6650,7 +6670,7 @@ Object.assign(window.Views, {
       const clear = $('import-clear');
       if (clear) {
         clear.addEventListener('click', () => {
-          d.text = ''; d.fileName = ''; d.fromFile = false; d.check = null; d.choices = null;
+          d.text = ''; d.fileName = ''; d.fromFile = false; d.check = null; d.choices = null; d.dateAsked = false;
           window.Store.emit();
         });
       }
@@ -6660,7 +6680,7 @@ Object.assign(window.Views, {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
         window.StackdImport._readFileText(file, (text) => {
-          d.text = text; d.fileName = file.name; d.fromFile = true; d.check = null; d.choices = null;
+          d.text = text; d.fileName = file.name; d.fromFile = true; d.check = null; d.choices = null; d.dateAsked = false;
           input.value = '';
           window.Store.emit();
         }, () => { input.value = ''; window.Views._importError(container, t('others.importFailedBody')); });
@@ -6737,6 +6757,16 @@ Object.assign(window.Views, {
         ${sub(esc(t('review.rows', { count: f.rowCount })) + (f.dateRange.from ? ' · ' + esc(window.Views._fmtDay(f.dateRange.from)) + ' – ' + esc(window.Views._fmtDay(f.dateRange.to)) : ''))}
         ${sub(esc([delimLabel, orderLabel, decLabel, f.factor !== 1 ? '× ' + f.factor : ''].filter(Boolean).join(' · ')))}
         <a href="#import" id="review-change" style="display: inline-block; margin-top: var(--space-2); font-size: var(--text-sm);">${t('review.change')}</a>`, 'review-summary');
+
+      // 1.3.1 (BUG-189, D5): every day is 12 or lower, so nothing in the file
+      // says which number is the month — the user decides, before Import.
+      if (f.dateOrder && f.dateOrder.ambiguous) d.dateAsked = true;
+      const curOrder = d.overrides.dateOrder || (f.dateOrder && f.dateOrder.order);
+      const dateAsk = d.dateAsked && f.layout !== 'qif' && (curOrder === 'dmy' || curOrder === 'mdy') ? card(`
+        <div class="review-heads-up" id="review-date-ask" style="font-size: var(--text-sm); color: var(--text-secondary);">${esc(t('review.dateAmbiguous'))}</div>
+        <div role="group" aria-label="${escapeAttr(t('import.set.date'))}" style="display: flex; gap: var(--space-2); margin-top: var(--space-3);">
+          ${['dmy', 'mdy'].map(o => `<button type="button" class="btn ${curOrder === o ? 'btn-primary' : 'btn-secondary'} review-order" data-order="${o}" aria-pressed="${curOrder === o}" style="flex: 1; min-height: 44px;">${esc(t(o === 'dmy' ? 'bankImport.dateDMY' : 'bankImport.dateMDY'))}</button>`).join('')}
+        </div>`, 'review-date-order') : '';
 
       const qifName = f.qif && !f.qif.named ? card(`
         <label class="form-label" for="review-qif-account">${t('review.qifAccount')}</label>
@@ -6818,7 +6848,7 @@ Object.assign(window.Views, {
       const headsUp = heads.length ? card(heads.join('<div style="height: var(--space-3);"></div>'), 'review-heads-up') : '';
       const problemCard = problems.length ? card(`<div class="section-title" style="margin: 0 0 var(--space-2);">${t('review.problems')}</div>${problems.join('')}`, 'review-problems') : '';
       const n = r.importedCount;
-      return wrap(summary + qifName + accounts + transfers + categories + headsUp + problemCard + `
+      return wrap(summary + dateAsk + qifName + accounts + transfers + categories + headsUp + problemCard + `
         <button class="btn btn-primary" id="btn-import-confirm" style="padding: var(--space-4); border-radius: var(--radius-lg);" ${n ? '' : 'disabled'}>${esc(t('review.importBtn', { count: n }))}</button>`);
     },
 
@@ -6832,6 +6862,10 @@ Object.assign(window.Views, {
       const change = $('review-change');
       if (change) change.addEventListener('click', (e) => { e.preventDefault(); leaveTo('#import'); });
       const rerun = () => { d.recheck(); window.Store.emit(); };
+      container.querySelectorAll('.review-order').forEach(el => el.addEventListener('click', () => {
+        d.overrides.dateOrder = el.dataset.order; // 1.3.1 (BUG-189)
+        rerun();
+      }));
       const ch = () => { d.choices = d.choices || {}; return d.choices; };
       container.querySelectorAll('.review-move').forEach(el => el.addEventListener('change', () => {
         const m = Object.assign({}, ch().openingMoves || {});
