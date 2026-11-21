@@ -402,6 +402,7 @@ window.I18n.dicts.es = {
   'debt.paymentsOf': '{paid} de {total} cuotas',
   'debt.nextPaymentLabel': 'Próxima cuota',
   'debt.trackedMonthly': 'Con seguimiento como gasto mensual',
+  'debt.trackedRecurring': 'Con seguimiento como pago periódico', // 1.3.1
   'debt.trackMonthly': 'Seguir la cuota mensual',
   'debt.closeResultsAria': 'Cerrar los resultados',
   'debt.monthlyPayment': 'Cuota mensual',

@@ -402,6 +402,7 @@ window.I18n.dicts.pt = {
   'debt.paymentsOf': '{paid} de {total} prestações',
   'debt.nextPaymentLabel': 'Próxima prestação',
   'debt.trackedMonthly': 'Acompanhado como despesa mensal',
+  'debt.trackedRecurring': 'Acompanhado como pagamento recorrente', // 1.3.1
   'debt.trackMonthly': 'Acompanhar a prestação mensal',
   'debt.closeResultsAria': 'Fechar os resultados',
   'debt.monthlyPayment': 'Prestação mensal',

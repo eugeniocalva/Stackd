@@ -3792,7 +3792,7 @@ window.Views = {
                 if (seriesId && (scope === 'future' || scope === 'all')) {
                   // 1.3.1 (BUG-136): with Recurrent switched off nothing is
                   // rebuilt, so payments that already happened must stay
-                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, deleteFuture: true, keepHappened: !recurrenceData });
+                  window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, deleteFuture: true, keepHappened: !recurrenceData, unlinkPast: !recurrenceData && scope === 'all' });
                 } else {
                   window.Store.dispatch('DELETE_TRANSACTION', { id: targetId });
                 }
@@ -8615,7 +8615,14 @@ Object.assign(window.Views, {
       if (r.loan && r.loan.kind === 'active') {
         const p = window.Store.getLoanProgress(r.loan);
         if (p) {
-          const tracked = !!window.Store.getLoanLinkedTransactions(r.loan);
+          const linkedTx = window.Store.getLoanLinkedTransactions(r.loan);
+          const tracked = !!linkedTx;
+          // 1.3.1 (NEW-2 / BUG-75): say "monthly expense" only when it is one —
+          // a payment tracked as a transfer, or on another cadence, is a
+          // "recurring payment"
+          const linkSched = tracked && r.loan.linkedSeriesId ? window.Store.getSeriesSchedule(r.loan.linkedSeriesId) : null;
+          const trackedKey = tracked && !linkedTx.some(t => t.transferRef) && linkSched &&
+            String(linkSched.interval) === '1' && linkSched.frequency === 'months' ? 'debt.trackedMonthly' : 'debt.trackedRecurring';
           progressHtml = `
             <div class="card" id="dres-progress" style="margin-top: var(--space-4);">
               <div class="section-title" style="margin-bottom: var(--space-3);">${window.I18n.t('debt.progress')}</div>
@@ -8638,7 +8645,7 @@ Object.assign(window.Views, {
                   ${tracked
                     ? `<div id="dres-tracked" style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary);">
                          <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                         <span style="flex: 1;">${window.I18n.t('debt.trackedMonthly')}</span>
+                         <span style="flex: 1;">${window.I18n.t(trackedKey)}</span>
                          <a href="#transactions" style="color: var(--color-accent); font-weight: 600; text-decoration: underline;">${window.I18n.t('common.view')}</a>
                        </div>`
                     : `<button class="btn btn-secondary" id="btn-dres-track" style="min-height: 44px; font-size: var(--text-sm);">${window.I18n.t('debt.trackMonthly')}</button>`}

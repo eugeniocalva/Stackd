@@ -402,6 +402,7 @@ window.I18n.dicts.fr = {
   'debt.paymentsOf': '{paid} échéances sur {total}',
   'debt.nextPaymentLabel': 'Prochaine échéance',
   'debt.trackedMonthly': 'Suivi comme dépense mensuelle',
+  'debt.trackedRecurring': 'Suivi comme paiement récurrent', // 1.3.1
   'debt.trackMonthly': 'Suivre la mensualité',
   'debt.closeResultsAria': 'Fermer les résultats',
   'debt.monthlyPayment': 'Mensualité',

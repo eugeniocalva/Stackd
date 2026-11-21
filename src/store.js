@@ -3293,6 +3293,13 @@ window.Store = {
            // UPDATE_TRANSACTION rule does; only later ones are removed.
            const todayYMD = this._todayYMD();
            this.state.transactions.forEach((t, i) => {
+              // 1.3.1 (NEW-1): with 'All' the sheet promises "Also unlink past
+              // transactions" — the payments BEFORE the tapped one too
+              if (payload.unlinkPast && t.recurrence && t.recurrence.seriesId === txToDelete.recurrence.seriesId &&
+                  t.date < txToDelete.date) {
+                 this.state.transactions[i] = { ...t, recurrence: null, updatedAt: new Date().toISOString() };
+                 return;
+              }
               if (t.recurrence && t.recurrence.seriesId === txToDelete.recurrence.seriesId && t.date >= txToDelete.date) {
                  if (payload.keepHappened && t.id !== txToDelete.id && t.date <= todayYMD &&
                      !(txToDelete.transferRef && t.transferRef === txToDelete.transferRef)) {

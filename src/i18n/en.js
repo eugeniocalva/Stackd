@@ -407,6 +407,7 @@ window.I18n.dicts.en = {
   'debt.paymentsOf': '{paid} of {total} payments',
   'debt.nextPaymentLabel': 'Next Payment',
   'debt.trackedMonthly': 'Tracked as a monthly expense',
+  'debt.trackedRecurring': 'Tracked as a recurring payment', // 1.3.1
   'debt.trackMonthly': 'Track monthly payment',
   'debt.closeResultsAria': 'Close results',
   'debt.monthlyPayment': 'Monthly Payment',

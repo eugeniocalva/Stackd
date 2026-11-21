@@ -440,6 +440,16 @@ describe('Recurring series edits (1.0.3 U1)', () => {
       expect(armed(sid)).toHaveLength(0);
     });
 
+    it('unlinkPast (the "All" scope) also unlinks the payments before the tapped one', () => {
+      pin(2026, 10, 6);
+      const sid = addSeries({ comment: 'Club3', amount: 12.5, date: '2026-07-10', endDate: '2027-01-10' });
+      Store.dispatch('DELETE_TRANSACTION', { id: at(sid, '2026-08-10').id, deleteFuture: true, keepHappened: true, unlinkPast: true });
+      const left = byComment('Club3');
+      expect(left.map(t => t.date)).toEqual(['2026-07-10', '2026-09-10']);
+      expect(left.every(t => t.recurrence === null)).toBe(true);
+      expect(members(sid)).toHaveLength(0);
+    });
+
     it('without keepHappened the cut is unchanged', () => {
       pin(2026, 10, 6);
       const sid = addSeries({ comment: 'Club2', amount: 12.5, date: '2026-07-10', endDate: '2027-01-10' });

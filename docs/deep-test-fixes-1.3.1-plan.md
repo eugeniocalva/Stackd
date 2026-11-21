@@ -127,3 +127,27 @@ for a Track form saved with another amount or cadence (BUG-75's second half).
 `netFlowChartYScale`, `backup` (label).
 **Still to do:** re-test the remaining gate bugs by hand, the Android emulator check for 177 / 185,
 the security review, the AAB and a TestFlight build (10301+).
+
+### Replay through the UI (2026-11-21, independent tester, 60b6fc7)
+
+All eight remaining gate bugs were replayed from the report's steps in the web build and hold:
+BUG-176, 180, 181, 136 (conversion path), 182, 189, 190 and 75 (Transfer path). Regression pass
+clean, no console error. Evidence: `scratch/deeptest-1.3/retest131/` (`results.json`, `notes.md`,
+marked screenshots).
+
+Leftovers it found, both low, neither built:
+- **NEW-1:** in the BUG-136 flow with "All", the payment BEFORE the tapped one keeps its series
+  link although the sheet says past transactions are unlinked too (`views.js` sends the same
+  delete for "all" as for "future"; seen once, not replayed twice).
+- **NEW-2:** a loan tracked through a transfer reads "Tracked as a monthly expense", and still
+  says "monthly" after its series is changed to every 2 months (`debt.trackedMonthly`). This is
+  the unbuilt half of BUG-75 (D6).
+
+Also noted: with Recurrent left ON in the BUG-136 flow, every payment from the tapped one becomes
+a transfer, past ones included (nothing is lost; the plan's "split at today" for that path was
+not built). BUG-181 keeps the later part on its own day (D3).
+
+**Both leftovers fixed (2026-11-21):** `DELETE_TRANSACTION { unlinkPast }` is sent with the "All" scope when
+Recurrent is off (NEW-1, one unit test); the loan page reads `debt.trackedRecurring` ("Tracked as a
+recurring payment", five languages) unless the linked series is a plain monthly expense (NEW-2).
+Edited scripts at `?v=123`; unit 2,522 / 2,522, e2e 219 / 219. Neither was replayed by hand.

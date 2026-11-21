@@ -402,6 +402,7 @@ window.I18n.dicts.it = {
   'debt.paymentsOf': '{paid} rate su {total}',
   'debt.nextPaymentLabel': 'Prossima rata',
   'debt.trackedMonthly': 'Monitorato come spesa mensile',
+  'debt.trackedRecurring': 'Monitorato come pagamento ricorrente', // 1.3.1
   'debt.trackMonthly': 'Monitora la rata mensile',
   'debt.closeResultsAria': 'Chiudi i risultati',
   'debt.monthlyPayment': 'Rata mensile',
