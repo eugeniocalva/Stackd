@@ -70,8 +70,8 @@ describe('CategoryPalette', () => {
 
   it('every slot holds 3:1 on both cards and both icon discs, white icons hold 3:1 on every slot, and red is not a slot', () => {
     const P = C().CategoryPalette;
-    expect(P.SLOTS).toHaveLength(8);
-    expect(new Set(P.SLOTS).size).toBe(8);
+    expect(P.SLOTS).toHaveLength(12); // 1.3.2 (AB-3)
+    expect(new Set(P.SLOTS).size).toBe(12);
     for (const slot of P.SLOTS) {
       for (const bg of ['#ffffff', '#161e2e', '#eef2f5', '#111827']) {
         expect(contrast(slot, bg), `${slot} on ${bg}`).toBeGreaterThanOrEqual(3);
@@ -665,23 +665,30 @@ describe('the Analytics ring', () => {
     abox().dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: p.x, clientY: p.y }));
   };
 
-  it('7 categories: 5 slices + Others (never one member at 6); no tooltip, no Chart.js events, the focus plugin, a 220 px ring', () => {
+  // 1.3.2 (AB-1/AB-2): every category has its slice and its row — no Others
+  it('7 categories: 7 slices, no Others; no tooltip, no Chart.js events, the label and focus plugins, a 280 px ring', () => {
     seven();
     const chart = render(false);
     const ds = chart.config.data.datasets[0];
-    expect(ds.data).toEqual([900, 300, 120, 80, 60, 60]);
-    expect(ds.backgroundColor).toEqual(['#3b82f6', '#059669', '#ea580c', '#0891b2', '#a16207', '#64748b']);
+    expect(ds.data).toEqual([900, 300, 120, 80, 60, 40, 20]);
+    expect(ds.backgroundColor).toEqual(['#3b82f6', '#059669', '#ea580c', '#0891b2', '#a16207', '#c026d3', '#db2777']);
     expect(ds.hoverOffset).toBe(0);
     expect(chart.config.options.events).toEqual([]);
+    expect(chart.config.options.cutout).toBe('58%');
     expect(chart.config.options.plugins.tooltip).toEqual({ enabled: false });
-    expect(chart.config.plugins.map(p => p.id)).toEqual(['stackdRingFocus']);
-    expect(abox().classList.contains('ring-box--lg')).toBe(true);
-    expect(D()._ringPass.ring.geo.outer).toBe(102); // (220 - 14 - 2) / 2
-    expect(rv().querySelectorAll('#analytics-ring-box .ring-arc-btn')).toHaveLength(6);
+    expect(chart.config.plugins.map(p => p.id)).toEqual(['stackdRingLabels', 'stackdRingFocus']);
+    expect(abox().classList.contains('ring-box--xl')).toBe(true);
+    expect(abox().style.width).toBe('280px');
+    expect(D()._ringPass.ring.geo.outer).toBe(132); // (280 - 14 - 2) / 2
+    expect(rv().querySelectorAll('#analytics-ring-box .ring-arc-btn')).toHaveLength(7);
+    expect(rv().querySelectorAll('#analytics-ring-box .ring-badge')).toHaveLength(0);
     expect(rv().querySelector('.ring-arc-group').getAttribute('aria-label')).toBe('Categories. Choose one to see its share.');
-    // the legend keeps its rows; Others lists last, slate
-    const legend = [...rv().querySelectorAll('.donut-legend-item')].map(r => r.dataset.catId);
-    expect(legend).toEqual(['cat_rent', 'cat_groceries', 'cat_dining', 'cat_transport', 'cat_utilities', '__others__']);
+    const legend = [...rv().querySelectorAll('.cat-swipe')].map(r => r.dataset.catId);
+    expect(legend).toEqual(['cat_rent', 'cat_groceries', 'cat_dining', 'cat_transport', 'cat_utilities', 'cat_health', 'cat_shopping']);
+    expect(rv().querySelector('[data-cat-id="__others__"]')).toBeNull();
+    // the share of each slice, whole numbers, ink chosen per colour
+    expect(chart.$ringLabels.map(l => l.text)).toEqual(['59%', '20%', '8%', '5%', '4%', '3%', '1%']);
+    expect(chart.$ringLabels.every(l => l.ink === '#ffffff')).toBe(true);
   });
 
   it('a tap focuses the slice: the readout (share of spending), the badge, the live region; the centre keeps its TOTAL markup', () => {
@@ -694,14 +701,16 @@ describe('the Analytics ring', () => {
     expect(abox().querySelector('.ring-focus-caption').textContent).toMatch(/^of .*1,520\.00 spent$/);
     expect(abox().querySelector('.donut-total-label').textContent).toBe('Total');
     vi.advanceTimersByTime(1000);
-    const badge = abox().querySelector('.ring-badge[data-arc-id="cat_groceries"]');
-    expect(badge.classList.contains('is-pct')).toBe(true);
-    expect(badge.querySelector('.ring-badge-pct').textContent).toBe('19.7%');
+    expect(abox().querySelector('.ring-badge')).toBeNull(); // 1.3.2 (D4): the slice carries its share
     expect(document.getElementById('sr-announcer').textContent).toMatch(/^Groceries: .*300\.00, 19\.7% of spending$/);
-    // Others: its count in the readout, its members in the button name
-    tap('__others__');
-    expect(abox().querySelector('.ring-focus-name').textContent).toBe('Others (2)');
-    expect(abox().querySelector('.ring-arc-btn[data-arc-id="__others__"]').getAttribute('aria-label')).toMatch(/^Others \(2: Health, Shopping\)/);
+    // 1.3.2 (AB-8): the row of the tapped slice is marked
+    const group = rv().querySelector('.donut-legend-group[data-cat-group="cat_groceries"]');
+    expect(group.classList.contains('is-marked')).toBe(true);
+    vi.advanceTimersByTime(1500);
+    expect(group.classList.contains('is-marked')).toBe(false);
+    // the smallest slice is a slice of its own
+    tap('cat_shopping');
+    expect(abox().querySelector('.ring-focus-name').textContent).toBe('Shopping');
   });
 
   it('income speaks of income; the type toggle drops the focus', () => {
@@ -725,8 +734,9 @@ describe('the Analytics ring', () => {
     vi.advanceTimersByTime(1000);
     render(false);
     expect(abox().classList.contains('is-focused')).toBe(true);
-    expect([...abox().querySelector('.ring-badge[data-arc-id="cat_dining"]').classList]).toEqual(expect.arrayContaining(['is-on', 'is-pct', 'is-static']));
+    expect(abox().querySelector('.ring-focus-name').textContent).toBe('Dining Out');
     tap('cat_rent');
+    vi.advanceTimersByTime(1500); // the row mark
     A().destroy();
     expect(D()._focus).toBeNull();
     vi.advanceTimersByTime(70); // the live region's own message
@@ -773,9 +783,192 @@ describe('the Analytics ring', () => {
     const g = D()._ringPass.ring.geo;
     abox().dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: g.cx, clientY: g.cy }));
     expect(D()._focus).toBeNull();
-    const row = rv().querySelector('.donut-legend-item[data-cat-id="cat_groceries"]');
-    row.click();
+    const row = rv().querySelector('.cat-swipe[data-cat-id="cat_groceries"] .cat-swipe-content');
+    row.click(); // 1.3.2 (AB-4): a tap opens the row's actions
     expect(row.getAttribute('aria-expanded')).toBe('true');
     expect(D()._focus).toBeNull();
+  });
+});
+
+// 1.3.2 (AB-1…AB-8, docs/analytics-breakdown-plan.md)
+describe('the Analytics breakdown (1.3.2)', () => {
+  beforeEach(() => {
+    boot();
+    global.requestAnimationFrame = (fn) => setTimeout(fn, 0); // the sheet's open class
+    global.window.requestAnimationFrame = global.requestAnimationFrame;
+    S().dispatch('SET_VIEW', 'analytics');
+    const D = C().CategoryDonutChart;
+    D._focus = null;
+    D._currentType = 'expense';
+    D._expandedCatId = null;
+  });
+
+  const A = () => global.window.Views.AnalyticsView;
+  const D = () => C().CategoryDonutChart;
+  const render = () => {
+    rv().innerHTML = A().render(S().getState());
+    A().attachEvents(rv(), S().getState(), false);
+  };
+  const tagged = (amount, cat, tags, date = '2026-10-05') =>
+    S().dispatch('ADD_TRANSACTION', { type: 'expense', amount, accountId: acc(), categoryId: cat, date, tags });
+  const swipe = (id) => rv().querySelector(`.cat-swipe[data-cat-id="${id}"]`);
+
+  it('a tap opens Tags and Transactions; a second tap, or another row, closes it', () => {
+    spend(50, 'cat_groceries');
+    spend(20, 'cat_dining');
+    render();
+    const g = swipe('cat_groceries');
+    const content = g.querySelector('.cat-swipe-content');
+    expect([...g.querySelectorAll('.cat-act')].map(b => b.dataset.act)).toEqual(['tags', 'list']);
+    expect(g.querySelector('.cat-act').getAttribute('tabindex')).toBe('-1');
+    content.click();
+    expect(g.classList.contains('is-open')).toBe(true);
+    expect(content.style.transform).toBe('translateX(-132px)');
+    expect(g.querySelector('.cat-act').getAttribute('tabindex')).toBe('0');
+    expect(g.querySelector('.cat-act[data-act="tags"]').getAttribute('aria-label')).toBe('Tags of Groceries');
+    swipe('cat_dining').querySelector('.cat-swipe-content').click();
+    expect(content.getAttribute('aria-expanded')).toBe('false');
+    expect(swipe('cat_dining').querySelector('.cat-swipe-content').getAttribute('aria-expanded')).toBe('true');
+    swipe('cat_dining').querySelector('.cat-swipe-content').click();
+    expect(swipe('cat_dining').querySelector('.cat-swipe-content').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('Tags lists the category\'s tags under it: a count ring, the share and the amount; "No tag" last; Tags again closes', () => {
+    tagged(60, 'cat_groceries', ['market']);
+    tagged(30, 'cat_groceries', ['market', 'organic']);
+    tagged(10, 'cat_groceries', []);
+    render();
+    swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
+    expect(D()._expandedCatId).toBe('cat_groceries');
+    const rows = [...rv().querySelectorAll('[data-tag-panel="cat_groceries"] .donut-tag-row')];
+    expect(rows.map(r => r.dataset.tagRow)).toEqual(['market', 'organic', '__untagged__']);
+    expect(rows[0].querySelector('.donut-tag-name').textContent).toBe('#market');
+    expect(rows[0].querySelector('.count-ring-text').textContent).toBe('2');
+    expect(rows[0].querySelector('.donut-tag-pct').textContent).toBe('90.0%');
+    expect(rows[0].getAttribute('aria-label')).toMatch(/^#market: 2 transactions, 90\.0%, .*90\.00$/);
+    expect(rows[1].getAttribute('aria-label')).toMatch(/^#organic: 1 transaction, /);
+    expect(rows[2].querySelector('.donut-tag-name').textContent).toBe('No tag');
+    // the ring is filled by the share, in the category's colour
+    const arc = rows[0].querySelector('.count-ring-arc');
+    expect(arc.getAttribute('stroke')).toBe('#059669');
+    expect(Number(arc.getAttribute('stroke-dasharray').split(' ')[0])).toBeCloseTo(2 * Math.PI * 15 * 0.9, 1);
+    // the actions closed; a re-render keeps the panel; Tags again closes it
+    expect(swipe('cat_groceries').querySelector('.cat-swipe-content').getAttribute('aria-expanded')).toBe('false');
+    render();
+    expect(rv().querySelectorAll('[data-tag-panel="cat_groceries"] .donut-tag-row')).toHaveLength(3);
+    swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
+    expect(D()._expandedCatId).toBeNull();
+    expect(rv().querySelectorAll('[data-tag-panel="cat_groceries"] .donut-tag-row')).toHaveLength(0);
+  });
+
+  it('a tag opens a sheet of its transactions with the Σ total; a row opens the form, from Analytics', () => {
+    tagged(60, 'cat_groceries', ['market'], '2026-10-04');
+    tagged(30, 'cat_groceries', ['market', 'organic'], '2026-10-09');
+    tagged(10, 'cat_groceries', []);
+    tagged(99, 'cat_dining', ['market']); // another category: not in the sheet
+    S().dispatch('ADD_TRANSACTION', { type: 'expense', amount: 7, accountId: acc(), categoryId: 'cat_groceries', date: '2026-10-06', tags: ['market'], isPaid: false });
+    render();
+    swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
+    rv().querySelector('[data-tag-panel="cat_groceries"] .donut-tag-row[data-tag-row="market"]').click();
+    const sheet = document.getElementById('tx-list-sheet');
+    expect(sheet).not.toBeNull();
+    expect(sheet.querySelector('.tx-sheet-title').textContent).toBe('#market');
+    expect(sheet.querySelector('.tx-sheet-sub').textContent).toMatch(/^Groceries · October 2026 · 2 transactions$/);
+    const items = [...sheet.querySelectorAll('.tx-sheet-list .list-item')];
+    expect(items.map(i => S().getState().transactions.find(t => t.id === i.dataset.id).amount)).toEqual([30, 60]); // newest first, the unpaid one left out
+    expect(sheet.querySelector('.tx-sheet-total-amount').textContent).toMatch(/90\.00$/);
+    expect(sheet.querySelector('[data-back-dismiss]')).not.toBeNull();
+    items[1].click();
+    expect(document.getElementById('tx-list-sheet')).toBeNull();
+    expect(global.window.Router.navigate).toHaveBeenCalledWith('#edit?id=' + encodeURIComponent(items[1].dataset.id) + '&from=analytics');
+  });
+
+  it('List opens every transaction of the category; "No tag" opens the untagged ones', () => {
+    tagged(60, 'cat_groceries', ['market']);
+    tagged(10, 'cat_groceries', []);
+    render();
+    swipe('cat_groceries').querySelector('.cat-act[data-act="list"]').click();
+    let sheet = document.getElementById('tx-list-sheet');
+    expect(sheet.querySelector('.tx-sheet-title').textContent).toBe('Groceries');
+    expect(sheet.querySelectorAll('.tx-sheet-list .list-item')).toHaveLength(2);
+    expect(sheet.querySelector('.tx-sheet-total-amount').textContent).toMatch(/70\.00$/);
+    sheet.remove();
+    swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
+    rv().querySelector('.donut-tag-row[data-tag-row="__untagged__"]').click();
+    sheet = document.getElementById('tx-list-sheet');
+    expect(sheet.querySelector('.tx-sheet-title').textContent).toBe('No tag');
+    expect(sheet.querySelectorAll('.tx-sheet-list .list-item')).toHaveLength(1);
+  });
+
+  it('income works the same way', () => {
+    S().dispatch('ADD_TRANSACTION', { type: 'income', amount: 2000, accountId: acc(), categoryId: 'cat_salary', date: '2026-10-03', tags: ['acme'] });
+    spend(5, 'cat_groceries');
+    render();
+    rv().querySelector('.chart-toggle-btn[data-type="income"]').click();
+    swipe('cat_salary').querySelector('.cat-act[data-act="list"]').click();
+    const sheet = document.getElementById('tx-list-sheet');
+    expect(sheet.querySelectorAll('.tx-sheet-list .list-item')).toHaveLength(1);
+    expect(sheet.querySelector('.tx-sheet-total-amount').textContent).toMatch(/2,000\.00$/);
+  });
+
+  it('a stored tag or category name is escaped in the rows and the sheet', () => {
+    S().dispatch('ADD_CATEGORY', { id: 'u-x', name: '<img src=x onerror=alert(1)>', icon: 'pin', typeHint: 'expense' });
+    tagged(10, 'u-x', ['<b>x</b>']);
+    render();
+    expect(rv().querySelector('img[src="x"]')).toBeNull();
+    swipe('u-x').querySelector('.cat-act[data-act="tags"]').click();
+    expect(rv().querySelector('.donut-tag-name').textContent).toBe('#<b>x</b>');
+    expect(rv().querySelector('.donut-tag-panel b')).toBeNull();
+    rv().querySelector('.donut-tag-row').click();
+    const sheet = document.getElementById('tx-list-sheet');
+    expect(sheet.querySelector('b')).toBeNull();
+    expect(sheet.querySelector('.tx-sheet-sub').textContent).toMatch(/^<img src=x onerror=alert\(1\)> · /);
+  });
+
+  it('leaving Analytics removes the rows\' listeners and an open sheet', () => {
+    spend(50, 'cat_groceries');
+    render();
+    expect(typeof rv()._donutRowsOff).toBe('function');
+    swipe('cat_groceries').querySelector('.cat-act[data-act="list"]').click();
+    A().destroy();
+    expect(rv()._donutRowsOff).toBeNull();
+    expect(document.getElementById('tx-list-sheet')).toBeNull();
+  });
+
+  it('labels: written only where the share fits the arc, never while the sweep is still growing it', () => {
+    const CR = C().CategoryRing;
+    const ctx = { font: '', measureText: (s) => ({ width: s.length * 7 }) };
+    const el = (span) => ({ startAngle: 0, endAngle: span, innerRadius: 76, outerRadius: 132, x: 140, y: 140 });
+    const wide = CR.labelFit(el(1), { text: '40%', span: 1 }, ctx);
+    expect(wide).not.toBeNull();
+    expect(wide.font).toMatch(/^700 12px /);
+    expect(CR.labelFit(el(0.2), { text: '2%', span: 0.2 }, ctx)).toBeNull(); // chord ≈ 20.8 px < 14 + 8? fits the text? no: see below
+    expect(CR.labelFit(el(0.5), { text: '8%', span: 1 }, ctx)).toBeNull(); // still sweeping
+    expect(CR.labelFit({ ...el(1), innerRadius: 125 }, { text: '40%', span: 1 }, ctx)).toBeNull(); // a thin band
+    expect(CR.labelInk('#3b82f6')).toBe('#ffffff');
+    expect(CR.labelInk('#fde047')).toBe('#0f172a');
+  });
+
+  it('palette: the 12 biggest get 12 colours; past 12 no slice wears its neighbour\'s colour', () => {
+    const P = C().CategoryPalette;
+    const ids = Array.from({ length: 18 }, (_, i) => 'u-' + i);
+    const map = P.assign(ids);
+    expect(new Set(ids.slice(0, 12).map(id => map[id])).size).toBe(12);
+    ids.forEach((id, i) => {
+      const next = ids[(i + 1) % ids.length];
+      expect(map[id], `${id} vs ${next}`).not.toBe(map[next]);
+    });
+    // up to 12: still the old rule (rank first, unique)
+    expect(new Set(Object.values(P.assign(ids.slice(0, 12)))).size).toBe(12);
+  });
+
+  it('the transaction form leaves to Analytics only when it came from there', () => {
+    const V = global.window.Views.AddTransactionView;
+    global.window.Router.getParams = () => ({ id: 'x', from: 'analytics' });
+    expect(V._exitRoute()).toBe('analytics');
+    global.window.Router.getParams = () => ({ id: 'x', from: 'settings' });
+    expect(V._exitRoute()).toBe('transactions');
+    global.window.Router.getParams = () => ({ id: 'x' });
+    expect(V._exitRoute()).toBe('transactions');
   });
 });

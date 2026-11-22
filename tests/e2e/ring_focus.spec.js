@@ -216,13 +216,16 @@ test.describe('Goals ring: tap to focus', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   });
 
-  // 1.2.2 (HG-8 P2): the Analytics donut, same controller on a 220 px ring
-  test('Analytics: 5 slices + Others, a tap shows the slice and its share; the plugin scales with the ring', async ({ page }) => {
+  // 1.2.2 (HG-8 P2): the Analytics donut, same controller. 1.3.2 (AB-1/2/8):
+  // every category is a slice (no Others), the ring is as wide as the card
+  // (up to 280 px) with a thicker band, the share sits on the slice (no badge).
+  test('Analytics: every category a slice, a tap focuses it; the plugin scales with the ring', async ({ page }) => {
     await bootstrap(page);
     await page.evaluate(() => { location.hash = '#analytics'; });
     await page.waitForSelector('#analytics-ring-box .ring-arc-btn');
     await page.waitForTimeout(1300); // the entry slide and sweep
-    await expect(page.locator('#analytics-ring-box .ring-arc-btn')).toHaveCount(6);
+    await expect(page.locator('#analytics-ring-box .ring-arc-btn')).toHaveCount(7);
+    await expect(page.locator('#analytics-ring-box .ring-badge')).toHaveCount(0);
     await page.locator('#analytics-ring-box').scrollIntoViewIfNeeded(); // the ring sits below the fold
     await page.waitForTimeout(300);
     const pt = await page.evaluate(() => {
@@ -231,15 +234,14 @@ test.describe('Goals ring: tap to focus', () => {
       return window.Components.CategoryRing.point(pass.ring.geo, pass.ring.geo.arcs[i].mid, (pass.ring.geo.outer + pass.ring.geo.inner) / 2);
     });
     const box = await page.locator('#analytics-ring-box').boundingBox();
-    expect(Math.round(box.width)).toBe(220);
+    expect(Math.round(box.width)).toBe(280);
     await page.mouse.click(box.x + pt.x, box.y + pt.y);
     const ring = page.locator('#analytics-ring-box');
     await expect(ring).toHaveClass(/is-focused/);
     await expect(ring.locator('.ring-focus-name')).toHaveText('Groceries');
     await expect(ring.locator('.ring-focus-caption')).toHaveText('of €1,087.84 spent');
-    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"]')).toHaveClass(/is-pct/, { timeout: 3000 });
-    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"] .ring-badge-pct')).toHaveText('19.3%');
-    await expectIconAndShare(ring.locator('.ring-badge[data-arc-id="cat_groceries"]'));
+    await expect(page.locator('.donut-legend-group[data-cat-group="cat_groceries"]')).toHaveClass(/is-marked/);
+    await page.waitForTimeout(500); // the focus tween
     const radii = await page.evaluate(() => {
       const ch = window.Components.CategoryDonutChart._chartInstance;
       const list = ch.config.plugins || (ch.config._config && ch.config._config.plugins) || [];
@@ -252,28 +254,32 @@ test.describe('Goals ring: tap to focus', () => {
       p.afterDatasetDraw = orig;
       return { seen, after: ch.getDatasetMeta(0).data.map(e => [r1(e.outerRadius), r1(e.innerRadius)]) };
     });
-    // resting 102 / 67.3; ×(102 / 82): focused +7.5 / -5, the others -2.5 / +5
-    expect(radii.after[0]).toEqual([102, 67.3]);
-    expect(radii.seen[1]).toEqual([109.5, 62.3]);
-    expect(radii.seen[0]).toEqual([99.5, 72.3]);
-    // the legend is untouched by the focus
-    await expect(page.locator('.donut-legend-item')).toHaveCount(6);
-    // a re-render restores the pill, fitted, with the icon and the share
+    // resting 132 / 76.6 (cutout 58 %); x(132 / 82): focused +9.7 / -6.4, the others -3.2 / +6.4
+    expect(radii.after[0]).toEqual([132, 76.6]);
+    expect(radii.seen[1]).toEqual([141.7, 70.1]);
+    expect(radii.seen[0]).toEqual([128.8, 83]);
+    await expect(page.locator('#analytics-cat-list .cat-swipe')).toHaveCount(7);
     await page.evaluate(() => window.Store.emit());
-    await expect(ring.locator('.ring-badge[data-arc-id="cat_groceries"]')).toHaveClass(/is-static/);
-    await expectIconAndShare(ring.locator('.ring-badge[data-arc-id="cat_groceries"]'));
+    await expect(ring).toHaveClass(/is-focused/);
+    await expect(ring.locator('.ring-focus-name')).toHaveText('Groceries');
   });
 
-  test('a rotation or resize refits a focused pill to its card', async ({ page }) => {
+  test('a rotation or resize redraws the Analytics ring to its card, keeping the focus', async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 800 });
     await bootstrap(page, { reducedMotion: true, lang: 'fr', fontSize: '18.4px' });
     await page.evaluate(() => { location.hash = '#analytics'; });
     await page.waitForSelector('#analytics-ring-box .ring-arc-btn');
     await page.locator('#analytics-ring-box .ring-arc-btn[data-arc-id="cat_rent"]').evaluate(e => e.click());
-    const badge = page.locator('#analytics-ring-box .ring-badge[data-arc-id="cat_rent"]');
-    await expectIconAndShare(badge);
+    expect(Math.round((await page.locator('#analytics-ring-box').boundingBox()).width)).toBe(280);
     await page.setViewportSize({ width: 320, height: 720 });
-    await expectIconAndShare(badge);
+    await expect.poll(async () => Math.round((await page.locator('#analytics-ring-box').boundingBox()).width)).toBe(240);
+    await expect(page.locator('#analytics-ring-box')).toHaveClass(/is-focused/);
+    const fits = await page.evaluate(() => {
+      const r = document.getElementById('analytics-ring-box').getBoundingClientRect();
+      const c = document.querySelector('.category-donut-card').getBoundingClientRect();
+      return r.left >= c.left && r.right <= c.right;
+    });
+    expect(fits).toBe(true);
   });
 
   test('reduced motion: the icon and the share appear together at once', async ({ page }) => {
@@ -292,7 +298,7 @@ test.describe('Goals ring: tap to focus', () => {
   // Also at Android's 115 % text (18.4 px root): the room beside the ring
   // shrinks with the text, so each pill is fitted to its card (review C5).
   for (const { reducedMotion, fontSize } of [{ reducedMotion: false }, { reducedMotion: true }, { reducedMotion: false, fontSize: '18.4px' }]) {
-    test(`every slice, Goals and Analytics, ends with its icon beside its share (${reducedMotion ? 'reduced motion' : 'motion on'}${fontSize ? `, root ${fontSize}` : ''})`, async ({ page }) => {
+    test(`every Goals slice ends with its icon beside its share; every Analytics slice answers (${reducedMotion ? 'reduced motion' : 'motion on'}${fontSize ? `, root ${fontSize}` : ''})`, async ({ page }) => {
       await page.setViewportSize({ width: 320, height: 720 });
       await bootstrap(page, { reducedMotion, lang: 'fr', fontSize });
       const ids = await page.evaluate(() => window.Views.BudgetView._passTotals.slices.map(sl => sl.id));
@@ -314,9 +320,14 @@ test.describe('Goals ring: tap to focus', () => {
       await page.waitForTimeout(reducedMotion ? 100 : 1300);
       await page.locator('#analytics-ring-box').scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
+      // 1.3.2 (AB-1, D4): every category is a slice and a tap names it in the
+      // centre (the share is on the slice; no badge)
       const aIds = await page.evaluate(() => window.Components.CategoryDonutChart._ringPass.slices.map(sl => sl.id));
-      expect(aIds).toHaveLength(6);
+      expect(aIds).toHaveLength(7);
       for (const id of aIds) {
+        // a slice tap brings its row into view (AB-8): put the ring back first
+        await page.locator('#analytics-ring-box').evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        await page.waitForTimeout(150);
         const pt = await page.evaluate((arcId) => {
           const pass = window.Components.CategoryDonutChart._ringPass;
           const i = pass.slices.findIndex(sl => sl.id === arcId);
@@ -324,10 +335,11 @@ test.describe('Goals ring: tap to focus', () => {
         }, id);
         const box = await page.locator('#analytics-ring-box').boundingBox();
         await page.mouse.click(box.x + pt.x, box.y + pt.y);
-        const badge = page.locator(`#analytics-ring-box .ring-badge[data-arc-id="${id}"]`);
-        await expect(badge).toHaveClass(reducedMotion ? /is-both/ : /is-pct/, { timeout: 3000 });
-        await expectIconAndShare(badge);
+        await expect(page.locator(`#analytics-ring-box .ring-arc-btn[data-arc-id="${id}"]`)).toHaveAttribute('aria-pressed', 'true');
+        const name = await page.evaluate((arcId) => window.Components.CategoryDonutChart._ringPass.slices.find(sl => sl.id === arcId).name, id);
+        await expect(page.locator('#analytics-ring-box .ring-focus-name')).toHaveText(name);
       }
+      await expect(page.locator('#analytics-ring-box .ring-badge')).toHaveCount(0);
     });
   }
 

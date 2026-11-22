@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-// v0.85 (docs/refactor-plan.md P7): tapping an Analytics category expands its
-// per-tag breakdown; tapping a tag opens History filtered by category + tag.
-// Settings → Tags lands on the same destination (all time).
+// v0.85 (docs/refactor-plan.md P7): an Analytics category's per-tag breakdown.
+// 1.3.2 (AB-5/6): it opens under the row from the Tags action, and a tag opens
+// its transactions in a sheet (it went to History before). Settings → Tags
+// still opens History filtered by the tag (all time).
 test.describe('Category → tag drilldown', () => {
   const bootstrap = async (page) => {
     await page.goto('/');
@@ -33,75 +34,73 @@ test.describe('Category → tag drilldown', () => {
     });
     await page.evaluate(() => window.Router.navigate('#analytics'));
     await page.waitForFunction(() => window.Store.getState().activeView === 'analytics');
-    await page.waitForSelector('.donut-legend-item');
+    await page.waitForSelector('.cat-swipe');
   };
 
-  const rentRow = (page) => page.locator('.donut-legend-item', { hasText: 'Rent' });
+  // 1.3.2 (AB-4/5/6): a row slides to Tags / Transactions; tags open under
+  // the row and a tag opens its transactions in a sheet — no trip to History.
+  const rent = (page) => page.locator('.cat-swipe[data-cat-id="cat_rent"]');
+  const openTags = async (page, row) => {
+    await row.locator('.cat-swipe-content').evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await row.locator('.cat-swipe-content').click();
+    await page.waitForTimeout(400); // the row slides open
+    await row.locator('.cat-act[data-act="tags"]').click();
+  };
 
-  test('expands a category into tag rows and drills into History', async ({ page }) => {
+  test('Tags opens a category\'s tag rows under it; a tag opens its transactions in a sheet', async ({ page }) => {
     await bootstrap(page);
-
-    // Collapsed by default.
     await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(0);
 
-    await rentRow(page).click();
+    await openTags(page, rent(page));
     const panel = page.locator('.donut-legend-group[data-cat-group="cat_rent"] .donut-tag-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.locator('.donut-tag-row')).toHaveCount(4); // 2 tags + no-tag + all
+    await expect(panel.locator('.donut-tag-row')).toHaveCount(3); // 2 tags + no tag
     await expect(panel).toContainText('#credito');
     await expect(panel).toContainText('#electricity');
     await expect(panel).toContainText('No tag');
-    await expect(panel).toContainText('All 3 transactions');
 
     // Only one category open at a time.
-    await page.locator('.donut-legend-item', { hasText: 'Dining' }).click();
+    await openTags(page, page.locator('.cat-swipe[data-cat-id="cat_dining"]'));
     await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(1);
     await expect(page.locator('.donut-legend-group.is-expanded')).toHaveAttribute('data-cat-group', 'cat_dining');
 
-    // Re-tapping the open row collapses it.
-    await page.locator('.donut-legend-item', { hasText: 'Dining' }).click();
-    await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(0);
-
-    // Tag row → History filtered by category AND tag.
-    await rentRow(page).click();
+    // A tag row → a sheet with that tag's transactions; Analytics stays.
+    await openTags(page, rent(page));
     await panel.locator('[data-tag-row="electricity"]').click();
-    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    const filters = await page.evaluate(() => {
-      const f = window.Store.getState().historyFilters;
-      return { categories: f.categories, tags: f.tags };
-    });
-    expect(filters).toEqual({ categories: ['cat_rent'], tags: ['electricity'] });
-    await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(1);
-
-    // The active tag filter is visible and clears in place.
-    // 1.2.2 (HG-10 P3) a removable chip of the period bar
-    const chip = page.locator('.period-bar [data-filter-kind="tags"]');
-    await expect(chip).toContainText('#electricity');
-    await chip.click();
-    await expect(page.locator('.period-bar [data-filter-kind="tags"]')).toHaveCount(0);
-    await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(3); // whole category
+    const sheet = page.locator('#tx-list-sheet');
+    await expect(sheet.locator('.tx-sheet-title')).toHaveText('#electricity');
+    await expect(sheet.locator('.tx-sheet-list .list-item')).toHaveCount(1);
+    expect(await page.evaluate(() => window.Store.getState().activeView)).toBe('analytics');
+    await sheet.locator('[data-back-dismiss]').click();
+    await expect(page.locator('#tx-list-sheet')).toHaveCount(0);
   });
 
-  test('the untagged bucket and the All row filter correctly', async ({ page }) => {
+  test('the untagged bucket and the whole list open the right rows', async ({ page }) => {
     await bootstrap(page);
-    await rentRow(page).click();
+    await openTags(page, rent(page));
     const panel = page.locator('.donut-legend-group[data-cat-group="cat_rent"] .donut-tag-panel');
-
     await panel.locator('[data-tag-row="__untagged__"]').click();
-    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    expect(await page.evaluate(() => window.Store.getState().historyFilters.tags)).toEqual(['__untagged__']);
-    await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(1);
+    let sheet = page.locator('#tx-list-sheet');
+    await expect(sheet.locator('.tx-sheet-title')).toHaveText('No tag');
+    await expect(sheet.locator('.tx-sheet-list .list-item')).toHaveCount(1);
+    await sheet.locator('[data-back-dismiss]').click();
+    await expect(page.locator('#tx-list-sheet')).toHaveCount(0);
 
-    await page.evaluate(() => window.Router.navigate('#analytics'));
-    await page.waitForSelector('.donut-legend-item');
-    // The open accordion survives the round trip (state lives on the component).
-    await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(1);
-    await panel.locator('[data-tag-row="__all__"]').click();
+    // The open panel survives a trip away and back (state on the component).
+    await page.evaluate(() => window.Router.navigate('#transactions'));
     await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    const f = await page.evaluate(() => window.Store.getState().historyFilters);
-    expect(f.categories).toEqual(['cat_rent']);
-    expect(f.tags).toEqual([]);
-    await expect(page.locator('#router-view .list-item[data-id]')).toHaveCount(3);
+    await page.evaluate(() => window.Router.navigate('#analytics'));
+    await page.waitForSelector('.cat-swipe');
+    await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(1);
+
+    await rent(page).locator('.cat-swipe-content').evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await rent(page).locator('.cat-swipe-content').click();
+    await page.waitForTimeout(400); // the row slides open
+    await rent(page).locator('.cat-act[data-act="list"]').click();
+    sheet = page.locator('#tx-list-sheet');
+    await expect(sheet.locator('.tx-sheet-title')).toHaveText('Rent');
+    await expect(sheet.locator('.tx-sheet-list .list-item')).toHaveCount(3);
+    await expect(sheet.locator('.tx-sheet-total-amount')).toContainText('564.00');
   });
 
   test('Settings → Tags: the edit sheet link opens History filtered by that tag over all time', async ({ page }) => {

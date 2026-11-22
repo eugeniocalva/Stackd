@@ -3102,7 +3102,7 @@ window.Components = {
       // and never under reduced motion.
       const animate = !!o.animate && !this._reduced();
       cfg.options = cfg.options || {};
-      cfg.options.cutout = this.CUTOUT;
+      cfg.options.cutout = o.cutout || this.CUTOUT; // 1.3.2 (AB-2): Analytics' thicker band
       if (!cfg.options.layout) cfg.options.layout = { padding: 4 };
       const ds = cfg.data && cfg.data.datasets && cfg.data.datasets[0];
       if (ds) {
@@ -3143,7 +3143,11 @@ window.Components = {
   // (month, tab, amounts and language do not matter). Stored category colours
   // are not read by rings. Nothing is saved.
   CategoryPalette: {
-    SLOTS: ['#3b82f6', '#059669', '#8b5cf6', '#ea580c', '#0891b2', '#db2777', '#a16207', '#c026d3'],
+    // 1.3.2 (AB-3): 12 slots (was 8) — Analytics lists every category. The
+    // four added hues (teal, olive, sky, purple) keep 3:1 on both cards;
+    // the first 8 keep their places, so default categories keep their colours.
+    SLOTS: ['#3b82f6', '#059669', '#8b5cf6', '#ea580c', '#0891b2', '#db2777', '#a16207', '#c026d3',
+      '#0f766e', '#4d7c0f', '#0284c7', '#9333ea'],
     OTHERS: '#64748b',
     DEFAULT_SLOTS: {
       cat_rent: 0, cat_debt: 0, cat_freelance: 0,
@@ -3174,18 +3178,32 @@ window.Components = {
       return i === -1 ? this.PRIORITY.length : i;
     },
 
-    // ids → { id: '#rrggbb' }, unique among up to 8 ids.
+    // ids → { id: '#rrggbb' }, unique among up to SLOTS.length ids.
+    // 1.3.2 (AB-3): more ids than slots (Analytics lists every category) —
+    // `ids` in ring order: the SLOTS.length first (the biggest slices) get
+    // unique colours as before, and each later one takes a slot that neither
+    // ring neighbour wears (the ring is closed: the last touches the first).
     assign(ids) {
-      const uniq = [...new Set((ids || []).filter(id => id != null && id !== '__others__').map(String))];
-      uniq.sort((a, b) => (this._rank(a) - this._rank(b)) || (a < b ? -1 : (a > b ? 1 : 0)));
+      const ring = [...new Set((ids || []).filter(id => id != null && id !== '__others__').map(String))];
+      const n = this.SLOTS.length;
+      const head = ring.slice(0, n);
+      const uniq = head.slice().sort((a, b) => (this._rank(a) - this._rank(b)) || (a < b ? -1 : (a > b ? 1 : 0)));
       const used = new Set();
       const out = {};
       uniq.forEach(id => {
         let slot = this.slotOf(id);
-        for (let k = 0; k < this.SLOTS.length && used.has(slot); k++) slot = (slot + 1) % this.SLOTS.length;
+        for (let k = 0; k < n && used.has(slot); k++) slot = (slot + 1) % n;
         used.add(slot);
         out[id] = this.SLOTS[slot];
       });
+      for (let i = n; i < ring.length; i++) {
+        const id = ring[i];
+        const prev = out[ring[i - 1]];
+        const next = i === ring.length - 1 ? out[ring[0]] : null;
+        let slot = this.slotOf(id);
+        for (let k = 0; k < n && (this.SLOTS[slot] === prev || this.SLOTS[slot] === next); k++) slot = (slot + 1) % n;
+        out[id] = this.SLOTS[slot];
+      }
       return out;
     }
   },
@@ -3375,6 +3393,91 @@ window.Components = {
       };
     },
 
+    // 1.3.2 (AB-2, D6): the share written inside a slice, only where it fits.
+    // chart.$ringLabels = [{ text, ink, span }] per arc (span = the slice's
+    // final angle, so nothing is written while the entry sweep is still
+    // growing it). List this plugin BEFORE plugin(): Chart.js runs the hooks
+    // in order, so the text is drawn while the focus radii are still applied
+    // and a focused slice's label moves with it. Analytics only — Goals and
+    // Home stay plain (HG-5).
+    // `labels` is handed in at construction: without the entry sweep the
+    // chart draws inside its constructor, before anything can be set on it.
+    labelPlugin(given) {
+      const CR = this;
+      return {
+        id: 'stackdRingLabels',
+        afterDatasetDraw(chart, args) {
+          const labels = chart.$ringLabels || given;
+          const meta = args && args.meta;
+          const ctx = chart.ctx;
+          if (!labels || !meta || !Array.isArray(meta.data) || !ctx || typeof ctx.fillText !== 'function') return;
+          ctx.save();
+          try {
+            meta.data.forEach((el, i) => {
+              const L = labels[i];
+              if (!L || !L.text) return;
+              const fit = CR.labelFit(el, L, ctx);
+              if (!fit) return;
+              ctx.font = fit.font;
+              ctx.fillStyle = L.ink;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(L.text, fit.x, fit.y);
+            });
+          } finally {
+            ctx.restore();
+          }
+        }
+      };
+    },
+
+    // Where a label goes on arc element `el` (Chart.js angles: 0 at 3
+    // o'clock, clockwise), or null when it does not fit: the chord at the
+    // band's middle must take the text plus 8 px, and the band its height
+    // plus 6 px. Also used by the tests with a stub context.
+    labelFit(el, L, ctx) {
+      const span = (el.endAngle || 0) - (el.startAngle || 0);
+      if (!(span > 0) || (L.span && span < L.span * 0.995)) return null;
+      const outer = el.outerRadius || 0;
+      const inner = el.innerRadius || 0;
+      const band = outer - inner;
+      const size = band >= 40 ? 12 : 11;
+      if (band < size + 6) return null;
+      const family = this._labelFamily();
+      const font = `700 ${size}px ${family}`;
+      ctx.font = font;
+      const w = typeof ctx.measureText === 'function' ? ctx.measureText(L.text).width : L.text.length * size * 0.6;
+      const rm = (outer + inner) / 2;
+      const chord = 2 * rm * Math.sin(Math.min(span, Math.PI) / 2);
+      if (chord < w + 8) return null;
+      const a = (el.startAngle + el.endAngle) / 2;
+      return { x: el.x + Math.cos(a) * rm, y: el.y + Math.sin(a) * rm, font };
+    },
+
+    _labelFamily() {
+      if (this._family) return this._family;
+      let f = '';
+      try { f = window.getComputedStyle(document.body).fontFamily; } catch (e) { f = ''; }
+      this._family = f || 'system-ui, sans-serif';
+      return this._family;
+    },
+
+    // White or near-black text on a slice colour, whichever reads better.
+    labelInk(hex) {
+      const n = parseInt(String(hex || '').replace('#', ''), 16);
+      if (!Number.isFinite(n)) return '#ffffff';
+      const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+      const onWhite = 1.05 / (lum + 0.05);
+      const onDark = (lum + 0.05) / (0.0144 + 0.05); // #0f172a
+      // white whenever it holds 3:1 (every palette slot does): the slices
+      // read as one set; near-black only on a light slice
+      return onWhite >= 3 || onWhite >= onDark ? '#ffffff' : '#0f172a';
+    },
+
     // Focus arc `index` (-1 = none) on a chart built with plugin(). Tweens
     // from wherever the arcs are now; `instant` (re-render restore, reduced
     // motion) jumps to the end. A timeout finishes the tween where
@@ -3424,10 +3527,10 @@ window.Components = {
     // ── The shared tap-to-focus controller (Goals P1, Analytics P2) ──────────
     // A ring: slices [{ id, name, icon, value, color, members? }] drawn
     // biggest first, then (Goals only) the track value; in a square box.
-    layout(slices, track, box) {
+    layout(slices, track, box, opts) {
       const size = box || 180;
       const values = slices.map(sl => sl.value).concat(track == null ? [] : [track]);
-      const geo = this.geometry(values, { box: size });
+      const geo = this.geometry(values, Object.assign({ box: size }, opts && opts.cutout ? { cutout: opts.cutout } : {})); // 1.3.2 (AB-2)
       const zones = this.hitZones(geo.arcs, values.map((v, i) => i < slices.length));
       return { geo, zones, count: values.length, hasTrack: track != null, box: size, scale: geo.outer / 82 };
     },
@@ -3460,7 +3563,9 @@ window.Components = {
         const pt = this.point(ring.geo, ring.zones[i].mid, rBtn);
         return `<button type="button" class="ring-arc-btn" data-arc-id="${esc(sl.id)}" aria-pressed="${sl.id === o.focus}" aria-label="${o.ariaOf(sl)}" style="left: ${pt.x.toFixed(1)}px; top: ${pt.y.toFixed(1)}px;"></button>`;
       }).join('');
-      const badges = slices.map((sl, i) => {
+      // 1.3.2 (AB-2, D4): Analytics writes the share on the slice itself, so
+      // it asks for no badges (o.badges === false).
+      const badges = o.badges === false ? '' : slices.map((sl, i) => {
         const pt = this.point(ring.geo, ring.geo.arcs[i].mid, rBadge);
         // --push: the slice's sideways direction (sin of its angle from 12
         // o'clock). The pill grows away from the centre — at 3 o'clock to the
@@ -3558,6 +3663,8 @@ window.Components = {
         if (slice && window.Components.Haptics) window.Components.Haptics.light();
         if (window.Components.Announcer) window.Components.Announcer.say(slice ? host.announce(slice) : host.cleared);
       }
+      // 1.3.2 (AB-8): a host may follow the focus (Analytics marks the row)
+      if (typeof host.onSelect === 'function') host.onSelect(next, !!viaPointer);
     },
 
     // 1.2.2 (HG-8 review C3/C5/C7): keep a focused pill inside the box that
@@ -3796,43 +3903,57 @@ window.Components = {
       if (this._chartInstance) window.Components.CategoryRing.stop(this._chartInstance);
     },
 
+    // 1.3.2 (AB-2): the Analytics ring's box — as wide as the card allows, up
+    // to 280 px (was a fixed 220 px), never under 200 px. The hit test and
+    // the focus plugin need a known square, so it is fixed per render.
+    CUTOUT: 0.58,
+    _boxSize() {
+      const vw = Math.min(Number(window.innerWidth) || 375, 600);
+      return Math.max(200, Math.min(280, Math.floor(vw - 80)));
+    },
+
+    // 1.3.2 (AB-1): Analytics lists EVERY category (no Others); the Home
+    // widget and Insights keep the fold through _capData (D8).
     // 1.0.2 (BUG-63): `currency` (optional, last) = the selection's currency;
     // kept on the singleton so the type toggle, drilldown and tooltip reuse it.
     render(rawData, type = 'expense', currency) {
       this._currentType = type;
       this._currency = currency;
+      this._lastData = rawData || []; // 1.3.2 (AB-2): a resize redraws the same data
       const isExpense = type === 'expense';
-      const rawCapped = this._capData(rawData);
-      const data = this._assignColors(rawCapped);
-      
-      const hasData = data && data.length > 0;
-      const totalAmount = rawData.reduce((sum, item) => sum + item.amount, 0);
+      const all = (rawData || []).filter(it => it && it.amount > 0);
+      const data = this._assignColors(all);
 
-      // 1.2.2 (HG-8 P2): the slices (Others named "Others (n)" in the
-      // readout), a focus kept only while its slice is still here under this
-      // type, and the 220 px ring's geometry for the overlay and the hit test.
+      const hasData = data && data.length > 0;
+      const totalAmount = all.reduce((sum, item) => sum + item.amount, 0);
+
+      // 1.2.2 (HG-8 P2): the slices, a focus kept only while its slice is
+      // still here under this type, and the ring's geometry for the overlay
+      // and the hit test. 1.3.2 (AB-2): a bigger box, a thicker band.
       const CR = window.Components.CategoryRing;
+      const box = this._boxSize();
       const slices = (data || []).map(d => ({
         id: d.id,
-        name: d.isOthers ? window.I18n.t('budget.ring.othersLabel', { count: (d.members || []).length }) : d.name,
+        name: d.name,
         icon: d.icon,
         value: d.amount,
-        color: d._color,
-        members: d.isOthers ? (d.members || []) : undefined
+        color: d._color
       }));
       const focus = this._focus && this._focus.type === type && slices.some(sl => sl.id === this._focus.id) ? this._focus.id : null;
       if (!focus) this._focus = null;
-      const ring = slices.length ? CR.layout(slices, null, 220) : null;
+      const ring = slices.length ? CR.layout(slices, null, box, { cutout: this.CUTOUT }) : null;
       this._ringPass = { slices, ring, total: totalAmount, type };
       const big = CR.bigText();
       const focused = slices.find(sl => sl.id === focus) || null;
       const overlay = ring ? CR.overlayHtml(ring, slices, {
         focus,
+        badges: false,
         groupLabel: window.I18n.t('charts.ring.groupAria'),
         ariaOf: (sl) => this._ringAria(sl, false),
         pctOf: (sl) => this._ringPct(sl.value)
       }) : '';
       const readout = CR.readoutHtml(focused ? this._ringReadout(focused, big) : null, big);
+      const hole = ring ? Math.floor(ring.geo.inner * 2) : 0;
 
       let contentHtml = '';
       if (!hasData) {
@@ -3843,42 +3964,48 @@ window.Components = {
           </div>
         `;
       } else {
+        const esc = (v) => this._esc(v);
+        const t = (k, p) => window.I18n.t(k, p);
         contentHtml = `
           <div class="donut-chart-layout">
-            <div class="donut-chart-container ring-box ring-box--lg${focused ? ' is-focused' : ''}${big ? ' ring--big-text' : ''}" id="analytics-ring-box">
+            <div class="donut-chart-container ring-box ring-box--lg ring-box--xl${focused ? ' is-focused' : ''}${big ? ' ring--big-text' : ''}" id="analytics-ring-box" style="width: ${box}px; height: ${box}px; flex: 0 0 ${box}px; --ring-hole: ${hole}px;">
               <canvas id="categoryDonutChart" aria-hidden="true"></canvas>
               <div class="donut-chart-center">
-                <div class="donut-total-label">${window.I18n.t('charts.total')}</div>
+                <div class="donut-total-label">${t('charts.total')}</div>
                 <div class="donut-total-value">${window.Store.formatCurrency(totalAmount, this._currency)}</div>
               </div>
               ${big ? '' : readout}
               ${overlay}
             </div>${big ? readout : ''}
-            <div class="donut-legend">
+            <div class="donut-legend" id="analytics-cat-list">
               ${data.map(item => {
-                const esc = (v) => this._esc(v);
-                // v0.85: every real category is an accordion — tapping it
-                // reveals its per-tag breakdown (filled lazily in
-                // attachEvents). 'Others' aggregates categories 6+, so it has
-                // no single tag breakdown and stays inert, as before.
-                // 1.2.2 (HG-5): the icon carries the arc colour (no colour
-                // bar), like the account tiles on Home.
-                const row = `
-                  <div class="donut-legend-item touch-target" data-cat-id="${esc(item.id)}"
-                       ${item.isOthers ? '' : 'role="button" tabindex="0" aria-expanded="false"'}
-                       style="cursor: ${item.isOthers ? 'default' : 'pointer'}; padding: 8px 4px; border-radius: var(--radius-md); transition: background 0.2s; align-items: center;">
-                    <div class="list-item-icon ring-legend-icon" style="width: 32px; height: 32px; min-width: 32px; color: ${esc(item._color)};"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
-                    <div class="donut-legend-info" style="margin-left: 4px;">
-                      <span class="donut-legend-name" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(item.name)}</span>
-                      <span class="donut-legend-pct">${esc(window.Store.formatPercent(item.percentage, { digits: 1 }))}</span>
-                    </div>
-                    <div class="donut-legend-amount" style="${item.isOthers ? 'opacity:0.65;' : ''}">${esc(window.Store.formatCurrency(item.amount, this._currency))}</div>
-                    ${item.isOthers ? '<div style="width: 8px; margin-left: 8px;"></div>' : '<div class="donut-legend-caret" aria-hidden="true">›</div>'}
-                  </div>`;
-                if (item.isOthers) return row;
+                // 1.3.2 (AB-4): a row slides left (a tap or a sideways
+                // swipe) to show Tags and Transactions; the tag panel opens
+                // under it (AB-5). The icon carries the slice colour (HG-5).
+                const money = window.Store.formatCurrency(item.amount, this._currency);
+                const pct = window.Store.formatPercent(item.percentage, { digits: 1 });
                 return `
-                  <div class="donut-legend-group" data-cat-group="${esc(item.id)}">
-                    ${row}
+                  <div class="donut-legend-group" data-cat-group="${esc(item.id)}" style="--cat-color: ${esc(item._color)};">
+                    <div class="cat-swipe" data-cat-id="${esc(item.id)}">
+                      <div class="cat-swipe-actions">
+                        <button type="button" class="cat-act" data-act="tags" tabindex="-1" aria-label="${t('charts.tagsAria', { name: esc(item.name) })}">
+                          <i data-lucide="tag" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="cat-act" data-act="list" tabindex="-1" aria-label="${t('charts.listAria', { name: esc(item.name) })}">
+                          <i data-lucide="list" aria-hidden="true"></i>
+                        </button>
+                      </div>
+                      <div class="donut-legend-item cat-swipe-content touch-target" role="button" tabindex="0" aria-expanded="false"
+                           aria-label="${t('charts.rowAria', { name: esc(item.name), amount: esc(money), pct: esc(pct) })}">
+                        <div class="list-item-icon ring-legend-icon" style="width: 32px; height: 32px; min-width: 32px; color: ${esc(item._color)};"><i data-lucide="${esc(item.icon)}" style="width: 18px; height: 18px;"></i></div>
+                        <div class="donut-legend-info" style="margin-left: 4px;">
+                          <span class="donut-legend-name">${esc(item.name)}</span>
+                          <span class="donut-legend-pct">${esc(pct)}</span>
+                        </div>
+                        <div class="donut-legend-amount">${esc(money)}</div>
+                        <div class="donut-legend-caret" aria-hidden="true">›</div>
+                      </div>
+                    </div>
                     <div class="donut-tag-panel" data-tag-panel="${esc(item.id)}"></div>
                   </div>`;
               }).join('')}
@@ -3891,16 +4018,67 @@ window.Components = {
         <div class="card card-elevated category-donut-card" style="padding: var(--space-5); margin-top: var(--space-4); border-radius: var(--radius-2xl); position: relative; overflow: hidden;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6); position: relative; z-index: 1;">
             <p class="section-title" style="margin-bottom: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">${window.I18n.t('charts.distribution')}</p>
-            
+
             <div class="chart-toggle-group">
               <button class="chart-toggle-btn ${isExpense ? 'active' : ''}" data-type="expense">${window.I18n.t('charts.expenses')}</button>
               <button class="chart-toggle-btn ${!isExpense ? 'active' : ''}" data-type="income">${window.I18n.t('form.income')}</button>
             </div>
           </div>
-          
+
           ${contentHtml}
         </div>
       `;
+    },
+
+    // 1.3.2 (AB-5): the tag rows of one category — a count ring filled by the
+    // tag's share (of the category), the tag, the share and the amount.
+    _tagPanelHtml(catId, filters) {
+      const esc = (v) => this._esc(v);
+      const t = (k, p) => window.I18n.t(k, p);
+      const item = (this._ringPass && this._ringPass.slices || []).find(sl => sl.id === catId);
+      const color = item ? item.color : window.Components.CategoryPalette.OTHERS;
+      const b = window.Store.computeCategoryTagBreakdown(filters, this._currentType, catId);
+      const rows = b.rows.map(r => {
+        const name = r.isUntagged ? t('history.noTag') : '#' + r.tag;
+        const pct = window.Store.formatPercent(r.percentage, { digits: 1 });
+        const money = window.Store.formatCurrency(r.amount, this._currency);
+        return `
+          <div class="donut-tag-row touch-target" data-tag-row="${esc(r.tag)}" role="button" tabindex="0"
+               aria-label="${t('charts.tagRowAria', { count: r.count, tag: esc(name), pct: esc(pct), amount: esc(money) })}">
+            ${window.Components.CountRing.html(r.count, r.percentage, color)}
+            <span class="donut-tag-text">
+              <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${esc(name)}</span>
+              <span class="donut-tag-pct">${esc(pct)}</span>
+            </span>
+            <span class="donut-tag-amount">${esc(money)}</span>
+          </div>`;
+      }).join('');
+      return `<div class="donut-tag-list">${rows}</div>`;
+    },
+
+    // 1.3.2 (AB-6): the transactions of a category (tag = null), of one of
+    // its tags, or of its untagged rows ('__untagged__'), in a sheet.
+    _openSheet(catId, tag, filters) {
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const item = (this._ringPass && this._ringPass.slices || []).find(sl => sl.id === catId);
+      const catName = item ? item.name : t('common.uncategorized');
+      const rows = S.categoryTransactions(filters, this._currentType, catId, tag);
+      const total = rows.reduce((s, tx) => s + (Number(tx.amount) || 0), 0);
+      const title = tag == null ? catName : (tag === '__untagged__' ? t('history.noTag') : '#' + tag);
+      // the page's period by name ("October 2026"), as its bar shows it
+      const page = (S.getState().analyticsFilters || {}).period;
+      const period = S.periodLabel(page || (filters && filters.period));
+      window.Components.TransactionListSheet.show({
+        title,
+        subtitle: tag == null ? period : t('charts.sheetSubtitle', { category: catName, period }),
+        rows,
+        total,
+        currency: this._currency,
+        onOpen: (id) => {
+          if (window.Router) window.Router.navigate('#edit?id=' + encodeURIComponent(id) + '&from=analytics');
+        }
+      });
     },
 
     // 1.2.0 (UX-7): opts.animate = this is the Analytics entry render (the
@@ -3923,10 +4101,6 @@ window.Components = {
         this._expandedCatId = null;
         this.dropFocus(); // 1.2.2 (HG-8 P2): and the ring focus with it
         const newData = window.Store.computeCategoryDistribution(filters, type);
-
-        // 1.2.2 (HG-8 P2 review): the donut's own card. The old inline-style
-        // fallback ([style*="height: 200px"]) matched the Net Flow chart first
-        // when the donut had no data, and the toggle replaced that card.
         const outerCard = container.querySelector('.category-donut-card');
         if (outerCard) {
           outerCard.outerHTML = this.render(newData, type, ccy); // 1.0.2 (BUG-63): same currency
@@ -3942,96 +4116,84 @@ window.Components = {
         });
       });
 
-      // ── v0.85: category → tag drilldown ────────────────────────────────
-      // Hand off to History exactly the way the category tap always did
-      // (copy the analytics period/accounts, pin the category and type), plus
-      // the chosen tag. Passing null tags = the whole category.
-      // 1.2.2 (HG-10) through UPDATE_FILTERS (it wrote the state and emitted),
-      // so the hand-off gets the live-period roll, the account-id check and
-      // the selection pruning like every other filter change.
-      const openInHistory = (catId, tag) => {
-        const aFilters = window.Store.state.analyticsFilters;
-        window.Store.dispatch('UPDATE_FILTERS', {
-          page: 'history',
-          filters: {
-            period: { ...aFilters.period },
-            accounts: [...aFilters.accounts],
-            categories: [catId],
-            types: [this._currentType],
-            tags: tag ? [tag] : []
-          }
-        });
-        if (window.Router) window.Router.navigate('#transactions');
+      // 1.3.2 (AB-2): the ring's box is sized to the card per render; a
+      // rotation or a resize that changes that size redraws the card in place
+      // (same data, same type; the focus and the open tag panel are kept).
+      this._refit = () => {
+        const ringBox = container.querySelector('#analytics-ring-box');
+        const card = container.querySelector('.category-donut-card');
+        if (!ringBox || !card || !ringBox.isConnected) return;
+        if (Math.round(parseFloat(ringBox.style.width)) === this._boxSize()) return;
+        card.outerHTML = this.render(this._lastData, this._currentType, ccy);
+        this.attachEvents(container, filters, ccy, { animate: false });
       };
-
-      const panelFor = (catId) => {
-        let found = null;
-        container.querySelectorAll('.donut-tag-panel').forEach(p => {
-          if (p.dataset.tagPanel === catId) found = p;
+      if (!this._refitWired && window.addEventListener) {
+        this._refitWired = true;
+        window.addEventListener('resize', () => {
+          clearTimeout(this._refitTimer);
+          this._refitTimer = setTimeout(() => { if (typeof this._refit === 'function') this._refit(); }, 150);
         });
-        return found;
-      };
-
-      const fillPanel = (catId, panel) => {
-        const esc = (v) => this._esc(v);
-        const breakdown = window.Store.computeCategoryTagBreakdown(filters, this._currentType, catId);
-        const rows = breakdown.rows.map(r => `
-          <div class="donut-tag-row touch-target" data-tag-row="${esc(r.tag)}" role="button" tabindex="0">
-            <span class="donut-tag-name${r.isUntagged ? ' is-untagged' : ''}">${r.isUntagged ? window.I18n.t('history.noTag') : '#' + esc(r.tag)}</span>
-            <span class="donut-tag-count">${r.count}</span>
-            <span class="donut-tag-amount">${esc(window.Store.formatCurrency(r.amount, ccy))}</span>
-          </div>`).join('');
-        // Always offer the whole category too — the pre-v0.85 behaviour, and
-        // the only route to a category whose rows are all tagged differently.
-        panel.innerHTML = `
-          <div class="donut-tag-list">
-            ${rows}
-            <div class="donut-tag-row donut-tag-row--all touch-target" data-tag-row="__all__" role="button" tabindex="0">
-              <span class="donut-tag-name">All ${breakdown.count} transaction${breakdown.count === 1 ? '' : 's'}</span>
-              <span class="donut-tag-amount">${esc(window.Store.formatCurrency(breakdown.total, ccy))}</span>
-            </div>
-          </div>`;
-        panel.querySelectorAll('.donut-tag-row').forEach(row => {
-          row.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const tag = row.dataset.tagRow;
-            openInHistory(catId, tag === '__all__' ? null : tag);
-          });
-        });
-        if (window.StackdHydrateIcons) window.StackdHydrateIcons();
-      };
-
-      const setExpanded = (catId, expanded) => {
-        const panel = panelFor(catId);
-        if (!panel) return;
-        const group = panel.closest('.donut-legend-group');
-        const header = group ? group.querySelector('.donut-legend-item') : null;
-        if (expanded) fillPanel(catId, panel);
-        else panel.innerHTML = '';
-        if (group) group.classList.toggle('is-expanded', expanded);
-        if (header) header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      };
-
-      const legendItems = container.querySelectorAll('.donut-legend-item');
-      legendItems.forEach(item => {
-        const catId = item.dataset.catId;
-        if (catId === '__others__') return; // aggregate row: nothing to drill into
-        item.addEventListener('click', () => {
-          const isOpen = this._expandedCatId === catId;
-          if (this._expandedCatId) setExpanded(this._expandedCatId, false);
-          this._expandedCatId = isOpen ? null : catId;
-          if (this._expandedCatId) setExpanded(this._expandedCatId, true);
-        });
-      });
-
-      // Restore the open accordion after any re-render (this runs on every
-      // attachEvents, including the type toggle's local re-render below).
-      if (this._expandedCatId && panelFor(this._expandedCatId)) {
-        setExpanded(this._expandedCatId, true);
-      } else if (this._expandedCatId) {
-        this._expandedCatId = null; // that category left the top-5
       }
 
+      // ── 1.3.2 (AB-4/5/6): row actions, tags inline, transaction sheets ──
+      const list = container.querySelector('#analytics-cat-list');
+      const groupOf = (catId) => list ? [...list.querySelectorAll('.donut-legend-group')].find(g => g.dataset.catGroup === catId) || null : null;
+
+      const setExpanded = (catId, expanded) => {
+        const group = groupOf(catId);
+        if (!group) return;
+        const panel = group.querySelector('.donut-tag-panel');
+        if (expanded) {
+          panel.innerHTML = this._tagPanelHtml(catId, filters);
+          panel.querySelectorAll('.donut-tag-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this._openSheet(catId, row.dataset.tagRow, filters);
+            });
+          });
+        } else {
+          panel.innerHTML = '';
+        }
+        group.classList.toggle('is-expanded', expanded);
+      };
+
+      if (list) {
+        const rows = window.Components.SwipeRows.wire(list, {
+          scroller: container,
+          openWidth: 132
+        });
+        if (container._donutRowsOff) container._donutRowsOff();
+        container._donutRowsOff = rows.dispose;
+
+        list.querySelectorAll('.cat-act').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const sw = btn.closest('.cat-swipe');
+            const catId = sw ? sw.dataset.catId : null;
+            if (!catId) return;
+            rows.closeAll(true);
+            if (btn.dataset.act === 'list') {
+              this._openSheet(catId, null, filters);
+              return;
+            }
+            // Tags: open this category's panel, or close it on a second tap
+            const isOpen = this._expandedCatId === catId;
+            if (this._expandedCatId) setExpanded(this._expandedCatId, false);
+            this._expandedCatId = isOpen ? null : catId;
+            if (this._expandedCatId) setExpanded(this._expandedCatId, true);
+            const content = sw.querySelector('.cat-swipe-content');
+            if (content && e.detail === 0) content.focus();
+          });
+        });
+      }
+
+      // Restore the open tag panel after any re-render (this runs on every
+      // attachEvents, including the type toggle's local re-render).
+      if (this._expandedCatId && groupOf(this._expandedCatId)) {
+        setExpanded(this._expandedCatId, true);
+      } else if (this._expandedCatId) {
+        this._expandedCatId = null; // that category has no rows in this period
+      }
 
       if (window.StackdHydrateIcons) window.StackdHydrateIcons();
 
@@ -4048,10 +4210,14 @@ window.Components = {
       }
 
       // 1.2.0 (UX-7): the shared ring look; the sweep plays on the Analytics
-      // entry render only (v0.93's animation: false stays the rule for every
-      // other mount). 1.2.2 (HG-8 P2): no tooltip and no Chart.js events —
-      // the box's one hit test owns taps (tap-to-focus, as on Goals); a
-      // square 220 px box, padding 7, hoverOffset 0, and the focus plugin.
+      // entry render only. 1.2.2 (HG-8 P2): no tooltip and no Chart.js events —
+      // the box's one hit test owns taps. 1.3.2 (AB-2): the share written in
+      // each slice that has room (labelPlugin, listed before the focus plugin).
+      const ringLabels = pass.slices.map((sl, i) => ({
+        text: window.Store.formatPercent(pass.total > 0 ? (sl.value / pass.total) * 100 : 0, { digits: 0 }),
+        ink: CR.labelInk(sl.color),
+        span: pass.ring.geo.arcs[i] ? pass.ring.geo.arcs[i].span : 0
+      }));
       this._chartInstance = new window.Chart(canvas, window.Components.RingChart.config({
         type: 'doughnut',
         data: {
@@ -4069,11 +4235,13 @@ window.Components = {
           layout: { padding: 7 },
           plugins: { legend: { display: false }, tooltip: { enabled: false } }
         },
-        plugins: [CR.plugin()]
+        plugins: [CR.labelPlugin(ringLabels), CR.plugin()]
       }, {
         animate,
-        delay: 250 // past the view-transition snapshot
+        delay: 250, // past the view-transition snapshot
+        cutout: Math.round(this.CUTOUT * 100) + '%'
       }));
+      this._chartInstance.$ringLabels = ringLabels;
 
       // A focus restored by a re-render: final state, no tween.
       if (this._focus) {
@@ -4081,7 +4249,306 @@ window.Components = {
         if (idx >= 0) CR.focus(this._chartInstance, pass.ring.count, idx, true, pass.ring.scale);
       }
       const box = container.querySelector('#analytics-ring-box');
-      if (box) CR.wire(this._ringHost(box));
+      const host = this._ringHost(box);
+      if (host) {
+        // 1.3.2 (AB-8): a tapped slice brings its row into view, marked
+        host.onSelect = (id, viaPointer) => {
+          if (!id || !viaPointer) return;
+          const group = groupOf(id);
+          if (!group) return;
+          const reduced = window.Components.RingChart._reduced();
+          try { group.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' }); } catch (e) { /* old engines */ }
+          group.classList.remove('is-marked');
+          void group.offsetWidth;
+          group.classList.add('is-marked');
+          clearTimeout(this._markTimer);
+          this._markTimer = setTimeout(() => { if (group.isConnected) group.classList.remove('is-marked'); }, 1400);
+        };
+        CR.wire(host);
+      }
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // 1.3.2 (AB-5): a small SVG ring — `count` in the middle, filled by `pct`
+  // (0–100) in `color` (a palette slot). Decorative: the row carries the words.
+  // -----------------------------------------------------------------------
+  CountRing: {
+    html(count, pct, color) {
+      const r = 15;
+      const c = 2 * Math.PI * r;
+      const p = Math.max(0, Math.min(100, Number(pct) || 0));
+      const dash = (c * p / 100).toFixed(2);
+      const col = window.I18n.esc(String(color || '#64748b'));
+      const n = Math.max(0, Math.floor(Number(count) || 0));
+      return `<svg class="count-ring" viewBox="0 0 36 36" width="36" height="36" aria-hidden="true" focusable="false">
+              <circle cx="18" cy="18" r="${r}" fill="none" stroke="${col}" stroke-opacity="0.2" stroke-width="3.5"></circle>
+              <circle class="count-ring-arc" cx="18" cy="18" r="${r}" fill="none" stroke="${col}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${dash} ${c.toFixed(2)}" transform="rotate(-90 18 18)"></circle>
+              <text x="18" y="18" text-anchor="middle" dominant-baseline="central" class="count-ring-text">${n}</text>
+            </svg>`;
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // 1.3.2 (AB-4): rows that slide left to show their actions — Analytics'
+  // category list. A row: .cat-swipe > .cat-swipe-actions + .cat-swipe-content.
+  // A tap (or Enter / Space) opens or closes it, a sideways drag moves it and
+  // snaps, a scroll of `scroller` or a tap outside closes it; one row open.
+  // Pointer events with touch-action: pan-y on the content: a vertical drag
+  // is the browser's scroll, only a sideways one is ours; the non-passive
+  // touchmove cancels only a sideways drag (Chromium otherwise eats the next
+  // tap, as History found — HG-11). Returns { closeAll(instant), dispose }.
+  // -----------------------------------------------------------------------
+  SwipeRows: {
+    wire(list, opts) {
+      const o = opts || {};
+      const OPEN = -(o.openWidth || 120);
+      const SLOP = 8;
+      const FLICK = 0.35;
+      let g = null;
+      let swallow = false;
+      let openTop = 0;
+      const scroller = o.scroller || null;
+      const rowsOf = () => [...list.querySelectorAll('.cat-swipe')];
+      const contentOf = (row) => row.querySelector('.cat-swipe-content');
+      const offsetOf = (row) => Number(row.dataset.offset || 0);
+      const setX = (row, x, instant) => {
+        const c = contentOf(row);
+        if (!c) return;
+        c.style.transition = instant ? 'none' : 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+        c.style.transform = x ? `translateX(${x}px)` : '';
+        row.dataset.offset = String(x);
+        const open = x !== 0;
+        c.setAttribute('aria-expanded', open ? 'true' : 'false');
+        row.querySelectorAll('.cat-act').forEach(b => b.setAttribute('tabindex', open ? '0' : '-1'));
+        if (open) {
+          row.classList.add('is-open');
+          openTop = scroller ? scroller.scrollTop : 0;
+          return;
+        }
+        const done = () => { if (offsetOf(row) === 0) row.classList.remove('is-open'); };
+        if (instant) { done(); return; }
+        c.addEventListener('transitionend', done, { once: true });
+        setTimeout(done, 340);
+      };
+      const closeAll = (instant, except) => rowsOf().forEach(r => { if (r !== except && offsetOf(r) !== 0) setX(r, 0, instant); });
+
+      const onDown = (e) => {
+        if (!e.isPrimary || (e.button !== undefined && e.button !== 0)) return;
+        const content = e.target.closest ? e.target.closest('.cat-swipe-content') : null;
+        const row = content && content.closest('.cat-swipe');
+        if (!row || !list.contains(row)) return;
+        g = { row, x0: e.clientX, y0: e.clientY, start: offsetOf(row), x: offsetOf(row), axis: null, pid: e.pointerId,
+          lastX: e.clientX, lastT: e.timeStamp, v: 0 };
+      };
+      const onMove = (e) => {
+        if (!g || e.pointerId !== g.pid) return;
+        const dx = e.clientX - g.x0;
+        const dy = e.clientY - g.y0;
+        if (!g.axis) {
+          if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+          if (Math.abs(dy) >= Math.abs(dx)) { g.axis = 'y'; return; }
+          g.axis = 'x';
+          closeAll(false, g.row);
+          g.row.classList.add('is-open');
+          try { contentOf(g.row).setPointerCapture(e.pointerId); } catch (_) { /* a nicety */ }
+        }
+        if (g.axis !== 'x') return;
+        let x = g.start + dx;
+        const limit = OPEN - 24;
+        if (x < limit) x = limit + (x - limit) * 0.2;
+        if (x > 0) x = x * 0.2;
+        const dt = e.timeStamp - g.lastT;
+        if (dt > 0) g.v = (e.clientX - g.lastX) / dt;
+        g.lastX = e.clientX;
+        g.lastT = e.timeStamp;
+        g.x = x;
+        const c = contentOf(g.row);
+        c.style.transition = 'none';
+        c.style.transform = `translateX(${x}px)`;
+      };
+      const onUp = (e) => {
+        if (!g || e.pointerId !== g.pid) return;
+        const cur = g;
+        g = null;
+        if (cur.axis !== 'x') return;
+        swallow = true; // a drag is not a tap
+        let target = 0;
+        if (cur.v < -FLICK) target = OPEN;
+        else if (cur.v > FLICK) target = 0;
+        else if (cur.x <= OPEN / 2) target = OPEN;
+        setX(cur.row, target);
+      };
+      const onTouchMove = (e) => { if (g && g.axis === 'x' && e.cancelable) e.preventDefault(); };
+      const onClick = (e) => {
+        if (e.target.closest && e.target.closest('.cat-act')) return; // their own handlers
+        const content = e.target.closest ? e.target.closest('.cat-swipe-content') : null;
+        const row = content && content.closest('.cat-swipe');
+        if (!row) return;
+        if (swallow && e.detail !== 0) { swallow = false; return; }
+        swallow = false;
+        const open = offsetOf(row) !== 0;
+        closeAll(false, row);
+        setX(row, open ? 0 : OPEN);
+        if (!open && e.detail === 0) { // a keyboard activation: to the first action
+          const first = row.querySelector('.cat-act');
+          if (first) setTimeout(() => first.focus(), 0);
+        }
+      };
+      const onKey = (e) => {
+        if (e.key !== 'Escape') return;
+        const row = e.target.closest ? e.target.closest('.cat-swipe') : null;
+        if (!row || offsetOf(row) === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setX(row, 0);
+        const c = contentOf(row);
+        if (c) c.focus();
+      };
+      // a real scroll closes the open row; a small one (focus moving to an
+      // action, a row brought into view) does not
+      const onScroll = () => {
+        if (g && g.axis === 'x') return;
+        if (Math.abs((scroller ? scroller.scrollTop : 0) - openTop) > 24) closeAll();
+      };
+      const onOutside = (e) => {
+        const row = e.target.closest ? e.target.closest('.cat-swipe') : null;
+        rowsOf().forEach(r => { if (r !== row && offsetOf(r) !== 0) setX(r, 0); });
+      };
+
+      list.addEventListener('pointerdown', onDown);
+      list.addEventListener('pointermove', onMove);
+      list.addEventListener('pointerup', onUp);
+      list.addEventListener('pointercancel', onUp);
+      list.addEventListener('touchmove', onTouchMove, { passive: false });
+      list.addEventListener('click', onClick);
+      list.addEventListener('keydown', onKey);
+      if (scroller) {
+        scroller.addEventListener('scroll', onScroll, { passive: true });
+        scroller.addEventListener('pointerdown', onOutside);
+      }
+      return {
+        closeAll: (instant) => closeAll(instant),
+        dispose: () => {
+          if (scroller) {
+            scroller.removeEventListener('scroll', onScroll);
+            scroller.removeEventListener('pointerdown', onOutside);
+          }
+        }
+      };
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // 1.3.2 (AB-6): pull a bottom sheet down to close it. Starts only when the
+  // sheet is scrolled to its top and the finger moves down; past 120 px (or a
+  // quick flick) it closes, otherwise it springs back. The Modal's own drag
+  // (Modal.show) predates this and stays as it is.
+  // -----------------------------------------------------------------------
+  _sheetSwipeClose(backdrop, onClose) {
+    const content = backdrop && backdrop.querySelector('.modal-content');
+    if (!content) return;
+    let y0 = null;
+    let t0 = 0;
+    let dy = 0;
+    let dragging = false;
+    backdrop.addEventListener('touchstart', (e) => {
+      if (!e.touches || e.touches.length !== 1 || content.scrollTop > 0) { y0 = null; return; }
+      y0 = e.touches[0].clientY;
+      t0 = e.timeStamp;
+      dy = 0;
+      dragging = false;
+    }, { passive: true });
+    backdrop.addEventListener('touchmove', (e) => {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (!dragging) {
+        if (dy > 8) { dragging = true; content.style.transition = 'none'; }
+        else if (dy < -8) { y0 = null; return; }
+        else return;
+      }
+      if (e.cancelable) e.preventDefault();
+      content.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    }, { passive: false });
+    const end = (e) => {
+      if (y0 === null) return;
+      y0 = null;
+      if (!dragging) return;
+      dragging = false;
+      const fast = dy > 40 && (e.timeStamp - t0) < 250;
+      content.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+      if (dy > 120 || fast) {
+        content.style.transform = 'translateY(100%)';
+        setTimeout(() => onClose(), 200);
+      } else {
+        content.style.transform = '';
+        setTimeout(() => { content.style.transition = ''; }, 320);
+      }
+    };
+    backdrop.addEventListener('touchend', end);
+    backdrop.addEventListener('touchcancel', end);
+  },
+
+  // -----------------------------------------------------------------------
+  // 1.3.2 (AB-6): a bottom sheet of transactions with a Σ total — Analytics'
+  // category / tag lists. { title, subtitle (plain text), rows (transactions),
+  // total, currency, onOpen(id) }. A row is the History row look without
+  // swipe; a tap closes the sheet and hands the id to onOpen. Closes on the
+  // handle drag, a backdrop tap, Done, Escape and Android Back.
+  // -----------------------------------------------------------------------
+  TransactionListSheet: {
+    show(options) {
+      const o = options || {};
+      const C = window.Components;
+      const S = window.Store;
+      const t = (k, p) => window.I18n.t(k, p);
+      const esc = (v) => C.esc(v);
+      const id = 'tx-list-sheet';
+      const st = S.getState();
+      const catOf = (tx) => (st.categories || []).find(c => c.id === tx.categoryId) || null;
+      const accOf = (tx) => (st.accounts || []).find(a => a.id === tx.accountId) || null;
+      const rows = (o.rows || []).slice().sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '') || String(b.time || '').localeCompare(String(a.time || '')));
+      const list = rows.map(tx => C.TransactionItem.render(tx, catOf(tx), accOf(tx), { flush: true })).join('');
+      const count = t('charts.sheetCount', { count: rows.length });
+      const backdrop = C._bankSheet(id, `
+        <h2 id="${id}-title" class="header-title tx-sheet-title">${esc(o.title || '')}</h2>
+        <p id="${id}-body" class="tx-sheet-sub">${esc([o.subtitle, count].filter(Boolean).join(' · '))}</p>
+        <div class="tx-sheet-list" role="list">${list}</div>
+        <div class="tx-sheet-total">
+          <span class="tx-sheet-sigma" aria-hidden="true">Σ</span>
+          <span class="tx-sheet-total-label">${t('charts.sheetTotal')}</span>
+          <span class="tx-sheet-total-amount">${esc(S.formatCurrency(o.total || 0, o.currency))}</span>
+        </div>
+        <button type="button" class="btn btn-primary" id="${id}-done" data-back-dismiss>${t('common.done')}</button>`);
+      if (!backdrop) return null;
+      backdrop.setAttribute('aria-describedby', `${id}-body`);
+      backdrop.querySelectorAll('.tx-sheet-list .list-item').forEach(r => r.setAttribute('role', 'button'));
+      let closed = false;
+      const onKey = (e) => {
+        if (!document.body.contains(backdrop)) { document.removeEventListener('keydown', onKey); return; }
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop._close();
+      };
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector(`#${id}-done`).addEventListener('click', close);
+      backdrop.querySelector('.tx-sheet-list').addEventListener('click', (e) => {
+        const item = e.target.closest ? e.target.closest('.list-item[data-id]') : null;
+        if (!item) return;
+        const txId = item.dataset.id;
+        closed = true;
+        document.removeEventListener('keydown', onKey);
+        backdrop.remove(); // at once: the form opens next
+        if (typeof o.onOpen === 'function') o.onOpen(txId);
+      });
+      C._sheetSwipeClose(backdrop, close);
+      document.addEventListener('keydown', onKey);
+      return backdrop;
     }
   },
 

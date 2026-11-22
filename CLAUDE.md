@@ -721,6 +721,24 @@ Comment tag `// 1.3.1 (BUG-NN)`.
   The six single CSVs still upsert with no sheet. A new ledger slice must be
   emptied in `CLEAR_LEDGER`.
 
+## Analytics breakdown (2026-11-22)
+
+`docs/analytics-breakdown-plan.md` is the reference. Comment tag `// 1.3.2 (AB-N)`.
+
+- Analytics lists **every** category on its ring and in its list (no Others);
+  the Home categories widget, Goals and the Insights split bar keep the fold
+  (`_capData`). The ring box is sized per render (`_boxSize`, ≤ 280 px,
+  cutout 58 %) and redrawn on a resize; `CategoryRing.labelPlugin(labels)`
+  writes a slice's share only where it fits — Analytics only.
+- `CategoryPalette` has 12 slots; `assign(ids)` takes ids in ring order and,
+  past 12, never gives two neighbours one colour. A new slot must pass the
+  contrast test (both cards, both icon discs, white icons).
+- A category row is a `Components.SwipeRows` row (Tags / Transactions);
+  tags open under it (`Components.CountRing`); a tag or the list opens
+  `Components.TransactionListSheet` (rows from `Store.categoryTransactions`,
+  the ring's own filter). A sheet row opens `#edit?id=…&from=analytics`, and
+  the form leaves to `AddTransactionView._exitRoute()`.
+
 ## User journey (UJ, 2026-11-08)
 
 `docs/user-journey-plan.md` is the reference. `docs/user-journey/inventory.md`

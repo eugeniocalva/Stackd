@@ -220,7 +220,7 @@ describe('Analytics donut', () => {
     render(true);
     const donut = doughnuts()[0];
     expect(donut.config.options.animation).toMatchObject({ animateRotate: true, delay: 250 });
-    expect(donut.config.options.cutout).toBe('66%');
+    expect(donut.config.options.cutout).toBe('58%'); // 1.3.2 (AB-2): Analytics' thicker band
     expect(donut.config.data.datasets[0].backgroundColor).toEqual(['#059669', '#ea580c']); // 1.2.2 (HG-8) palette
   });
 

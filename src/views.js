@@ -441,6 +441,11 @@ window.Views = {
       }
       const donut = window.Components && window.Components.CategoryDonutChart;
       if (donut && typeof donut.dropFocus === 'function') donut.dropFocus(); // 1.2.2 (HG-8 P2)
+      // 1.3.2 (AB-4): the category rows' scroll / tap-outside listeners
+      const rv = document.getElementById('router-view');
+      if (rv && rv._donutRowsOff) { rv._donutRowsOff(); rv._donutRowsOff = null; }
+      const sheet = document.getElementById('tx-list-sheet');
+      if (sheet) sheet.remove();
       if (donut && donut._chartInstance) {
         try { donut._chartInstance.destroy(); } catch (e) { /* already gone */ }
         donut._chartInstance = null;
@@ -2497,6 +2502,14 @@ window.Views = {
     // "Income 450" and an untouched Update stored income +450. This read-only
     // panel has no form fields, so attachEvents bails (no #tx-type) and the
     // Router's dirty-form check stays false (Back is plain).
+    // 1.3.2 (AB-7): an edit opened from Analytics' transaction sheet
+    // (#edit?id=…&from=analytics) saves, deletes and closes back to Analytics;
+    // every other edit to History. A whitelist: no other value is read.
+    _exitRoute() {
+      const p = window.Router && typeof window.Router.getParams === 'function' ? window.Router.getParams() : {};
+      return p && p.from === 'analytics' ? 'analytics' : 'transactions';
+    },
+
     _renderOpeningBalancePanel(tx, state) {
       const acc = state.accounts.find(a => a.id === tx.accountId);
       const amount = window.Store.formatCurrency(Number(tx.amount) || 0, acc && acc.currency); // signed
@@ -2702,7 +2715,7 @@ window.Views = {
         <div class="container" style="padding-bottom: 100px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-6);">
             <h1 class="header-title" style="margin: 0;">${isEdit ? window.I18n.t('form.editLog') : window.I18n.t('form.newLog')}</h1>
-            <a href="#${isEdit ? 'transactions' : 'dashboard'}" data-router-leave aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
+            <a href="#${isEdit ? window.Views.AddTransactionView._exitRoute() : 'dashboard'}" data-router-leave aria-label="${window.I18n.t('common.close')}" class="page-close"><i data-lucide="x" aria-hidden="true"></i></a>
           </div>
           
           <!-- Type Toggle -->
@@ -3936,7 +3949,7 @@ window.Views = {
           // and Router.leave routes synchronously, so its SET_VIEW joins the
           // change. Harmless: SET_VIEW persists nothing, so a change that does
           // not land still leaves for History (D-U7-4).
-          leaveTo('#transactions'); // 1.0.2 (BUG-87): never leave the form's entry under History
+          leaveTo('#' + window.Views.AddTransactionView._exitRoute()); // 1.0.2 (BUG-87): never leave the form's entry under History; 1.3.2 (AB-7) Analytics when it came from there
         };
 
         // If creation of a new recurring tx with tags:
@@ -4015,7 +4028,7 @@ window.Views = {
 
           const executeDelete = (options) => {
             window.Store.dispatch('DELETE_TRANSACTION', { id: targetId, ...options });
-            leaveTo('#transactions'); // 1.0.2 (BUG-87): no 'Transaction not found' entry left under History
+            leaveTo('#' + window.Views.AddTransactionView._exitRoute()); // 1.0.2 (BUG-87); 1.3.2 (AB-7)
           };
 
           if (seriesId) {

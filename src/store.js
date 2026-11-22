@@ -6522,6 +6522,20 @@ window.Store = {
     return { total, count: inCategory.length, rows };
   },
 
+  // 1.3.2 (AB-6): the rows behind one Analytics slice or tag row — the same
+  // filter as computeCategoryDistribution / computeCategoryTagBreakdown, so a
+  // sheet's total equals the figure that opened it. tag: null = the whole
+  // category, '__untagged__' = its rows with no tag, else rows carrying it.
+  categoryTransactions(filters, distributionType, categoryId, tag) {
+    return this.getFilteredTransactions('analytics', filters).filter(tx => {
+      const typed = distributionType === 'income' ? this._isPositiveTx(tx) : tx.type === 'expense';
+      if (!typed || (tx.categoryId || 'uncategorized') !== categoryId) return false;
+      if (tag == null) return true;
+      const tags = (Array.isArray(tx.tags) ? tx.tags : []).filter(Boolean);
+      return tag === '__untagged__' ? tags.length === 0 : tags.includes(tag);
+    });
+  },
+
   getMaxTransactionDate() {
     if (this.state.transactions.length === 0) return null;
     const sorted = [...this.state.transactions].sort((a, b) => b.date.localeCompare(a.date));

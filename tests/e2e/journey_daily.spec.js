@@ -514,7 +514,7 @@ test.describe('Journey B2 — Marco, the daily logger', () => {
     await expect(row).toContainText('of €150.00');
   });
 
-  test('M13–M14: Analytics hero and its Today / Nov 30 toggle; a Distribution row → History', async ({ page }) => {
+  test('M13–M14: Analytics hero and its Today / Nov 30 toggle; a Distribution row → its transactions', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e));
     await boot(page);
@@ -530,25 +530,26 @@ test.describe('Journey B2 — Marco, the daily logger', () => {
     await expect(page.locator('#netFlowChart')).toHaveCount(1);        // Net Flow Analysis
     await expect(page.locator('.category-donut-card')).toBeVisible();  // Distribution
     await expect(page.locator('.category-donut-card .chart-toggle-btn[data-type]')).toHaveCount(2); // Expenses / Income
-    expect(await page.locator('.donut-legend-item').count()).toBeGreaterThan(0);
+    expect(await page.locator('.cat-swipe').count()).toBeGreaterThan(0);
 
     // the end-of-period toggle
     await toggle.locator('[data-mode="end"]').click();
     await expect(page.locator('#balance-mode-toggle [data-mode="end"]')).toHaveClass(/active/);
     await expect(view).not.toContainText('Total Net Balance · Today');
 
-    // M14 — the Groceries legend row: it opens its tag breakdown, "All n
-    // transactions" lands on History filtered to Groceries this month
-    const groceries = page.locator('.donut-legend-item[data-cat-id="cat_groceries"]');
-    await groceries.scrollIntoViewIfNeeded();
-    await groceries.click();
-    await expect(groceries).toHaveAttribute('aria-expanded', 'true');
-    await page.locator('.donut-tag-panel[data-tag-panel="cat_groceries"] .donut-tag-row--all').click();
-    await page.waitForFunction(() => window.Store.getState().activeView === 'transactions');
-    await expect(page.locator('.period-bar [data-filter-kind="categories"]')).toContainText('Groceries');
-    const f = await page.evaluate(() => window.Store.getState().historyFilters);
-    expect(f.categories).toEqual(['cat_groceries']);
-    await expect(page.locator('#period-label-history')).toContainText(THIS_MONTH);
+    // M14 — 1.3.2 (AB-4/6): the Groceries row slides to Tags / Transactions;
+    // Transactions opens this month's Groceries in a sheet, on Analytics
+    const groceries = page.locator('.cat-swipe[data-cat-id="cat_groceries"]');
+    await groceries.locator('.cat-swipe-content').evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await groceries.locator('.cat-swipe-content').click();
+    await page.waitForTimeout(400); // the row slides open
+    await expect(groceries.locator('.cat-swipe-content')).toHaveAttribute('aria-expanded', 'true');
+    await groceries.locator('.cat-act[data-act="list"]').click();
+    const sheet = page.locator('#tx-list-sheet');
+    await expect(sheet.locator('.tx-sheet-title')).toHaveText('Groceries');
+    await expect(sheet.locator('.tx-sheet-sub')).toContainText(THIS_MONTH);
+    expect(await sheet.locator('.tx-sheet-list .list-item').count()).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.Store.getState().activeView)).toBe('analytics');
     expect(errors).toEqual([]);
   });
 
