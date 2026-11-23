@@ -48,5 +48,10 @@
     "stackd-cloud": "file:plugins/stackd-cloud",
     "stackd-privacy": "file:plugins/stackd-privacy",
     "stackd-widgets": "file:plugins/stackd-widgets"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }
