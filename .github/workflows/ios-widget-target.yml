@@ -26,7 +26,7 @@ jobs:
           xcodebuild -project ios/App/App.xcodeproj -list
           git diff --stat
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: project-pbxproj
           path: ios/App/App.xcodeproj/project.pbxproj
