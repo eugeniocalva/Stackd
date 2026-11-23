@@ -73,7 +73,9 @@ const SCREENS = [
   { name: 'home', hash: '#dashboard', drive: 'range6m' },
   { name: 'history', hash: '#transactions', settle: 1200 },
   { name: 'goals', hash: '#budget' },
-  { name: 'analytics', hash: '#analytics' },
+  // 1.3.1: framed on the category ring and list (every category, shares on
+  // the slices) — the Analytics breakdown is what this release adds.
+  { name: 'analytics', hash: '#analytics', drive: 'ring' },
   // 1.2.2 (HG-7): the 5th tab.
   { name: 'insights', hash: '#insights' },
   { name: 'debt', hash: '#debt-sim', drive: 'debt' }
@@ -146,6 +148,18 @@ const SCREENS = [
           // The example data spans six months, so 1Y would draw half a year
           // of flat line before it; 6M fills the chart.
           await page.click('.home-range-chips [data-range="6m"]');
+          await page.waitForTimeout(400);
+        }
+        if (s.drive === 'ring') {
+          // Scroll the ring card up to just under the sticky title + period bar.
+          await page.waitForSelector('#analytics-ring-box canvas');
+          await page.evaluate(() => {
+            const card = document.querySelector('#analytics-ring-box').closest('.card, .glass-card, section') || document.querySelector('#analytics-ring-box');
+            const bar = document.querySelector('.history-header-sticky');
+            const scroller = document.getElementById('router-view');
+            const top = bar ? bar.getBoundingClientRect().bottom : 0;
+            scroller.scrollTop += card.getBoundingClientRect().top - top - 12;
+          });
           await page.waitForTimeout(400);
         }
         if (s.settle) {

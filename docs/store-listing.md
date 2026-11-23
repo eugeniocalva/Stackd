@@ -389,6 +389,16 @@ Under 500 characters each (Play's limit). Both stores carry 1.2.0, so this cover
 - **es** (427): Nuevos widgets para la pantalla de inicio: saldos de las cuentas, ingresos y gastos, categorías, presupuestos, próximos pagos, curva del saldo y añadir rápido. Nueva pestaña Consejos inteligentes, sacados de tus registros. Desliza el dedo por los gráficos para leer cada día. Oculta los importes agitando el teléfono. Un selector de periodo más sencillo. Ordena tus cuentas manteniendo pulsado. Añade, renombra y une etiquetas.
 - **pt** (418): Novos widgets para o ecrã principal: saldos das contas, receitas e despesas, categorias, orçamentos, próximos pagamentos, curva do saldo e adição rápida. Novo separador Dicas Inteligentes, tiradas dos seus registos. Deslize o dedo pelos gráficos para ler cada dia. Oculte os valores agitando o telemóvel. Um seletor de período mais simples. Ordene as suas contas mantendo premido. Adicione, renomeie e junte etiquetas.
 
+## 1f. What's new — 1.3.1 · paste into both stores
+
+Under 500 characters each (Play's limit). Both stores carry 1.2.2, so this covers 1.3.0 (App lock, every currency, the shake fix, the Receipts PDF fix), 1.3.1 (the deep-test fixes, restore Add / Replace) and the Analytics breakdown. Feature names are the app's own (`lock.title`, `nav.analytics`, `privacy.shakeToHide`).
+
+- **en** (428): New App lock: protect Stack'd with a PIN, and unlock with your face or fingerprint. Every currency is now available. Analytics shows every category on the ring with its share; tap a category to see its tags and transactions. Restoring a backup now asks whether to add to your data or replace it, and saves a copy first. Shake to hide works as soon as the app opens. Fixes for recurring payments, loans, imports and PDF receipts.
+- **fr** (493): Nouveau verrouillage de l'app : protégez Stack'd par un code, et déverrouillez avec votre visage ou votre empreinte. Toutes les devises sont disponibles. Statistiques montre chaque catégorie sur l'anneau avec sa part ; touchez une catégorie pour voir ses étiquettes et ses transactions. La restauration d'une sauvegarde demande d'ajouter ou de remplacer, après une copie préalable. Secouer pour masquer marche dès l'ouverture. Corrections des paiements récurrents, prêts, imports et reçus PDF.
+- **it** (459): Nuovo Blocco app: proteggi Stack'd con un PIN e sblocca con il volto o l'impronta. Tutte le valute sono disponibili. Statistiche mostra ogni categoria sull'anello con la sua quota; tocca una categoria per vederne etichette e transazioni. Il ripristino di un backup chiede se aggiungere o sostituire i dati, dopo una copia di sicurezza. Scuoti per nascondere funziona appena apri l'app. Correzioni a pagamenti ricorrenti, prestiti, importazioni e ricevute PDF.
+- **es** (477): Nuevo bloqueo de la app: protege Stack'd con un PIN y desbloquea con tu cara o tu huella. Ya están disponibles todas las monedas. Estadísticas muestra cada categoría en el anillo con su parte; toca una categoría para ver sus etiquetas y transacciones. Restaurar una copia de seguridad pregunta si añadir o reemplazar los datos, tras una copia previa. Agitar para ocultar funciona nada más abrir la app. Correcciones en pagos recurrentes, préstamos, importaciones y recibos PDF.
+- **pt** (491): Novo bloqueio da app: proteja o Stack'd com um PIN e desbloqueie com o rosto ou a impressão digital. Todas as moedas estão disponíveis. Estatísticas mostra cada categoria no anel com a sua parte; toque numa categoria para ver as etiquetas e as transações. Restaurar uma cópia de segurança pergunta se quer juntar ou substituir os dados, depois de uma cópia prévia. Agitar para ocultar funciona logo ao abrir a app. Correções em pagamentos recorrentes, empréstimos, importações e recibos PDF.
+
 ## 2a. Apple — App Privacy for THIS release · answers ready, you enter them
 
 With the feature switched off at build time the app makes no network calls of
@@ -403,7 +413,7 @@ unlock, and Apple handles that payment:
 So the answer for the first submission is **Data Not Collected**, which is
 also what the marketing site says.
 
-**Re-checked for 1.2.0 (2026-11-05): unchanged.** Backups to iCloud Drive are written
+**Re-checked for 1.3.1 (2026-11-23): unchanged.** App lock's Face ID / fingerprint check runs in the operating system (the app only receives yes / no), and the PIN is kept on the device as a salted hash. **Re-checked for 1.2.0 (2026-11-05): unchanged.** Backups to iCloud Drive are written
 by iOS into the user's own iCloud account, which the developer cannot access, and
 receipt photos and PDFs never leave the device — neither is collection. The camera
 and photo-library purpose strings (`ios/App/App/Info.plist`) were reviewed too and
