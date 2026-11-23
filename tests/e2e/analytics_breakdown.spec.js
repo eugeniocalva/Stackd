@@ -111,12 +111,12 @@ test.describe('Analytics breakdown (1.3.2)', () => {
     await expect(panel.locator('.donut-tag-row').first().locator('.count-ring-text')).toHaveText('2');
     await expect(panel.locator('.donut-tag-row').first().locator('.donut-tag-pct')).toHaveText('100.0%');
     await expect(panel.locator('.donut-tag-row').nth(1).locator('.count-ring-text')).toHaveText('1');
-    // the row closed its actions; Tags again closes the panel
+    // the row closed its actions; a tap on the row closes the tag list
+    // (it does not slide the row open again)
     await expect(rent.locator('.cat-act[data-act="tags"]')).toBeHidden();
     await rent.locator('.cat-swipe-content').tap();
-    await page.waitForTimeout(400); // the row slides open
-    await rent.locator('.cat-act[data-act="tags"]').tap();
     await expect(panel.locator('.donut-tag-row')).toHaveCount(0);
+    await expect(rent.locator('.cat-swipe-content')).toHaveAttribute('aria-expanded', 'false');
     expect(w.errors).toEqual([]);
     expect(w.dialogs).toEqual([]);
   });

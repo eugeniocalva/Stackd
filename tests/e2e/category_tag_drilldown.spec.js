@@ -94,6 +94,9 @@ test.describe('Category → tag drilldown', () => {
     await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(1);
 
     await rent(page).locator('.cat-swipe-content').evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    // a tap on the row of the open tag list closes it; the next tap slides
+    await rent(page).locator('.cat-swipe-content').click();
+    await expect(page.locator('.donut-legend-group.is-expanded')).toHaveCount(0);
     await rent(page).locator('.cat-swipe-content').click();
     await page.waitForTimeout(400); // the row slides open
     await rent(page).locator('.cat-act[data-act="list"]').click();

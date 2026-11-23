@@ -711,6 +711,11 @@ describe('the Analytics ring', () => {
     // the smallest slice is a slice of its own
     tap('cat_shopping');
     expect(abox().querySelector('.ring-focus-name').textContent).toBe('Shopping');
+    // a quick second tap moves the mark: one row marked, and it clears
+    tap('cat_dining');
+    expect([...rv().querySelectorAll('.donut-legend-group.is-marked')].map(g => g.dataset.catGroup)).toEqual(['cat_dining']);
+    vi.advanceTimersByTime(1500);
+    expect(rv().querySelectorAll('.donut-legend-group.is-marked')).toHaveLength(0);
   });
 
   it('income speaks of income; the type toggle drops the focus', () => {
@@ -859,6 +864,17 @@ describe('the Analytics breakdown (1.3.2)', () => {
     swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
     expect(D()._expandedCatId).toBeNull();
     expect(rv().querySelectorAll('[data-tag-panel="cat_groceries"] .donut-tag-row')).toHaveLength(0);
+    // a tap on the row of an open tag list closes the list (it does not slide)
+    swipe('cat_groceries').querySelector('.cat-swipe-content').click();
+    swipe('cat_groceries').querySelector('.cat-act[data-act="tags"]').click();
+    expect(D()._expandedCatId).toBe('cat_groceries');
+    const content = swipe('cat_groceries').querySelector('.cat-swipe-content');
+    content.click();
+    expect(D()._expandedCatId).toBeNull();
+    expect(content.getAttribute('aria-expanded')).toBe('false');
+    expect(rv().querySelectorAll('[data-tag-panel="cat_groceries"] .donut-tag-row')).toHaveLength(0);
+    content.click(); // closed list: a tap slides the row again
+    expect(content.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('a tag opens a sheet of its transactions with the Σ total; a row opens the form, from Analytics', () => {

@@ -4160,7 +4160,15 @@ window.Components = {
       if (list) {
         const rows = window.Components.SwipeRows.wire(list, {
           scroller: container,
-          openWidth: 132
+          openWidth: 132,
+          // a tap on the row of the open tag list closes that list
+          onTap: (row) => {
+            const catId = row.dataset.catId;
+            if (!catId || this._expandedCatId !== catId) return false;
+            setExpanded(catId, false);
+            this._expandedCatId = null;
+            return true;
+          }
         });
         if (container._donutRowsOff) container._donutRowsOff();
         container._donutRowsOff = rows.dispose;
@@ -4258,7 +4266,9 @@ window.Components = {
           if (!group) return;
           const reduced = window.Components.RingChart._reduced();
           try { group.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' }); } catch (e) { /* old engines */ }
-          group.classList.remove('is-marked');
+          // only one row is marked: a quick second slice tap clears the
+          // first row's mark (its timer was replaced and never ran)
+          if (list) list.querySelectorAll('.donut-legend-group.is-marked').forEach(g => g.classList.remove('is-marked'));
           void group.offsetWidth;
           group.classList.add('is-marked');
           clearTimeout(this._markTimer);
@@ -4388,6 +4398,9 @@ window.Components = {
         if (swallow && e.detail !== 0) { swallow = false; return; }
         swallow = false;
         const open = offsetOf(row) !== 0;
+        // a host may take a tap on a closed row (Analytics: a row whose tags
+        // are open closes them instead of sliding)
+        if (!open && typeof o.onTap === 'function' && o.onTap(row) === true) { closeAll(false); return; }
         closeAll(false, row);
         setX(row, open ? 0 : OPEN);
         if (!open && e.detail === 0) { // a keyboard activation: to the first action
