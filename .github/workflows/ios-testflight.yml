@@ -1,8 +1,11 @@
 # iOS build -> App Store Connect / TestFlight, on GitHub's hosted Macs.
 #
-# Why this exists: there is no Mac on the team, and Apple requires Xcode 26
-# (macOS only) for every upload since April 2026. GitHub's macos-26 image ships
-# Xcode 26.6, and macOS runners are free on a public repository.
+# Why this exists: there is no Mac on the team, and Apple requires a current
+# Xcode (macOS only) for every upload: Xcode 26 since April 2026, Xcode 27 (the
+# iOS 27 SDK) from April 2027 (ITMS-90725). GitHub's `xcode-27` image (macOS 27,
+# Xcode 27.0-27.2) is the default since 2026-11-23; the `xcode` input can still
+# pick the older macos-26 image with Xcode 26.6 as a fallback. macOS runners are
+# free on a public repository.
 #
 # MANUAL ONLY (workflow_dispatch). The repository is public, so there is
 # deliberately no push / pull_request trigger: nothing a fork or a pull
@@ -30,6 +33,11 @@ on:
         description: 'Upload to App Store Connect (leave off for a dry run that only builds, signs and checks)'
         type: boolean
         default: false
+      xcode:
+        description: 'Xcode to build with. 27 = the xcode-27 image (iOS 27 SDK, required by Apple from April 2027). 26 = the macos-26 image, only as a fallback.'
+        type: choice
+        options: ['27', '26']
+        default: '27'
       build_number:
         description: 'iOS build number override. Empty = the project value (10000 for 1.0). Apple rejects a build number it has already seen for the same version, so raise it (10001, 10002...) to re-upload 1.0 without changing the public version.'
         type: string
@@ -44,7 +52,8 @@ concurrency:
 
 jobs:
   testflight:
-    runs-on: macos-26
+    # 2026-11-23: xcode-27 (a GitHub preview image) unless the run asks for 26
+    runs-on: ${{ inputs.xcode == '26' && 'macos-26' || 'xcode-27' }}
     timeout-minutes: 60
     env:
       TEAM_ID: YA3DTZR26U
@@ -67,10 +76,18 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Select Xcode 26
+      - name: Select Xcode
+        env:
+          XCODE_MAJOR: ${{ inputs.xcode }}
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app
+          if [ "$XCODE_MAJOR" = "26" ]; then app=/Applications/Xcode_26.6.app; else app=/Applications/Xcode_27.2.app; fi
+          sudo xcode-select -s "$app"
           xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+          # the SDK Apple checks on upload (ITMS-90725): iOS 27 or later unless 26 was asked for
+          sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iOS SDK $sdk"
+          if [ "$XCODE_MAJOR" != "26" ] && [ "${sdk%%.*}" -lt 27 ]; then echo "::error::iOS SDK $sdk is older than 27"; exit 1; fi
 
       - name: Check the secrets are present
         env:
@@ -162,8 +179,15 @@ jobs:
             || { echo "::error::the archived widget extension carries no App Group entitlement"; exit 1; }
 
       - name: Check the archive
+        env:
+          XCODE_MAJOR: ${{ inputs.xcode }}
         run: |
           APP="$ARCHIVE/Products/Applications/App.app"
+          # ITMS-90725: Apple reads the SDK the app was built with from DTSDKName
+          sdk_name="$(/usr/libexec/PlistBuddy -c 'Print DTSDKName' "$APP/Info.plist")"
+          echo "built with $sdk_name ($(/usr/libexec/PlistBuddy -c 'Print DTXcode' "$APP/Info.plist" 2>/dev/null))"
+          sdk_major="$(echo "$sdk_name" | sed -E 's/^iphoneos([0-9]+).*/\1/')"
+          if [ "$XCODE_MAJOR" != "26" ] && [ "$sdk_major" -lt 27 ]; then echo "::error::archive built with $sdk_name, not iOS 27"; exit 1; fi
           want_version="$(node -p "require('./tools/version.cjs').versions().name")"
           got_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")"
           got_build="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP/Info.plist")"
