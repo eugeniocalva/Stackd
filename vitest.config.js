@@ -4,7 +4,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: [], // Add setup file if needed
+    // 1.3.2: cancels timers a test file leaves pending (see the file).
+    setupFiles: ['tests/unit/setup.timers.js'],
     include: ['tests/unit/**/*.test.js'],
     // v1.14: `npm test` has to be a release gate, so it must not fail for
     // reasons that have nothing to do with the code. Vitest defaults to one
